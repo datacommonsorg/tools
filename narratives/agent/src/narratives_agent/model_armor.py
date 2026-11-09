@@ -28,23 +28,17 @@ transient infrastructure error.
 import asyncio
 import logging
 import re
-import threading
 from dataclasses import dataclass
 
-import google.auth
 import google.auth.exceptions
 import httpx
-import requests
-from google.auth.credentials import Credentials
-from google.auth.transport.requests import Request
 from pydantic import BaseModel, ConfigDict, Field
 
+from narratives_agent.gcp_auth import get_adc_auth_headers
 from narratives_agent.json_value import JsonValue
 from narratives_agent.settings import get_settings
 
 logger = logging.getLogger(__name__)
-
-_CLOUD_PLATFORM_SCOPE = "https://www.googleapis.com/auth/cloud-platform"
 
 # Bounded timeout for each Model Armor screening call so an unresponsive
 # regional endpoint cannot stall the admission phase.
@@ -56,7 +50,10 @@ _MATCH_FOUND = "MATCH_FOUND"
 _INVOCATION_SUCCESS = "SUCCESS"
 _DEFAULT_MATCH_LABEL = "model_armor"
 
-_TEMPLATE_PATTERN = re.compile(
+# Matches a Google Cloud Model Armor template resource name
+# (`projects/<project>/locations/<location>/templates/<template>`) and captures
+# `<location>` so requests target the regional Model Armor endpoint.
+_MODEL_ARMOR_TEMPLATE_PATTERN = re.compile(
     r"^projects/[A-Za-z0-9._:-]+/locations/(?P<location>[a-z0-9-]+)"
     r"/templates/[A-Za-z0-9._-]+$"
 )
@@ -64,23 +61,29 @@ _TEMPLATE_PATTERN = re.compile(
 
 @dataclass
 class _ClientState:
-    """Holds the shared HTTP client, its event loop, and ADC credentials."""
+    """Holds the shared Model Armor HTTP client and its event loop."""
 
     client: httpx.AsyncClient | None = None
     loop: asyncio.AbstractEventLoop | None = None
-    credentials: Credentials | None = None
 
 
 _STATE = _ClientState()
-_AUTH_LOCK = threading.Lock()
 
 
 def reset_model_armor_client() -> None:
-    """Clears cached credentials and HTTP client state (for testing)."""
-    with _AUTH_LOCK:
-        _STATE.credentials = None
+    """Clears cached HTTP client state (for testing)."""
     _STATE.client = None
     _STATE.loop = None
+
+
+def init_model_armor() -> None:
+    """Logs the Model Armor configuration status at server startup."""
+    template = get_settings().model_armor_template
+    if not template:
+        logger.warning(
+            "MODEL_ARMOR_TEMPLATE is unset; Model Armor prompt screening "
+            "is disabled."
+        )
 
 
 async def aclose() -> None:
@@ -119,58 +122,6 @@ def _http_client() -> httpx.AsyncClient:
     return _STATE.client
 
 
-def _load_credentials() -> Credentials:
-    """Loads Application Default Credentials scoped for Google Cloud APIs."""
-    credentials, _ = google.auth.default(scopes=[_CLOUD_PLATFORM_SCOPE])
-    if not isinstance(credentials, Credentials):
-        raise RuntimeError("ADC did not return google.auth Credentials")
-    return credentials
-
-
-def _refresh_credentials(credentials: Credentials) -> None:
-    """Refreshes `credentials` synchronously using a scoped session."""
-    with requests.Session() as session:
-        credentials.refresh(Request(session))  # type: ignore[no-untyped-call]
-
-
-def _build_auth_headers(credentials: Credentials) -> dict[str, str]:
-    """Builds the `Authorization` and optional quota-project headers."""
-    token = credentials.token
-    if not isinstance(token, str) or not token:
-        raise RuntimeError(
-            "Application Default Credentials returned no access token"
-        )
-    headers = {"Authorization": f"Bearer {token}"}
-    quota_project = credentials.quota_project_id
-    if isinstance(quota_project, str) and quota_project:
-        headers["x-goog-user-project"] = quota_project
-    return headers
-
-
-def _resolve_auth_headers_sync() -> dict[str, str]:
-    """Resolves and refreshes ADC authentication headers under `_AUTH_LOCK`."""
-    with _AUTH_LOCK:
-        if _STATE.credentials is None:
-            _STATE.credentials = _load_credentials()
-        credentials = _STATE.credentials
-        if not credentials.valid or not credentials.token:
-            _refresh_credentials(credentials)
-        return _build_auth_headers(credentials)
-
-
-async def _get_auth_headers() -> dict[str, str]:
-    """Returns valid ADC request headers without blocking the event loop."""
-    credentials = _STATE.credentials
-    if (
-        credentials is not None
-        and credentials.valid
-        and isinstance(credentials.token, str)
-        and credentials.token
-    ):
-        return _build_auth_headers(credentials)
-    return await asyncio.to_thread(_resolve_auth_headers_sync)
-
-
 def _sanitize_prompt_url(template: str) -> str | None:
     """Builds the regional `sanitizeUserPrompt` URL for `template`.
 
@@ -183,7 +134,7 @@ def _sanitize_prompt_url(template: str) -> str | None:
         does not match the expected resource path format.
     """
     normalized = template.strip().strip("/")
-    match = _TEMPLATE_PATTERN.match(normalized)
+    match = _MODEL_ARMOR_TEMPLATE_PATTERN.match(normalized)
     if match is None:
         logger.warning(
             "Invalid MODEL_ARMOR_TEMPLATE %r; skipping Model Armor screening",
@@ -259,7 +210,7 @@ async def screen_user_prompt(query: str) -> str | None:
 
     try:
         async with asyncio.timeout(_REQUEST_TIMEOUT_SECONDS):
-            headers = await _get_auth_headers()
+            headers = await get_adc_auth_headers()
             response = await _http_client().post(
                 url,
                 headers=headers,

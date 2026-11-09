@@ -11,7 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-"""Tests for host-based credential selection in `gcp_auth`.
+"""Tests for credential resolution in `gcp_auth`.
 
 Verifies that `attach_auth` selects credentials based on the target URL:
 - Allowlisted public Data Commons hosts receive the `X-API-Key` header.
@@ -19,9 +19,16 @@ Verifies that `attach_auth` selects credentials based on the target URL:
 - Unlisted external HTTPS hosts receive no credential, preventing a modified
   remote configuration from leaking the API key to an arbitrary host.
 - Setting `DATA_PLANE_AUTH=off` disables credential attachment entirely.
+
+Also verifies that `get_adc_auth_headers` resolves, refreshes, and caches
+Application Default Credentials and includes `x-goog-user-project` when a
+quota project is configured.
 """
 
+from typing import Any
+
 import pytest
+from google.auth.credentials import Credentials
 
 from narratives_agent import gcp_auth
 from narratives_agent.settings import (
@@ -30,6 +37,35 @@ from narratives_agent.settings import (
 )
 
 _API_KEY = "test-key-123"
+
+
+class _StubCredentials(Credentials):
+    """In-memory `google.auth` credentials stub for unit tests."""
+
+    def __init__(
+        self,
+        token: str | None = "test-access-token",
+        expired: bool = False,
+        quota_project_id: str | None = None,
+        *,
+        populate_on_refresh: bool = True,
+    ) -> None:
+        super().__init__()  # type: ignore[no-untyped-call]
+        self.token = token
+        self._expired = expired
+        self._quota_project_id = quota_project_id
+        self._populate_on_refresh = populate_on_refresh
+        self.refresh_calls = 0
+
+    @property
+    def expired(self) -> bool:
+        return self._expired
+
+    def refresh(self, request: Any) -> None:
+        self.refresh_calls += 1
+        self._expired = False
+        if self._populate_on_refresh:
+            self.token = f"refreshed-token-{self.refresh_calls}"
 
 
 @pytest.fixture(autouse=True)
@@ -185,3 +221,73 @@ def test_no_api_key_configured_attaches_nothing(
     headers: dict[str, str] = {}
     gcp_auth.attach_auth(headers, "https://api.datacommons.org/mcp")
     assert headers == {}
+
+
+@pytest.mark.asyncio
+async def test_get_adc_auth_headers_returns_bearer_token_and_quota_project(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Test: ADC Bearer token and quota-project header construction.
+    # Situation: Valid ADC credentials carry an access token and a
+    #   `quota_project_id`.
+    # Expectation: `get_adc_auth_headers` returns `Authorization` and
+    #   `x-goog-user-project` without refreshing the credentials.
+    creds = _StubCredentials(
+        token="adc-token-123", quota_project_id="datcom-website-autopush"
+    )
+    monkeypatch.setattr(gcp_auth, "_load_adc_credentials", lambda: creds)
+
+    headers = await gcp_auth.get_adc_auth_headers()
+
+    assert creds.refresh_calls == 0
+    assert headers == {
+        "Authorization": "Bearer adc-token-123",
+        "x-goog-user-project": "datcom-website-autopush",
+    }
+
+
+@pytest.mark.asyncio
+async def test_expired_adc_credentials_are_refreshed_and_reused(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Test: ADC credential refresh and reuse across calls.
+    # Situation: Loaded ADC credentials start without a token (`expired=True`)
+    #   and `get_adc_auth_headers` is called twice.
+    # Expectation: The first call refreshes the credentials once, and the
+    #   second call reuses the refreshed token without reloading or refreshing.
+    creds = _StubCredentials(token=None, expired=True)
+    load_calls = 0
+
+    def _load() -> Credentials:
+        nonlocal load_calls
+        load_calls += 1
+        return creds
+
+    monkeypatch.setattr(gcp_auth, "_load_adc_credentials", _load)
+
+    first = await gcp_auth.get_adc_auth_headers()
+    second = await gcp_auth.get_adc_auth_headers()
+
+    assert load_calls == 1
+    assert creds.refresh_calls == 1
+    assert first == {"Authorization": "Bearer refreshed-token-1"}
+    assert second == {"Authorization": "Bearer refreshed-token-1"}
+
+
+@pytest.mark.asyncio
+async def test_get_adc_auth_headers_raises_when_refresh_leaves_token_empty(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Test: Error handling when ADC refresh produces no access token.
+    # Situation: Loaded credentials have `token=None` even after refresh.
+    # Expectation: `get_adc_auth_headers` raises `RuntimeError`.
+    monkeypatch.setattr(
+        gcp_auth,
+        "_load_adc_credentials",
+        lambda: _StubCredentials(
+            token=None, expired=False, populate_on_refresh=False
+        ),
+    )
+
+    with pytest.raises(RuntimeError, match="no access token"):
+        await gcp_auth.get_adc_auth_headers()

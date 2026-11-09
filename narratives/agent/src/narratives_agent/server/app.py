@@ -90,6 +90,7 @@ async def _lifespan(app: FastAPI) -> AsyncGenerator[None]:
     """
     init_signing_key()
     init_dc_api_key()
+    model_armor.init_model_armor()
     telemetry.configure_telemetry()
     bootstrap_config_from_url()
     async with AsyncExitStack() as stack:
