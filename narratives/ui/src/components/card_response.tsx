@@ -305,8 +305,13 @@ function MarkdownTable({ children, node, style }: MarkdownCellProps) {
   );
   return (
     <TableAnalysisContext.Provider value={analysis}>
-      <div className="overflow-x-auto mb-3">
-        <table className="min-w-full text-sm border-collapse" style={style}>
+      {/* Same frame as a chart tile. The cells' outer borders are dropped so
+          they do not double up with the frame's. */}
+      <div className="overflow-x-auto mb-3 border border-border rounded-chart bg-surface">
+        <table
+          className="min-w-full text-sm border-collapse [&_tr>*:first-child]:border-l-0 [&_tr>*:last-child]:border-r-0 [&_thead_tr:first-child>*]:border-t-0 [&_tbody_tr:last-child>*]:border-b-0"
+          style={style}
+        >
           {children}
         </table>
       </div>
