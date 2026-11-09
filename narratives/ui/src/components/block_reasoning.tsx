@@ -481,6 +481,9 @@ export function ReasoningBlock({
  * thought can grow its height from 0fr; the bar and dot live here, outside the
  * clipping inner wrapper, so the dot is not cut off.
  */
+/** How long a header heading takes to reveal, however many words it has. */
+const HEADING_STREAM_MS = 200;
+
 const THOUGHT_CLASS = [
   'relative grid grid-rows-[1fr] pt-2 pb-3 pl-5.5',
   'border-l-2 border-border',
@@ -541,27 +544,39 @@ interface StreamedTextProps {
 }
 
 /**
- * Plain text revealed word by word with the same stagger and keyframes as a
- * streamed thought, for places outside the markdown body such as the header.
+ * Plain text typed out letter by letter, for places outside the markdown body
+ * such as the header. Each word
+ * stays one unbreakable run, so a line never wraps mid-word.
  */
 function StreamedText({ text, className = '' }: StreamedTextProps) {
   const parts = text.split(/(\s+)/);
-  const wordCount = parts.filter((part) => part.trim() !== '').length;
-  const step = calculateStreamDurationMs(text) / Math.max(wordCount, 1);
-  let words = 0;
+  // Array.from splits by code point, so an emoji or accented letter is one.
+  const letterCount = Array.from(text.replace(/\s+/g, '')).length;
+  const step = HEADING_STREAM_MS / Math.max(letterCount, 1);
+  let letters = 0;
   return (
     <span className={`markdown-stream whitespace-pre-wrap ${className}`}>
       {parts.map((part, i) =>
         part.trim() === '' ? (
           part
         ) : (
-          <span
-            // Parts are fixed for a given text, so the index is a stable key.
-            key={i}
-            className={STREAM_WORD_CLASS}
-            style={{ animationDelay: `${Math.round(words++ * step)}ms` }}
-          >
-            {part}
+          // Parts and letters are fixed for a given text, so indexes are
+          // stable keys.
+          <span key={i} className="whitespace-nowrap">
+            {Array.from(part).map((letter, j) => (
+              <span
+                key={j}
+                className={STREAM_WORD_CLASS}
+                // Zero duration: each letter stays hidden through its delay
+                // (fill mode `backwards`), then pops in, like typing.
+                style={{
+                  animationDelay: `${Math.round(letters++ * step)}ms`,
+                  animationDuration: '0ms',
+                }}
+              >
+                {letter}
+              </span>
+            ))}
           </span>
         ),
       )}

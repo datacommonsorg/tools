@@ -269,7 +269,7 @@ describe('ReasoningBlock', () => {
     // Situation: Thoughts carry a `##` heading and a later lone-bold heading;
     //            the block renders streaming, then done.
     // Expectation: Streaming shows the phase label, a colon, and the latest
-    //              heading, revealed word by word; done falls back to `Reasoning details`.
+    //              heading, revealed letter by letter; done falls back to `Reasoning details`.
     const thoughts = [
       { text: '## Plan\nFind the data.', phase: 'discovery' as const },
       {
@@ -289,7 +289,7 @@ describe('ReasoningBlock', () => {
           '.stream-word',
         ),
       ].map((word) => word.textContent),
-    ).toEqual(['Checking', 'sources']);
+    ).toEqual([...'Checkingsources']);
 
     rerender(<ReasoningBlock thoughts={thoughts} done />);
     expect(getByRole('button', { expanded: false }).textContent).toBe(
