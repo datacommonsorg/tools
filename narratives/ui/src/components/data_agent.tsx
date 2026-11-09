@@ -29,6 +29,7 @@ import {
 import { ReasoningBlock } from '@/src/components/block_reasoning';
 import { SkeletonCard } from '@/src/components/card_skeleton';
 import { PromptInput } from '@/src/components/input_prompt';
+import { ErrorNotice } from '@/src/components/notice_error';
 import { AnswerPanel } from '@/src/components/panel_answer';
 import { InitialView } from '@/src/components/view_initial';
 import { useChatSession } from '@/src/hooks/chat_session_context';
@@ -306,6 +307,8 @@ export function TurnView({
   ]
     .filter(Boolean)
     .join(' ');
+  const retry =
+    onAsk && turn.isRetryable ? () => onAsk(turn.userMessage) : undefined;
 
   return (
     // The last turn fills the viewport between header and prompt, so its
@@ -413,11 +416,8 @@ export function TurnView({
         </div>
       )}
 
-      {/* Error */}
       {turn.status === 'error' && turn.error && (
-        <div className="self-start px-4 py-3 rounded-2xl bg-error-surface text-error-strong text-body-large max-w-4xl">
-          {turn.error}
-        </div>
+        <ErrorNotice message={turn.error} onRetry={retry} />
       )}
     </div>
   );

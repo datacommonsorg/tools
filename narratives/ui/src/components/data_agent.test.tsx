@@ -36,6 +36,7 @@ import {
 } from '@/src/components/data_agent';
 import { DISCLAIMER_TEXT } from '@/src/components/note_disclaimer';
 import { ANSWER_SETTLE_MAX_MS } from '@/src/components/panel_answer';
+import { RETRY_LABEL } from '@/src/config/copy_chat';
 import {
   ChatSessionContext,
   type ChatSessionContextValue,
@@ -59,12 +60,12 @@ afterEach(() => {
 });
 
 /** Returns the surface over a settled chat state holding `turns`. */
-const chatSurface = (turns: ChatTurn[]) => {
+const chatSurface = (turns: ChatTurn[], send = vi.fn()) => {
   const chat: ChatSessionContextValue = {
     turns,
     isStreaming: false,
     error: null,
-    send: vi.fn(),
+    send,
     stop: vi.fn(),
     newChat: vi.fn(),
     isDrawerOpen: false,
@@ -79,7 +80,21 @@ const chatSurface = (turns: ChatTurn[]) => {
 };
 
 /** Renders the surface over a settled chat state holding `turns`. */
-const renderTurns = (turns: ChatTurn[]) => render(chatSurface(turns));
+const renderTurns = (turns: ChatTurn[], send = vi.fn()) =>
+  render(chatSurface(turns, send));
+
+/** Returns a turn that ended in `error` with `error` as its message. */
+const buildErrorTurn = (error: string, isRetryable: boolean): ChatTurn => ({
+  userMessage: 'What is the population of France?',
+  status: 'error',
+  error,
+  isRetryable,
+  toolCalls: [],
+  thoughts: [],
+  text: '',
+  blocks: [],
+  provenance: [],
+});
 
 describe('DataAgent refused and clarification turns', () => {
   it('renders a refused turn as a neutral notice card, not an error card', () => {
@@ -185,6 +200,62 @@ describe('DataAgent refused and clarification turns', () => {
     expect(container.querySelector('.max-w-4xl.grid')).toBeNull();
     expect(container.querySelector('.dc-chart-card')).toBeNull();
     expect(container.querySelector('.markdown-body')).toBeNull();
+  });
+});
+
+describe('DataAgent error turns', () => {
+  it('follows a retryable error with an inline button that resubmits the query', () => {
+    // Test: Retrying a transient failed turn.
+    // Situation: The chat holds a retryable error turn with the high-traffic
+    //            message.
+    // Expectation: The notice renders the message followed inline by the
+    //              "Try again" button, and clicking the button sends the
+    //              turn's question again.
+    const send = vi.fn();
+    const message = 'We are experiencing unusually high traffic.';
+    renderTurns([buildErrorTurn(message, true)], send);
+
+    expect(screen.getByTestId('turn-error-notice').textContent).toBe(
+      `${message} ${RETRY_LABEL}`,
+    );
+    const retry = screen.getByRole('button', { name: RETRY_LABEL });
+    fireEvent.click(retry);
+    expect(send).toHaveBeenCalledWith('What is the population of France?');
+  });
+
+  it.each([
+    'The response could not be generated.',
+    'Chat is temporarily unavailable. Please try again later.',
+    'HTTP 422 Unprocessable Entity',
+  ])('shows non-retryable error %j without a retry button', (message) => {
+    // Test: Rendering a failed turn that is not retryable.
+    // Situation: The turn carries `isRetryable: false`, including when its prose
+    //            mentions trying again later (chat disabled).
+    // Expectation: The message is rendered verbatim and no retry button is
+    //              shown.
+    renderTurns([buildErrorTurn(message, false)]);
+
+    screen.getByText(message);
+    expect(screen.queryByRole('button', { name: RETRY_LABEL })).toBeNull();
+  });
+
+  it('omits the retry button when the turn view has no ask handler', () => {
+    // Test: Rendering a retryable turn without a way to resend it.
+    // Situation: `TurnView` renders a retryable error turn with no `onAsk`.
+    // Expectation: The message is rendered and no retry button is shown, so
+    //              no control renders that does nothing.
+    const message = 'We are experiencing unusually high traffic.';
+    render(
+      <TurnView
+        turn={buildErrorTurn(message, true)}
+        index={0}
+        isLast
+        isStreaming={false}
+      />,
+    );
+
+    expect(screen.getByTestId('turn-error-notice').textContent).toBe(message);
+    expect(screen.queryByRole('button', { name: RETRY_LABEL })).toBeNull();
   });
 });
 

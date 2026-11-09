@@ -42,7 +42,7 @@ async def test_follow_ups_request_the_low_thinking_level(
 
     async def request(**kwargs: Any) -> GeminiResponse:
         levels.append(kwargs.get("thinking_level"))
-        raise GeminiError("stubbed")
+        raise GeminiError("stubbed", is_retryable=False)
 
     monkeypatch.setattr(follow_up, "async_gemini_request", request)
 
@@ -69,7 +69,7 @@ async def test_follow_ups_are_skipped_when_the_prompt_is_empty(
 
     async def request(**kwargs: Any) -> GeminiResponse:
         calls.append(kwargs)
-        raise GeminiError("stubbed")
+        raise GeminiError("stubbed", is_retryable=False)
 
     monkeypatch.setattr(follow_up, "async_gemini_request", request)
 
@@ -92,7 +92,10 @@ async def test_follow_ups_are_skipped_when_the_prompt_is_empty(
 @pytest.mark.parametrize(
     "error",
     [
-        pytest.param(GeminiError("HTTP 500: upstream detail"), id="error"),
+        pytest.param(
+            GeminiError("HTTP 500: upstream detail", is_retryable=True),
+            id="error",
+        ),
         pytest.param(GeminiBlockedError("SAFETY"), id="blocked"),
     ],
 )

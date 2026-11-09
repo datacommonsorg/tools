@@ -245,7 +245,7 @@ async def test_a_failed_compaction_falls_back_and_verifies(
         if failure == "raises":
             raise RuntimeError("boom")
         if failure == "fails":
-            raise GeminiError("HTTP 500")
+            raise GeminiError("HTTP 500", is_retryable=True)
         if failure == "blocked":
             raise GeminiBlockedError("SAFETY")
         if failure == "times_out":

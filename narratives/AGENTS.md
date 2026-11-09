@@ -41,7 +41,7 @@ process and PR expectations: [`CONTRIBUTING.md`](../CONTRIBUTING.md).
     foundations` structure from `dataweaver/`).
   - `src/hooks/` — hooks and React context providers.
   - `src/config/`, `src/types/`, `src/utils/` — instance and navigation config,
-    shared types, and helpers.
+    user-facing chat copy (`copy_chat.ts`), shared types, and helpers.
   - `src/index.css` — Tailwind v4 theme and `--color-*` design tokens.
 - `agent/` — Python 3.14 server managed with [uv](https://docs.astral.sh/uv/):
   - `pyproject.toml`, `uv.lock` — dependencies and tool configuration (`ruff`,
