@@ -18,16 +18,42 @@
  * @fileoverview Renders the agent's collapsible reasoning/thoughts block for a turn.
  */
 
-import { useState } from 'react';
+import {
+  type CSSProperties,
+  type RefObject,
+  useEffect,
+  useRef,
+  useState,
+} from 'react';
 import ReactMarkdown, { type Components } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { ChevronDownIcon } from '@/src/components/icons';
+import {
+  CLOSE_REASONING_LABEL,
+  REASONING_DEFAULT_PHASE_LABEL,
+  REASONING_DONE_LABEL,
+  REASONING_PHASE_LABELS,
+  REASONING_PLACEHOLDER_CLASSIFY,
+  REASONING_PLACEHOLDER_DONE,
+  REASONING_PLACEHOLDER_STREAMING,
+} from '@/src/config/copy_chat';
 import { getInstanceConfig } from '@/src/config/instance_config';
+import {
+  REASONING_COLLAPSE_MS,
+  REDUCED_MOTION_QUERY,
+  SCROLL_PIN_OFFSET_PX,
+} from '@/src/config/motion';
 import type { ThoughtEvent, TurnStatus } from '@/src/hooks/use_sse_chat';
 import {
   calculateStreamDurationMs,
   rehypeStreamWords,
+  STREAM_WORD_CLASS,
 } from '@/src/utils/rehype_stream_words';
+import {
+  getScrollContainer,
+  getVisibleBand,
+  type VisibleBand,
+} from '@/src/utils/scroll_main';
 
 /**
  * Figma "Sparkle + Extension chip" (node 3427:16720) + "Content" (3427:16723).
@@ -130,7 +156,7 @@ interface ReasoningBlockProps {
   // while streaming — the thinking text is opt-in.
   defaultOpen?: boolean;
   // True while the chat turn is still streaming. Lets the placeholder
-  // body adapt ("Reasoning…" vs. final fallback) when the agent emits
+  // body adapt (in-progress vs. final fallback) when the agent emits
   // no `thought` events (e.g. simple queries with low thinking level).
   streaming?: boolean;
   // True once the turn is finished (status === "done"). Together with
@@ -138,38 +164,72 @@ interface ReasoningBlockProps {
   // fallback message.
   done?: boolean;
   // Drives the header label + leading icon. During streaming we show a
-  // phase-specific label ("Querying data tools…", "Synthesizing answer…")
+  // phase-specific label ("Querying data tools", "Synthesizing answer")
   // with the rotating loader; once done we switch to "Reasoning" with
   // the sparkle icon.
   status?: TurnStatus;
+  // Called as the closing button at the end of the body starts the collapse,
+  // so the turn can bring its question back into view alongside it.
+  onClose?: () => void;
+  // The answer card rendered below the block: kept in view while the
+  // reasoning streams open, and scrolled up to when the turn finishes.
+  answerCardRef?: RefObject<HTMLElement | null>;
 }
 
-const PLACEHOLDER_CLASSIFY = 'Reviewing your question…';
-const PLACEHOLDER_STREAMING =
-  'Searching Data Commons for relevant indicators and observations…';
-const PLACEHOLDER_DONE =
-  'Analyzed the query and retrieved relevant data from Data Commons.';
+/**
+ * Share of the skeleton card always kept in view below streaming reasoning;
+ * the whole card is shown where it fits.
+ */
+const SKELETON_MIN_SHARE = 0.5;
+
+/** Share of the thought before the latest kept in view while following. */
+const PREVIOUS_THOUGHT_MIN_SHARE = 0.5;
+
+/** Slack for fractional layout when checking an edge against the band. */
+const LAYOUT_SLACK_PX = 1;
 
 /**
- * Header label is derived from the turn status. The server's `status` events
- * move the turn through the `classify`, `discovery`, `processing`, and
- * `synthesis` phases, and its `terminal` event ends it; these strings are the
- * UI-side copy for each phase.
+ * Returns the header label for the turn status: the phase's label while
+ * streaming, falling back to a generic one, and the done label afterwards.
  */
 function getPhaseLabel(streaming: boolean, status?: TurnStatus): string {
-  if (!streaming) return 'Reasoning details';
-  switch (status) {
-    case 'classify':
-      return 'Understanding your question…';
-    case 'discovery':
-      return 'Querying data tools…';
-    case 'processing':
-      return 'Analyzing data…';
-    case 'synthesis':
-      return 'Synthesizing answer…';
-    default:
-      return 'Thinking…';
+  if (!streaming) return REASONING_DONE_LABEL;
+  return (
+    (status && REASONING_PHASE_LABELS[status]) ?? REASONING_DEFAULT_PHASE_LABEL
+  );
+}
+
+/**
+ * Matches a line the body renders with `ReasoningHeading`: a markdown heading
+ * (`## Plan`, closing `#`s dropped) or a lone bold line (`**Plan**`). A line
+ * with several bold runs, such as `**Note:** see **this**`, is body text.
+ */
+const HEADING_LINE = /^\s*(?:#{1,6}\s+(.+?)(?:\s+#+)?|\*\*([^*]+)\*\*)\s*$/;
+
+/**
+ * Returns the most recent section heading among the thoughts of the current
+ * phase, if any, with inline code and emphasis markers removed, since the
+ * header shows it as plain text. A heading from an earlier phase would mislabel
+ * the current one, so the scan stops at the first thought from another phase.
+ */
+function getLatestHeading(
+  thoughts: ThoughtEvent[],
+  status?: TurnStatus,
+): string | undefined {
+  for (
+    let thoughtIndex = thoughts.length - 1;
+    thoughtIndex >= 0;
+    thoughtIndex--
+  ) {
+    const thought = thoughts[thoughtIndex];
+    if (thought.phase !== status) return undefined;
+    const lines = thought.text.split('\n');
+    for (let lineIndex = lines.length - 1; lineIndex >= 0; lineIndex--) {
+      const match = HEADING_LINE.exec(lines[lineIndex]);
+      if (match) return (match[1] ?? match[2]).replace(/[`*]/g, '').trim();
+    }
   }
+  return undefined;
 }
 
 /**
@@ -186,9 +246,11 @@ function placeholderText(
   status?: TurnStatus,
 ): string {
   if (streaming) {
-    return status === 'classify' ? PLACEHOLDER_CLASSIFY : PLACEHOLDER_STREAMING;
+    return status === 'classify'
+      ? REASONING_PLACEHOLDER_CLASSIFY
+      : REASONING_PLACEHOLDER_STREAMING;
   }
-  return done ? PLACEHOLDER_DONE : '';
+  return done ? REASONING_PLACEHOLDER_DONE : '';
 }
 
 /** Collapsible "Reasoning" block: sparkle header plus the streamed thinking text. */
@@ -198,9 +260,110 @@ export function ReasoningBlock({
   streaming = false,
   done = false,
   status,
+  onClose,
+  answerCardRef,
 }: ReasoningBlockProps) {
   const [open, setOpen] = useState(defaultOpen);
-  const label = getPhaseLabel(streaming, status);
+  // While streaming, the header also names the section the model is on.
+  const heading = streaming ? getLatestHeading(thoughts, status) : undefined;
+  const phaseLabel = getPhaseLabel(streaming, status);
+
+  // While the turn streams with the reasoning open, keep the latest thought
+  // and the skeleton in view: whenever the block or card resizes, scroll by
+  // the overflow (see getFollowOverflow). Scrolling up pauses this so the
+  // reader can re-read; scrolling back to where following holds resumes it.
+  const rootRef = useRef<HTMLDivElement>(null);
+  const headerRef = useRef<HTMLButtonElement>(null);
+  const bodyRef = useRef<HTMLDivElement>(null);
+  // Whether following is active; read when the turn finishes, so a reader
+  // who scrolled away is not pulled down to the answer either.
+  const isFollowingRef = useRef(true);
+  // Opening the block mid-stream, or a new stream, starts following afresh.
+  useEffect(() => {
+    if (streaming && open) isFollowingRef.current = true;
+  }, [streaming, open]);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: the answer card mounts once status leaves classify, so the observer is attached again to watch it.
+  useEffect(() => {
+    const root = rootRef.current;
+    const body = bodyRef.current;
+    const scroller = getScrollContainer();
+    if (!streaming || !open || !root || !body || !scroller) return;
+    const card = answerCardRef?.current;
+    // How far to scroll down while following. Where the band is too short
+    // for all of them, earlier aims win over later ones:
+    // 1. the latest thought's end;
+    // 2. the latest thought's top, so it stays whole;
+    // 3. SKELETON_MIN_SHARE of the answer card (the skeleton while
+    //    streaming), so the reader sees the answer is coming;
+    // 4. PREVIOUS_THOUGHT_MIN_SHARE of the thought before, for context;
+    // 5. the rest of the card.
+    const getFollowOverflow = (band: VisibleBand) => {
+      const bodyOverflow = body.getBoundingClientRect().bottom - band.bottom;
+      const latest = body.lastElementChild;
+      const cardRect = card?.getBoundingClientRect();
+      if (!cardRect || !latest) return bodyOverflow;
+      const latestTopLimit = latest.getBoundingClientRect().top - band.top;
+      const previous = latest.previousElementSibling?.getBoundingClientRect();
+      const previousLimit = previous
+        ? previous.top + previous.height * PREVIOUS_THOUGHT_MIN_SHARE - band.top
+        : Number.POSITIVE_INFINITY;
+      const cardOverflow = (share: number) =>
+        cardRect.top + cardRect.height * share - band.bottom;
+      return Math.max(
+        bodyOverflow,
+        Math.min(cardOverflow(SKELETON_MIN_SHARE), latestTopLimit),
+        Math.min(cardOverflow(1), latestTopLimit, previousLimit),
+      );
+    };
+    let lastScrollTop = scroller.scrollTop;
+    const onScroll = () => {
+      const band = getVisibleBand(body);
+      if (!band) return;
+      // Following only ever scrolls down, so an upward scroll is the reader's.
+      if (scroller.scrollTop < lastScrollTop) isFollowingRef.current = false;
+      lastScrollTop = scroller.scrollTop;
+      // Back where following would hold: nothing left to scroll.
+      if (getFollowOverflow(band) <= LAYOUT_SLACK_PX) {
+        isFollowingRef.current = true;
+      }
+    };
+    // The root grows with each thought's expand animation and with the
+    // body's own open transition; the card grows as it fills in.
+    const observer = new ResizeObserver(() => {
+      const band = getVisibleBand(body);
+      if (!isFollowingRef.current || !band) return;
+      const overflow = getFollowOverflow(band);
+      if (overflow > 0) band.scroller.scrollBy(0, overflow);
+    });
+    scroller.addEventListener('scroll', onScroll, { passive: true });
+    observer.observe(root);
+    if (card) observer.observe(card);
+    return () => {
+      scroller.removeEventListener('scroll', onScroll);
+      observer.disconnect();
+    };
+  }, [streaming, open, status, answerCardRef]);
+
+  // When the turn finishes with the reasoning open and following, scroll the
+  // answer card up under the header, just as a new question is pinned; the
+  // block's own end stands in when there is no card.
+  const wasStreaming = useRef(streaming);
+  useEffect(() => {
+    const finished = wasStreaming.current && !streaming;
+    wasStreaming.current = streaming;
+    const root = rootRef.current;
+    if (!finished || !open || !isFollowingRef.current || !root) return;
+    const band = getVisibleBand(root);
+    if (!band) return;
+    const answerTop =
+      answerCardRef?.current?.getBoundingClientRect().top ??
+      root.getBoundingClientRect().bottom;
+    const reduceMotion = window.matchMedia(REDUCED_MOTION_QUERY).matches;
+    band.scroller.scrollBy({
+      top: answerTop - band.top - SCROLL_PIN_OFFSET_PX,
+      behavior: reduceMotion ? 'auto' : 'smooth',
+    });
+  }, [streaming, open, answerCardRef]);
 
   // The thoughts render back to back as one continuous block, not grouped
   // per phase; the placeholder stands in only when there are none.
@@ -211,16 +374,31 @@ export function ReasoningBlock({
   if (thoughts.length === 0 && !placeholder) return null;
 
   return (
-    <div className="self-start shrink-0 w-full max-w-4xl">
+    <div ref={rootRef} className="self-start shrink-0 w-full max-w-4xl">
       <button
+        ref={headerRef}
         type="button"
         onClick={() => setOpen((prev) => !prev)}
-        className="inline-flex items-center gap-3 bg-transparent border-0 p-0 cursor-pointer"
+        // The pseudo-element pads the 20px-tall row out to a 44px touch target
+        // without changing the layout.
+        className="relative inline-flex items-center gap-3 max-w-full text-left after:absolute after:-inset-x-1 after:-inset-y-3"
         aria-expanded={open}
       >
         {streaming ? <LoaderSpinner /> : <SparkleIcon />}
-        <span className="inline-flex items-center gap-1 text-label-large text-on-surface">
-          {label}
+        <span className="inline-flex items-center gap-1 min-w-0 text-label-large text-on-surface">
+          {/* One inline run, so a long heading wraps under the label and the
+              accessible name keeps the space after the colon. */}
+          <span>
+            {heading ? `${phaseLabel}: ` : phaseLabel}
+            {heading && (
+              // Keyed by the text so each new heading remounts and replays.
+              <StreamedText
+                key={heading}
+                text={heading}
+                className="font-normal"
+              />
+            )}
+          </span>
           <ChevronDownIcon
             className={`text-on-surface-variant transition-transform duration-150 ${
               open ? 'rotate-180' : 'rotate-0'
@@ -233,15 +411,21 @@ export function ReasoningBlock({
           text away from the keyboard and screen readers. */}
       <div
         inert={!open}
-        className={`grid motion-safe:transition-[grid-template-rows,opacity] duration-200 ease-out ${
+        className={`grid motion-safe:transition-[grid-template-rows,opacity] ease-out ${
           open ? 'grid-rows-[1fr] opacity-100' : 'grid-rows-[0fr] opacity-0'
         }`}
+        // Shared with TurnView's scroll back to the question, which runs in
+        // step with the collapse. Set through `--tw-duration`, which only the
+        // motion-safe transition reads, so reduced motion stays instant.
+        style={
+          { '--tw-duration': `${REASONING_COLLAPSE_MS}ms` } as CSSProperties
+        }
       >
         <div className="overflow-hidden min-h-0">
           {/* Indented so the reasoning reads as an aside to the answer; the
             paragraphs and lists add the muted italic. The bottom padding keeps
             the last dot's pulse inside the clipping wrapper above. */}
-          <div className="mt-2 ml-2.25 pb-1 reasoning-markdown">
+          <div ref={bodyRef} className="mt-2 ml-2.25 pb-1 reasoning-markdown">
             {thoughts.length > 0 ? (
               thoughts.map((thought, i) => (
                 // Thoughts only ever append, so the index is a stable key.
@@ -261,6 +445,34 @@ export function ReasoningBlock({
               />
             )}
           </div>
+          {/* Offered once the turn finishes, for closing a long read from
+              its end. */}
+          {!streaming && (
+            // The bottom padding keeps the button's touch target inside the
+            // clipping wrapper, where it can still be hit. The bar and hollow
+            // dot continue the thoughts' timeline, ending level with the label.
+            <div className="ml-2.25 -mt-1 pb-3 motion-safe:animate-stream-in">
+              <div className="relative flex pt-4 pl-5.5 before:absolute before:top-0 before:bottom-2.5 before:left-0 before:w-0.5 before:bg-border after:absolute after:bottom-2.5 after:left-px after:-translate-x-1/2 after:translate-y-1 after:size-2 after:rounded-full after:border-2 after:border-border after:bg-surface">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setOpen(false);
+                    // Collapsing makes this button inert, which drops its focus
+                    // to <body>; hand focus to the header toggle instead.
+                    // `preventScroll` leaves the scroll to `onClose`.
+                    headerRef.current?.focus({ preventScroll: true });
+                    onClose?.();
+                  }}
+                  // The pseudo-element pads the 20px-tall label out to a 44px
+                  // touch target without changing the layout.
+                  className="relative inline-flex items-center gap-1 text-label-large text-on-surface-variant hover:text-theme-primary after:absolute after:-inset-x-1 after:-inset-y-3"
+                >
+                  {CLOSE_REASONING_LABEL}
+                  <ChevronDownIcon className="rotate-180" />
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </div>
@@ -272,6 +484,9 @@ export function ReasoningBlock({
  * thought can grow its height from 0fr; the bar and dot live here, outside the
  * clipping inner wrapper, so the dot is not cut off.
  */
+/** How long a header heading takes to reveal, however many words it has. */
+const HEADING_STREAM_MS = 200;
+
 const THOUGHT_CLASS = [
   'relative grid grid-rows-[1fr] pt-2 pb-3 pl-5.5',
   'border-l-2 border-border',
@@ -321,6 +536,54 @@ function Thought({ text, animate, isLatest }: ThoughtProps) {
         </ReactMarkdown>
       </div>
     </div>
+  );
+}
+
+interface StreamedTextProps {
+  text: string;
+  // Extra classes for the wrapper, such as a weight that differs from the
+  // surrounding text.
+  className?: string;
+}
+
+/**
+ * Plain text typed out letter by letter, for places outside the markdown body
+ * such as the header. Each word
+ * stays one unbreakable run, so a line never wraps mid-word.
+ */
+function StreamedText({ text, className = '' }: StreamedTextProps) {
+  const parts = text.split(/(\s+)/);
+  // Array.from splits by code point, so an emoji or accented letter is one.
+  const letterCount = Array.from(text.replace(/\s+/g, '')).length;
+  const step = HEADING_STREAM_MS / Math.max(letterCount, 1);
+  let letters = 0;
+  return (
+    <span className={`markdown-stream whitespace-pre-wrap ${className}`}>
+      {parts.map((part, i) =>
+        part.trim() === '' ? (
+          part
+        ) : (
+          // Parts and letters are fixed for a given text, so indexes are
+          // stable keys.
+          <span key={i} className="whitespace-nowrap">
+            {Array.from(part).map((letter, j) => (
+              <span
+                key={j}
+                className={STREAM_WORD_CLASS}
+                // Zero duration: each letter stays hidden through its delay
+                // (fill mode `backwards`), then pops in, like typing.
+                style={{
+                  animationDelay: `${Math.round(letters++ * step)}ms`,
+                  animationDuration: '0ms',
+                }}
+              >
+                {letter}
+              </span>
+            ))}
+          </span>
+        ),
+      )}
+    </span>
   );
 }
 
