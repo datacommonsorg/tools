@@ -161,11 +161,14 @@ agent loop in five steps:
    precision), the numbered sources, the missing-data notes, the pattern's
    directive, and a table inventory naming each cached table's variable, unit,
    places, and dates; externally sourced text (variable names, source names, and
-   missing-data notes) stays in typed fields until the message is rendered. Each
+   missing-data notes) stays in typed fields until the message is rendered. A
+   citation is one source as cited for one variable: each fetched table's
+   source carries the table's variable, so two variables drawn from one source
+   are two numbered sources, and each numbered source names its variable. Each
    sourced digest step carries a step-level `cite:` marker and, when a
-   multi-variable step draws from distinct sources per variable, a
+   multi-variable step's variables carry distinct citations, a
    `cite by variable:` breakdown so single-variable figures cite their own
-   source. The synthesis contract shows markers only on figures taken
+   variable's source. The synthesis contract shows markers only on figures taken
    straight from a source; calculated figures, including cross-variable ones,
    carry none, and the rules that would cite them with the combined sources
    are kept disabled in an HTML comment in `contracts/synthesis.md`. The model

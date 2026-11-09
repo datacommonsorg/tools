@@ -284,8 +284,9 @@ def test_synthesis_contract_cites_sourced_figures_by_variable() -> None:
     #   inspected.
     # Expectation: A sourced figure that reports one variable's own value
     #   carries that variable's `cite by variable:` marker, calculated
-    #   figures carry no marker, a single-source list or table is cited
-    #   once, and the rules that cite calculated figures are absent.
+    #   figures carry no marker, a list or table whose figures share one
+    #   marker is cited once, two variables of one source take two numbers,
+    #   and the rules that cite calculated figures are absent.
     citations = _flattened_citations_section(load_prompt_contract("synthesis"))
 
     assert (
@@ -298,9 +299,14 @@ def test_synthesis_contract_cites_sourced_figures_by_variable() -> None:
         "sourced values"
     ) in citations
     assert (
-        "When every figure in a list or a table comes from the same source, "
+        "When every figure in a list or a table carries the same marker, "
         "cite it once"
     ) in citations
+    assert (
+        "Each row names one source and the variable it is cited for, so two "
+        "variables from one source have two numbers"
+    ) in citations
+    assert "drawn from a single source" not in citations
     assert "A figure computed from more than one variable" not in citations
     assert "so every source that contributed is cited" not in citations
 

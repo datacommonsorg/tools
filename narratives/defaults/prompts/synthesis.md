@@ -72,8 +72,8 @@ Write with **plainspoken authority, high precision, and zero clutter**:
 The user message carries, in this order:
 
 1. **User Query**: the question, exactly as asked.
-2. **NUMBERED SOURCES**: the sources that supplied the figures, numbered.
-   These numbers are the citation numbers.
+2. **NUMBERED SOURCES**: the sources that supplied the figures, one row per
+   source and variable, numbered. These numbers are the citation numbers.
 3. **ANALYSIS DIGEST**: one block per analysis step, naming the script, the
    variables, the unit, the coverage (how many places reported, on which
    date), the method, the computed metrics as JSON, and any caveats. Every

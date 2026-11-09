@@ -20,6 +20,8 @@ from dataclasses import replace
 import pytest
 from pydantic import ValidationError
 
+from narratives_agent.analytics.derived import derive_observation_table
+from narratives_agent.analytics.digest import AnalysisDigest
 from narratives_agent.analytics.provenance import (
     AlternativeSource,
     Source,
@@ -28,6 +30,7 @@ from narratives_agent.analytics.tables import (
     MAX_NAME_CHARS,
     ObservationRow,
 )
+from narratives_agent.analytics.timeseries import analyze_timeseries
 from narratives_agent.json_value import JsonObject, JsonValue
 from narratives_agent.mcp.metadata import (
     VariableMetadataEnrichment,
@@ -193,6 +196,8 @@ def test_live_columnar_payload_parses_rows_names_and_metadata() -> None:
     assert table.source == Source(
         name="datatopics.worldbank.org",
         url=_WDI_URL,
+        variable_dcid="Count_Person",
+        variable_name="Total population",
     )
     assert table.alternative_sources == (
         AlternativeSource(
@@ -228,6 +233,8 @@ def test_metadata_enrichment_supplies_source_and_facet_fields() -> None:
         dataset="World Development Indicators",
         provider="World Bank",
         date_range="1960 \u2013 2025",
+        variable_dcid="Count_Person",
+        variable_name="Total population",
     )
     assert table.observation_period == "P1Y"
     assert table.provenance.sources == (table.source,)
@@ -309,6 +316,8 @@ def test_facet_enrichment_takes_precedence_over_inline_metadata() -> None:
         url=_WDI_URL,
         dataset="World Development Indicators",
         date_range="1960 \u2013 2023",
+        variable_dcid="Amount_GDP",
+        variable_name="Gross domestic product",
     )
 
 
@@ -408,6 +417,8 @@ def test_inline_metadata_and_variable_block_are_the_fallbacks() -> None:
     assert table.source == Source(
         name="Eurostat",
         url="https://eurostat.example",
+        variable_dcid="Amount_GDP",
+        variable_name="Gross domestic product",
     )
     assert table.rows[0].place_dcid == "country/BEL"
 
@@ -430,7 +441,10 @@ def test_inline_source_name_names_the_source() -> None:
         variable_dcid="Count_Person",
     )
     assert table.source == Source(
-        name="US Census Bureau", url="https://www.census.gov/x"
+        name="US Census Bureau",
+        url="https://www.census.gov/x",
+        variable_dcid="Count_Person",
+        variable_name="Count_Person",
     )
 
 
@@ -529,6 +543,8 @@ def test_facet_shared_by_two_variables_does_not_leak_between_tables() -> None:
         name=_WDI_URL,
         url=_WDI_URL,
         date_range="1960 \u2013 2023",
+        variable_dcid="Count_Person_Urban",
+        variable_name="Urban population",
     )
 
 
@@ -1216,6 +1232,8 @@ def test_merged_payloads_parse_as_one_multi_place_table() -> None:
     assert table.source == Source(
         name="datatopics.worldbank.org",
         url=_WDI_URL,
+        variable_dcid="Count_Person",
+        variable_name="Total population",
     )
     assert [item.facet_id for item in table.alternative_sources] == [
         "12850099660527362240"
@@ -1619,3 +1637,77 @@ def test_payload_outline_reads_entity_role_rows_and_sources() -> None:
     assert read_payload_outline(place_payload, "Count_Person").has_place_column
     with pytest.raises(ObservationPayloadError, match="variable"):
         read_payload_outline({"data": {}}, "Aid")
+
+
+def _build_shared_source_payload(
+    variable_dcid: str, variable_name: str, place: str
+) -> JsonObject:
+    """A payload for `variable_dcid` at `place` from one shared facet."""
+    return {
+        "data": _data([[place, "2020", 10.0], [place, "2021", 20.0]]),
+        "sourceMetadata": {"sourceId": "f1", "provenanceUrl": _WDI_URL},
+        "variable": {"dcid": variable_dcid, "name": variable_name},
+    }
+
+
+def test_two_variables_of_one_source_are_two_citations() -> None:
+    # Test: Citation identity across tables parsed from one source.
+    # Situation: Three tables share one facet and URL: `Count_Person` for
+    #   France, `Count_Person` for Germany, and `Count_Person_Female` for
+    #   France; each is summarized by its own step of one digest.
+    # Expectation: The two `Count_Person` tables cite one source, so their
+    #   steps share `[1]`; the `Count_Person_Female` table cites another, so
+    #   the digest holds two sources and its step is labeled `[2]`.
+    tables = [
+        parse_observation_table(
+            _build_shared_source_payload(dcid, name, place),
+            variable_dcid=dcid,
+        )
+        for dcid, name, place in (
+            ("Count_Person", "Total population", "country/FRA"),
+            ("Count_Person", "Total population", "country/DEU"),
+            ("Count_Person_Female", "Female population", "country/FRA"),
+        )
+    ]
+    results = tuple(
+        analyze_timeseries(table, step_id=f"s{index}")
+        for index, table in enumerate(tables, start=1)
+    )
+    digest = AnalysisDigest.from_results(results)
+
+    assert [source.variable_dcid for source in digest.sources] == [
+        "Count_Person",
+        "Count_Person_Female",
+    ]
+    assert [digest.citation_label(result.provenance) for result in results] == [
+        "[1]",
+        "[1]",
+        "[2]",
+    ]
+
+
+def test_a_per_capita_figure_cites_both_of_its_variables() -> None:
+    # Test: Citations of a derived per-capita table.
+    # Situation: A count and `Count_Person` are parsed from payloads whose
+    #   source fields are identical, and the count is divided per capita.
+    # Expectation: The derived result cites the numerator's variable and
+    #   `Count_Person` as two sources, labeled `[1, 2]`.
+    cases = parse_observation_table(
+        _build_shared_source_payload("Count_Case", "Cases", "country/FRA"),
+        variable_dcid="Count_Case",
+    )
+    population = parse_observation_table(
+        _build_shared_source_payload(
+            "Count_Person", "Total population", "country/FRA"
+        ),
+        variable_dcid="Count_Person",
+    )
+    outcome = derive_observation_table(
+        cases, population, operation="per_capita"
+    )
+    digest = AnalysisDigest.from_results((outcome.result,))
+
+    assert [
+        (source.variable_dcid, source.url) for source in digest.sources
+    ] == [("Count_Case", _WDI_URL), ("Count_Person", _WDI_URL)]
+    assert digest.citation_label(outcome.result.provenance) == "[1, 2]"

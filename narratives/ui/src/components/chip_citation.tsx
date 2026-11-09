@@ -40,6 +40,9 @@ import {
 
 const COLOR = 'var(--color-theme-primary)';
 
+/** Joins a source's name and its cited variable in a chip's label. */
+const SOURCE_VARIABLE_SEPARATOR = ', ';
+
 /** How one answer's citations are labelled and anchored on the page. */
 export interface CitationNumbering {
   /** Display label for each provenance position: `numbers[n - 1]` labels `[n]`. */
@@ -75,7 +78,18 @@ export function citationAnchorId(
 }
 
 /**
- * Name of the source a `[n]` chip points at.
+ * The cited variable as a citation names it: its human-readable name, or its
+ * DCID when the server sent no name. Empty when the citation names no
+ * variable.
+ */
+export function getCitationVariableLabel(source: ProvenanceItem): string {
+  return source.variableName?.trim() || source.variableDcid?.trim() || '';
+}
+
+/**
+ * Name of the citation a `[n]` chip points at: the source and the variable
+ * it is cited for, so two chips citing one source for different variables
+ * do not share an accessible name.
  *
  * CitationsList numbers its entries from 1, so chip `n` is `sources[n - 1]`.
  * Falls back to the bare URL when the source has no name, and to the plain
@@ -83,7 +97,10 @@ export function citationAnchorId(
  */
 export function sourceLabel(n: number, sources?: ProvenanceItem[]): string {
   const source = sources?.[n - 1];
-  return source?.name || source?.url || `Source ${n}`;
+  const name = source?.name || source?.url;
+  if (!source || !name) return `Source ${n}`;
+  const variable = getCitationVariableLabel(source);
+  return variable ? `${name}${SOURCE_VARIABLE_SEPARATOR}${variable}` : name;
 }
 
 /** Accessible name for a chip: the number, plus the source when we know it. */

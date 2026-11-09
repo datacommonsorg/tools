@@ -12,9 +12,9 @@ block grammar below in sync with `ChartSpecification` and
   observed value such as a latest level, a peak, or a low,
   `**5.6 million** [1]`, `**64.25%** [1, 2]`. One marker at the end of a
   sentence or clause does not cover the figures before it; each sourced
-  figure carries its own, except in a list or table drawn from a single
-  source, as below. A sourced figure carries its step's `cite:` marker
-  unless the next rule gives it another.
+  figure carries its own, except in a list or table whose figures all
+  carry the same marker, as below. A sourced figure carries its step's
+  `cite:` marker unless the next rule gives it another.
 - When a step lists `cite by variable:`, a sourced figure that reports one
   variable's own value, such as a single place's observed value, carries
   that variable's marker instead. For a step with `cite: [1, 2]` and
@@ -46,10 +46,10 @@ restore these two rules in place of the `cite by variable:` rule:
   marker, while each group's Var_A mean, such as **10.2%** [1, 2], and the
   gap of **2.1** [1, 2] between the group means carry both.
 -->
-- When every figure in a list or a table comes from the same source, cite
-  it once: in the headline, and in the table's column headers. Do not
+- When every figure in a list or a table carries the same marker, cite it
+  once: in the headline, and in the table's column headers. Do not
   repeat the marker on each item or cell. Cite an individual item only when
-  its source differs from the rest.
+  its marker differs from the rest.
 - When a source reaches the answer only through calculated figures, such as
   the population behind a per-person rate or the series behind a ranked
   change, cite it where the answer names it rather than beside a number:
@@ -58,10 +58,12 @@ restore these two rules in place of the `cite by variable:` rule:
   those figures, "Population change, 2015 to 2024 (%) [1]". Take the
   markers from the `cite:` of the steps that produced the figures.
 - Use only the numbers in the NUMBERED SOURCES block, reuse the same number
-  for the same source, never renumber, and never cite a number the block
-  does not list. Each listed source supplied some of the figures, so each
-  should carry at least one marker, beside a sourced figure or, by the rule
-  above, after the source's name.
+  for the same source and variable, never renumber, and never cite a number
+  the block does not list. Each row names one source and the variable it is
+  cited for, so two variables from one source have two numbers: cite each
+  figure with the row of its own variable. Each listed row supplied some
+  of the figures, so each should carry at least one marker, beside a sourced
+  figure or, by the rule above, after the source's name.
 - The reader's citation list is rendered from that same block, so do not
   write a Sources or Citations section of your own; end on the last
   sentence of the analysis.
@@ -209,7 +211,7 @@ numbers per bullet.
   ranks both or the answer compares the places directly.
 - State the scale beside every rate ("per person", "per 100,000 people").
   A per-person figure the analytics calculated carries no citation marker;
-  a rate the source publishes carries its source's marker.
+  a rate the source publishes carries the marker of its own variable's row.
 - In a table, give each its own column, with the unit and year in the
   header: `| Country | Emissions (Mt, 2022) [1] | Emissions per person (t,
   2022) |`.
@@ -511,9 +513,9 @@ According to the U.S. Census Bureau, Colorado's population reached
 Labor force participation (share of people aged 16 and over) differs by
 sex:
 
-- **Women:** Participation reached **61.2%** [1] in 2023, up **0.7
+- **Women:** Participation reached **61.2%** [2] in 2023, up **0.7
   percentage points** since 2013.
-- **Men:** Participation reached **70.4%** [1] in 2023, down **1.2
+- **Men:** Participation reached **70.4%** [3] in 2023, down **1.2
   percentage points** since 2013.
 
 Note the layout: a headline sentence that names the source first, short
@@ -522,7 +524,8 @@ after the list it illustrates, one labelled bullet per series, and the unit
 stated once. Trend bullets carry only the change and its period, with no
 starting value; the count gives only its percentage change, and the
 percentages change in percentage points. Only the observed values carry a
-marker; the calculated changes carry none. The answer ends on the last
+marker; the calculated changes carry none. Each variable carries its own
+marker, even when one source publishes all three. The answer ends on the last
 bullet, with no citation list.
 `[1]` is row 1 of the NUMBERED SOURCES block, and the reader sees that same
 row rendered beneath the answer.
@@ -533,7 +536,7 @@ Rents rise with household incomes across the four cities, led by Denver.
 Population tells a different story: Phoenix is the largest city of the
 four, yet has only the third-highest income and rent.
 
-| City | Median household income (USD, 2024) [1] | Median gross rent (USD, 2024) [1] | Population (2025) [2] |
+| City | Median household income (USD, 2024) [1] | Median gross rent (USD, 2024) [2] | Population (2025) [3] |
 | --- | --- | --- | --- |
 | Denver | 91,681 | 1,734 | 716,577 |
 | Columbus | 82,068 | 1,612 | 913,175 |
