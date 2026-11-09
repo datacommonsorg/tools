@@ -127,6 +127,7 @@ from narratives_agent.workflows.messages import (
 )
 from narratives_agent.workflows.pattern_guidance import build_pattern_directive
 from narratives_agent.workflows.processing import (
+    ProcessingDiagnostic,
     StepRefusalDiagnostic,
     execute_specification,
 )
@@ -411,6 +412,14 @@ def turn(monkeypatch: pytest.MonkeyPatch) -> _Turn:
     async def classify(*args: object, **_: object) -> Admitted:
         return Admitted(_CLASSIFICATION)
 
+    async def describe_no_variables(
+        name: str, arguments: JsonObject
+    ) -> JsonObject:
+        # The metadata backfill before a default specification is the only
+        # MCP tool call outside the stubbed loop; it describes nothing.
+        _ = (name, arguments)
+        return {"content": []}
+
     async def run_discovery(
         transcript: Transcript,
         config: AgentConfig,
@@ -459,6 +468,7 @@ def turn(monkeypatch: pytest.MonkeyPatch) -> _Turn:
     monkeypatch.setattr(chat_pipeline, "classify_query", classify)
     monkeypatch.setattr(mcp_client, "ensure_session_scope", lambda: None)
     monkeypatch.setattr(mcp_client, "async_get_tools", get_tools)
+    monkeypatch.setattr(mcp_client, "async_call_tool", describe_no_variables)
     monkeypatch.setattr(chat_pipeline, "execute_discovery_loop", run_discovery)
     monkeypatch.setattr(chat_pipeline, "async_gemini_stream", start_synthesis)
     monkeypatch.setattr(
@@ -957,6 +967,98 @@ async def test_a_default_whose_every_table_refuses_notes_each_failure(
     assert "Step s1: rank_cohort" not in context
     assert context.count("- An analysis step failed: ") == 1
     assert context.count("- The default analysis also failed: ") == 1
+    assert turn.finished == [(TerminalState.COMPLETE, None)]
+
+
+@pytest.mark.asyncio
+async def test_a_default_requests_metadata_once_before_its_first_run(
+    monkeypatch: pytest.MonkeyPatch, turn: _Turn
+) -> None:
+    # Test: The metadata backfill of the default specification.
+    # Situation: A top-N turn ends at a bound with two state cohort tables
+    #   served from facet `f1` without metadata; the first has a value for
+    #   one of four states, so its ranking refuses and the default runs
+    #   again without it; the server describes `f1` of the second table's
+    #   variable as a World Bank dataset.
+    # Expectation: The server requests metadata for both tables before the
+    #   first run and not before the retry, the streamed source of the
+    #   second table names the World Bank, and no tool-call frame is
+    #   emitted for the requests.
+    ranking = QueryClassification.model_validate(
+        {
+            "serviceable": True,
+            "pattern": "top_n_ranking",
+            "geographic_shape": "child_places",
+            "requires_computation": True,
+        }
+    )
+
+    async def classify(*args: object, **_: object) -> Admitted:
+        return Admitted(ranking)
+
+    log: list[str] = []
+    payload: JsonObject = {
+        "provenances": {
+            "dc/base/WB": {
+                "properties": {"source": "World Bank", "url": "https://wb/"}
+            }
+        },
+        "variables": {
+            "Percent_Diabetes": {
+                "facets": [{"id": "f1", "provenanceId": "dc/base/WB"}]
+            }
+        },
+    }
+
+    async def describe_diabetes(name: str, arguments: JsonObject) -> JsonObject:
+        log.append(f"metadata:{arguments['variable_dcids']}")
+        return {"content": [{"type": "text", "text": json.dumps(payload)}]}
+
+    async def log_execution(
+        specification: AnalysisSpecification, cache: TurnCache
+    ) -> AnalysisDigest | ProcessingDiagnostic:
+        log.append("execute")
+        return await execute_specification(specification, cache)
+
+    def make_faceted_cohort(
+        table_id: str, variable_dcid: str, places: str, row_count: int
+    ) -> CachedTable:
+        entry = _make_state_cohort(table_id, variable_dcid, places)
+        return replace(
+            entry,
+            table=replace(
+                entry.table,
+                rows=entry.table.rows[:row_count],
+                facet_id="f1",
+                source=_INSEE,
+            ),
+        )
+
+    monkeypatch.setattr(chat_pipeline, "classify_query", classify)
+    monkeypatch.setattr(mcp_client, "async_call_tool", describe_diabetes)
+    monkeypatch.setattr(chat_pipeline, "execute_specification", log_execution)
+    _install_loop(
+        monkeypatch,
+        DiscoveryResult(truncated=True),
+        make_faceted_cohort("t1", "Median_Income", "01 02 03 04", 1),
+        make_faceted_cohort("t2", "Percent_Diabetes", "04 05 06", 3),
+    )
+
+    await chat_pipeline.run_turn(_TRANSCRIPT, turn.emit)
+
+    assert log == [
+        "metadata:['Median_Income']",
+        "metadata:['Percent_Diabetes']",
+        "execute",
+        "execute",
+    ]
+    (sources,) = turn.list_content_payloads("sources")
+    assert isinstance(sources, list)
+    providers = [
+        source.get("provider") for source in sources if isinstance(source, dict)
+    ]
+    assert providers == ["World Bank"]
+    assert turn.list_content_payloads("tool_call") == []
     assert turn.finished == [(TerminalState.COMPLETE, None)]
 
 

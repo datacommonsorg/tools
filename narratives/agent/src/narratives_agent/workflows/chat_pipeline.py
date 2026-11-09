@@ -52,7 +52,11 @@ from narratives_agent.gemini.response import StreamChunk
 from narratives_agent.gemini.schemas import QueryClassification, QueryPattern
 from narratives_agent.json_value import JsonObject
 from narratives_agent.mcp import client as mcp_client
-from narratives_agent.mcp.capabilities import warn_on_missing_tools
+from narratives_agent.mcp.capabilities import (
+    Capabilities,
+    from_tools,
+    warn_on_missing_tools,
+)
 from narratives_agent.telemetry import ErrorType, TerminalState, TurnTelemetry
 from narratives_agent.workflows.blocks import BlockSplitter, TextBlock
 from narratives_agent.workflows.chart_defaults import build_default_charts
@@ -91,6 +95,9 @@ from narratives_agent.workflows.messages import (
     SYNTHESIS_STATUS,
     SYNTHESIS_TRANSIENT_ERROR,
     TRUNCATED_MESSAGE,
+)
+from narratives_agent.workflows.metadata_backfill import (
+    backfill_variable_metadata,
 )
 from narratives_agent.workflows.processing import (
     StepRefusalDiagnostic,
@@ -277,6 +284,7 @@ async def _run_default_specification(
     ctx: TurnContext,
     specification: AnalysisSpecification,
     notes: list[str],
+    capabilities: Capabilities,
 ) -> tuple[AnalysisDigest, AnalysisSpecification]:
     """Runs the default specification and retries without any refused step.
 
@@ -291,6 +299,9 @@ async def _run_default_specification(
         specification: The initial default specification built over the cache.
         notes: Mutable list of missing-data notes accumulated before and during
             the default specification run.
+        capabilities: The MCP server's tools; variable metadata is requested
+            before the first run only when they include
+            `get_variable_metadata`.
 
     Returns:
         A `(digest, specification)` pair holding the resulting `AnalysisDigest`
@@ -302,6 +313,9 @@ async def _run_default_specification(
     )
     _emit_status(ctx, PROCESSING_STATUS)
     with ctx.telemetry.phase("processing"):
+        # A retry only drops tables from the initial default, so the initial
+        # default references every table a retry can read.
+        await backfill_variable_metadata(specification, ctx.cache, capabilities)
         outcome = await execute_specification(specification, ctx.cache)
         relate = True
         excluded: set[str] = set()
@@ -355,7 +369,7 @@ async def _run_default_specification(
 
 
 async def _resolve_digest(
-    ctx: TurnContext, loop: DiscoveryResult
+    ctx: TurnContext, loop: DiscoveryResult, capabilities: Capabilities
 ) -> tuple[AnalysisDigest, AnalysisSpecification | None]:
     """Returns the digest the turn is answered from, and its specification.
 
@@ -368,6 +382,8 @@ async def _resolve_digest(
     Args:
         ctx: The turn context holding the classification, cache, and telemetry.
         loop: The completed discovery loop result.
+        capabilities: The MCP server's tools, passed to the default
+            specification run.
 
     Returns:
         A `(digest, specification)` pair holding the resolved `AnalysisDigest`
@@ -401,7 +417,9 @@ async def _resolve_digest(
             ),
             None,
         )
-    return await _run_default_specification(ctx, specification, notes)
+    return await _run_default_specification(
+        ctx, specification, notes, capabilities
+    )
 
 
 def _collect_tables_used(
@@ -506,7 +524,7 @@ async def run_discovery_phase(ctx: TurnContext) -> DiscoveryPhaseResult:
     for call in result.tool_calls:
         ctx.emit(ToolCallFrame(tool_call=call))
 
-    digest, specification = await _resolve_digest(ctx, loop)
+    digest, specification = await _resolve_digest(ctx, loop, from_tools(tools))
     result.digest = digest
     result.spec = specification
     result.has_data = digest.has_data
