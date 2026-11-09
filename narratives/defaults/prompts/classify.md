@@ -140,7 +140,10 @@ Choose the geographic cardinality of the query:
   or a general catalog question with at most one target place.
 - `"child_places"`: about the administrative children of one parent place
   (for example, all counties in a state, all states in a country, or all
-  countries in a continent).
+  countries in a continent). A question about a region or grouping of
+  countries (for example, Latin America, Sub-Saharan Africa, or the
+  European Union) is `"child_places"` even when it asks for one figure:
+  the answer may have to come from the region's member countries.
 - `"multi_entity"`: about a named list of three or more peer places.
 - `"comparison"`: directly compares two (or a small named set of) specific
   places side by side (for example, `"Compare GDP of France and Germany"`).

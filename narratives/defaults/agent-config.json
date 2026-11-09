@@ -15,7 +15,7 @@
   },
   "thinking": {
     "discovery_level": "medium",
-    "synthesis_level": "medium"
+    "synthesis_level": "low"
   },
   "template_vars": {
     "_comment": "Substituted into {{instance.*}} placeholders in prompts/. Set these to your own deployment's identity.",

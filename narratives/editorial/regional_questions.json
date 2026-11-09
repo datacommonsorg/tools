@@ -1,0 +1,7 @@
+[
+  {"id": "R1", "case": "region", "pattern": "UN region, no regional figure", "question": "What is the life expectancy in Latin America?"},
+  {"id": "R2", "case": "region", "pattern": "UN region, ranking across members", "question": "Which countries in Sub-Saharan Africa have the highest and lowest GDP per capita?"},
+  {"id": "R3", "case": "region", "pattern": "union, possible regional figure", "question": "What is the unemployment rate in the European Union?"},
+  {"id": "R4", "case": "region", "pattern": "continent, trend", "question": "How has the population of South America changed over the last decade?"},
+  {"id": "R5", "case": "region", "pattern": "UN region, official long name", "question": "How does infant mortality vary across Latin America and the Caribbean?"}
+]

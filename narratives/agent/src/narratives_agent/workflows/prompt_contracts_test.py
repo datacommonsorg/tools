@@ -430,6 +430,185 @@ def test_synthesis_contract_gives_the_headline_series_no_bullet() -> None:
     ) in contract
 
 
+def test_synthesis_contract_matches_the_opening_to_the_question() -> None:
+    # Test: How the answer opens relative to the question asked.
+    # Situation: The synthesis contract the model receives.
+    # Expectation: A fit step precedes "Writing the answer" and names the
+    #   four cases; an answer built on related measures names them and what
+    #   they measure before any figure, and claims a measure is unavailable
+    #   only when the MISSING DATA notes name it; the missing measures close
+    #   the answer under `**Data gaps:**`; and the old rule that named the
+    #   indicators after the headline is gone.
+    contract = load_prompt_contract("synthesis")
+    flattened = " ".join(contract.split())
+
+    assert contract.index(
+        "### Matching the answer to the question"
+    ) < contract.index("### Writing the answer")
+    for case in (
+        "**Direct.**",
+        "**Related measures.**",
+        "**Definition.**",
+        "**No data.**",
+    ):
+        assert case in flattened
+    assert (
+        "Open with one short sentence that names those indicators and says "
+        "what they measure of the topic, then give the headline figure in "
+        "the next sentence."
+    ) in flattened
+    assert (
+        "Describe what the reported indicators cover, never what Data "
+        "Commons lacks, unless the MISSING DATA notes name it"
+    ) in flattened
+    assert (
+        "end the answer with them, after the last bullet, table, or chart: "
+        "the bold label `**Data gaps:**`"
+    ) in flattened
+    assert "name them in a separate short sentence after the headline" not in (
+        flattened
+    )
+
+
+def test_synthesis_contract_covers_the_second_expert_session() -> None:
+    # Test: The rules added after the second expert session.
+    # Situation: The synthesis contract the model receives.
+    # Expectation: A place compared with the place that contains it is a part
+    #   and its whole, never peers; a table of every place lists every place
+    #   the digest gives and never works out a missing figure; the example
+    #   that read as a riddle is gone; total and rate trend bullets carry
+    #   distinct labels; lows and peaks stay within the question's window;
+    #   and technical indicator names get a plain meaning.
+    contract = load_prompt_contract("synthesis")
+    flattened = " ".join(contract.split())
+
+    assert "### A place and the place that contains it" in contract
+    assert (
+        'Never write that the whole "led", "had more", or "was higher" '
+        "in a count"
+    ) in flattened
+    assert "### Tables of all places" in contract
+    assert "the ten-row limit does not apply" in flattened
+    assert "Never work out a missing figure from the others" in flattened
+    assert "The ten highest include eight states." not in flattened
+    assert "never `**Long-term trend:**` for both" in flattened
+    assert "Leave out a peak or low that falls on the first or last year" in (
+        flattened
+    )
+    assert "say what it counts in plain words at first mention" in flattened
+    assert "A sentence opens with at most one introductory clause" in (
+        flattened
+    )
+    assert "with thousands separators (a comma between each group of" in (
+        flattened
+    )
+    assert 'Never describe the places as "reporting"' in flattened
+
+
+def test_synthesis_contract_selects_bullets_without_new_figures() -> None:
+    # Test: How the answer chooses its bullets.
+    # Situation: The synthesis contract the model receives.
+    # Expectation: Each bullet must earn its place; the writer chooses among
+    #   the digest's results and never adds a figure; a crossover compares
+    #   two given figures for the same date, with no difference or ratio the
+    #   digest does not give; places sharing measures are grouped by measure;
+    #   and partial coverage is stated as the span covered, not a list of
+    #   missing years.
+    flattened = " ".join(load_prompt_contract("synthesis").split())
+
+    assert "Each bullet has to earn its place." in flattened
+    assert "choose among them, never add to them" in flattened
+    assert "every figure in a bullet is one the digest gives" in flattened
+    assert "never two figures from different dates" in flattened
+    assert (
+        'with no difference, ratio, or "times" the digest does not give'
+    ) in flattened
+    assert "group the bullets by measure, not by place" in flattened
+    assert "open with the span it covers, not a list of the years it lacks" in (
+        flattened
+    )
+    assert "Choose the labels from the results the digest computed" not in (
+        flattened
+    )
+    assert "Never rescale a figure into another unit or form" in flattened
+
+
+def test_synthesis_contract_names_publishers_units_and_remainders() -> None:
+    # Test: Source names, counted units, and breakdown leftovers.
+    # Situation: The synthesis contract the model receives.
+    # Expectation: The answer names the publishing organization rather than
+    #   a program or website; says what an indicator counts when it differs
+    #   from the question's word; gives a breakdown leader's share only as
+    #   computed, never a summed share; describes the digest's unallocated
+    #   remainder as unassigned, not as a category; and the examples carry
+    #   no real figures from the business-establishments answer.
+    flattened = " ".join(load_prompt_contract("synthesis").split())
+
+    assert "Name the organization that publishes the data" in flattened
+    assert "say once what it counts" in flattened
+    assert "the share of the largest one or two categories exactly" in (
+        flattened
+    )
+    assert "such as the combined share of the top three categories" in (
+        flattened
+    )
+    assert "The digest's unallocated remainder is not a category" in flattened
+    for real_figure in ("2.52%", "2.78%", "15.72%", "12.17M"):
+        assert real_figure not in flattened
+    for real_figure in ("230.81M", "60.09M", "49.87M", "32.50M"):
+        assert real_figure not in flattened
+    assert "categories that form a ladder" in flattened
+    assert "the subject next to its verb" in flattened
+
+
+def test_synthesis_contract_examples_carry_no_figures() -> None:
+    # Test: Figures in the synthesis contract's examples.
+    # Situation: The synthesis contract the model receives, without its
+    #   `### Citations` section, whose examples are kept as they are.
+    # Expectation: No bold figure appears anywhere else: every example
+    #   shows the shape of a sentence with placeholders such as
+    #   `**[value]**`, so an answer can never take a figure from an example.
+    contract = load_prompt_contract("synthesis")
+    before, _, rest = contract.partition("### Citations\n")
+    _, _, after = rest.partition("\n### ")
+    outside_citations = before + after
+    bold_spans = re.findall(r"\*\*([^*\n]+?)\*\*", outside_citations)
+    figures = [
+        span
+        for span in bold_spans
+        if re.search(r"\d", span) and "[" not in span and not span.endswith(":")
+    ]
+
+    assert figures == []
+    assert "**[value]**" in outside_citations
+
+
+def test_synthesis_contract_answers_direction_with_parallel_bullets() -> None:
+    # Test: Broad questions about direction, and the units in their bullets.
+    # Situation: The synthesis contract the model receives.
+    # Expectation: A direction question is answered in words from the
+    #   computed changes, judging words only when every change agrees; three
+    #   or more indicators get a figure-free opening and parallel bullets; a
+    #   unit is given once per bullet; a rate keeps the group its name
+    #   defines; and a qualifier every gap shares goes in the lead-in line.
+    flattened = " ".join(load_prompt_contract("synthesis").split())
+
+    assert "in words taken from the changes the digest computed" in flattened
+    assert "only when every reported change points the same way" in flattened
+    assert "the opening carries the indicators and their direction but no" in (
+        flattened
+    )
+    assert "give a measure's unit with its first figure only" in flattened
+    assert 'never "per 1,000 people"' in flattened
+    assert "put it in that line once instead of in each item" in flattened
+    assert "so the sentence always names that period" in flattened
+    assert "Never let a long-term change stand for the years asked" in (
+        flattened
+    )
+    assert 'never "fell **-[change]**"' in flattened
+    assert "Never turn figures into a threshold or an estimate" in flattened
+
+
 def test_discovery_contract_keeps_unavailable_indicators_out_of_related() -> (
     None
 ):
@@ -444,3 +623,80 @@ def test_discovery_contract_keeps_unavailable_indicators_out_of_related() -> (
         "Never list an indicator you found no data for, or one you record in "
         "`missing`"
     ) in discovery
+
+
+def test_discovery_contract_searches_a_region_and_its_countries() -> None:
+    # Test: Questions about a region or grouping of countries.
+    # Situation: The discovery contract the model receives.
+    # Expectation: It searches the region and its member countries in
+    #   parallel, prefers a region-wide figure only for a one-figure
+    #   question that has one, otherwise fetches the member countries, never
+    #   reports a region unavailable before trying them, and uses the short
+    #   region name and a DCID taken from search results.
+    discovery = " ".join(load_prompt_contract("discovery").split())
+
+    assert "For a region or grouping of countries" in discovery
+    assert "search each angle both ways, in parallel" in discovery
+    assert "has data for the region itself, fetch it for the region" in (
+        discovery
+    )
+    assert "Otherwise fetch the member countries with" in discovery
+    assert (
+        "Never call `report_unavailable` for a region before the "
+        "member-country search and fetch have been tried"
+    ) in discovery
+    assert 'not "Latin America and the Caribbean"' in discovery
+    assert "Take the region's DCID only from search results" in discovery
+
+
+def test_discovery_contract_never_guesses_place_dcids() -> None:
+    # Test: Where place DCIDs may come from.
+    # Situation: The discovery contract the model receives.
+    # Expectation: The no-guessing rule covers places as well as
+    #   indicators: a place DCID must come from an earlier search result in
+    #   the turn, except a country's standard ISO DCID, and a region whose
+    #   member countries have no data is reported unavailable instead of
+    #   being retried under other DCIDs.
+    discovery = " ".join(load_prompt_contract("discovery").split())
+
+    assert "Never guess a DCID, for an indicator or for a place" in discovery
+    assert "must appear in a search result earlier in this turn" in discovery
+    assert "The one exception is a country's standard DCID" in discovery
+    assert "Never try other DCIDs for the region, or a broader place" in (
+        discovery
+    )
+
+
+def test_synthesis_contract_never_turns_members_into_a_region_figure() -> None:
+    # Test: Answers about a region built from its member countries.
+    # Situation: The synthesis contract the model receives.
+    # Expectation: A region-wide figure leads when the digest has one;
+    #   otherwise the answer says the figure is a median across countries,
+    #   names the region as the digest does, and never opens with the
+    #   missing regional figure or calculates one.
+    synthesis = load_prompt_contract("synthesis")
+    flattened = " ".join(synthesis.split())
+
+    assert "### A region and its countries" in synthesis
+    assert "When the digest gives a figure for the region itself" in flattened
+    assert "never present the median, the mean, or one country's value as" in (
+        flattened
+    )
+    assert "Name the region as the digest names it" in flattened
+    assert '"countries and territories"' in flattened
+    assert "Never open with it" in flattened
+
+
+def test_classify_prompt_treats_regions_as_child_places() -> None:
+    # Test: The geographic shape of a question about a region.
+    # Situation: The default classification prompt.
+    # Expectation: A region or grouping of countries is classified as
+    #   `child_places`, even when the question asks for one figure.
+    prompt = Path(__file__).parents[4] / "defaults" / "prompts" / "classify.md"
+    flattened = " ".join(prompt.read_text(encoding="utf-8").split())
+
+    assert (
+        "A question about a region or grouping of countries (for example, "
+        "Latin America, Sub-Saharan Africa, or the European Union) is "
+        '`"child_places"` even when it asks for one figure'
+    ) in flattened

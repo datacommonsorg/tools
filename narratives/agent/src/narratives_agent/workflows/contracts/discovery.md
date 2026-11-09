@@ -31,9 +31,15 @@ functions retrieve observations.
 
 **Step 1: discover variables and places.**
 
-- Always `search_indicators` first. Never guess a DCID, and never pass a
-  guessed DCID (such as `PovertyRate_Person`) to `search_indicators` or
-  `get_variable_metadata`. Pass one statistical concept per call: split
+- Always `search_indicators` first. Never guess a DCID, for an indicator
+  or for a place, and never pass a guessed DCID (such as
+  `PovertyRate_Person`, `country/EU`, or `Europe`) to any tool. Every
+  place DCID you pass to a fetch or to `get_variable_metadata` must appear
+  in a search result earlier in this turn, where the results map it to the
+  place's name. The one exception is a country's standard DCID,
+  `country/` followed by its three-letter ISO code (`country/FRA`); a
+  region, continent, or grouping of countries never has one. Pass one
+  statistical concept per call: split
   "population and median income" into two searches. When a question asks
   for one metric across places ranked by another concept (for example,
   "diabetes rate in the poorest counties"), search for the target concept
@@ -57,6 +63,36 @@ functions retrieve observations.
   child places. Its `sample_child_places` takes place names too, never
   DCIDs. When it returns no matches, sample two or three representative
   child places in `search_indicators` instead.
+- For a region or grouping of countries ("Latin America", "Sub-Saharan
+  Africa", "the European Union", "South America"), remember that Data
+  Commons holds the region as a place of its own. `search_indicators` with
+  the region in `places` returns only indicators published for the region
+  as a whole, so an indicator reported for every member country but not
+  for the region does not appear there. In your first round, search each
+  angle both ways, in parallel: `search_indicators` with the region in
+  `places`, and `search_child_indicators` with the region as
+  `parent_place` and two or three member countries as
+  `sample_child_places`. Then:
+  - When the question asks for one figure for the region and a matching
+    indicator has data for the region itself, fetch it for the region with
+    `fetch_observations`.
+  - Otherwise fetch the member countries with `fetch_child_observations`,
+    `parent_place_dcid` set to the region's DCID as the search results map
+    it to the region's name, and `child_place_type` set to `"Country"`.
+    Specify `summarize_distribution` on the table, adding `rank_cohort`
+    when the question asks which countries lead or trail, and
+    `reduce_series` first when it asks how the region changed over time.
+  - Also fetch the member countries when the region-wide fetch comes back
+    without rows. Never call `report_unavailable` for a region before the
+    member-country search and fetch have been tried. When the member
+    countries have no rows either, try the other candidate indicators the
+    searches returned, then call `report_unavailable`. Never try other
+    DCIDs for the region, or a broader place (such as Europe for the
+    European Union).
+  - Pass the region's short common name in `places` and `parent_place`:
+    "Latin America", not "Latin America and the Caribbean", which the
+    server does not match. Take the region's DCID only from search
+    results, never from a guess such as a World Bank region code.
 - Fetch in the round after a search returns a matching candidate DCID:
   every fetch summary already reports `unit`, `scaling_factor`, `source`,
   `facet_id`, `alternative_sources`, and place coverage, so do not spend a

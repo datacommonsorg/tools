@@ -1,0 +1,13 @@
+[
+  {"id": "S1", "case": "nested", "pattern": "1 part-to-whole", "question": "What is the number of cases of dengue in Texas compared to the USA in the past 10 years"},
+  {"id": "S2", "case": "nested", "pattern": "1 part-to-whole (share)", "question": "What is the proportion of the population in Brazil compared to the rest of the world from 2020 to 2025"},
+  {"id": "S3", "case": "definition", "pattern": "2 definitional", "question": "Which diseases count as neglected tropical diseases in the SDG indicator on people requiring interventions against them?"},
+  {"id": "S4", "case": "proxy", "pattern": "3 stacked clauses, jargon name", "question": "How many cases of malaria occurred in Brazil compared to the rest of the world in 2024"},
+  {"id": "S5", "case": "total-and-rate", "pattern": "4 total vs per-person labels", "question": "How does the number of people requiring interventions against neglected tropical diseases compare between Brazil and India?"},
+  {"id": "S6", "case": "all-places-table", "pattern": "5 and 7 truncated table, repeats", "question": "I want a table with dengue incidents, population, cases per 1000 for all states in the USA in 2023"},
+  {"id": "S7", "case": "time-window", "pattern": "6 lowest in first year", "question": "What is the population of Brazil from 2020 to 2025"},
+  {"id": "S8", "case": "all-places-table", "pattern": "5 all states over time", "question": "Show dengue cases for all the states in the past 10 years"},
+  {"id": "S9", "case": "breakdown", "pattern": "session 2 follow-up: breakdown lead-in, source name, counted unit, remainder", "question": "Show me the breakdown of businesses by industry type in the US."},
+  {"id": "S10", "case": "breakdown", "pattern": "session 2 follow-up: named categories, source placement, ladder order", "question": "How many adults have finished high school, a bachelor's degree, and a graduate degree in the USA?"},
+  {"id": "S11", "case": "proxy-direction", "pattern": "direction in words, parallel bullets, group rate, shared gap qualifier", "question": "I\u2019m currently researching woman access to health services, I\u2019m wondering what data you have about the last fie years and if globally woman access to health has increased, decreased or reminded the same"}
+]
