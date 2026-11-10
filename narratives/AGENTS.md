@@ -135,13 +135,6 @@ process and PR expectations: [`CONTRIBUTING.md`](../CONTRIBUTING.md).
 - `.env.local.example` — template for local `.env.local` development settings.
 - `deploy/`, `cloudbuild/` — Terraform modules, `deploy.sh` and its modes
   (`deploy/modes/`), `deploy/smoke.sh`, and Cloud Build pipelines.
-- `editorial/` — answer-quality evaluation against a running local agent:
-  the question sets and checklist (`answer_framing_eval.md`,
-  `framing_questions.json`, `session2_questions.json`,
-  `regional_questions.json`), a standard-library
-  runner (`run_framing_eval.py`) and comparison script (`compare_runs.py`),
-  and the recorded results and engineering follow-ups (`findings.md`). Run
-  outputs go to the git-ignored `editorial/runs/`.
 
 ## Commands
 

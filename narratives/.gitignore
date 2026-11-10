@@ -75,6 +75,3 @@ deploy.env
 # Staging directory for the config bucket: defaults/ with config/ laid over it,
 # rebuilt on every deploy.
 .build/
-
-# Local outputs of the editorial evaluation runner (editorial/run_framing_eval.py).
-editorial/runs/
