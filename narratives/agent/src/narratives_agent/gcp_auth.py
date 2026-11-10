@@ -12,15 +12,27 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-"""Credentials for calls to the Data Commons data plane.
+"""Credentials for Data Commons data-plane and Google Cloud API calls.
 
 `attach_auth` picks the credential by target host: the `DC_API_KEY` API key
 for public Data Commons hosts, and nothing for any other host.
+
+`get_adc_auth_headers` resolves and refreshes Google Cloud Application Default
+Credentials (`cloud-platform` scope) off the event loop and returns the
+`Authorization` Bearer header (plus `x-goog-user-project` when a quota project
+is configured).
 """
 
+import asyncio
 import functools
 import logging
+import threading
 from urllib.parse import urlparse
+
+import google.auth
+import requests
+from google.auth.credentials import Credentials
+from google.auth.transport.requests import Request
 
 from narratives_agent.secret_manager import fetch_secret_with_ttl
 from narratives_agent.settings import (
@@ -29,6 +41,10 @@ from narratives_agent.settings import (
 )
 
 logger = logging.getLogger(__name__)
+
+_CLOUD_PLATFORM_SCOPE = "https://www.googleapis.com/auth/cloud-platform"
+_ADC_LOCK = threading.Lock()
+_adc_credentials: Credentials | None = None
 
 
 # Hosts DC_API_KEY may be sent to.
@@ -86,6 +102,82 @@ def init_dc_api_key() -> None:
 def reset_dc_api_key() -> None:
     """Makes the next request resolve the Data Commons API key again."""
     _resolve_dc_api_key.cache_clear()
+
+
+def reset_adc_credentials() -> None:
+    """Clears cached Application Default Credentials (for testing)."""
+    global _adc_credentials
+    with _ADC_LOCK:
+        _adc_credentials = None
+
+
+def _load_adc_credentials() -> Credentials:
+    """Loads Application Default Credentials scoped for Google Cloud APIs."""
+    credentials, _ = google.auth.default(scopes=[_CLOUD_PLATFORM_SCOPE])
+    if not isinstance(credentials, Credentials):
+        raise RuntimeError("ADC did not return google.auth Credentials")
+    return credentials
+
+
+def _refresh_adc_credentials(credentials: Credentials) -> None:
+    """Refreshes `credentials` synchronously using a scoped session."""
+    with requests.Session() as session:
+        credentials.refresh(Request(session))  # type: ignore[no-untyped-call]
+
+
+def _build_adc_auth_headers(credentials: Credentials) -> dict[str, str]:
+    """Builds the `Authorization` and optional quota-project headers."""
+    token = credentials.token
+    if not isinstance(token, str) or not token:
+        raise RuntimeError(
+            "Application Default Credentials returned no access token"
+        )
+    headers = {"Authorization": f"Bearer {token}"}
+    quota_project = credentials.quota_project_id
+    if isinstance(quota_project, str) and quota_project:
+        headers["x-goog-user-project"] = quota_project
+    return headers
+
+
+def _resolve_adc_auth_headers_sync() -> dict[str, str]:
+    """Resolves and refreshes ADC authentication headers under `_ADC_LOCK`."""
+    global _adc_credentials
+    with _ADC_LOCK:
+        if _adc_credentials is None:
+            _adc_credentials = _load_adc_credentials()
+        credentials = _adc_credentials
+        if not credentials.valid or not credentials.token:
+            _refresh_adc_credentials(credentials)
+        return _build_adc_auth_headers(credentials)
+
+
+async def get_adc_auth_headers() -> dict[str, str]:
+    """Returns valid ADC request headers without blocking the event loop.
+
+    Returns:
+        A dictionary containing the `Authorization` Bearer header and, when
+        configured on the credentials, the `x-goog-user-project` header.
+
+    Raises:
+        google.auth.exceptions.GoogleAuthError: Discovering or refreshing
+            Application Default Credentials fails.
+        RuntimeError: Application Default Credentials return an unexpected
+            credentials object or produce no access token after refresh.
+    """
+    if not _ADC_LOCK.acquire(blocking=False):
+        return await asyncio.to_thread(_resolve_adc_auth_headers_sync)
+    try:
+        credentials = _adc_credentials
+        if (
+            credentials is not None
+            and credentials.valid
+            and isinstance(credentials.token, str)
+            and credentials.token
+        ):
+            return _build_adc_auth_headers(credentials)
+    finally:
+        _ADC_LOCK.release()
+    return await asyncio.to_thread(_resolve_adc_auth_headers_sync)
 
 
 def attach_auth(headers: dict[str, str], target_url: str) -> None:
