@@ -232,6 +232,10 @@
   --static-label-large-size: 14px;
   --static-label-large-line-height: 20px;
 
+  --static-label-medium-font: var(--font-sans, 'Google Sans Text');
+  --static-label-medium-size: 12px;
+  --static-label-medium-line-height: 16px;
+
   --static-label-small-font: var(--font-sans, 'Google Sans Text');
   --static-label-small-size: 11px;
   --static-label-small-line-height: 16px;
@@ -458,11 +462,11 @@ select:not(:disabled) {
 }
 
 .text-label-medium-emphasized {
-  font-family: var(--static-label-small-font, 'Google Sans Text');
-  font-size: var(--static-label-small-size, 12px);
+  font-family: var(--static-label-medium-font, 'Google Sans Text');
+  font-size: var(--static-label-medium-size, 12px);
   font-style: normal;
   font-weight: 700;
-  line-height: var(--static-label-small-line-height, 16px);
+  line-height: var(--static-label-medium-line-height, 16px);
   letter-spacing: 0;
 }
 
@@ -562,9 +566,9 @@ select:not(:disabled) {
   /* Avoid splitting a chart card or table across pages where possible */
   .dc-chart-card,
   .markdown-body table,
-  .markdown-body h1,
   .markdown-body h2,
-  .markdown-body h3 {
+  .markdown-body h3,
+  .markdown-body h4 {
     break-inside: avoid;
   }
 }

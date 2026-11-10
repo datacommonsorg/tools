@@ -68,6 +68,16 @@ interface ResponseCardProps {
   revealing?: boolean;
 }
 
+/**
+ * Markdown heading styles, by markdown level. The rendered element sits one
+ * level down (`#` is an h2), since the answer panel's intro block owns the h1.
+ * A bold-only paragraph is styled and ranked as a `###`.
+ */
+const HEADING_1_CLASS = 'text-2xl font-medium mt-4 mb-2';
+const HEADING_2_CLASS = 'text-2xl font-medium mt-4 mb-2';
+const HEADING_3_CLASS = 'text-xl font-medium mt-3 mb-2';
+const HEADING_4_CLASS = 'text-base font-medium mt-3 mb-2';
+
 /** Renders the agent's answer text as markdown, with citation chips. */
 export function ResponseCard({
   title,
@@ -133,42 +143,30 @@ function ReactMarkdownInner({
           {children}
         </StreamSpan>
       ),
-      p: ({ children, node }) => {
-        // A paragraph that is nothing but bold text is the model's way of
-        // writing a subheading, so it renders as one.
-        if (isBoldOnly(node as MarkdownNode | undefined)) {
-          const strong = Children.toArray(children).find(isValidElement) as
-            | ReactElement<{ children?: ReactNode }>
-            | undefined;
-          return (
-            <h3 className={H3_CLASS}>
-              {renderWithCitations(strong?.props.children, sources)}
-            </h3>
-          );
-        }
-        return (
-          <p className="text-body-large mb-3 last:mb-0">
-            {renderWithCitations(children, sources)}
-          </p>
-        );
-      },
-      h1: ({ children }) => (
-        <h1 className="text-2xl font-medium mt-4 mb-2">
-          {renderWithCitations(children, sources)}
-        </h1>
+      p: ({ children, node }) => (
+        <MarkdownParagraph node={node} sources={sources}>
+          {children}
+        </MarkdownParagraph>
       ),
-      h2: ({ children }) => (
-        <h2 className="text-2xl font-medium mt-4 mb-2">
+      h1: ({ children }) => (
+        <h2 className={HEADING_1_CLASS}>
           {renderWithCitations(children, sources)}
         </h2>
       ),
-      h3: ({ children }) => (
-        <h3 className={H3_CLASS}>{renderWithCitations(children, sources)}</h3>
+      h2: ({ children }) => (
+        <h3 className={HEADING_2_CLASS}>
+          {renderWithCitations(children, sources)}
+        </h3>
       ),
-      h4: ({ children }) => (
-        <h4 className="text-base font-medium mt-3 mb-2">
+      h3: ({ children }) => (
+        <h4 className={HEADING_3_CLASS}>
           {renderWithCitations(children, sources)}
         </h4>
+      ),
+      h4: ({ children }) => (
+        <h5 className={HEADING_4_CLASS}>
+          {renderWithCitations(children, sources)}
+        </h5>
       ),
       em: ({ children }) => (
         <em className="italic">{renderWithCitations(children, sources)}</em>
@@ -183,7 +181,9 @@ function ReactMarkdownInner({
       // delay, so a bullet or a rule waits for the text it belongs to.
       li: ({ children, style }) => (
         <li className="leading-relaxed" style={style}>
-          {renderWithCitations(children, sources)}
+          <NestedBlockContext.Provider value={true}>
+            {renderWithCitations(children, sources)}
+          </NestedBlockContext.Provider>
         </li>
       ),
       a: ({ children, href }) => (
@@ -228,7 +228,9 @@ function ReactMarkdownInner({
           className="border-l-4 border-outline pl-4 italic text-on-surface-variant mb-3"
           style={style}
         >
-          {renderWithCitations(children, sources)}
+          <NestedBlockContext.Provider value={true}>
+            {renderWithCitations(children, sources)}
+          </NestedBlockContext.Provider>
         </blockquote>
       ),
       table: (props) => <MarkdownTable {...props} />,
@@ -263,7 +265,11 @@ function ReactMarkdownInner({
   );
 }
 
-const H3_CLASS = 'text-xl font-medium mt-3 mb-2';
+/**
+ * True inside a list item or blockquote. A loose list wraps each item's text
+ * in a paragraph, so a bold item there is emphasis, not a subheading.
+ */
+const NestedBlockContext = createContext(false);
 
 /** Whether a paragraph's only content, whitespace aside, is one `strong`. */
 function isBoldOnly(node: MarkdownNode | undefined): boolean {
@@ -271,6 +277,37 @@ function isBoldOnly(node: MarkdownNode | undefined): boolean {
     (child) => !(child.type === 'text' && !child.value?.trim()),
   );
   return content.length === 1 && content[0].tagName === 'strong';
+}
+
+/**
+ * A paragraph, or a subheading when it is a top-level paragraph of nothing but
+ * bold text: the model's way of writing one.
+ */
+function MarkdownParagraph({
+  children,
+  node,
+  sources,
+}: {
+  children?: ReactNode;
+  node?: unknown;
+  sources?: ProvenanceItem[];
+}) {
+  const isNested = useContext(NestedBlockContext);
+  if (!isNested && isBoldOnly(node as MarkdownNode | undefined)) {
+    const strong = Children.toArray(children).find(isValidElement) as
+      | ReactElement<{ children?: ReactNode }>
+      | undefined;
+    return (
+      <h4 className={HEADING_3_CLASS}>
+        {renderWithCitations(strong?.props.children, sources)}
+      </h4>
+    );
+  }
+  return (
+    <p className="text-body-large mb-3 last:mb-0">
+      {renderWithCitations(children, sources)}
+    </p>
+  );
 }
 
 /** True inside code and links, whose text renders verbatim: no citation chips. */
@@ -410,7 +447,7 @@ function DataCell({ children, colIndex, style, sources }: MarkdownCellProps) {
     <td
       // An explicit markdown alignment arrives in `style` and wins over the
       // class.
-      className={`border border-outline px-6 py-2 ${
+      className={`border border-outline px-6 py-2${
         numeric ? ' tabular-nums text-right' : ''
       }`}
       style={style}

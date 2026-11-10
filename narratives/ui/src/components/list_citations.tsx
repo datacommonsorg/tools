@@ -76,17 +76,17 @@ export function CitationsList({
 }: CitationsListProps) {
   if (!sources || sources.length === 0) return null;
 
-  // No top margin: the answer card's flex gap and the heading's padding
-  // already space this, and a margin stacked on both.
+  // `my-6` adds to the answer card's flex gap, setting the citations apart
+  // from the answer above and the disclaimer below.
   return (
     <section aria-labelledby="citations-heading" className="my-6">
       <h2
         id="citations-heading"
-        className="text-title-large-emphasized text-on-surface mb-4"
+        className="text-title-large-emphasized text-on-surface mb-6"
       >
         {CITATIONS_HEADING}
       </h2>
-      <ol className="list-none p-0 m-0 mt-2 flex flex-col gap-1.5 text-body-large-emphasized text-on-surface">
+      <ol className="list-none p-0 m-0 flex flex-col gap-1.5 text-body-large-emphasized text-on-surface">
         {sources.map((source, index) => {
           const shown = displayCitationNumber(index + 1, numbers);
           const lead = citationLead(source);

@@ -38,6 +38,9 @@ import {
  * disagree.
  */
 
+/** Type for a citation chip, linked or not, so the two read the same. */
+const CHIP_TEXT_CLASS = 'text-label-medium-emphasized';
+
 /** How one answer's citations are labelled and anchored on the page. */
 export interface CitationNumbering {
   /** Display label for each provenance position: `numbers[n - 1]` labels `[n]`. */
@@ -118,7 +121,7 @@ export function CitationChip({
   const { numbers, turnIndex } = useCitationNumbering();
 
   if (!isCitable(n, sources)) {
-    return <sup>[{n}]</sup>;
+    return <sup className={CHIP_TEXT_CLASS}>[{n}]</sup>;
   }
 
   const shown = displayCitationNumber(n, numbers);
@@ -127,7 +130,7 @@ export function CitationChip({
   // Preflight's `sup` sets it at 75% and raised, with zero line height, so the
   // chip does not open up the line it sits in.
   return (
-    <sup>
+    <sup className={CHIP_TEXT_CLASS}>
       <Tooltip label={label}>
         <a
           href={`#${anchor}`}
@@ -141,7 +144,7 @@ export function CitationChip({
           }}
           // Vertical padding on an inline box grows the hit area without moving
           // the text; the negative margin cancels the horizontal padding.
-          className="px-0.5 -mx-0.5 py-1.5 text-theme-primary text-label-medium-emphasized no-underline hover:underline"
+          className="px-0.5 -mx-0.5 py-1.5 text-theme-primary no-underline hover:underline"
           // The number alone tells a screen-reader user nothing about where the
           // claim came from; the visible tooltip's text belongs here too.
           aria-label={citationAriaLabel(n, shown, sources)}
