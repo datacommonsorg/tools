@@ -60,6 +60,22 @@ describe('sourceLabel', () => {
     expect(sourceLabel(1, [])).toBe('Source 1');
     expect(sourceLabel(1, undefined)).toBe('Source 1');
   });
+
+  it('names the variable, so two variables of one source differ', () => {
+    // Test: The accessible name of chips citing one source twice.
+    // Situation: Two citations share a source and differ only in the
+    //   variable; the second variable has a DCID but no name.
+    // Expectation: Each label names its own variable, the second by its
+    //   DCID, so the two chips do not share an accessible name.
+    const source = { name: 'WDI', url: 'https://worldbank.org/wdi' };
+    const perVariable: ProvenanceItem[] = [
+      { ...source, variableDcid: 'Amount_GDP', variableName: 'GDP' },
+      { ...source, variableDcid: 'Amount_GDP_PerCapita' },
+    ];
+
+    expect(sourceLabel(1, perVariable)).toBe('WDI, GDP');
+    expect(sourceLabel(2, perVariable)).toBe('WDI, Amount_GDP_PerCapita');
+  });
 });
 
 describe('isCitable', () => {

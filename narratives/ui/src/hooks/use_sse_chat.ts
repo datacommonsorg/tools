@@ -217,6 +217,33 @@ export interface ProvenanceItem {
   dataset?: string;
   /** The years the source covers, e.g. "1960 – 2023" or a single "2023". */
   dateRange?: string;
+  /**
+   * DCID of the variable the source is cited for, e.g. "Count_Person". One
+   * data source cited for two variables arrives as two items.
+   */
+  variableDcid?: string;
+  /**
+   * Human-readable name of that variable, e.g. "Total population". Equals
+   * `variableDcid` when the data plane reported no description.
+   */
+  variableName?: string;
+}
+
+/**
+ * The identity of a citation: every field the server sends, the variable
+ * included. Equal keys are one citation; any difference is another.
+ */
+export function getCitationKey(source: ProvenanceItem): string {
+  return JSON.stringify([
+    source.name,
+    source.url,
+    source.license,
+    source.provider,
+    source.dataset,
+    source.dateRange,
+    source.variableDcid,
+    source.variableName,
+  ]);
 }
 
 /**
@@ -457,10 +484,13 @@ function isSignedTurn(turn: ChatTurn): turn is SignedTurn {
 }
 
 /**
- * Labels every answer's citations so one number means one source thread-wide.
+ * Labels every answer's citations so one number means one citation
+ * thread-wide.
  *
- * A source keeps the number it was first given; anything new takes the next
- * free one. Returns one array per turn, parallel to that turn's `provenance`.
+ * A citation keeps the number it was first given, keyed by
+ * {@link getCitationKey}; anything new, including one source cited for another
+ * variable, takes the next free one. Returns one array per turn, parallel to
+ * that turn's `provenance`.
  *
  * A turn that renders no answer (stopped, or with no answer text, such as
  * one that errored before any text) takes no numbers, matching the condition
@@ -476,7 +506,7 @@ export function assignCitationNumbers(turns: ChatTurn[]): number[][] {
       return [];
     }
     return turn.provenance.map((source) => {
-      const key = source.url || source.name;
+      const key = getCitationKey(source);
       const existing = assigned.get(key);
       if (existing !== undefined) return existing;
       assigned.set(key, next);
@@ -993,12 +1023,16 @@ function applyContent(turn: ChatTurn, content: ContentPayload): ChatTurn {
     next = { ...next, toolCalls: [...next.toolCalls, content.tool_call] };
   }
   if (Array.isArray(content.sources)) {
-    const seen = new Set(next.provenance.map((item) => item.url));
+    // Keyed by the whole citation, not the URL: the server lists one source
+    // once per variable, and `[n]` in the answer is position n of this list.
+    const seen = new Set(next.provenance.map(getCitationKey));
     const merged = [...next.provenance];
     for (const source of content.sources) {
-      if (source && source.url && !seen.has(source.url)) {
+      if (!source || !source.url) continue;
+      const key = getCitationKey(source);
+      if (!seen.has(key)) {
         merged.push(source);
-        seen.add(source.url);
+        seen.add(key);
       }
     }
     next = { ...next, provenance: merged };

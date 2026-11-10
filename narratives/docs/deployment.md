@@ -222,7 +222,7 @@ All visual and behavioral customization lives in `config/`:
 config/
 ├── instance.env        Required: GCP project, region, instance, access mode
 ├── branding.json       Optional: UI identity, theme colors, nav, metrics
-├── agent-config.json   Optional: Gemini model, thinking levels, template vars
+├── agent-config.json   Optional: Gemini models, thinking, template vars, chat
 ├── prompts/            Optional: Prompt overrides (classify, discovery, ...)
 └── assets/             Optional: Custom logos, favicons, and static assets
 ```
@@ -390,12 +390,36 @@ Key Metrics dashboard, and shared stories online — for example, during:
 - **Safety or quality incidents:** Investigating a prompt-injection vector or a
   regression in generated answers without taking down the entire site.
 
-To turn off chat, set the `ENABLE_CHAT` environment variable to `false` (default
-`true`). When `ENABLE_CHAT=false`, `POST /agent/chat/stream` immediately returns
-a terminal error event (`reason: "chat_disabled"`, `"Chat is temporarily
-unavailable. Please try again later."`, `is_retryable: false`) before invoking
-the classifier, MCP tool loop, or synthesis models, so the UI shows the message
-without a retry button.
+Chat availability is set by `chat.enabled` (default `true`) and
+`chat.unavailable_message` (default `"Due to high traffic, the application is
+currently unavailable."`) in `config/agent-config.json`:
+
+```json
+{
+  "chat": {
+    "enabled": false,
+    "unavailable_message": "Chat is paused for maintenance until 14:00 UTC."
+  }
+}
+```
+
+The agent reads these values at startup, so apply a change with
+`./deploy.sh --config-only --restart`. A `chat` value that is not an object,
+or a `chat.enabled` that is not a JSON boolean (for example `"false"` or `0`),
+is logged as an error and disables chat.
+
+The `ENABLE_CHAT` and `UNAVAILABLE_MESSAGE` environment variables override
+these values when set, in either direction, and take effect without a
+configuration sync. Setting `ENABLE_CHAT=true` forces chat on regardless of
+`chat.enabled`, so remove the variable to return control to
+`agent-config.json`. While chat is disabled, `POST /agent/chat/stream`
+immediately returns a terminal error event (`reason: "chat_disabled"`,
+`is_retryable: false`) carrying the unavailable message, before invoking the
+classifier, MCP tool loop, or synthesis models, so the UI shows the message
+without a retry button. The server stamps the effective
+`{"enable_chat": ..., "unavailable_message": "..."}` into the
+`#runtime-config` element of the HTML shell on every request. `/healthz` and
+`/agent/health` keep answering `200`.
 
 - **Cloud Run:**
 
@@ -404,9 +428,9 @@ without a retry button.
   gcloud run services update <instance>-app --region=<region> \
     --update-env-vars=ENABLE_CHAT=false
 
-  # Re-enable chat
+  # Remove the override so `chat.enabled` in agent-config.json applies again
   gcloud run services update <instance>-app --region=<region> \
-    --update-env-vars=ENABLE_CHAT=true
+    --remove-env-vars=ENABLE_CHAT
   ```
 
 - **GKE (`datacommons-website`):**
@@ -415,13 +439,15 @@ without a retry button.
   # Disable chat immediately (<30s rollout, no PR required)
   kubectl set env deployment/website-narratives-app -n website ENABLE_CHAT=false
 
-  # Re-enable chat
-  kubectl set env deployment/website-narratives-app -n website ENABLE_CHAT=true
+  # Remove the override so `chat.enabled` in agent-config.json applies again
+  kubectl set env deployment/website-narratives-app -n website ENABLE_CHAT-
   ```
 
-  To persist the setting across subsequent Cloud Deploy releases on GKE, also
-  set `narratives.enableChat: false` in `deploy/helm_charts/envs/<env>.yaml` in
-  the `datacommons-website` repository.
+  To keep chat disabled across subsequent Cloud Deploy releases on GKE, also
+  set `narratives.enableChat: false` in `deploy/helm_charts/envs/<env>.yaml`
+  in the `datacommons-website` repository. An `ENABLE_CHAT` value that the
+  deployment always sets, such as `true`, takes precedence over
+  `chat.enabled` in `agent-config.json`.
 
 ### Screening prompts with Google Cloud Model Armor (optional)
 

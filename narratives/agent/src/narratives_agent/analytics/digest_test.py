@@ -570,6 +570,37 @@ def test_format_for_prompt_lists_a_source_by_name_alone(url: str) -> None:
     assert digest.format_for_prompt().endswith(f"[1] {source.name}")
 
 
+def test_format_for_prompt_names_the_variable_of_each_source() -> None:
+    # Test: Source lines for two variables of one data source.
+    # Situation: A multi-variable step cites one data source for a named
+    #   variable and for a variable known only by its DCID.
+    # Expectation: The step carries the `cite by variable:` line, and the
+    #   `"Sources:"` section lists two lines that name their variable, the
+    #   second by its DCID.
+    gdp = replace(_WDI, variable_dcid="Amount_GDP", variable_name="GDP")
+    per_capita = replace(_WDI, variable_dcid="Amount_GDP_PerCapita")
+    result = _build_multi_variable_result(
+        ("Amount_GDP", "Amount_GDP_PerCapita"),
+        {
+            "Amount_GDP": Provenance(sources=(gdp,)),
+            "Amount_GDP_PerCapita": Provenance(sources=(per_capita,)),
+        },
+    )
+
+    text = AnalysisDigest.from_results((result,)).format_for_prompt()
+
+    assert "  cite by variable: Amount_GDP [1]; Amount_GDP_PerCapita [2]" in (
+        text.splitlines()
+    )
+    assert text.endswith(
+        "Sources:\n"
+        "[1] World Development Indicators, variable: GDP "
+        "(https://wdi.example)\n"
+        "[2] World Development Indicators, variable: Amount_GDP_PerCapita "
+        "(https://wdi.example)"
+    )
+
+
 def test_format_place_names_joins_a_few_names_and_counts_the_rest() -> None:
     # Test: `format_place_names` for short and long lists, with default and
     #   custom remainder nouns.
@@ -694,6 +725,18 @@ def _extract_cite_by_variable_lines(result: OkScriptResult) -> list[str]:
             },
             ["  cite by variable: Var_A [1]; Var_B [1]; Var_C [2]"],
         ),
+        (
+            ("Var_A", "Var_B"),
+            {
+                "Var_A": Provenance(
+                    sources=(replace(_WDI, variable_dcid="Var_A"),)
+                ),
+                "Var_B": Provenance(
+                    sources=(replace(_WDI, variable_dcid="Var_B"),)
+                ),
+            },
+            ["  cite by variable: Var_A [1]; Var_B [2]"],
+        ),
     ],
     ids=[
         "single-variable",
@@ -703,6 +746,7 @@ def _extract_cite_by_variable_lines(result: OkScriptResult) -> list[str]:
         "composite-and-single",
         "one-unsourced-variable",
         "three-variables",
+        "one-source-cited-per-variable",
     ],
 )
 def test_cite_by_variable_lists_distinct_citations_in_variables_order(
@@ -715,8 +759,8 @@ def test_cite_by_variable_lists_distinct_citations_in_variables_order(
     #   sources; the same with `variable_provenance` built in the reverse
     #   order of `variables`; two variables sharing a source; one variable
     #   with a composite citation and one with a single source; one sourced
-    #   and one unsourced variable; and three variables, two sharing a
-    #   source.
+    #   and one unsourced variable; three variables, two sharing a source;
+    #   and two variables whose sources share every field but the variable.
     # Expectation: The line lists every variable in `variables` order with
     #   its own citation only when at least two variables carry distinct
     #   non-empty citations, and is absent otherwise.

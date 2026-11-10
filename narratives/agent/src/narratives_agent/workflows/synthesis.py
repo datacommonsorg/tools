@@ -25,6 +25,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 
 from narratives_agent.analytics.digest import (
+    CITED_VARIABLE_TEMPLATE,
     AnalysisDigest,
     format_scaling_factor,
 )
@@ -100,10 +101,14 @@ class SynthesisSource:
         name: The source's cleaned display name, or its URL when it has no
             name.
         url: The source's cleaned provenance URL.
+        variable: The cleaned name of the variable the source is cited for,
+            or its DCID when it has no name; None when the source names no
+            variable.
     """
 
     name: str
     url: str
+    variable: str | None = None
 
 
 @dataclass(frozen=True)
@@ -197,7 +202,10 @@ def _build_synthesis_source(source: Source) -> SynthesisSource:
     """Builds a single-line numbered source from external provenance."""
     url = _clean_source_url(source.url)
     name = clean_display_name(source.name, "")
-    return SynthesisSource(name=name or url, url=url)
+    variable = clean_display_name(
+        source.variable_name, source.variable_dcid or ""
+    )
+    return SynthesisSource(name=name or url, url=url, variable=variable or None)
 
 
 def _build_inventory_item(
@@ -382,14 +390,22 @@ def _render_inventory_line(item: TableInventoryItem) -> str:
 
 
 def _label_source(source: SynthesisSource) -> str:
-    """Labels a numbered source by name and URL, or by whichever is set.
+    """Labels a numbered source by name, variable, and URL, where each is set.
 
-    A source without a name is named by its URL, so its label states the
-    URL once; a source without a URL states its name without a separator.
+    The variable distinguishes two rows of one data source. A source without
+    a name is named by its URL, so its label states the URL once; a source
+    without a URL states its name without a separator.
     """
+    cited = (
+        CITED_VARIABLE_TEMPLATE.format(
+            name=source.name, variable=source.variable
+        )
+        if source.variable
+        else source.name
+    )
     if not source.url or source.name == source.url:
-        return source.name
-    return f"{source.name} - {source.url}"
+        return cited
+    return f"{cited} - {source.url}"
 
 
 def render_synthesis_message(inputs: SynthesisPromptInputs) -> str:

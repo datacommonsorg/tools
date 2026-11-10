@@ -17,15 +17,17 @@ from collections.abc import Iterator
 
 import pytest
 
-from narratives_agent.gcp_auth import reset_dc_api_key
+from narratives_agent.gcp_auth import reset_adc_credentials, reset_dc_api_key
 from narratives_agent.model_armor import reset_model_armor_client
 from narratives_agent.secret_manager import reset_secret_manager_client
 from narratives_agent.settings import (
     DC_API_KEY_ENV,
     DC_API_KEY_SECRET_ENV,
+    ENABLE_CHAT_ENV,
     MODEL_ARMOR_TEMPLATE_ENV,
     TRANSCRIPT_HMAC_SECRET_ENV,
     TRANSCRIPT_HMAC_SECRET_NAME_ENV,
+    UNAVAILABLE_MESSAGE_ENV,
     get_settings,
 )
 from narratives_agent.workflows.transcript import reset_signing_key
@@ -43,22 +45,25 @@ def clear_settings_cache(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
     for var in (
         DC_API_KEY_ENV,
         DC_API_KEY_SECRET_ENV,
-        "ENABLE_CHAT",
+        ENABLE_CHAT_ENV,
         "K_SERVICE",
         "KUBERNETES_SERVICE_HOST",
         MODEL_ARMOR_TEMPLATE_ENV,
         TRANSCRIPT_HMAC_SECRET_ENV,
         TRANSCRIPT_HMAC_SECRET_NAME_ENV,
+        UNAVAILABLE_MESSAGE_ENV,
     ):
         monkeypatch.delenv(var, raising=False)
     get_settings.cache_clear()
     reset_signing_key()
     reset_dc_api_key()
+    reset_adc_credentials()
     reset_model_armor_client()
     reset_secret_manager_client()
     yield
     get_settings.cache_clear()
     reset_signing_key()
     reset_dc_api_key()
+    reset_adc_credentials()
     reset_model_armor_client()
     reset_secret_manager_client()

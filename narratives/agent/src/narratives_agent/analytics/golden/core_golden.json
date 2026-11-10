@@ -38,7 +38,9 @@
           "license": null,
           "name": "wikidata.org",
           "provider": null,
-          "url": "https://www.wikidata.org/wiki/Wikidata:Main_Page"
+          "url": "https://www.wikidata.org/wiki/Wikidata:Main_Page",
+          "variable_dcid": "Count_Person",
+          "variable_name": "Total population"
         }
       ]
     },
@@ -218,7 +220,19 @@
           "license": null,
           "name": "wikidata.org",
           "provider": null,
-          "url": "https://www.wikidata.org/wiki/Wikidata:Main_Page"
+          "url": "https://www.wikidata.org/wiki/Wikidata:Main_Page",
+          "variable_dcid": "Count_Person_Male",
+          "variable_name": "Male population"
+        },
+        {
+          "dataset": null,
+          "date_range": null,
+          "license": null,
+          "name": "wikidata.org",
+          "provider": null,
+          "url": "https://www.wikidata.org/wiki/Wikidata:Main_Page",
+          "variable_dcid": "Count_Person_Female",
+          "variable_name": "Female population"
         }
       ]
     },
@@ -245,7 +259,9 @@
             "license": null,
             "name": "wikidata.org",
             "provider": null,
-            "url": "https://www.wikidata.org/wiki/Wikidata:Main_Page"
+            "url": "https://www.wikidata.org/wiki/Wikidata:Main_Page",
+            "variable_dcid": "Count_Person_Female",
+            "variable_name": "Female population"
           }
         ]
       },
@@ -261,7 +277,9 @@
             "license": null,
             "name": "wikidata.org",
             "provider": null,
-            "url": "https://www.wikidata.org/wiki/Wikidata:Main_Page"
+            "url": "https://www.wikidata.org/wiki/Wikidata:Main_Page",
+            "variable_dcid": "Count_Person_Male",
+            "variable_name": "Male population"
           }
         ]
       }
@@ -416,7 +434,29 @@
           "license": null,
           "name": "datatopics.worldbank.org",
           "provider": null,
-          "url": "https://datatopics.worldbank.org/world-development-indicators/"
+          "url": "https://datatopics.worldbank.org/world-development-indicators/",
+          "variable_dcid": "Count_Student_Primary",
+          "variable_name": "Primary students"
+        },
+        {
+          "dataset": null,
+          "date_range": null,
+          "license": null,
+          "name": "datatopics.worldbank.org",
+          "provider": null,
+          "url": "https://datatopics.worldbank.org/world-development-indicators/",
+          "variable_dcid": "Count_Student_Secondary",
+          "variable_name": "Secondary students"
+        },
+        {
+          "dataset": null,
+          "date_range": null,
+          "license": null,
+          "name": "datatopics.worldbank.org",
+          "provider": null,
+          "url": "https://datatopics.worldbank.org/world-development-indicators/",
+          "variable_dcid": "Count_Student_Tertiary",
+          "variable_name": "Tertiary students"
         }
       ]
     },
@@ -444,7 +484,9 @@
             "license": null,
             "name": "datatopics.worldbank.org",
             "provider": null,
-            "url": "https://datatopics.worldbank.org/world-development-indicators/"
+            "url": "https://datatopics.worldbank.org/world-development-indicators/",
+            "variable_dcid": "Count_Student_Primary",
+            "variable_name": "Primary students"
           }
         ]
       },
@@ -460,7 +502,9 @@
             "license": null,
             "name": "datatopics.worldbank.org",
             "provider": null,
-            "url": "https://datatopics.worldbank.org/world-development-indicators/"
+            "url": "https://datatopics.worldbank.org/world-development-indicators/",
+            "variable_dcid": "Count_Student_Secondary",
+            "variable_name": "Secondary students"
           }
         ]
       },
@@ -476,7 +520,9 @@
             "license": null,
             "name": "datatopics.worldbank.org",
             "provider": null,
-            "url": "https://datatopics.worldbank.org/world-development-indicators/"
+            "url": "https://datatopics.worldbank.org/world-development-indicators/",
+            "variable_dcid": "Count_Student_Tertiary",
+            "variable_name": "Tertiary students"
           }
         ]
       }
@@ -590,7 +636,9 @@
           "license": null,
           "name": "datatopics.worldbank.org",
           "provider": null,
-          "url": "https://datatopics.worldbank.org/world-development-indicators/"
+          "url": "https://datatopics.worldbank.org/world-development-indicators/",
+          "variable_dcid": "Count_Person",
+          "variable_name": "Total population"
         },
         {
           "dataset": null,
@@ -598,7 +646,19 @@
           "license": null,
           "name": "wikidata.org",
           "provider": null,
-          "url": "https://www.wikidata.org/wiki/Wikidata:Main_Page"
+          "url": "https://www.wikidata.org/wiki/Wikidata:Main_Page",
+          "variable_dcid": "Count_Person_Male",
+          "variable_name": "Male population"
+        },
+        {
+          "dataset": null,
+          "date_range": null,
+          "license": null,
+          "name": "wikidata.org",
+          "provider": null,
+          "url": "https://www.wikidata.org/wiki/Wikidata:Main_Page",
+          "variable_dcid": "Count_Person_Female",
+          "variable_name": "Female population"
         }
       ]
     },
@@ -626,7 +686,9 @@
             "license": null,
             "name": "datatopics.worldbank.org",
             "provider": null,
-            "url": "https://datatopics.worldbank.org/world-development-indicators/"
+            "url": "https://datatopics.worldbank.org/world-development-indicators/",
+            "variable_dcid": "Count_Person",
+            "variable_name": "Total population"
           }
         ]
       },
@@ -642,7 +704,9 @@
             "license": null,
             "name": "wikidata.org",
             "provider": null,
-            "url": "https://www.wikidata.org/wiki/Wikidata:Main_Page"
+            "url": "https://www.wikidata.org/wiki/Wikidata:Main_Page",
+            "variable_dcid": "Count_Person_Female",
+            "variable_name": "Female population"
           }
         ]
       },
@@ -658,7 +722,9 @@
             "license": null,
             "name": "wikidata.org",
             "provider": null,
-            "url": "https://www.wikidata.org/wiki/Wikidata:Main_Page"
+            "url": "https://www.wikidata.org/wiki/Wikidata:Main_Page",
+            "variable_dcid": "Count_Person_Male",
+            "variable_name": "Male population"
           }
         ]
       }
@@ -744,7 +810,9 @@
           "license": null,
           "name": "datatopics.worldbank.org",
           "provider": null,
-          "url": "https://datatopics.worldbank.org/world-development-indicators/"
+          "url": "https://datatopics.worldbank.org/world-development-indicators/",
+          "variable_dcid": "Count_Case",
+          "variable_name": "Reported cases"
         },
         {
           "dataset": null,
@@ -752,7 +820,9 @@
           "license": null,
           "name": "wikidata.org",
           "provider": null,
-          "url": "https://www.wikidata.org/wiki/Wikidata:Main_Page"
+          "url": "https://www.wikidata.org/wiki/Wikidata:Main_Page",
+          "variable_dcid": "Count_Person",
+          "variable_name": "Total population"
         }
       ]
     },
@@ -779,7 +849,9 @@
             "license": null,
             "name": "datatopics.worldbank.org",
             "provider": null,
-            "url": "https://datatopics.worldbank.org/world-development-indicators/"
+            "url": "https://datatopics.worldbank.org/world-development-indicators/",
+            "variable_dcid": "Count_Case",
+            "variable_name": "Reported cases"
           },
           {
             "dataset": null,
@@ -787,7 +859,9 @@
             "license": null,
             "name": "wikidata.org",
             "provider": null,
-            "url": "https://www.wikidata.org/wiki/Wikidata:Main_Page"
+            "url": "https://www.wikidata.org/wiki/Wikidata:Main_Page",
+            "variable_dcid": "Count_Person",
+            "variable_name": "Total population"
           }
         ]
       }
@@ -863,7 +937,9 @@
           "license": null,
           "name": "datatopics.worldbank.org",
           "provider": null,
-          "url": "https://datatopics.worldbank.org/world-development-indicators/"
+          "url": "https://datatopics.worldbank.org/world-development-indicators/",
+          "variable_dcid": "Count_Case",
+          "variable_name": "Reported cases"
         },
         {
           "dataset": null,
@@ -871,7 +947,9 @@
           "license": null,
           "name": "wikidata.org",
           "provider": null,
-          "url": "https://www.wikidata.org/wiki/Wikidata:Main_Page"
+          "url": "https://www.wikidata.org/wiki/Wikidata:Main_Page",
+          "variable_dcid": "Count_Person",
+          "variable_name": "Total population"
         }
       ]
     },
@@ -898,7 +976,9 @@
             "license": null,
             "name": "datatopics.worldbank.org",
             "provider": null,
-            "url": "https://datatopics.worldbank.org/world-development-indicators/"
+            "url": "https://datatopics.worldbank.org/world-development-indicators/",
+            "variable_dcid": "Count_Case",
+            "variable_name": "Reported cases"
           },
           {
             "dataset": null,
@@ -906,7 +986,9 @@
             "license": null,
             "name": "wikidata.org",
             "provider": null,
-            "url": "https://www.wikidata.org/wiki/Wikidata:Main_Page"
+            "url": "https://www.wikidata.org/wiki/Wikidata:Main_Page",
+            "variable_dcid": "Count_Person",
+            "variable_name": "Total population"
           }
         ]
       }
@@ -1018,7 +1100,9 @@
           "license": null,
           "name": "datatopics.worldbank.org",
           "provider": null,
-          "url": "https://datatopics.worldbank.org/world-development-indicators/"
+          "url": "https://datatopics.worldbank.org/world-development-indicators/",
+          "variable_dcid": "Count_Case",
+          "variable_name": "Reported cases"
         },
         {
           "dataset": null,
@@ -1026,7 +1110,9 @@
           "license": null,
           "name": "wikidata.org",
           "provider": null,
-          "url": "https://www.wikidata.org/wiki/Wikidata:Main_Page"
+          "url": "https://www.wikidata.org/wiki/Wikidata:Main_Page",
+          "variable_dcid": "Count_Person",
+          "variable_name": "Total population"
         }
       ]
     },
@@ -1053,7 +1139,9 @@
             "license": null,
             "name": "datatopics.worldbank.org",
             "provider": null,
-            "url": "https://datatopics.worldbank.org/world-development-indicators/"
+            "url": "https://datatopics.worldbank.org/world-development-indicators/",
+            "variable_dcid": "Count_Case",
+            "variable_name": "Reported cases"
           },
           {
             "dataset": null,
@@ -1061,7 +1149,9 @@
             "license": null,
             "name": "wikidata.org",
             "provider": null,
-            "url": "https://www.wikidata.org/wiki/Wikidata:Main_Page"
+            "url": "https://www.wikidata.org/wiki/Wikidata:Main_Page",
+            "variable_dcid": "Count_Person",
+            "variable_name": "Total population"
           }
         ]
       }
@@ -1133,7 +1223,9 @@
           "license": null,
           "name": "datatopics.worldbank.org",
           "provider": null,
-          "url": "https://datatopics.worldbank.org/world-development-indicators/"
+          "url": "https://datatopics.worldbank.org/world-development-indicators/",
+          "variable_dcid": "Count_Person",
+          "variable_name": "Total population"
         },
         {
           "dataset": null,
@@ -1141,7 +1233,9 @@
           "license": null,
           "name": "wikidata.org",
           "provider": null,
-          "url": "https://www.wikidata.org/wiki/Wikidata:Main_Page"
+          "url": "https://www.wikidata.org/wiki/Wikidata:Main_Page",
+          "variable_dcid": "Count_Person_Female",
+          "variable_name": "Female population"
         }
       ]
     },
@@ -1168,7 +1262,9 @@
             "license": null,
             "name": "datatopics.worldbank.org",
             "provider": null,
-            "url": "https://datatopics.worldbank.org/world-development-indicators/"
+            "url": "https://datatopics.worldbank.org/world-development-indicators/",
+            "variable_dcid": "Count_Person",
+            "variable_name": "Total population"
           }
         ]
       },
@@ -1184,7 +1280,9 @@
             "license": null,
             "name": "wikidata.org",
             "provider": null,
-            "url": "https://www.wikidata.org/wiki/Wikidata:Main_Page"
+            "url": "https://www.wikidata.org/wiki/Wikidata:Main_Page",
+            "variable_dcid": "Count_Person_Female",
+            "variable_name": "Female population"
           }
         ]
       }
@@ -1275,7 +1373,9 @@
               "license": null,
               "name": "datatopics.worldbank.org",
               "provider": null,
-              "url": "https://datatopics.worldbank.org/world-development-indicators/"
+              "url": "https://datatopics.worldbank.org/world-development-indicators/",
+              "variable_dcid": "Count_Case",
+              "variable_name": "Reported cases"
             },
             {
               "dataset": null,
@@ -1283,7 +1383,9 @@
               "license": null,
               "name": "wikidata.org",
               "provider": null,
-              "url": "https://www.wikidata.org/wiki/Wikidata:Main_Page"
+              "url": "https://www.wikidata.org/wiki/Wikidata:Main_Page",
+              "variable_dcid": "Count_Person",
+              "variable_name": "Total population"
             }
           ]
         },
@@ -1310,7 +1412,9 @@
                 "license": null,
                 "name": "datatopics.worldbank.org",
                 "provider": null,
-                "url": "https://datatopics.worldbank.org/world-development-indicators/"
+                "url": "https://datatopics.worldbank.org/world-development-indicators/",
+                "variable_dcid": "Count_Case",
+                "variable_name": "Reported cases"
               }
             ]
           },
@@ -1326,7 +1430,9 @@
                 "license": null,
                 "name": "wikidata.org",
                 "provider": null,
-                "url": "https://www.wikidata.org/wiki/Wikidata:Main_Page"
+                "url": "https://www.wikidata.org/wiki/Wikidata:Main_Page",
+                "variable_dcid": "Count_Person",
+                "variable_name": "Total population"
               }
             ]
           }
@@ -1403,7 +1509,9 @@
               "license": null,
               "name": "datatopics.worldbank.org",
               "provider": null,
-              "url": "https://datatopics.worldbank.org/world-development-indicators/"
+              "url": "https://datatopics.worldbank.org/world-development-indicators/",
+              "variable_dcid": "Count_Case",
+              "variable_name": "Reported cases"
             },
             {
               "dataset": null,
@@ -1411,7 +1519,9 @@
               "license": null,
               "name": "wikidata.org",
               "provider": null,
-              "url": "https://www.wikidata.org/wiki/Wikidata:Main_Page"
+              "url": "https://www.wikidata.org/wiki/Wikidata:Main_Page",
+              "variable_dcid": "Count_Person",
+              "variable_name": "Total population"
             }
           ]
         },
@@ -1438,7 +1548,9 @@
                 "license": null,
                 "name": "datatopics.worldbank.org",
                 "provider": null,
-                "url": "https://datatopics.worldbank.org/world-development-indicators/"
+                "url": "https://datatopics.worldbank.org/world-development-indicators/",
+                "variable_dcid": "Count_Case",
+                "variable_name": "Reported cases"
               },
               {
                 "dataset": null,
@@ -1446,7 +1558,9 @@
                 "license": null,
                 "name": "wikidata.org",
                 "provider": null,
-                "url": "https://www.wikidata.org/wiki/Wikidata:Main_Page"
+                "url": "https://www.wikidata.org/wiki/Wikidata:Main_Page",
+                "variable_dcid": "Count_Person",
+                "variable_name": "Total population"
               }
             ]
           }
@@ -1530,7 +1644,9 @@
               "license": null,
               "name": "datatopics.worldbank.org",
               "provider": null,
-              "url": "https://datatopics.worldbank.org/world-development-indicators/"
+              "url": "https://datatopics.worldbank.org/world-development-indicators/",
+              "variable_dcid": "Count_Case",
+              "variable_name": "Reported cases"
             },
             {
               "dataset": null,
@@ -1538,7 +1654,9 @@
               "license": null,
               "name": "wikidata.org",
               "provider": null,
-              "url": "https://www.wikidata.org/wiki/Wikidata:Main_Page"
+              "url": "https://www.wikidata.org/wiki/Wikidata:Main_Page",
+              "variable_dcid": "Count_Person",
+              "variable_name": "Total population"
             }
           ]
         },
@@ -1565,7 +1683,9 @@
                 "license": null,
                 "name": "datatopics.worldbank.org",
                 "provider": null,
-                "url": "https://datatopics.worldbank.org/world-development-indicators/"
+                "url": "https://datatopics.worldbank.org/world-development-indicators/",
+                "variable_dcid": "Count_Case",
+                "variable_name": "Reported cases"
               },
               {
                 "dataset": null,
@@ -1573,7 +1693,9 @@
                 "license": null,
                 "name": "wikidata.org",
                 "provider": null,
-                "url": "https://www.wikidata.org/wiki/Wikidata:Main_Page"
+                "url": "https://www.wikidata.org/wiki/Wikidata:Main_Page",
+                "variable_dcid": "Count_Person",
+                "variable_name": "Total population"
               }
             ]
           }
@@ -1685,7 +1807,9 @@
               "license": null,
               "name": "datatopics.worldbank.org",
               "provider": null,
-              "url": "https://datatopics.worldbank.org/world-development-indicators/"
+              "url": "https://datatopics.worldbank.org/world-development-indicators/",
+              "variable_dcid": "Count_Case",
+              "variable_name": "Reported cases"
             },
             {
               "dataset": null,
@@ -1693,7 +1817,9 @@
               "license": null,
               "name": "wikidata.org",
               "provider": null,
-              "url": "https://www.wikidata.org/wiki/Wikidata:Main_Page"
+              "url": "https://www.wikidata.org/wiki/Wikidata:Main_Page",
+              "variable_dcid": "Count_Person",
+              "variable_name": "Total population"
             }
           ]
         },
@@ -1720,7 +1846,9 @@
                 "license": null,
                 "name": "datatopics.worldbank.org",
                 "provider": null,
-                "url": "https://datatopics.worldbank.org/world-development-indicators/"
+                "url": "https://datatopics.worldbank.org/world-development-indicators/",
+                "variable_dcid": "Count_Case",
+                "variable_name": "Reported cases"
               },
               {
                 "dataset": null,
@@ -1728,7 +1856,9 @@
                 "license": null,
                 "name": "wikidata.org",
                 "provider": null,
-                "url": "https://www.wikidata.org/wiki/Wikidata:Main_Page"
+                "url": "https://www.wikidata.org/wiki/Wikidata:Main_Page",
+                "variable_dcid": "Count_Person",
+                "variable_name": "Total population"
               }
             ]
           }
@@ -1745,7 +1875,9 @@
         "license": null,
         "name": "datatopics.worldbank.org",
         "provider": null,
-        "url": "https://datatopics.worldbank.org/world-development-indicators/"
+        "url": "https://datatopics.worldbank.org/world-development-indicators/",
+        "variable_dcid": "Count_Case",
+        "variable_name": "Reported cases"
       },
       {
         "dataset": null,
@@ -1753,11 +1885,13 @@
         "license": null,
         "name": "wikidata.org",
         "provider": null,
-        "url": "https://www.wikidata.org/wiki/Wikidata:Main_Page"
+        "url": "https://www.wikidata.org/wiki/Wikidata:Main_Page",
+        "variable_dcid": "Count_Person",
+        "variable_name": "Total population"
       }
     ]
   },
-  "derived_digest_prompt": "Step s1: compute_derived_metric on Reported cases (Count_Case), Total population (Count_Person)\n  coverage: 2 of 2 places; cite: [1, 2]\n  cite by variable: Count_Case [1]; Count_Person [2]\n  method: Reported cases (Count_Case) divided by Total population (Count_Person) and multiplied by 100,000; pairs with a zero or negative denominator are skipped. Observations are joined on place and date.\n  metrics: {\"derived_variable_dcid\":\"derived_Count_Case_per_capita_Count_Person\",\"derived_variable_name\":\"Reported cases per 100,000 people\",\"operation\":\"per_capita\",\"scale\":100000,\"observation_count\":6,\"place_count\":2,\"date_range\":[\"2020\",\"2022\"],\"value_range\":[10,40],\"sample_rows\":[{\"place_dcid\":\"country/DEU\",\"place_name\":\"Germany\",\"date\":\"2020\",\"value\":40,\"facet_id\":null},{\"place_dcid\":\"country/DEU\",\"place_name\":\"Germany\",\"date\":\"2021\",\"value\":33.33,\"facet_id\":null},{\"place_dcid\":\"country/DEU\",\"place_name\":\"Germany\",\"date\":\"2022\",\"value\":25,\"facet_id\":null},{\"place_dcid\":\"country/FRA\",\"place_name\":\"France\",\"date\":\"2021\",\"value\":20,\"facet_id\":null},{\"place_dcid\":\"country/FRA\",\"place_name\":\"France\",\"date\":\"2022\",\"value\":30,\"facet_id\":null}],\"missing_places\":[]}\n\nStep s2: rank_cohort on Reported cases per 100,000 people (derived_Count_Case_per_capita_Count_Person)\n  coverage: 2 of 2 places on 2022; cite: [1, 2]\n  method: Reported cases (Count_Case) divided by Total population (Count_Person) and multiplied by 100,000; pairs with a zero or negative denominator are skipped. Observations are joined on place and date; Ranked 2 places by Reported cases per 100,000 people on 2022 in descending order; places with the same value share a rank.\n  metrics: {\"reference_date\":\"2022\",\"direction\":\"desc\",\"max_entries_per_end\":2,\"cohort_size\":2,\"top_n\":[{\"rank\":1,\"is_tied\":false,\"place_dcid\":\"country/FRA\",\"place_name\":\"France\",\"value\":30,\"percentile\":100},{\"rank\":2,\"is_tied\":false,\"place_dcid\":\"country/DEU\",\"place_name\":\"Germany\",\"value\":25,\"percentile\":50}],\"bottom_n\":[{\"rank\":2,\"is_tied\":false,\"place_dcid\":\"country/DEU\",\"place_name\":\"Germany\",\"value\":25,\"percentile\":50},{\"rank\":1,\"is_tied\":false,\"place_dcid\":\"country/FRA\",\"place_name\":\"France\",\"value\":30,\"percentile\":100}],\"focal_entries\":[],\"missing_focal_places\":[]}\n\nStep s3: summarize_distribution on Reported cases per 100,000 people (derived_Count_Case_per_capita_Count_Person)\n  coverage: 2 of 2 places on 2022; cite: [1, 2]\n  method: Reported cases (Count_Case) divided by Total population (Count_Person) and multiplied by 100,000; pairs with a zero or negative denominator are skipped. Observations are joined on place and date; Distribution of Reported cases per 100,000 people across 2 places on 2022: mean, median, minimum, maximum, the gap from minimum to maximum (max_minus_min), sample standard deviation, and quartiles and deciles by linear interpolation; focal places are compared with the cohort mean, median, and percentile.\n  metrics: {\"reference_date\":\"2022\",\"cohort_size\":2,\"mean\":27.5,\"median\":27.5,\"min\":{\"place_dcid\":\"country/DEU\",\"place_name\":\"Germany\",\"value\":25},\"max\":{\"place_dcid\":\"country/FRA\",\"place_name\":\"France\",\"value\":30},\"max_minus_min\":5,\"stdev\":3.54,\"q25\":26.25,\"q50\":27.5,\"q75\":28.75,\"iqr\":2.5,\"deciles\":{\"p10\":25.5,\"p20\":26,\"p30\":26.5,\"p40\":27,\"p50\":27.5,\"p60\":28,\"p70\":28.5,\"p80\":29,\"p90\":29.5},\"skewness\":null,\"weighted_mean\":null,\"weight_variable_dcid\":null,\"weighted_place_count\":null,\"focal_entries\":[{\"place_dcid\":\"country/FRA\",\"place_name\":\"France\",\"value\":30,\"diff_from_median\":2.5,\"pct_of_median\":109.09,\"diff_from_mean\":2.5,\"z_score\":0.707,\"percentile\":100}],\"missing_focal_places\":[]}\n  caveat: Skewness requires at least 3 places, so it is not computed for this cohort of two.\n\nStep s4: analyze_timeseries on Reported cases per 100,000 people (derived_Count_Case_per_capita_Count_Person)\n  cite: [1, 2]\n  method: Reported cases (Count_Case) divided by Total population (Count_Person) and multiplied by 100,000; pairs with a zero or negative denominator are skipped. Observations are joined on place and date; Start-to-end change, extrema, largest period-over-period changes, and compound annual growth rate computed per place over the observed series.\n  metrics: {\"place_count\":2,\"series\":[{\"place_dcid\":\"country/FRA\",\"place_name\":\"France\",\"point_count\":3,\"start_date\":\"2020\",\"start_value\":10,\"end_date\":\"2022\",\"end_value\":30,\"min_date\":\"2020\",\"min_value\":10,\"max_date\":\"2022\",\"max_value\":30,\"local_extrema\":[],\"absolute_change\":20,\"percent_change\":200,\"cagr\":73.21,\"max_period_increase\":{\"from_date\":\"2020\",\"to_date\":\"2021\",\"from_value\":10,\"to_value\":20,\"absolute_change\":10,\"percent_change\":100},\"max_period_decrease\":null},{\"place_dcid\":\"country/DEU\",\"place_name\":\"Germany\",\"point_count\":3,\"start_date\":\"2020\",\"start_value\":40,\"end_date\":\"2022\",\"end_value\":25,\"min_date\":\"2022\",\"min_value\":25,\"max_date\":\"2020\",\"max_value\":40,\"local_extrema\":[],\"absolute_change\":-15,\"percent_change\":-37.5,\"cagr\":-20.94,\"max_period_increase\":null,\"max_period_decrease\":{\"from_date\":\"2021\",\"to_date\":\"2022\",\"from_value\":33.33,\"to_value\":25,\"absolute_change\":-8.33,\"percent_change\":-25}}],\"missing_places\":[],\"cross_place_comparison\":{\"reference_date\":\"2022\",\"entries\":[{\"place_dcid\":\"country/FRA\",\"place_name\":\"France\",\"value\":30},{\"place_dcid\":\"country/DEU\",\"place_name\":\"Germany\",\"value\":25}],\"spread\":5,\"leader\":{\"place_dcid\":\"country/FRA\",\"place_name\":\"France\",\"value\":30},\"deltas_from_leader\":[{\"place_dcid\":\"country/DEU\",\"place_name\":\"Germany\",\"absolute_delta\":-5,\"percent_delta\":-16.67}]}}\n\nSources:\n[1] datatopics.worldbank.org (https://datatopics.worldbank.org/world-development-indicators/)\n[2] wikidata.org (https://www.wikidata.org/wiki/Wikidata:Main_Page)",
+  "derived_digest_prompt": "Step s1: compute_derived_metric on Reported cases (Count_Case), Total population (Count_Person)\n  coverage: 2 of 2 places; cite: [1, 2]\n  cite by variable: Count_Case [1]; Count_Person [2]\n  method: Reported cases (Count_Case) divided by Total population (Count_Person) and multiplied by 100,000; pairs with a zero or negative denominator are skipped. Observations are joined on place and date.\n  metrics: {\"derived_variable_dcid\":\"derived_Count_Case_per_capita_Count_Person\",\"derived_variable_name\":\"Reported cases per 100,000 people\",\"operation\":\"per_capita\",\"scale\":100000,\"observation_count\":6,\"place_count\":2,\"date_range\":[\"2020\",\"2022\"],\"value_range\":[10,40],\"sample_rows\":[{\"place_dcid\":\"country/DEU\",\"place_name\":\"Germany\",\"date\":\"2020\",\"value\":40,\"facet_id\":null},{\"place_dcid\":\"country/DEU\",\"place_name\":\"Germany\",\"date\":\"2021\",\"value\":33.33,\"facet_id\":null},{\"place_dcid\":\"country/DEU\",\"place_name\":\"Germany\",\"date\":\"2022\",\"value\":25,\"facet_id\":null},{\"place_dcid\":\"country/FRA\",\"place_name\":\"France\",\"date\":\"2021\",\"value\":20,\"facet_id\":null},{\"place_dcid\":\"country/FRA\",\"place_name\":\"France\",\"date\":\"2022\",\"value\":30,\"facet_id\":null}],\"missing_places\":[]}\n\nStep s2: rank_cohort on Reported cases per 100,000 people (derived_Count_Case_per_capita_Count_Person)\n  coverage: 2 of 2 places on 2022; cite: [1, 2]\n  method: Reported cases (Count_Case) divided by Total population (Count_Person) and multiplied by 100,000; pairs with a zero or negative denominator are skipped. Observations are joined on place and date; Ranked 2 places by Reported cases per 100,000 people on 2022 in descending order; places with the same value share a rank.\n  metrics: {\"reference_date\":\"2022\",\"direction\":\"desc\",\"max_entries_per_end\":2,\"cohort_size\":2,\"top_n\":[{\"rank\":1,\"is_tied\":false,\"place_dcid\":\"country/FRA\",\"place_name\":\"France\",\"value\":30,\"percentile\":100},{\"rank\":2,\"is_tied\":false,\"place_dcid\":\"country/DEU\",\"place_name\":\"Germany\",\"value\":25,\"percentile\":50}],\"bottom_n\":[{\"rank\":2,\"is_tied\":false,\"place_dcid\":\"country/DEU\",\"place_name\":\"Germany\",\"value\":25,\"percentile\":50},{\"rank\":1,\"is_tied\":false,\"place_dcid\":\"country/FRA\",\"place_name\":\"France\",\"value\":30,\"percentile\":100}],\"focal_entries\":[],\"missing_focal_places\":[]}\n\nStep s3: summarize_distribution on Reported cases per 100,000 people (derived_Count_Case_per_capita_Count_Person)\n  coverage: 2 of 2 places on 2022; cite: [1, 2]\n  method: Reported cases (Count_Case) divided by Total population (Count_Person) and multiplied by 100,000; pairs with a zero or negative denominator are skipped. Observations are joined on place and date; Distribution of Reported cases per 100,000 people across 2 places on 2022: mean, median, minimum, maximum, the gap from minimum to maximum (max_minus_min), sample standard deviation, and quartiles and deciles by linear interpolation; focal places are compared with the cohort mean, median, and percentile.\n  metrics: {\"reference_date\":\"2022\",\"cohort_size\":2,\"mean\":27.5,\"median\":27.5,\"min\":{\"place_dcid\":\"country/DEU\",\"place_name\":\"Germany\",\"value\":25},\"max\":{\"place_dcid\":\"country/FRA\",\"place_name\":\"France\",\"value\":30},\"max_minus_min\":5,\"stdev\":3.54,\"q25\":26.25,\"q50\":27.5,\"q75\":28.75,\"iqr\":2.5,\"deciles\":{\"p10\":25.5,\"p20\":26,\"p30\":26.5,\"p40\":27,\"p50\":27.5,\"p60\":28,\"p70\":28.5,\"p80\":29,\"p90\":29.5},\"skewness\":null,\"weighted_mean\":null,\"weight_variable_dcid\":null,\"weighted_place_count\":null,\"focal_entries\":[{\"place_dcid\":\"country/FRA\",\"place_name\":\"France\",\"value\":30,\"diff_from_median\":2.5,\"pct_of_median\":109.09,\"diff_from_mean\":2.5,\"z_score\":0.707,\"percentile\":100}],\"missing_focal_places\":[]}\n  caveat: Skewness requires at least 3 places, so it is not computed for this cohort of two.\n\nStep s4: analyze_timeseries on Reported cases per 100,000 people (derived_Count_Case_per_capita_Count_Person)\n  cite: [1, 2]\n  method: Reported cases (Count_Case) divided by Total population (Count_Person) and multiplied by 100,000; pairs with a zero or negative denominator are skipped. Observations are joined on place and date; Start-to-end change, extrema, largest period-over-period changes, and compound annual growth rate computed per place over the observed series.\n  metrics: {\"place_count\":2,\"series\":[{\"place_dcid\":\"country/FRA\",\"place_name\":\"France\",\"point_count\":3,\"start_date\":\"2020\",\"start_value\":10,\"end_date\":\"2022\",\"end_value\":30,\"min_date\":\"2020\",\"min_value\":10,\"max_date\":\"2022\",\"max_value\":30,\"local_extrema\":[],\"absolute_change\":20,\"percent_change\":200,\"cagr\":73.21,\"max_period_increase\":{\"from_date\":\"2020\",\"to_date\":\"2021\",\"from_value\":10,\"to_value\":20,\"absolute_change\":10,\"percent_change\":100},\"max_period_decrease\":null},{\"place_dcid\":\"country/DEU\",\"place_name\":\"Germany\",\"point_count\":3,\"start_date\":\"2020\",\"start_value\":40,\"end_date\":\"2022\",\"end_value\":25,\"min_date\":\"2022\",\"min_value\":25,\"max_date\":\"2020\",\"max_value\":40,\"local_extrema\":[],\"absolute_change\":-15,\"percent_change\":-37.5,\"cagr\":-20.94,\"max_period_increase\":null,\"max_period_decrease\":{\"from_date\":\"2021\",\"to_date\":\"2022\",\"from_value\":33.33,\"to_value\":25,\"absolute_change\":-8.33,\"percent_change\":-25}}],\"missing_places\":[],\"cross_place_comparison\":{\"reference_date\":\"2022\",\"entries\":[{\"place_dcid\":\"country/FRA\",\"place_name\":\"France\",\"value\":30},{\"place_dcid\":\"country/DEU\",\"place_name\":\"Germany\",\"value\":25}],\"spread\":5,\"leader\":{\"place_dcid\":\"country/FRA\",\"place_name\":\"France\",\"value\":30},\"deltas_from_leader\":[{\"place_dcid\":\"country/DEU\",\"place_name\":\"Germany\",\"absolute_delta\":-5,\"percent_delta\":-16.67}]}}\n\nSources:\n[1] datatopics.worldbank.org, variable: Reported cases (https://datatopics.worldbank.org/world-development-indicators/)\n[2] wikidata.org, variable: Total population (https://www.wikidata.org/wiki/Wikidata:Main_Page)",
   "derived_pct_change": {
     "caveats": [],
     "coverage": {
@@ -1820,7 +1954,19 @@
           "license": null,
           "name": "wikidata.org",
           "provider": null,
-          "url": "https://www.wikidata.org/wiki/Wikidata:Main_Page"
+          "url": "https://www.wikidata.org/wiki/Wikidata:Main_Page",
+          "variable_dcid": "Count_Person_Male",
+          "variable_name": "Male population"
+        },
+        {
+          "dataset": null,
+          "date_range": null,
+          "license": null,
+          "name": "wikidata.org",
+          "provider": null,
+          "url": "https://www.wikidata.org/wiki/Wikidata:Main_Page",
+          "variable_dcid": "Count_Person_Female",
+          "variable_name": "Female population"
         }
       ]
     },
@@ -1847,7 +1993,9 @@
             "license": null,
             "name": "wikidata.org",
             "provider": null,
-            "url": "https://www.wikidata.org/wiki/Wikidata:Main_Page"
+            "url": "https://www.wikidata.org/wiki/Wikidata:Main_Page",
+            "variable_dcid": "Count_Person_Female",
+            "variable_name": "Female population"
           }
         ]
       },
@@ -1863,7 +2011,9 @@
             "license": null,
             "name": "wikidata.org",
             "provider": null,
-            "url": "https://www.wikidata.org/wiki/Wikidata:Main_Page"
+            "url": "https://www.wikidata.org/wiki/Wikidata:Main_Page",
+            "variable_dcid": "Count_Person_Male",
+            "variable_name": "Male population"
           }
         ]
       }
@@ -1950,7 +2100,9 @@
           "license": null,
           "name": "datatopics.worldbank.org",
           "provider": null,
-          "url": "https://datatopics.worldbank.org/world-development-indicators/"
+          "url": "https://datatopics.worldbank.org/world-development-indicators/",
+          "variable_dcid": "Count_Case",
+          "variable_name": "Reported cases"
         },
         {
           "dataset": null,
@@ -1958,7 +2110,9 @@
           "license": null,
           "name": "wikidata.org",
           "provider": null,
-          "url": "https://www.wikidata.org/wiki/Wikidata:Main_Page"
+          "url": "https://www.wikidata.org/wiki/Wikidata:Main_Page",
+          "variable_dcid": "Count_Person",
+          "variable_name": "Total population"
         }
       ]
     },
@@ -1985,7 +2139,9 @@
             "license": null,
             "name": "datatopics.worldbank.org",
             "provider": null,
-            "url": "https://datatopics.worldbank.org/world-development-indicators/"
+            "url": "https://datatopics.worldbank.org/world-development-indicators/",
+            "variable_dcid": "Count_Case",
+            "variable_name": "Reported cases"
           }
         ]
       },
@@ -2001,7 +2157,9 @@
             "license": null,
             "name": "wikidata.org",
             "provider": null,
-            "url": "https://www.wikidata.org/wiki/Wikidata:Main_Page"
+            "url": "https://www.wikidata.org/wiki/Wikidata:Main_Page",
+            "variable_dcid": "Count_Person",
+            "variable_name": "Total population"
           }
         ]
       }
@@ -2035,7 +2193,9 @@
           "license": null,
           "name": "datatopics.worldbank.org",
           "provider": null,
-          "url": "https://datatopics.worldbank.org/world-development-indicators/"
+          "url": "https://datatopics.worldbank.org/world-development-indicators/",
+          "variable_dcid": "Count_Case",
+          "variable_name": "Reported cases"
         },
         {
           "dataset": null,
@@ -2043,7 +2203,9 @@
           "license": null,
           "name": "wikidata.org",
           "provider": null,
-          "url": "https://www.wikidata.org/wiki/Wikidata:Main_Page"
+          "url": "https://www.wikidata.org/wiki/Wikidata:Main_Page",
+          "variable_dcid": "Count_Person",
+          "variable_name": "Total population"
         }
       ]
     },
@@ -2173,7 +2335,9 @@
               "license": null,
               "name": "datatopics.worldbank.org",
               "provider": null,
-              "url": "https://datatopics.worldbank.org/world-development-indicators/"
+              "url": "https://datatopics.worldbank.org/world-development-indicators/",
+              "variable_dcid": "Count_Person",
+              "variable_name": "Total population"
             }
           ]
         },
@@ -2199,7 +2363,9 @@
                 "license": null,
                 "name": "datatopics.worldbank.org",
                 "provider": null,
-                "url": "https://datatopics.worldbank.org/world-development-indicators/"
+                "url": "https://datatopics.worldbank.org/world-development-indicators/",
+                "variable_dcid": "Count_Person",
+                "variable_name": "Total population"
               }
             ]
           }
@@ -2295,7 +2461,9 @@
               "license": null,
               "name": "wikidata.org",
               "provider": null,
-              "url": "https://www.wikidata.org/wiki/Wikidata:Main_Page"
+              "url": "https://www.wikidata.org/wiki/Wikidata:Main_Page",
+              "variable_dcid": "Count_Person",
+              "variable_name": "Total population"
             }
           ]
         },
@@ -2321,7 +2489,9 @@
                 "license": null,
                 "name": "wikidata.org",
                 "provider": null,
-                "url": "https://www.wikidata.org/wiki/Wikidata:Main_Page"
+                "url": "https://www.wikidata.org/wiki/Wikidata:Main_Page",
+                "variable_dcid": "Count_Person",
+                "variable_name": "Total population"
               }
             ]
           }
@@ -2338,7 +2508,9 @@
         "license": null,
         "name": "datatopics.worldbank.org",
         "provider": null,
-        "url": "https://datatopics.worldbank.org/world-development-indicators/"
+        "url": "https://datatopics.worldbank.org/world-development-indicators/",
+        "variable_dcid": "Count_Person",
+        "variable_name": "Total population"
       },
       {
         "dataset": null,
@@ -2346,11 +2518,13 @@
         "license": null,
         "name": "wikidata.org",
         "provider": null,
-        "url": "https://www.wikidata.org/wiki/Wikidata:Main_Page"
+        "url": "https://www.wikidata.org/wiki/Wikidata:Main_Page",
+        "variable_dcid": "Count_Person",
+        "variable_name": "Total population"
       }
     ]
   },
-  "digest_prompt": "Step s1: analyze_timeseries on Total population (Count_Person)\n  cite: [1]\n  method: Start-to-end change, extrema, largest period-over-period changes, and compound annual growth rate computed per place over the observed series.\n  metrics: {\"place_count\":1,\"series\":[{\"place_dcid\":\"country/DEU\",\"place_name\":\"Germany\",\"point_count\":21,\"start_date\":\"2000\",\"start_value\":100,\"end_date\":\"2020\",\"end_value\":200,\"min_date\":\"2000\",\"min_value\":100,\"max_date\":\"2020\",\"max_value\":200,\"local_extrema\":[{\"date\":\"2005\",\"value\":180,\"kind\":\"peak\"},{\"date\":\"2010\",\"value\":100,\"kind\":\"trough\"}],\"absolute_change\":100,\"percent_change\":100,\"cagr\":3.53,\"max_period_increase\":{\"from_date\":\"2004\",\"to_date\":\"2005\",\"from_value\":140,\"to_value\":180,\"absolute_change\":40,\"percent_change\":28.57},\"max_period_decrease\":{\"from_date\":\"2005\",\"to_date\":\"2006\",\"from_value\":180,\"to_value\":150,\"absolute_change\":-30,\"percent_change\":-16.67}}],\"missing_places\":[],\"cross_place_comparison\":null}\n\nStep s2: rank_cohort on Total population (Count_Person)\n  coverage: 9 of 10 places on 2022; cite: [2]\n  method: Ranked 9 places by Total population on 2022 in descending order; places with the same value share a rank.\n  metrics: {\"reference_date\":\"2022\",\"direction\":\"desc\",\"max_entries_per_end\":3,\"cohort_size\":9,\"top_n\":[{\"rank\":1,\"is_tied\":false,\"place_dcid\":\"country/C8\",\"place_name\":\"Country 8\",\"value\":1000,\"percentile\":100},{\"rank\":2,\"is_tied\":false,\"place_dcid\":\"country/C5\",\"place_name\":\"Country 5\",\"value\":900,\"percentile\":88.89},{\"rank\":3,\"is_tied\":false,\"place_dcid\":\"country/C2\",\"place_name\":\"Country 2\",\"value\":800,\"percentile\":77.78}],\"bottom_n\":[{\"rank\":9,\"is_tied\":false,\"place_dcid\":\"country/C0\",\"place_name\":\"Country 0\",\"value\":0,\"percentile\":11.11},{\"rank\":8,\"is_tied\":false,\"place_dcid\":\"country/C3\",\"place_name\":\"Country 3\",\"value\":100,\"percentile\":22.22},{\"rank\":7,\"is_tied\":false,\"place_dcid\":\"country/C6\",\"place_name\":\"Country 6\",\"value\":200,\"percentile\":33.33}],\"focal_entries\":[],\"missing_focal_places\":[]}\n  caveat: The places report different latest observation dates, so every value is aligned to 2022.\n  caveat: 9 of 10 places on 2022 reported a value for Total population.\n\nSources:\n[1] datatopics.worldbank.org (https://datatopics.worldbank.org/world-development-indicators/)\n[2] wikidata.org (https://www.wikidata.org/wiki/Wikidata:Main_Page)\n\nMissing data:\n- No county-level series was found for this topic.",
+  "digest_prompt": "Step s1: analyze_timeseries on Total population (Count_Person)\n  cite: [1]\n  method: Start-to-end change, extrema, largest period-over-period changes, and compound annual growth rate computed per place over the observed series.\n  metrics: {\"place_count\":1,\"series\":[{\"place_dcid\":\"country/DEU\",\"place_name\":\"Germany\",\"point_count\":21,\"start_date\":\"2000\",\"start_value\":100,\"end_date\":\"2020\",\"end_value\":200,\"min_date\":\"2000\",\"min_value\":100,\"max_date\":\"2020\",\"max_value\":200,\"local_extrema\":[{\"date\":\"2005\",\"value\":180,\"kind\":\"peak\"},{\"date\":\"2010\",\"value\":100,\"kind\":\"trough\"}],\"absolute_change\":100,\"percent_change\":100,\"cagr\":3.53,\"max_period_increase\":{\"from_date\":\"2004\",\"to_date\":\"2005\",\"from_value\":140,\"to_value\":180,\"absolute_change\":40,\"percent_change\":28.57},\"max_period_decrease\":{\"from_date\":\"2005\",\"to_date\":\"2006\",\"from_value\":180,\"to_value\":150,\"absolute_change\":-30,\"percent_change\":-16.67}}],\"missing_places\":[],\"cross_place_comparison\":null}\n\nStep s2: rank_cohort on Total population (Count_Person)\n  coverage: 9 of 10 places on 2022; cite: [2]\n  method: Ranked 9 places by Total population on 2022 in descending order; places with the same value share a rank.\n  metrics: {\"reference_date\":\"2022\",\"direction\":\"desc\",\"max_entries_per_end\":3,\"cohort_size\":9,\"top_n\":[{\"rank\":1,\"is_tied\":false,\"place_dcid\":\"country/C8\",\"place_name\":\"Country 8\",\"value\":1000,\"percentile\":100},{\"rank\":2,\"is_tied\":false,\"place_dcid\":\"country/C5\",\"place_name\":\"Country 5\",\"value\":900,\"percentile\":88.89},{\"rank\":3,\"is_tied\":false,\"place_dcid\":\"country/C2\",\"place_name\":\"Country 2\",\"value\":800,\"percentile\":77.78}],\"bottom_n\":[{\"rank\":9,\"is_tied\":false,\"place_dcid\":\"country/C0\",\"place_name\":\"Country 0\",\"value\":0,\"percentile\":11.11},{\"rank\":8,\"is_tied\":false,\"place_dcid\":\"country/C3\",\"place_name\":\"Country 3\",\"value\":100,\"percentile\":22.22},{\"rank\":7,\"is_tied\":false,\"place_dcid\":\"country/C6\",\"place_name\":\"Country 6\",\"value\":200,\"percentile\":33.33}],\"focal_entries\":[],\"missing_focal_places\":[]}\n  caveat: The places report different latest observation dates, so every value is aligned to 2022.\n  caveat: 9 of 10 places on 2022 reported a value for Total population.\n\nSources:\n[1] datatopics.worldbank.org, variable: Total population (https://datatopics.worldbank.org/world-development-indicators/)\n[2] wikidata.org, variable: Total population (https://www.wikidata.org/wiki/Wikidata:Main_Page)\n\nMissing data:\n- No county-level series was found for this topic.",
   "distribution_one_place": {
     "caveats": [
       "Only one place (France) reported a value for Total population on 2023; dispersion, quantiles, and z-scores require at least 2 places and skewness at least 3, so they are not computed."
@@ -2415,7 +2589,9 @@
           "license": null,
           "name": "datatopics.worldbank.org",
           "provider": null,
-          "url": "https://datatopics.worldbank.org/world-development-indicators/"
+          "url": "https://datatopics.worldbank.org/world-development-indicators/",
+          "variable_dcid": "Count_Person",
+          "variable_name": "Total population"
         }
       ]
     },
@@ -2441,7 +2617,9 @@
             "license": null,
             "name": "datatopics.worldbank.org",
             "provider": null,
-            "url": "https://datatopics.worldbank.org/world-development-indicators/"
+            "url": "https://datatopics.worldbank.org/world-development-indicators/",
+            "variable_dcid": "Count_Person",
+            "variable_name": "Total population"
           }
         ]
       }
@@ -2513,7 +2691,9 @@
           "license": null,
           "name": "datatopics.worldbank.org",
           "provider": null,
-          "url": "https://datatopics.worldbank.org/world-development-indicators/"
+          "url": "https://datatopics.worldbank.org/world-development-indicators/",
+          "variable_dcid": "Count_Person",
+          "variable_name": "Total population"
         }
       ]
     },
@@ -2539,7 +2719,9 @@
             "license": null,
             "name": "datatopics.worldbank.org",
             "provider": null,
-            "url": "https://datatopics.worldbank.org/world-development-indicators/"
+            "url": "https://datatopics.worldbank.org/world-development-indicators/",
+            "variable_dcid": "Count_Person",
+            "variable_name": "Total population"
           }
         ]
       }
@@ -2636,7 +2818,9 @@
           "license": null,
           "name": "datatopics.worldbank.org",
           "provider": null,
-          "url": "https://datatopics.worldbank.org/world-development-indicators/"
+          "url": "https://datatopics.worldbank.org/world-development-indicators/",
+          "variable_dcid": "Count_Person",
+          "variable_name": "Total population"
         }
       ]
     },
@@ -2662,7 +2846,9 @@
             "license": null,
             "name": "datatopics.worldbank.org",
             "provider": null,
-            "url": "https://datatopics.worldbank.org/world-development-indicators/"
+            "url": "https://datatopics.worldbank.org/world-development-indicators/",
+            "variable_dcid": "Count_Person",
+            "variable_name": "Total population"
           }
         ]
       }
@@ -2751,7 +2937,9 @@
           "license": null,
           "name": "wikidata.org",
           "provider": null,
-          "url": "https://www.wikidata.org/wiki/Wikidata:Main_Page"
+          "url": "https://www.wikidata.org/wiki/Wikidata:Main_Page",
+          "variable_dcid": "Count_Person",
+          "variable_name": "Total population"
         }
       ]
     },
@@ -2777,7 +2965,9 @@
             "license": null,
             "name": "wikidata.org",
             "provider": null,
-            "url": "https://www.wikidata.org/wiki/Wikidata:Main_Page"
+            "url": "https://www.wikidata.org/wiki/Wikidata:Main_Page",
+            "variable_dcid": "Count_Person",
+            "variable_name": "Total population"
           }
         ]
       }
@@ -2848,7 +3038,9 @@
           "license": null,
           "name": "datatopics.worldbank.org",
           "provider": null,
-          "url": "https://datatopics.worldbank.org/world-development-indicators/"
+          "url": "https://datatopics.worldbank.org/world-development-indicators/",
+          "variable_dcid": "Median_Income_Person",
+          "variable_name": "Median income"
         },
         {
           "dataset": null,
@@ -2856,7 +3048,9 @@
           "license": null,
           "name": "wikidata.org",
           "provider": null,
-          "url": "https://www.wikidata.org/wiki/Wikidata:Main_Page"
+          "url": "https://www.wikidata.org/wiki/Wikidata:Main_Page",
+          "variable_dcid": "Count_Person",
+          "variable_name": "Total population"
         }
       ]
     },
@@ -2883,7 +3077,9 @@
             "license": null,
             "name": "wikidata.org",
             "provider": null,
-            "url": "https://www.wikidata.org/wiki/Wikidata:Main_Page"
+            "url": "https://www.wikidata.org/wiki/Wikidata:Main_Page",
+            "variable_dcid": "Count_Person",
+            "variable_name": "Total population"
           }
         ]
       },
@@ -2899,7 +3095,9 @@
             "license": null,
             "name": "datatopics.worldbank.org",
             "provider": null,
-            "url": "https://datatopics.worldbank.org/world-development-indicators/"
+            "url": "https://datatopics.worldbank.org/world-development-indicators/",
+            "variable_dcid": "Median_Income_Person",
+            "variable_name": "Median income"
           }
         ]
       }
@@ -2995,7 +3193,9 @@
           "license": null,
           "name": "datatopics.worldbank.org",
           "provider": null,
-          "url": "https://datatopics.worldbank.org/world-development-indicators/"
+          "url": "https://datatopics.worldbank.org/world-development-indicators/",
+          "variable_dcid": "Count_Person",
+          "variable_name": "Total population"
         }
       ]
     },
@@ -3021,7 +3221,9 @@
             "license": null,
             "name": "datatopics.worldbank.org",
             "provider": null,
-            "url": "https://datatopics.worldbank.org/world-development-indicators/"
+            "url": "https://datatopics.worldbank.org/world-development-indicators/",
+            "variable_dcid": "Count_Person",
+            "variable_name": "Total population"
           }
         ]
       }
@@ -3126,7 +3328,9 @@
           "license": null,
           "name": "datatopics.worldbank.org",
           "provider": null,
-          "url": "https://datatopics.worldbank.org/world-development-indicators/"
+          "url": "https://datatopics.worldbank.org/world-development-indicators/",
+          "variable_dcid": "Count_Person",
+          "variable_name": "Total population"
         }
       ]
     },
@@ -3152,7 +3356,9 @@
             "license": null,
             "name": "datatopics.worldbank.org",
             "provider": null,
-            "url": "https://datatopics.worldbank.org/world-development-indicators/"
+            "url": "https://datatopics.worldbank.org/world-development-indicators/",
+            "variable_dcid": "Count_Person",
+            "variable_name": "Total population"
           }
         ]
       }
@@ -3229,7 +3435,9 @@
           "license": null,
           "name": "datatopics.worldbank.org",
           "provider": null,
-          "url": "https://datatopics.worldbank.org/world-development-indicators/"
+          "url": "https://datatopics.worldbank.org/world-development-indicators/",
+          "variable_dcid": "Count_Person",
+          "variable_name": "Total population"
         }
       ]
     },
@@ -3255,7 +3463,9 @@
             "license": null,
             "name": "datatopics.worldbank.org",
             "provider": null,
-            "url": "https://datatopics.worldbank.org/world-development-indicators/"
+            "url": "https://datatopics.worldbank.org/world-development-indicators/",
+            "variable_dcid": "Count_Person",
+            "variable_name": "Total population"
           }
         ]
       }
@@ -3299,7 +3509,9 @@
           "license": null,
           "name": "datatopics.worldbank.org",
           "provider": null,
-          "url": "https://datatopics.worldbank.org/world-development-indicators/"
+          "url": "https://datatopics.worldbank.org/world-development-indicators/",
+          "variable_dcid": "Count_Person",
+          "variable_name": "Total population"
         }
       ]
     },
@@ -3382,7 +3594,9 @@
           "license": null,
           "name": "datatopics.worldbank.org",
           "provider": null,
-          "url": "https://datatopics.worldbank.org/world-development-indicators/"
+          "url": "https://datatopics.worldbank.org/world-development-indicators/",
+          "variable_dcid": "Count_Person",
+          "variable_name": "Total population"
         }
       ]
     },
@@ -3456,7 +3670,9 @@
           "license": null,
           "name": "datatopics.worldbank.org",
           "provider": null,
-          "url": "https://datatopics.worldbank.org/world-development-indicators/"
+          "url": "https://datatopics.worldbank.org/world-development-indicators/",
+          "variable_dcid": "Count_Person",
+          "variable_name": "Total population"
         },
         {
           "dataset": null,
@@ -3464,7 +3680,29 @@
           "license": null,
           "name": "wikidata.org",
           "provider": null,
-          "url": "https://www.wikidata.org/wiki/Wikidata:Main_Page"
+          "url": "https://www.wikidata.org/wiki/Wikidata:Main_Page",
+          "variable_dcid": "Count_Person_Male",
+          "variable_name": "Male population"
+        },
+        {
+          "dataset": null,
+          "date_range": null,
+          "license": null,
+          "name": "wikidata.org",
+          "provider": null,
+          "url": "https://www.wikidata.org/wiki/Wikidata:Main_Page",
+          "variable_dcid": "Count_Person_Female",
+          "variable_name": "Female population"
+        },
+        {
+          "dataset": null,
+          "date_range": null,
+          "license": null,
+          "name": "wikidata.org",
+          "provider": null,
+          "url": "https://www.wikidata.org/wiki/Wikidata:Main_Page",
+          "variable_dcid": "Count_Person_Urban",
+          "variable_name": "Urban population"
         }
       ]
     },
@@ -3493,7 +3731,9 @@
             "license": null,
             "name": "datatopics.worldbank.org",
             "provider": null,
-            "url": "https://datatopics.worldbank.org/world-development-indicators/"
+            "url": "https://datatopics.worldbank.org/world-development-indicators/",
+            "variable_dcid": "Count_Person",
+            "variable_name": "Total population"
           }
         ]
       },
@@ -3509,7 +3749,9 @@
             "license": null,
             "name": "wikidata.org",
             "provider": null,
-            "url": "https://www.wikidata.org/wiki/Wikidata:Main_Page"
+            "url": "https://www.wikidata.org/wiki/Wikidata:Main_Page",
+            "variable_dcid": "Count_Person_Female",
+            "variable_name": "Female population"
           }
         ]
       },
@@ -3525,7 +3767,9 @@
             "license": null,
             "name": "wikidata.org",
             "provider": null,
-            "url": "https://www.wikidata.org/wiki/Wikidata:Main_Page"
+            "url": "https://www.wikidata.org/wiki/Wikidata:Main_Page",
+            "variable_dcid": "Count_Person_Male",
+            "variable_name": "Male population"
           }
         ]
       },
@@ -3541,7 +3785,9 @@
             "license": null,
             "name": "wikidata.org",
             "provider": null,
-            "url": "https://www.wikidata.org/wiki/Wikidata:Main_Page"
+            "url": "https://www.wikidata.org/wiki/Wikidata:Main_Page",
+            "variable_dcid": "Count_Person_Urban",
+            "variable_name": "Urban population"
           }
         ]
       }
@@ -3586,7 +3832,9 @@
           "license": null,
           "name": "datatopics.worldbank.org",
           "provider": null,
-          "url": "https://datatopics.worldbank.org/world-development-indicators/"
+          "url": "https://datatopics.worldbank.org/world-development-indicators/",
+          "variable_dcid": "Count_Person",
+          "variable_name": "Total population"
         }
       ]
     },
@@ -3612,7 +3860,9 @@
             "license": null,
             "name": "datatopics.worldbank.org",
             "provider": null,
-            "url": "https://datatopics.worldbank.org/world-development-indicators/"
+            "url": "https://datatopics.worldbank.org/world-development-indicators/",
+            "variable_dcid": "Count_Person",
+            "variable_name": "Total population"
           }
         ]
       }
@@ -3639,7 +3889,19 @@
           "license": null,
           "name": "datatopics.worldbank.org",
           "provider": null,
-          "url": "https://datatopics.worldbank.org/world-development-indicators/"
+          "url": "https://datatopics.worldbank.org/world-development-indicators/",
+          "variable_dcid": "Amount_EconomicActivity_GrossDomesticProduction_Nominal",
+          "variable_name": "Nominal GDP"
+        },
+        {
+          "dataset": null,
+          "date_range": null,
+          "license": null,
+          "name": "datatopics.worldbank.org",
+          "provider": null,
+          "url": "https://datatopics.worldbank.org/world-development-indicators/",
+          "variable_dcid": "Amount_Consumption_Households",
+          "variable_name": "Household consumption"
         }
       ]
     },
@@ -3666,7 +3928,9 @@
             "license": null,
             "name": "datatopics.worldbank.org",
             "provider": null,
-            "url": "https://datatopics.worldbank.org/world-development-indicators/"
+            "url": "https://datatopics.worldbank.org/world-development-indicators/",
+            "variable_dcid": "Amount_Consumption_Households",
+            "variable_name": "Household consumption"
           }
         ]
       },
@@ -3682,7 +3946,9 @@
             "license": null,
             "name": "datatopics.worldbank.org",
             "provider": null,
-            "url": "https://datatopics.worldbank.org/world-development-indicators/"
+            "url": "https://datatopics.worldbank.org/world-development-indicators/",
+            "variable_dcid": "Amount_EconomicActivity_GrossDomesticProduction_Nominal",
+            "variable_name": "Nominal GDP"
           }
         ]
       }
@@ -3710,7 +3976,19 @@
           "license": null,
           "name": "datatopics.worldbank.org",
           "provider": null,
-          "url": "https://datatopics.worldbank.org/world-development-indicators/"
+          "url": "https://datatopics.worldbank.org/world-development-indicators/",
+          "variable_dcid": "Amount_EconomicActivity_GrossDomesticProduction_Nominal",
+          "variable_name": "Nominal GDP"
+        },
+        {
+          "dataset": null,
+          "date_range": null,
+          "license": null,
+          "name": "datatopics.worldbank.org",
+          "provider": null,
+          "url": "https://datatopics.worldbank.org/world-development-indicators/",
+          "variable_dcid": "Amount_Debt_Government",
+          "variable_name": "Government debt"
         }
       ]
     },
@@ -3737,7 +4015,9 @@
             "license": null,
             "name": "datatopics.worldbank.org",
             "provider": null,
-            "url": "https://datatopics.worldbank.org/world-development-indicators/"
+            "url": "https://datatopics.worldbank.org/world-development-indicators/",
+            "variable_dcid": "Amount_Debt_Government",
+            "variable_name": "Government debt"
           }
         ]
       },
@@ -3753,7 +4033,9 @@
             "license": null,
             "name": "datatopics.worldbank.org",
             "provider": null,
-            "url": "https://datatopics.worldbank.org/world-development-indicators/"
+            "url": "https://datatopics.worldbank.org/world-development-indicators/",
+            "variable_dcid": "Amount_EconomicActivity_GrossDomesticProduction_Nominal",
+            "variable_name": "Nominal GDP"
           }
         ]
       }
@@ -3793,7 +4075,9 @@
           "license": null,
           "name": "datatopics.worldbank.org",
           "provider": null,
-          "url": "https://datatopics.worldbank.org/world-development-indicators/"
+          "url": "https://datatopics.worldbank.org/world-development-indicators/",
+          "variable_dcid": "Count_Case",
+          "variable_name": "Reported cases"
         },
         {
           "dataset": null,
@@ -3801,7 +4085,9 @@
           "license": null,
           "name": "wikidata.org",
           "provider": null,
-          "url": "https://www.wikidata.org/wiki/Wikidata:Main_Page"
+          "url": "https://www.wikidata.org/wiki/Wikidata:Main_Page",
+          "variable_dcid": "Count_Person",
+          "variable_name": "Total population"
         }
       ]
     },
@@ -3828,7 +4114,9 @@
             "license": null,
             "name": "datatopics.worldbank.org",
             "provider": null,
-            "url": "https://datatopics.worldbank.org/world-development-indicators/"
+            "url": "https://datatopics.worldbank.org/world-development-indicators/",
+            "variable_dcid": "Count_Case",
+            "variable_name": "Reported cases"
           }
         ]
       },
@@ -3844,7 +4132,9 @@
             "license": null,
             "name": "wikidata.org",
             "provider": null,
-            "url": "https://www.wikidata.org/wiki/Wikidata:Main_Page"
+            "url": "https://www.wikidata.org/wiki/Wikidata:Main_Page",
+            "variable_dcid": "Count_Person",
+            "variable_name": "Total population"
           }
         ]
       }
@@ -3872,7 +4162,19 @@
           "license": null,
           "name": "datatopics.worldbank.org",
           "provider": null,
-          "url": "https://datatopics.worldbank.org/world-development-indicators/"
+          "url": "https://datatopics.worldbank.org/world-development-indicators/",
+          "variable_dcid": "Amount_EconomicActivity_GrossDomesticProduction_Nominal",
+          "variable_name": "Nominal GDP"
+        },
+        {
+          "dataset": null,
+          "date_range": null,
+          "license": null,
+          "name": "datatopics.worldbank.org",
+          "provider": null,
+          "url": "https://datatopics.worldbank.org/world-development-indicators/",
+          "variable_dcid": "Amount_Consumption_Households",
+          "variable_name": "Household consumption"
         }
       ]
     },
@@ -3899,7 +4201,9 @@
             "license": null,
             "name": "datatopics.worldbank.org",
             "provider": null,
-            "url": "https://datatopics.worldbank.org/world-development-indicators/"
+            "url": "https://datatopics.worldbank.org/world-development-indicators/",
+            "variable_dcid": "Amount_Consumption_Households",
+            "variable_name": "Household consumption"
           }
         ]
       },
@@ -3915,7 +4219,9 @@
             "license": null,
             "name": "datatopics.worldbank.org",
             "provider": null,
-            "url": "https://datatopics.worldbank.org/world-development-indicators/"
+            "url": "https://datatopics.worldbank.org/world-development-indicators/",
+            "variable_dcid": "Amount_EconomicActivity_GrossDomesticProduction_Nominal",
+            "variable_name": "Nominal GDP"
           }
         ]
       }
@@ -3943,7 +4249,19 @@
           "license": null,
           "name": "datatopics.worldbank.org",
           "provider": null,
-          "url": "https://datatopics.worldbank.org/world-development-indicators/"
+          "url": "https://datatopics.worldbank.org/world-development-indicators/",
+          "variable_dcid": "Amount_EconomicActivity_GrossDomesticProduction_Nominal",
+          "variable_name": "Nominal GDP"
+        },
+        {
+          "dataset": null,
+          "date_range": null,
+          "license": null,
+          "name": "datatopics.worldbank.org",
+          "provider": null,
+          "url": "https://datatopics.worldbank.org/world-development-indicators/",
+          "variable_dcid": "Amount_Debt_Government",
+          "variable_name": "Government debt"
         }
       ]
     },
@@ -3970,7 +4288,9 @@
             "license": null,
             "name": "datatopics.worldbank.org",
             "provider": null,
-            "url": "https://datatopics.worldbank.org/world-development-indicators/"
+            "url": "https://datatopics.worldbank.org/world-development-indicators/",
+            "variable_dcid": "Amount_Debt_Government",
+            "variable_name": "Government debt"
           }
         ]
       },
@@ -3986,7 +4306,9 @@
             "license": null,
             "name": "datatopics.worldbank.org",
             "provider": null,
-            "url": "https://datatopics.worldbank.org/world-development-indicators/"
+            "url": "https://datatopics.worldbank.org/world-development-indicators/",
+            "variable_dcid": "Amount_EconomicActivity_GrossDomesticProduction_Nominal",
+            "variable_name": "Nominal GDP"
           }
         ]
       }
@@ -4029,7 +4351,9 @@
           "license": null,
           "name": "datatopics.worldbank.org",
           "provider": null,
-          "url": "https://datatopics.worldbank.org/world-development-indicators/"
+          "url": "https://datatopics.worldbank.org/world-development-indicators/",
+          "variable_dcid": "Count_Person",
+          "variable_name": "Total population"
         }
       ]
     },
@@ -4055,7 +4379,9 @@
             "license": null,
             "name": "datatopics.worldbank.org",
             "provider": null,
-            "url": "https://datatopics.worldbank.org/world-development-indicators/"
+            "url": "https://datatopics.worldbank.org/world-development-indicators/",
+            "variable_dcid": "Count_Person",
+            "variable_name": "Total population"
           }
         ]
       }
@@ -4097,7 +4423,9 @@
           "license": null,
           "name": "wikidata.org",
           "provider": null,
-          "url": "https://www.wikidata.org/wiki/Wikidata:Main_Page"
+          "url": "https://www.wikidata.org/wiki/Wikidata:Main_Page",
+          "variable_dcid": "Count_Person",
+          "variable_name": "Total population"
         }
       ]
     },
@@ -4123,7 +4451,9 @@
             "license": null,
             "name": "wikidata.org",
             "provider": null,
-            "url": "https://www.wikidata.org/wiki/Wikidata:Main_Page"
+            "url": "https://www.wikidata.org/wiki/Wikidata:Main_Page",
+            "variable_dcid": "Count_Person",
+            "variable_name": "Total population"
           }
         ]
       }
@@ -4186,7 +4516,9 @@
           "license": null,
           "name": "datatopics.worldbank.org",
           "provider": null,
-          "url": "https://datatopics.worldbank.org/world-development-indicators/"
+          "url": "https://datatopics.worldbank.org/world-development-indicators/",
+          "variable_dcid": "Count_Person",
+          "variable_name": "Total population"
         }
       ]
     },
@@ -4212,7 +4544,9 @@
             "license": null,
             "name": "datatopics.worldbank.org",
             "provider": null,
-            "url": "https://datatopics.worldbank.org/world-development-indicators/"
+            "url": "https://datatopics.worldbank.org/world-development-indicators/",
+            "variable_dcid": "Count_Person",
+            "variable_name": "Total population"
           }
         ]
       }
@@ -4239,7 +4573,9 @@
           "license": null,
           "name": "datatopics.worldbank.org",
           "provider": null,
-          "url": "https://datatopics.worldbank.org/world-development-indicators/"
+          "url": "https://datatopics.worldbank.org/world-development-indicators/",
+          "variable_dcid": "Count_Person",
+          "variable_name": "Total population"
         }
       ]
     },
@@ -4265,7 +4601,9 @@
             "license": null,
             "name": "datatopics.worldbank.org",
             "provider": null,
-            "url": "https://datatopics.worldbank.org/world-development-indicators/"
+            "url": "https://datatopics.worldbank.org/world-development-indicators/",
+            "variable_dcid": "Count_Person",
+            "variable_name": "Total population"
           }
         ]
       }
@@ -4292,7 +4630,9 @@
           "license": null,
           "name": "datatopics.worldbank.org",
           "provider": null,
-          "url": "https://datatopics.worldbank.org/world-development-indicators/"
+          "url": "https://datatopics.worldbank.org/world-development-indicators/",
+          "variable_dcid": "Count_Person",
+          "variable_name": "Total population"
         }
       ]
     },
@@ -4318,7 +4658,9 @@
             "license": null,
             "name": "datatopics.worldbank.org",
             "provider": null,
-            "url": "https://datatopics.worldbank.org/world-development-indicators/"
+            "url": "https://datatopics.worldbank.org/world-development-indicators/",
+            "variable_dcid": "Count_Person",
+            "variable_name": "Total population"
           }
         ]
       }
@@ -4361,7 +4703,9 @@
           "license": null,
           "name": "datatopics.worldbank.org",
           "provider": null,
-          "url": "https://datatopics.worldbank.org/world-development-indicators/"
+          "url": "https://datatopics.worldbank.org/world-development-indicators/",
+          "variable_dcid": "Percent_Person_WithDiabetes",
+          "variable_name": "Diabetes prevalence"
         },
         {
           "dataset": null,
@@ -4369,7 +4713,9 @@
           "license": null,
           "name": "wikidata.org",
           "provider": null,
-          "url": "https://www.wikidata.org/wiki/Wikidata:Main_Page"
+          "url": "https://www.wikidata.org/wiki/Wikidata:Main_Page",
+          "variable_dcid": "Count_Person",
+          "variable_name": "Total population"
         }
       ]
     },
@@ -4396,7 +4742,9 @@
             "license": null,
             "name": "wikidata.org",
             "provider": null,
-            "url": "https://www.wikidata.org/wiki/Wikidata:Main_Page"
+            "url": "https://www.wikidata.org/wiki/Wikidata:Main_Page",
+            "variable_dcid": "Count_Person",
+            "variable_name": "Total population"
           }
         ]
       },
@@ -4412,7 +4760,9 @@
             "license": null,
             "name": "datatopics.worldbank.org",
             "provider": null,
-            "url": "https://datatopics.worldbank.org/world-development-indicators/"
+            "url": "https://datatopics.worldbank.org/world-development-indicators/",
+            "variable_dcid": "Percent_Person_WithDiabetes",
+            "variable_name": "Diabetes prevalence"
           }
         ]
       }
@@ -4515,7 +4865,9 @@
           "license": null,
           "name": "wikidata.org",
           "provider": null,
-          "url": "https://www.wikidata.org/wiki/Wikidata:Main_Page"
+          "url": "https://www.wikidata.org/wiki/Wikidata:Main_Page",
+          "variable_dcid": "Percent_Person_WithDiabetes",
+          "variable_name": "Diabetes prevalence"
         },
         {
           "dataset": null,
@@ -4523,7 +4875,9 @@
           "license": null,
           "name": "datatopics.worldbank.org",
           "provider": null,
-          "url": "https://datatopics.worldbank.org/world-development-indicators/"
+          "url": "https://datatopics.worldbank.org/world-development-indicators/",
+          "variable_dcid": "Median_Income_Household",
+          "variable_name": "Median household income"
         }
       ]
     },
@@ -4550,7 +4904,9 @@
             "license": null,
             "name": "datatopics.worldbank.org",
             "provider": null,
-            "url": "https://datatopics.worldbank.org/world-development-indicators/"
+            "url": "https://datatopics.worldbank.org/world-development-indicators/",
+            "variable_dcid": "Median_Income_Household",
+            "variable_name": "Median household income"
           }
         ]
       },
@@ -4566,7 +4922,9 @@
             "license": null,
             "name": "wikidata.org",
             "provider": null,
-            "url": "https://www.wikidata.org/wiki/Wikidata:Main_Page"
+            "url": "https://www.wikidata.org/wiki/Wikidata:Main_Page",
+            "variable_dcid": "Percent_Person_WithDiabetes",
+            "variable_name": "Diabetes prevalence"
           }
         ]
       }
@@ -4654,7 +5012,9 @@
       "license": null,
       "name": "wikidata.org",
       "provider": null,
-      "url": "https://www.wikidata.org/wiki/Wikidata:Main_Page"
+      "url": "https://www.wikidata.org/wiki/Wikidata:Main_Page",
+      "variable_dcid": "Count_Person",
+      "variable_name": "Total population"
     },
     "unit": null,
     "value_range": [
@@ -4685,7 +5045,9 @@
       "license": null,
       "name": "wikidata.org",
       "provider": null,
-      "url": "https://www.wikidata.org/wiki/Wikidata:Main_Page"
+      "url": "https://www.wikidata.org/wiki/Wikidata:Main_Page",
+      "variable_dcid": "Count_Person",
+      "variable_name": "Total population"
     },
     "unit": null,
     "value_range": null,
@@ -4761,7 +5123,9 @@
       "license": null,
       "name": "datatopics.worldbank.org",
       "provider": null,
-      "url": "https://datatopics.worldbank.org/world-development-indicators/"
+      "url": "https://datatopics.worldbank.org/world-development-indicators/",
+      "variable_dcid": "Count_Person",
+      "variable_name": "Total population"
     },
     "unit": null,
     "value_range": [
@@ -4821,7 +5185,9 @@
           "license": null,
           "name": "datatopics.worldbank.org",
           "provider": null,
-          "url": "https://datatopics.worldbank.org/world-development-indicators/"
+          "url": "https://datatopics.worldbank.org/world-development-indicators/",
+          "variable_dcid": "Count_Person",
+          "variable_name": "Total population"
         }
       ]
     },
@@ -4847,7 +5213,9 @@
             "license": null,
             "name": "datatopics.worldbank.org",
             "provider": null,
-            "url": "https://datatopics.worldbank.org/world-development-indicators/"
+            "url": "https://datatopics.worldbank.org/world-development-indicators/",
+            "variable_dcid": "Count_Person",
+            "variable_name": "Total population"
           }
         ]
       }
@@ -4900,7 +5268,9 @@
           "license": null,
           "name": "datatopics.worldbank.org",
           "provider": null,
-          "url": "https://datatopics.worldbank.org/world-development-indicators/"
+          "url": "https://datatopics.worldbank.org/world-development-indicators/",
+          "variable_dcid": "Count_Person",
+          "variable_name": "Total population"
         }
       ]
     },
@@ -4926,7 +5296,9 @@
             "license": null,
             "name": "datatopics.worldbank.org",
             "provider": null,
-            "url": "https://datatopics.worldbank.org/world-development-indicators/"
+            "url": "https://datatopics.worldbank.org/world-development-indicators/",
+            "variable_dcid": "Count_Person",
+            "variable_name": "Total population"
           }
         ]
       }
@@ -5001,7 +5373,9 @@
           "license": null,
           "name": "datatopics.worldbank.org",
           "provider": null,
-          "url": "https://datatopics.worldbank.org/world-development-indicators/"
+          "url": "https://datatopics.worldbank.org/world-development-indicators/",
+          "variable_dcid": "Count_Person",
+          "variable_name": "Total population"
         }
       ]
     },
@@ -5027,7 +5401,9 @@
             "license": null,
             "name": "datatopics.worldbank.org",
             "provider": null,
-            "url": "https://datatopics.worldbank.org/world-development-indicators/"
+            "url": "https://datatopics.worldbank.org/world-development-indicators/",
+            "variable_dcid": "Count_Person",
+            "variable_name": "Total population"
           }
         ]
       }
@@ -5112,7 +5488,9 @@
           "license": null,
           "name": "datatopics.worldbank.org",
           "provider": null,
-          "url": "https://datatopics.worldbank.org/world-development-indicators/"
+          "url": "https://datatopics.worldbank.org/world-development-indicators/",
+          "variable_dcid": "Count_Person",
+          "variable_name": "Total population"
         }
       ]
     },
@@ -5138,7 +5516,9 @@
             "license": null,
             "name": "datatopics.worldbank.org",
             "provider": null,
-            "url": "https://datatopics.worldbank.org/world-development-indicators/"
+            "url": "https://datatopics.worldbank.org/world-development-indicators/",
+            "variable_dcid": "Count_Person",
+            "variable_name": "Total population"
           }
         ]
       }
@@ -5249,7 +5629,9 @@
           "license": null,
           "name": "datatopics.worldbank.org",
           "provider": null,
-          "url": "https://datatopics.worldbank.org/world-development-indicators/"
+          "url": "https://datatopics.worldbank.org/world-development-indicators/",
+          "variable_dcid": "Count_Person",
+          "variable_name": "Total population"
         }
       ]
     },
@@ -5275,7 +5657,9 @@
             "license": null,
             "name": "datatopics.worldbank.org",
             "provider": null,
-            "url": "https://datatopics.worldbank.org/world-development-indicators/"
+            "url": "https://datatopics.worldbank.org/world-development-indicators/",
+            "variable_dcid": "Count_Person",
+            "variable_name": "Total population"
           }
         ]
       }
@@ -5334,7 +5718,9 @@
           "license": null,
           "name": "datatopics.worldbank.org",
           "provider": null,
-          "url": "https://datatopics.worldbank.org/world-development-indicators/"
+          "url": "https://datatopics.worldbank.org/world-development-indicators/",
+          "variable_dcid": "Count_Person",
+          "variable_name": "Total population"
         }
       ]
     },
@@ -5360,7 +5746,9 @@
             "license": null,
             "name": "datatopics.worldbank.org",
             "provider": null,
-            "url": "https://datatopics.worldbank.org/world-development-indicators/"
+            "url": "https://datatopics.worldbank.org/world-development-indicators/",
+            "variable_dcid": "Count_Person",
+            "variable_name": "Total population"
           }
         ]
       }
@@ -5412,7 +5800,9 @@
           "license": null,
           "name": "datatopics.worldbank.org",
           "provider": null,
-          "url": "https://datatopics.worldbank.org/world-development-indicators/"
+          "url": "https://datatopics.worldbank.org/world-development-indicators/",
+          "variable_dcid": "Count_Person",
+          "variable_name": "Total population"
         }
       ]
     },
@@ -5438,7 +5828,9 @@
             "license": null,
             "name": "datatopics.worldbank.org",
             "provider": null,
-            "url": "https://datatopics.worldbank.org/world-development-indicators/"
+            "url": "https://datatopics.worldbank.org/world-development-indicators/",
+            "variable_dcid": "Count_Person",
+            "variable_name": "Total population"
           }
         ]
       }
@@ -5498,7 +5890,9 @@
           "license": null,
           "name": "datatopics.worldbank.org",
           "provider": null,
-          "url": "https://datatopics.worldbank.org/world-development-indicators/"
+          "url": "https://datatopics.worldbank.org/world-development-indicators/",
+          "variable_dcid": "Count_Person",
+          "variable_name": "Total population"
         }
       ]
     },
@@ -5524,7 +5918,9 @@
             "license": null,
             "name": "datatopics.worldbank.org",
             "provider": null,
-            "url": "https://datatopics.worldbank.org/world-development-indicators/"
+            "url": "https://datatopics.worldbank.org/world-development-indicators/",
+            "variable_dcid": "Count_Person",
+            "variable_name": "Total population"
           }
         ]
       }

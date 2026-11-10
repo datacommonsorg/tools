@@ -20,6 +20,9 @@ leaf module allows both `mcp/metadata.py` (which parses raw MCP metadata into
 `Source` records) and `analytics/` (which aggregates provenance across tables
 and script results) to depend on the same canonical types without introducing a
 cycle between layers.
+
+A `Source` is one data source as cited for one variable, so two variables
+drawn from one data source are two citations.
 """
 
 from dataclasses import dataclass
@@ -37,7 +40,11 @@ _METHODOLOGY_SEPARATOR = "; "
 
 @dataclass(frozen=True)
 class Source:
-    """One data source cited by an observation table or script result.
+    """One data source as cited for one variable.
+
+    Equality compares every field, the variable included, and drives the
+    deduplication and numbering of citations: equal values are one citation,
+    and two variables drawn from one data source are two.
 
     Attributes:
         name: Display name of the dataset or publishing organization.
@@ -47,6 +54,10 @@ class Source:
         dataset: Dataset name (`isPartOf`) when reported by metadata.
         date_range: Year coverage: one year, or start and end years joined by
             a spaced en dash.
+        variable_dcid: DCID of the variable the source is cited for, or
+            `None` when the citation names no variable.
+        variable_name: Display name of that variable, or `None` when the
+            citation names no variable.
     """
 
     name: str
@@ -55,6 +66,8 @@ class Source:
     provider: str | None = None
     dataset: str | None = None
     date_range: str | None = None
+    variable_dcid: str | None = None
+    variable_name: str | None = None
 
 
 @dataclass(frozen=True)

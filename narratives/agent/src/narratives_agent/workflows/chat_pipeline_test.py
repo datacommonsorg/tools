@@ -52,6 +52,10 @@ Verifies that:
    `refused` with reason `safety_blocked`.
 9. The serialized frames of a complete turn match the recorded wire
    sequence, byte for byte.
+10. Chat disabled by `ENABLE_CHAT=false` or by `chat.enabled` ends the turn
+    in one `chat_disabled` terminal frame carrying the effective unavailable
+    message before any model call, even without a configuration, and
+    `ENABLE_CHAT=true` overrides a configuration that disables chat.
 """
 
 import asyncio
@@ -72,7 +76,12 @@ from narratives_agent.analytics.provenance import Provenance, Source
 from narratives_agent.analytics.ranking import rank_cohort
 from narratives_agent.analytics.tables import ObservationRow, ObservationTable
 from narratives_agent.analytics.timeseries import analyze_timeseries
-from narratives_agent.config_model import AgentConfig, Prompts
+from narratives_agent.config_model import (
+    DEFAULT_UNAVAILABLE_MESSAGE,
+    AgentConfig,
+    ChatConfig,
+    Prompts,
+)
 from narratives_agent.gemini.client import (
     GeminiBlockedError,
     GeminiError,
@@ -83,6 +92,7 @@ from narratives_agent.gemini.schemas import QueryClassification
 from narratives_agent.json_value import JsonObject, JsonValue
 from narratives_agent.mcp import capabilities
 from narratives_agent.mcp import client as mcp_client
+from narratives_agent.settings import ENABLE_CHAT_ENV, UNAVAILABLE_MESSAGE_ENV
 from narratives_agent.telemetry import (
     ErrorType,
     TerminalState,
@@ -105,7 +115,6 @@ from narratives_agent.workflows.mcp_loop import (
     StatusCallback,
 )
 from narratives_agent.workflows.messages import (
-    CHAT_DISABLED,
     CLASSIFY_STATUS,
     INTERNAL_ERROR,
     MCP_TOOLS_TIMEOUT,
@@ -118,6 +127,7 @@ from narratives_agent.workflows.messages import (
 )
 from narratives_agent.workflows.pattern_guidance import build_pattern_directive
 from narratives_agent.workflows.processing import (
+    ProcessingDiagnostic,
     StepRefusalDiagnostic,
     execute_specification,
 )
@@ -152,6 +162,8 @@ _DEFAULT_CHART: JsonObject = {
     "facet_ids": {"Count_Person": "f1"},
 }
 _FOLLOW_UPS = ["And Spain?"]
+# Unavailable message of a configuration that disables chat.
+_CLOSED = "Closed for maintenance."
 _TRANSCRIPT = Transcript(
     turns=[],
     compacted_summary=None,
@@ -360,6 +372,20 @@ async def _run_accepted_loop(cache: TurnCache, **_: object) -> DiscoveryResult:
     )
 
 
+def _use_config(
+    monkeypatch: pytest.MonkeyPatch, loaded: AgentConfig | None
+) -> None:
+    """Makes every configuration read of the turn return `loaded`.
+
+    `run_turn` reads the configuration through `chat_pipeline.load_config`
+    and resolves chat availability through `config.get_chat_config`, which
+    calls `config.load_config`, so both names are replaced; replacing one
+    would let the other read the developer's local configuration.
+    """
+    monkeypatch.setattr(chat_pipeline, "load_config", lambda: loaded)
+    monkeypatch.setattr(config, "load_config", lambda: loaded)
+
+
 @pytest.fixture
 def turn(monkeypatch: pytest.MonkeyPatch) -> _Turn:
     """Stubs every external call of a turn so each stage succeeds at once."""
@@ -385,6 +411,14 @@ def turn(monkeypatch: pytest.MonkeyPatch) -> _Turn:
 
     async def classify(*args: object, **_: object) -> Admitted:
         return Admitted(_CLASSIFICATION)
+
+    async def describe_no_variables(
+        name: str, arguments: JsonObject
+    ) -> JsonObject:
+        # The metadata backfill before a default specification is the only
+        # MCP tool call outside the stubbed loop; it describes nothing.
+        _ = (name, arguments)
+        return {"content": []}
 
     async def run_discovery(
         transcript: Transcript,
@@ -425,16 +459,16 @@ def turn(monkeypatch: pytest.MonkeyPatch) -> _Turn:
         return list(_FOLLOW_UPS) if topics.unused or topics.reported else []
 
     monkeypatch.setattr(chat_pipeline, "TurnTelemetry", create_telemetry)
-    monkeypatch.setattr(
-        chat_pipeline,
-        "load_config",
-        lambda: AgentConfig(
+    _use_config(
+        monkeypatch,
+        AgentConfig(
             prompts=Prompts(discovery="Gather data.", synthesis="Write prose.")
         ),
     )
     monkeypatch.setattr(chat_pipeline, "classify_query", classify)
     monkeypatch.setattr(mcp_client, "ensure_session_scope", lambda: None)
     monkeypatch.setattr(mcp_client, "async_get_tools", get_tools)
+    monkeypatch.setattr(mcp_client, "async_call_tool", describe_no_variables)
     monkeypatch.setattr(chat_pipeline, "execute_discovery_loop", run_discovery)
     monkeypatch.setattr(chat_pipeline, "async_gemini_stream", start_synthesis)
     monkeypatch.setattr(
@@ -933,6 +967,98 @@ async def test_a_default_whose_every_table_refuses_notes_each_failure(
     assert "Step s1: rank_cohort" not in context
     assert context.count("- An analysis step failed: ") == 1
     assert context.count("- The default analysis also failed: ") == 1
+    assert turn.finished == [(TerminalState.COMPLETE, None)]
+
+
+@pytest.mark.asyncio
+async def test_a_default_requests_metadata_once_before_its_first_run(
+    monkeypatch: pytest.MonkeyPatch, turn: _Turn
+) -> None:
+    # Test: The metadata backfill of the default specification.
+    # Situation: A top-N turn ends at a bound with two state cohort tables
+    #   served from facet `f1` without metadata; the first has a value for
+    #   one of four states, so its ranking refuses and the default runs
+    #   again without it; the server describes `f1` of the second table's
+    #   variable as a World Bank dataset.
+    # Expectation: The server requests metadata for both tables before the
+    #   first run and not before the retry, the streamed source of the
+    #   second table names the World Bank, and no tool-call frame is
+    #   emitted for the requests.
+    ranking = QueryClassification.model_validate(
+        {
+            "serviceable": True,
+            "pattern": "top_n_ranking",
+            "geographic_shape": "child_places",
+            "requires_computation": True,
+        }
+    )
+
+    async def classify(*args: object, **_: object) -> Admitted:
+        return Admitted(ranking)
+
+    log: list[str] = []
+    payload: JsonObject = {
+        "provenances": {
+            "dc/base/WB": {
+                "properties": {"source": "World Bank", "url": "https://wb/"}
+            }
+        },
+        "variables": {
+            "Percent_Diabetes": {
+                "facets": [{"id": "f1", "provenanceId": "dc/base/WB"}]
+            }
+        },
+    }
+
+    async def describe_diabetes(name: str, arguments: JsonObject) -> JsonObject:
+        log.append(f"metadata:{arguments['variable_dcids']}")
+        return {"content": [{"type": "text", "text": json.dumps(payload)}]}
+
+    async def log_execution(
+        specification: AnalysisSpecification, cache: TurnCache
+    ) -> AnalysisDigest | ProcessingDiagnostic:
+        log.append("execute")
+        return await execute_specification(specification, cache)
+
+    def make_faceted_cohort(
+        table_id: str, variable_dcid: str, places: str, row_count: int
+    ) -> CachedTable:
+        entry = _make_state_cohort(table_id, variable_dcid, places)
+        return replace(
+            entry,
+            table=replace(
+                entry.table,
+                rows=entry.table.rows[:row_count],
+                facet_id="f1",
+                source=_INSEE,
+            ),
+        )
+
+    monkeypatch.setattr(chat_pipeline, "classify_query", classify)
+    monkeypatch.setattr(mcp_client, "async_call_tool", describe_diabetes)
+    monkeypatch.setattr(chat_pipeline, "execute_specification", log_execution)
+    _install_loop(
+        monkeypatch,
+        DiscoveryResult(truncated=True),
+        make_faceted_cohort("t1", "Median_Income", "01 02 03 04", 1),
+        make_faceted_cohort("t2", "Percent_Diabetes", "04 05 06", 3),
+    )
+
+    await chat_pipeline.run_turn(_TRANSCRIPT, turn.emit)
+
+    assert log == [
+        "metadata:['Median_Income']",
+        "metadata:['Percent_Diabetes']",
+        "execute",
+        "execute",
+    ]
+    (sources,) = turn.list_content_payloads("sources")
+    assert isinstance(sources, list)
+    providers = [
+        source.get("provider") for source in sources if isinstance(source, dict)
+    ]
+    assert providers == ["World Bank"]
+    assert turn.list_content_payloads("tool_call") == []
     assert turn.finished == [(TerminalState.COMPLETE, None)]
 
 
@@ -1464,7 +1590,7 @@ async def test_missing_config_ends_the_turn_before_classify(
     # Expectation: The turn ends immediately in one `error` terminal event with
     #   reason `config_missing`, without calling classify, discovery, or
     #   synthesis.
-    monkeypatch.setattr(chat_pipeline, "load_config", lambda: None)
+    _use_config(monkeypatch, None)
 
     await chat_pipeline.run_turn(_TRANSCRIPT, turn.emit)
 
@@ -2207,16 +2333,32 @@ async def test_a_synthesis_stream_blocked_after_text_fails_as_stream_error(
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("unavailable_message", "expected_message"),
+    [
+        pytest.param(None, DEFAULT_UNAVAILABLE_MESSAGE, id="default message"),
+        pytest.param(
+            " Back at noon. ", "Back at noon.", id="environment message"
+        ),
+    ],
+)
 async def test_run_turn_aborts_immediately_when_chat_is_disabled(
-    monkeypatch: pytest.MonkeyPatch, turn: _Turn
+    monkeypatch: pytest.MonkeyPatch,
+    turn: _Turn,
+    unavailable_message: str | None,
+    expected_message: str,
 ) -> None:
     # Test: `ENABLE_CHAT` off switch in `run_turn`.
-    # Situation: `ENABLE_CHAT` is set to `"false"`.
-    # Expectation: `run_turn` emits only a single `error` terminal frame with
-    #   `reason="chat_disabled"` and `CHAT_DISABLED`, makes no classifier, MCP,
-    #   or synthesis calls, and records `("refused", "chat_disabled")` in
-    #   telemetry so disabled turns are logged at INFO rather than ERROR.
-    monkeypatch.setenv("ENABLE_CHAT", "false")
+    # Situation: `ENABLE_CHAT` is set to `"false"`, and `UNAVAILABLE_MESSAGE`
+    #   is unset or set to a padded message.
+    # Expectation: `run_turn` emits only a single non-retryable `error`
+    #   terminal frame with `reason="chat_disabled"` and the default or
+    #   stripped environment message, makes no classifier, MCP, or synthesis
+    #   calls, and records `("refused", "chat_disabled")` in telemetry so
+    #   disabled turns are logged at INFO rather than ERROR.
+    monkeypatch.setenv(ENABLE_CHAT_ENV, "false")
+    if unavailable_message is not None:
+        monkeypatch.setenv(UNAVAILABLE_MESSAGE_ENV, unavailable_message)
 
     async def fail_classify(*args: object, **_: object) -> Admitted:
         pytest.fail("classify_query should not run when chat is disabled")
@@ -2235,7 +2377,7 @@ async def test_run_turn_aborts_immediately_when_chat_is_disabled(
             {
                 "state": TerminalState.ERROR,
                 "idempotency_key": _IDEMPOTENCY_KEY,
-                "error": CHAT_DISABLED,
+                "error": expected_message,
                 "reason": ErrorType.CHAT_DISABLED,
                 "is_retryable": False,
             },
@@ -2243,6 +2385,87 @@ async def test_run_turn_aborts_immediately_when_chat_is_disabled(
     ]
     assert turn.synthesis_calls == 0
     assert turn.finished == [(TerminalState.REFUSED, ErrorType.CHAT_DISABLED)]
+
+
+@pytest.mark.asyncio
+async def test_enable_chat_false_refuses_the_turn_without_a_config(
+    monkeypatch: pytest.MonkeyPatch, turn: _Turn
+) -> None:
+    # Test: Precedence of the `ENABLE_CHAT` off switch over a missing
+    #   configuration.
+    # Situation: `ENABLE_CHAT` is `"false"` and `load_config` returns `None`.
+    # Expectation: The turn ends with reason `chat_disabled`, the default
+    #   message, and `is_retryable` false rather than `config_missing`.
+    monkeypatch.setenv(ENABLE_CHAT_ENV, "false")
+    _use_config(monkeypatch, None)
+
+    await chat_pipeline.run_turn(_TRANSCRIPT, turn.emit)
+
+    terminal = _get_only_terminal(turn)
+    assert terminal["reason"] == ErrorType.CHAT_DISABLED
+    assert terminal["error"] == DEFAULT_UNAVAILABLE_MESSAGE
+    assert terminal["is_retryable"] is False
+    assert turn.finished == [(TerminalState.REFUSED, ErrorType.CHAT_DISABLED)]
+
+
+@pytest.mark.asyncio
+async def test_config_chat_disabled_refuses_the_turn_with_its_message(
+    monkeypatch: pytest.MonkeyPatch, turn: _Turn
+) -> None:
+    # Test: `chat.enabled` set to `False` in the configuration.
+    # Situation: `ENABLE_CHAT` is unset, and the loaded configuration
+    #   disables chat with a custom `unavailable_message`.
+    # Expectation: The turn ends in one non-retryable `error` terminal frame
+    #   carrying the configured message and reason `chat_disabled`, without a
+    #   classifier or synthesis call.
+    _use_config(
+        monkeypatch,
+        AgentConfig(
+            chat=ChatConfig(enabled=False, unavailable_message=_CLOSED)
+        ),
+    )
+
+    async def fail_classify(*args: object, **_: object) -> Admitted:
+        pytest.fail("classify_query should not run when chat is disabled")
+
+    monkeypatch.setattr(chat_pipeline, "classify_query", fail_classify)
+
+    await chat_pipeline.run_turn(_TRANSCRIPT, turn.emit)
+
+    assert turn.list_event_names() == ["terminal"]
+    terminal = _get_only_terminal(turn)
+    assert terminal["error"] == _CLOSED
+    assert terminal["reason"] == ErrorType.CHAT_DISABLED
+    assert terminal["is_retryable"] is False
+    assert turn.synthesis_calls == 0
+    assert turn.finished == [(TerminalState.REFUSED, ErrorType.CHAT_DISABLED)]
+
+
+@pytest.mark.asyncio
+async def test_enable_chat_true_overrides_a_disabled_config(
+    monkeypatch: pytest.MonkeyPatch, turn: _Turn
+) -> None:
+    # Test: `ENABLE_CHAT=true` overriding `chat.enabled` set to `False`.
+    # Situation: The loaded configuration disables chat, and `ENABLE_CHAT` is
+    #   `"true"`.
+    # Expectation: The turn runs to a `complete` terminal frame.
+    monkeypatch.setenv(ENABLE_CHAT_ENV, "true")
+    _use_config(
+        monkeypatch,
+        AgentConfig(
+            prompts=Prompts(discovery="Gather data.", synthesis="Write prose."),
+            chat=ChatConfig(enabled=False, unavailable_message=_CLOSED),
+        ),
+    )
+
+    await chat_pipeline.run_turn(_TRANSCRIPT, turn.emit)
+
+    terminals = [data for event, data in turn.events if event == "terminal"]
+    assert [terminal["state"] for terminal in terminals] == [
+        TerminalState.COMPLETE
+    ]
+    assert turn.synthesis_calls == 1
+    assert turn.finished == [(TerminalState.COMPLETE, None)]
 
 
 # The serialized frames of a complete turn whose stubs also report a thought

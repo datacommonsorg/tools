@@ -36,6 +36,7 @@ from narratives_agent.analytics.tables import format_reference_date_phrase
 from narratives_agent.json_value import JsonObject, JsonValue, json_safe
 
 __all__ = [
+    "CITED_VARIABLE_TEMPLATE",
     "PERCENT_SCALE",
     "PLACE_NAME_CAP",
     "AlignmentRefusalReason",
@@ -59,6 +60,9 @@ PERCENT_SCALE = 100.0
 PLACE_NAME_CAP = 5
 # Prefix of the per-variable citation breakdown line in prompt rendering.
 _CITE_BY_VARIABLE_PREFIX = "cite by variable:"
+# How a numbered source line names the variable it is cited for, here and in
+# the synthesis prompt's NUMBERED SOURCES rows.
+CITED_VARIABLE_TEMPLATE = "{name}, variable: {variable}"
 
 type ResultStatus = Literal["ok", "refused"]
 # Why `align_cohort` could not align a table.
@@ -512,12 +516,12 @@ class AnalysisDigest:
 
         Formats each `ScriptResult` as a block containing a step header, a
         metadata line (unit, scaling factor, coverage, and citation label), an
-        optional `cite by variable:` line when a multi-variable step cites
-        distinct sources per variable, methodology, a single-line JSON metrics
-        object with floats rounded to display precision, and any caveats.
-        Appends the numbered `"Sources:"` and `"Missing data:"` sections at the
-        end. Only prompt text is rounded; `to_dict` preserves full
-        floating-point precision.
+        optional `cite by variable:` line when a multi-variable step's
+        variables carry distinct citations, methodology, a single-line JSON
+        metrics object with floats rounded to display precision, and any
+        caveats. Appends the numbered `"Sources:"` and `"Missing data:"`
+        sections at the end. Only prompt text is rounded; `to_dict` preserves
+        full floating-point precision.
         """
         lines = self._list_result_lines()
         if self.sources:
@@ -577,7 +581,18 @@ def _format_result(
 
 
 def _format_source(source: Source) -> str:
-    """Formats `source` as `"name (url)"`, or `"name"` when `url` is absent."""
+    """Formats `source` as `"name, variable: <variable> (url)"`.
+
+    The variable is its name, or its DCID when it has no name, and is left
+    out when the source names no variable; `" (url)"` is left out when `url`
+    is absent or equals the name.
+    """
+    variable = source.variable_name or source.variable_dcid
+    label = (
+        CITED_VARIABLE_TEMPLATE.format(name=source.name, variable=variable)
+        if variable
+        else source.name
+    )
     if source.url and source.url != source.name:
-        return f"{source.name} ({source.url})"
-    return source.name
+        return f"{label} ({source.url})"
+    return label

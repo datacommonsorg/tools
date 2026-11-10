@@ -69,6 +69,28 @@
         }
       }
     },
+    "chat": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "description": "Set false to end every chat turn with a non-retryable chat_disabled error and report chat as disabled in the #runtime-config element of the HTML shell. The ENABLE_CHAT environment variable overrides this value when set.",
+          "type": "boolean",
+          "default": true
+        },
+        "unavailable_message": {
+          "description": "Message returned on chat turns while chat is disabled, and stamped into the #runtime-config element of the HTML shell. The UNAVAILABLE_MESSAGE environment variable overrides this value when set.",
+          "type": "string",
+          "minLength": 1,
+          "pattern": "\\S",
+          "default": "Due to high traffic, the application is currently unavailable."
+        },
+        "_comment": {
+          "type": "string",
+          "description": "Free-text annotation for maintainers. Ignored by the agent."
+        }
+      }
+    },
     "thinking": {
       "type": "object",
       "additionalProperties": false,

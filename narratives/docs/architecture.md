@@ -98,10 +98,12 @@ agent automatically starts a fresh MCP session and retries the tool call.
 ### What happens during a chat turn
 
 Each `POST /agent/chat/stream` request first checks whether chat is enabled
-(`ENABLE_CHAT`, default `true`); when `ENABLE_CHAT=false`, the turn aborts
-immediately with a single `terminal` error frame (`reason: "chat_disabled"`)
-before making any Gemini or MCP calls. Otherwise, the request runs through the
-agent loop in five steps:
+(`chat.enabled` in `agent-config.json`, default `true`, overridden by
+`ENABLE_CHAT` when set); when chat is disabled, the turn aborts immediately
+with a single `terminal` error frame (`reason: "chat_disabled"`,
+`is_retryable: false`) carrying `chat.unavailable_message` (overridden by
+`UNAVAILABLE_MESSAGE` when set) before making any Gemini or MCP calls.
+Otherwise, the request runs through the agent loop in five steps:
 
 1. **Query classification (`classify`):** Before any tool is called, a
    deterministic pre-filter screens out prompt injection, persona overrides,
@@ -142,6 +144,13 @@ agent loop in five steps:
    deterministic analytics scripts (`workflows/processing.py`) under the
    `processing` status phase; a validation or step refusal is returned to the
    model for up to two retries, and an accepted `AnalysisDigest` ends the loop.
+   Before a specification runs, the server requests variable metadata
+   (`workflows/metadata_backfill.py`) for the fetched tables the
+   specification references whose facet has no metadata yet, best effort and
+   at most once per variable and facet in a turn, so citations can provide
+   the provider, dataset, date range, and license even when the model did
+   not call `get_variable_metadata`. These requests are not model tool calls
+   and stream no `tool_call` frame.
    A specification holds at most six steps. `analyze_timeseries` and
    `compute_composition` report every place they cover, so without `places`
    their input may cover at most ten places, and a ranking or relation
@@ -161,11 +170,14 @@ agent loop in five steps:
    precision), the numbered sources, the missing-data notes, the pattern's
    directive, and a table inventory naming each cached table's variable, unit,
    places, and dates; externally sourced text (variable names, source names, and
-   missing-data notes) stays in typed fields until the message is rendered. Each
+   missing-data notes) stays in typed fields until the message is rendered. A
+   citation is one source as cited for one variable: each fetched table's
+   source carries the table's variable, so two variables drawn from one source
+   are two numbered sources, and each numbered source names its variable. Each
    sourced digest step carries a step-level `cite:` marker and, when a
-   multi-variable step draws from distinct sources per variable, a
+   multi-variable step's variables carry distinct citations, a
    `cite by variable:` breakdown so single-variable figures cite their own
-   source. The synthesis contract shows markers only on figures taken
+   variable's source. The synthesis contract shows markers only on figures taken
    straight from a source; calculated figures, including cross-variable ones,
    carry none, and the rules that would cite them with the combined sources
    are kept disabled in an HTML comment in `contracts/synthesis.md`. The model
@@ -387,3 +399,11 @@ directly into `ui/index.html` and read synchronously when the app starts:
   reads `<script id="instance-config" type="application/json">`, validates each
   field, and falls back to `DEFAULT_INSTANCE_CONFIG` for any field that is
   missing or invalid.
+
+When the agent server serves `index.html` (`server/routes/spa.py`), it also
+stamps the effective chat availability,
+`{"enable_chat": <bool>, "unavailable_message": "<str>"}`, into
+`<script id="runtime-config" type="application/json">`, escaping `<`, `>`,
+`&`, U+2028, and U+2029. The `ETag` hashes the stamped bytes and
+`Last-Modified` is omitted, so a browser revalidating the page receives the
+current value after a restart that changes it.

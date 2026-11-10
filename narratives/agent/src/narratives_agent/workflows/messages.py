@@ -43,10 +43,10 @@ TRUNCATED_MESSAGE = (
 
 # Error messages carried on `terminal` SSE frames with `state == "error"`.
 # Retryable (`is_retryable == True`) errors each define their own literal so
-# they remain decoupled while sharing the high-traffic notice;
-# non-retryable errors omit any retry prompt (except `CHAT_DISABLED`, which
-# notes later availability without rendering a retry button).
-CHAT_DISABLED = "Chat is temporarily unavailable. Please try again later."
+# they remain decoupled while sharing the high-traffic notice; non-retryable
+# errors omit any retry prompt. The chat-disabled message is configured as
+# `chat.unavailable_message` (default `DEFAULT_UNAVAILABLE_MESSAGE` in
+# `config_model.py`).
 CONFIG_MISSING = "Backend config not loaded"
 SYNTHESIS_FAILED = "The response could not be generated."
 SYNTHESIS_TRANSIENT_ERROR = "We are experiencing unusually high traffic."
@@ -63,7 +63,6 @@ INTERNAL_ERROR = "We are experiencing unusually high traffic."
 PER_CAPITA_CHART_TITLE_TEMPLATE = "{variable_name} per person"
 
 __all__ = [
-    "CHAT_DISABLED",
     "CLASSIFY_STATUS",
     "CONFIG_MISSING",
     "DISCOVERY_STATUS",

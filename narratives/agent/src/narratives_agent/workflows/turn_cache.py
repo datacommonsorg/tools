@@ -15,9 +15,9 @@
 
 Stores fetched and derived `CachedTable` entries for a single chat turn,
 merges `get_variable_metadata` responses into `VariableMetadataEnrichment`,
-backfills already-cached tables when metadata arrives after a fetch, and
-locks each variable to the first facet it was served from over each scope of
-places.
+backfills already-cached tables when metadata arrives after a fetch, records
+which variable metadata the server requested, and locks each variable to the
+first facet it was served from over each scope of places.
 """
 
 import re
@@ -96,6 +96,9 @@ class TurnCache:
     )
     _locked_facets: dict[tuple[str, FacetScope], str] = field(
         default_factory=dict, init=False, repr=False
+    )
+    _requested_metadata: set[tuple[str, str]] = field(
+        default_factory=set, init=False, repr=False
     )
 
     @property
@@ -221,6 +224,33 @@ class TurnCache:
                 entry,
                 table=apply_variable_metadata(entry.table, self._enrichment),
             )
+
+    def mark_metadata_requested(
+        self, variable_dcid: str, facet_id: str
+    ) -> None:
+        """Records that the server requested a variable's facet metadata.
+
+        A specification can be submitted several times in one turn, and the
+        record keeps the server from requesting a pair again, whether the
+        earlier request succeeded or failed.
+
+        Args:
+            variable_dcid: The statistical variable DCID.
+            facet_id: The facet whose metadata was requested.
+        """
+        self._requested_metadata.add((variable_dcid, facet_id))
+
+    def has_requested_metadata(self, variable_dcid: str, facet_id: str) -> bool:
+        """Returns whether the server requested a variable's facet metadata.
+
+        Args:
+            variable_dcid: The statistical variable DCID.
+            facet_id: The facet that served the variable.
+
+        Returns:
+            `True` once `mark_metadata_requested` recorded the pair.
+        """
+        return (variable_dcid, facet_id) in self._requested_metadata
 
     def lock_facet(
         self, variable_dcid: str, scope: FacetScope, facet_id: str

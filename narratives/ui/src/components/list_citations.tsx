@@ -15,12 +15,14 @@
  */
 
 /**
- * @fileoverview Renders an answer's citations: provider, dataset, range, link.
+ * @fileoverview Renders an answer's citations: variable, provider, dataset,
+ * range, link.
  */
 
 import {
   citationAnchorId,
   displayCitationNumber,
+  getCitationVariableLabel,
 } from '@/src/components/chip_citation';
 import type { ProvenanceItem } from '@/src/hooks/use_sse_chat';
 
@@ -35,6 +37,9 @@ import type { ProvenanceItem } from '@/src/hooks/use_sse_chat';
 /** The attribution every citation carries. */
 const PROCESSING_NOTE = 'with minor processing by Data Commons';
 
+/** Separates the items of one citation row. */
+const CITATION_ITEM_SEPARATOR = ', ';
+
 /** Section heading. */
 const CITATIONS_HEADING = 'Citations';
 
@@ -46,14 +51,10 @@ interface CitationsListProps {
   turnIndex?: number;
 }
 
-/** Strips the scheme and any trailing slash, so the link reads as a reference. */
-export function citationUrlLabel(url: string): string {
-  return url.replace(/^[a-z]+:\/\//i, '').replace(/\/+$/, '');
-}
-
 /**
- * The prose part of a citation: publisher, dataset, years. Each piece is
- * dropped when the data plane did not report it.
+ * The prose part of a citation: variable, publisher, dataset, years, joined
+ * by {@link CITATION_ITEM_SEPARATOR}. Each piece is dropped when the data
+ * plane did not report it.
  */
 export function citationLead(source: ProvenanceItem): string {
   const url = source.url.trim();
@@ -63,9 +64,10 @@ export function citationLead(source: ProvenanceItem): string {
     .filter((part) => part !== '' && part !== url);
   // The two fields are often the same string; saying it twice reads as a bug.
   const unique = parts.filter((part, index) => parts.indexOf(part) === index);
-  const lead = unique.join(', ');
-  if (!source.dateRange) return lead;
-  return lead ? `${lead} (${source.dateRange})` : `(${source.dateRange})`;
+  const dateRange = source.dateRange ? `(${source.dateRange})` : '';
+  return [getCitationVariableLabel(source), ...unique, dateRange]
+    .filter((part) => part !== '')
+    .join(CITATION_ITEM_SEPARATOR);
 }
 
 /** Numbered list of citations matching the [n] chips in the answer. */
@@ -86,7 +88,7 @@ export function CitationsList({
       >
         {CITATIONS_HEADING}
       </h2>
-      <ol className="list-none p-0 m-0 flex flex-col gap-1.5 text-body-large-emphasized text-on-surface">
+      <ol className="list-none p-0 m-0 flex flex-col gap-1.5 text-body-large text-on-surface">
         {sources.map((source, index) => {
           const shown = displayCitationNumber(index + 1, numbers);
           const lead = citationLead(source);
@@ -101,16 +103,16 @@ export function CitationsList({
                   to break mid-string. `min-w-0` lets this flex child
                   shrink below its content width instead of overflowing. */}
               <span className="min-w-0 wrap-anywhere leading-5.5">
-                {lead && `${lead} `}(
+                {lead && `${lead}${CITATION_ITEM_SEPARATOR}`}
                 <a
                   href={source.url}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="text-theme-primary hover:underline"
+                  className="text-theme-primary underline"
                 >
-                  {citationUrlLabel(source.url)}
+                  {source.url}
                 </a>
-                ){', '}
+                {CITATION_ITEM_SEPARATOR}
                 {PROCESSING_NOTE}
               </span>
             </li>

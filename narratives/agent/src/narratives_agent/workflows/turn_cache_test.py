@@ -217,7 +217,12 @@ def test_metadata_recorded_after_a_fetch_backfills_the_table() -> None:
     cache.store_fetched(CachedTable(table_id=early_id, table=early))
     assert early.variable_name == "Count_Person"
     assert early.unit is None
-    assert early.source == Source(name="datatopics.worldbank.org", url=_WDI_URL)
+    assert early.source == Source(
+        name="datatopics.worldbank.org",
+        url=_WDI_URL,
+        variable_dcid="Count_Person",
+        variable_name="Count_Person",
+    )
 
     cache.record_variable_metadata(_build_metadata_payload())
 
@@ -243,10 +248,40 @@ def test_metadata_recorded_after_a_fetch_backfills_the_table() -> None:
         license="CC BY 4.0",
         dataset="World Development Indicators",
         provider="World Bank",
+        variable_dcid="Count_Person",
+        variable_name="Total population",
     )
     assert backfilled.provenance.sources == (backfilled.source,)
     assert backfilled.rows == early.rows
     assert backfilled == late
+
+
+def test_metadata_recorded_twice_cites_the_variable_once() -> None:
+    # Test: The variable on a source replaced by later metadata.
+    # Situation: A table is parsed before any metadata, so its inline source
+    #   is cited for the variable under its DCID; the facet's metadata, whose
+    #   `Source` names no variable, is then recorded twice.
+    # Expectation: After each recording, `table.source` and the single entry
+    #   of `provenance.sources` are the facet's source cited for the
+    #   variable under its updated name, with no duplicate entry.
+    cache = TurnCache()
+    table_id = cache.get_next_table_id()
+    table = parse_observation_table(
+        _build_observation_payload(),
+        variable_dcid="Count_Person",
+        requested_places=("country/FRA",),
+    )
+    cache.store_fetched(CachedTable(table_id=table_id, table=table))
+
+    for _ in range(2):
+        cache.record_variable_metadata(_build_metadata_payload())
+        entry = cache.get(table_id)
+        assert entry is not None
+        assert entry.table.source is not None
+        assert entry.table.source.name == "World Development Indicators"
+        assert entry.table.source.variable_dcid == "Count_Person"
+        assert entry.table.source.variable_name == "Total population"
+        assert entry.table.provenance.sources == (entry.table.source,)
 
 
 def test_metadata_overrides_inline_fields_in_either_order() -> None:
@@ -356,3 +391,17 @@ def test_metadata_recorded_later_leaves_derived_tables_unchanged() -> None:
     assert backfilled is not None
     assert backfilled.table.variable_name == "Total population"
     assert cache.get("s1") == derived
+
+
+def test_a_metadata_request_is_recorded_per_variable_and_facet() -> None:
+    # Test: The record of variable metadata the server requested.
+    # Situation: The server marks `Count_Person` over facet `f1` requested.
+    # Expectation: That pair reads as requested, and the same variable over
+    #   another facet and another variable over the same facet do not.
+    cache = TurnCache()
+
+    cache.mark_metadata_requested("Count_Person", "f1")
+
+    assert cache.has_requested_metadata("Count_Person", "f1")
+    assert not cache.has_requested_metadata("Count_Person", "f2")
+    assert not cache.has_requested_metadata("Count_Household", "f1")

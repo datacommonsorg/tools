@@ -25,11 +25,15 @@ Covers the per-field rules the parser applies to a configuration document:
 5. `template_vars` drops `_`-prefixed keys, renders numbers as strings,
    and drops other values with a warning.
 6. Unknown keys are ignored without a warning.
+7. The `chat` section fails closed: a section that is not an object, or a
+   `chat.enabled` that is not a boolean, disables chat with one error, and
+   an unusable `chat.unavailable_message` gives the default with a warning.
 
 And the resolution of each `GeminiRole` to its model, temperature, and
 thinking level, with and without configured values, including the clamp that
 raises a level the role's model does not accept. The loading paths that
-produce the document are tested in `config_test.py`.
+produce the document, and the environment overrides of the `chat` section,
+are tested in `config_test.py`.
 """
 
 import logging
@@ -42,7 +46,9 @@ from narratives_agent import config_model
 from narratives_agent.config_model import (
     DEFAULT_GEMINI_CLASSIFY_MODEL,
     DEFAULT_GEMINI_MODEL,
+    DEFAULT_UNAVAILABLE_MESSAGE,
     AgentConfig,
+    ChatConfig,
     GeminiConfig,
     GeminiRole,
     McpConfig,
@@ -637,3 +643,120 @@ def test_the_api_key_is_left_out_of_repr() -> None:
     assert parsed.gemini.api_key == "secret-key-value"
     assert "secret-key-value" not in repr(parsed.gemini)
     assert "secret-key-value" not in repr(parsed)
+
+
+def _list_errors(caplog: pytest.LogCaptureFixture) -> list[str]:
+    """Returns the error messages logged by the parser."""
+    return [
+        record.getMessage()
+        for record in caplog.records
+        if record.levelno == logging.ERROR
+        and record.name == config_model.logger.name
+    ]
+
+
+@pytest.mark.parametrize(
+    "document",
+    [{}, {"chat": {}}],
+    ids=["section absent", "section empty"],
+)
+def test_an_absent_chat_section_enables_chat(
+    caplog: pytest.LogCaptureFixture, document: dict[str, Any]
+) -> None:
+    # Test: Defaults of the `chat` section in `parse_agent_config`.
+    # Situation: The document has no `chat` key, or an empty `chat` object.
+    # Expectation: Chat is enabled with `DEFAULT_UNAVAILABLE_MESSAGE`, and
+    #   nothing is logged.
+    with caplog.at_level(logging.WARNING):
+        parsed = parse_agent_config(document)
+
+    assert parsed.chat == ChatConfig(
+        enabled=True, unavailable_message=DEFAULT_UNAVAILABLE_MESSAGE
+    )
+    assert _warnings(caplog) == []
+    assert _list_errors(caplog) == []
+
+
+def test_configured_chat_values_are_carried_through() -> None:
+    # Test: A fully populated `chat` section in `parse_agent_config`.
+    # Situation: `chat.enabled` is `False` and `chat.unavailable_message` is
+    #   a custom message padded with whitespace.
+    # Expectation: Chat is disabled and the message is stripped.
+    parsed = parse_agent_config(
+        {"chat": {"enabled": False, "unavailable_message": " Back at noon. "}}
+    )
+
+    assert parsed.chat == ChatConfig(
+        enabled=False, unavailable_message="Back at noon."
+    )
+
+
+@pytest.mark.parametrize(
+    "value",
+    [False, "off", None, ["enabled"]],
+    ids=["false", "str", "null", "list"],
+)
+def test_a_chat_section_of_the_wrong_type_disables_chat(
+    caplog: pytest.LogCaptureFixture, value: object
+) -> None:
+    # Test: Fail-closed handling of a `chat` section that is not an object.
+    # Situation: `chat` is `false`, a string, null, or a list.
+    # Expectation: Chat is disabled with `DEFAULT_UNAVAILABLE_MESSAGE`, and
+    #   exactly one error names the `chat` key.
+    with caplog.at_level(logging.WARNING):
+        parsed = parse_agent_config({"chat": value})
+
+    assert parsed.chat == ChatConfig(
+        enabled=False, unavailable_message=DEFAULT_UNAVAILABLE_MESSAGE
+    )
+    assert ["'chat'" in message for message in _list_errors(caplog)] == [True]
+
+
+@pytest.mark.parametrize(
+    "value",
+    ["false", "true", 0, 1, None],
+    ids=["str false", "str true", "zero", "one", "null"],
+)
+def test_a_non_boolean_chat_enabled_disables_chat(
+    caplog: pytest.LogCaptureFixture, value: object
+) -> None:
+    # Test: Fail-closed handling of a `chat.enabled` that is not a boolean.
+    # Situation: `chat.enabled` is a string, an integer, or null, beside a
+    #   valid `chat.unavailable_message`.
+    # Expectation: Chat is disabled, the configured message is kept, and
+    #   exactly one error names `chat.enabled`.
+    with caplog.at_level(logging.WARNING):
+        parsed = parse_agent_config(
+            {"chat": {"enabled": value, "unavailable_message": "Closed."}}
+        )
+
+    assert parsed.chat == ChatConfig(
+        enabled=False, unavailable_message="Closed."
+    )
+    assert [
+        "'chat.enabled'" in message for message in _list_errors(caplog)
+    ] == [True]
+
+
+@pytest.mark.parametrize(
+    "value",
+    ["", "   ", 123, None],
+    ids=["empty", "whitespace", "int", "null"],
+)
+def test_an_unusable_unavailable_message_gives_the_default(
+    caplog: pytest.LogCaptureFixture, value: object
+) -> None:
+    # Test: Fallback of `chat.unavailable_message` in `parse_agent_config`.
+    # Situation: `chat.unavailable_message` is empty, whitespace-only, an
+    #   integer, or null.
+    # Expectation: The message is `DEFAULT_UNAVAILABLE_MESSAGE`, chat stays
+    #   enabled, and exactly one warning names `chat.unavailable_message`.
+    with caplog.at_level(logging.WARNING):
+        parsed = parse_agent_config({"chat": {"unavailable_message": value}})
+
+    assert parsed.chat == ChatConfig(
+        enabled=True, unavailable_message=DEFAULT_UNAVAILABLE_MESSAGE
+    )
+    assert [
+        "'chat.unavailable_message'" in message for message in _warnings(caplog)
+    ] == [True]
