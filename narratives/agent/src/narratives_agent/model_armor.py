@@ -18,11 +18,13 @@ When `MODEL_ARMOR_TEMPLATE` is configured in the environment
 `screen_user_prompt` sends the user query to the regional Model Armor REST API
 (`sanitizeUserPrompt`) authenticated with Application Default Credentials.
 
-If `MODEL_ARMOR_TEMPLATE` is unset, `screen_user_prompt` returns `None` without
-making any network or credential calls. If the template path is malformed or the
-Model Armor API request fails or times out, a warning is logged (without the
-user query text) and the turn proceeds rather than failing closed on a
-transient infrastructure error.
+If `MODEL_ARMOR_TEMPLATE` is unset, `init_model_armor` logs a startup warning
+and `screen_user_prompt` returns `None` without making any network or credential
+calls. If `MODEL_ARMOR_TEMPLATE` is set to a malformed resource path,
+`init_model_armor` raises `RuntimeError` so startup fails fast instead of
+silently running unscreened. If a runtime Model Armor API request fails or times
+out, a warning is logged (without the user query text) and the turn proceeds
+rather than failing closed on a transient infrastructure error.
 """
 
 import asyncio
@@ -77,13 +79,20 @@ def reset_model_armor_client() -> None:
 
 
 def init_model_armor() -> None:
-    """Logs the Model Armor configuration status at server startup."""
+    """Validates `MODEL_ARMOR_TEMPLATE` and logs status at server startup.
+
+    Raises:
+        RuntimeError: `MODEL_ARMOR_TEMPLATE` is set but does not match the
+            expected resource path format.
+    """
     template = get_settings().model_armor_template
     if not template:
         logger.warning(
             "MODEL_ARMOR_TEMPLATE is unset; Model Armor prompt screening "
             "is disabled."
         )
+        return
+    _sanitize_prompt_url(template)
 
 
 async def aclose() -> None:
@@ -122,7 +131,7 @@ def _http_client() -> httpx.AsyncClient:
     return _STATE.client
 
 
-def _sanitize_prompt_url(template: str) -> str | None:
+def _sanitize_prompt_url(template: str) -> str:
     """Builds the regional `sanitizeUserPrompt` URL for `template`.
 
     Args:
@@ -130,17 +139,19 @@ def _sanitize_prompt_url(template: str) -> str | None:
             (`projects/<project>/locations/<location>/templates/<template>`).
 
     Returns:
-        The regional `sanitizeUserPrompt` endpoint URL, or `None` if `template`
-        does not match the expected resource path format.
+        The regional `sanitizeUserPrompt` endpoint URL.
+
+    Raises:
+        RuntimeError: `template` does not match the expected resource path
+            format.
     """
     normalized = template.strip().strip("/")
     match = _MODEL_ARMOR_TEMPLATE_PATTERN.match(normalized)
     if match is None:
-        logger.warning(
-            "Invalid MODEL_ARMOR_TEMPLATE %r; skipping Model Armor screening",
-            template,
+        raise RuntimeError(
+            f"Invalid MODEL_ARMOR_TEMPLATE {template!r}; expected "
+            "'projects/<project>/locations/<location>/templates/<template>'."
         )
-        return None
     location = match.group("location")
     return (
         f"https://modelarmor.{location}.rep.googleapis.com"
@@ -200,13 +211,15 @@ async def screen_user_prompt(query: str) -> str | None:
         `"model_armor"`) when `filterMatchState` is `"MATCH_FOUND"`, or `None`
         when `MODEL_ARMOR_TEMPLATE` is unset, no filter matched, or the
         Model Armor request failed open.
+
+    Raises:
+        RuntimeError: `MODEL_ARMOR_TEMPLATE` is set but does not match the
+            expected resource path format.
     """
     template = get_settings().model_armor_template
     if not template:
         return None
     url = _sanitize_prompt_url(template)
-    if url is None:
-        return None
 
     try:
         async with asyncio.timeout(_REQUEST_TIMEOUT_SECONDS):

@@ -97,6 +97,19 @@ def test_init_model_armor_logs_nothing_when_template_set(
     assert caplog.records == []
 
 
+def test_init_model_armor_raises_when_template_malformed(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Test: Fail-fast startup validation of `MODEL_ARMOR_TEMPLATE`.
+    # Situation: `MODEL_ARMOR_TEMPLATE` is set to a string that does not match
+    #   `projects/<project>/locations/<location>/templates/<template>`.
+    # Expectation: `init_model_armor` raises `RuntimeError`.
+    monkeypatch.setenv(MODEL_ARMOR_TEMPLATE_ENV, "invalid-template-path")
+
+    with pytest.raises(RuntimeError, match="MODEL_ARMOR_TEMPLATE"):
+        model_armor.init_model_armor()
+
+
 @pytest.mark.asyncio
 async def test_unset_template_skips_screening_without_auth_or_http(
     monkeypatch: pytest.MonkeyPatch,
@@ -121,27 +134,25 @@ async def test_unset_template_skips_screening_without_auth_or_http(
 
 
 @pytest.mark.asyncio
-async def test_malformed_template_logs_warning_and_skips_screening(
+async def test_malformed_template_raises_without_http(
     monkeypatch: pytest.MonkeyPatch,
     install_transport: Callable[
         [Callable[[httpx.Request], httpx.Response]], list[httpx.Request]
     ],
-    caplog: pytest.LogCaptureFixture,
 ) -> None:
-    # Test: Validation of `MODEL_ARMOR_TEMPLATE` resource path format.
+    # Test: Validation of `MODEL_ARMOR_TEMPLATE` resource path format in
+    #   `screen_user_prompt`.
     # Situation: `MODEL_ARMOR_TEMPLATE` is set to a string that does not match
     #   `projects/<project>/locations/<location>/templates/<template>`.
-    # Expectation: `screen_user_prompt` logs a warning and returns `None`
-    #   without making an HTTP request.
+    # Expectation: `screen_user_prompt` raises `RuntimeError` without making an
+    #   HTTP request instead of silently skipping screening.
     monkeypatch.setenv(MODEL_ARMOR_TEMPLATE_ENV, "invalid-template-path")
     requests = install_transport(lambda req: httpx.Response(200, json={}))
 
-    with caplog.at_level(logging.WARNING, logger=model_armor.logger.name):
-        result = await model_armor.screen_user_prompt(_QUERY)
+    with pytest.raises(RuntimeError, match="MODEL_ARMOR_TEMPLATE"):
+        await model_armor.screen_user_prompt(_QUERY)
 
-    assert result is None
     assert requests == []
-    assert "Invalid MODEL_ARMOR_TEMPLATE" in caplog.text
 
 
 @pytest.mark.asyncio

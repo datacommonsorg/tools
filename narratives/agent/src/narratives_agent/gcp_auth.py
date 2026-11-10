@@ -152,7 +152,18 @@ def _resolve_adc_auth_headers_sync() -> dict[str, str]:
 
 
 async def get_adc_auth_headers() -> dict[str, str]:
-    """Returns valid ADC request headers without blocking the event loop."""
+    """Returns valid ADC request headers without blocking the event loop.
+
+    Returns:
+        A dictionary containing the `Authorization` Bearer header and, when
+        configured on the credentials, the `x-goog-user-project` header.
+
+    Raises:
+        google.auth.exceptions.GoogleAuthError: Discovering or refreshing
+            Application Default Credentials fails.
+        RuntimeError: Application Default Credentials return an unexpected
+            credentials object or produce no access token after refresh.
+    """
     if not _ADC_LOCK.acquire(blocking=False):
         return await asyncio.to_thread(_resolve_adc_auth_headers_sync)
     try:
