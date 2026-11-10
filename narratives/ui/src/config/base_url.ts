@@ -15,36 +15,37 @@
  */
 
 /**
- * @fileoverview Helpers for normalizing build-time base URLs (`VITE_BASE_PATH`,
- * `VITE_DC_API_ROOT`) and resolving root-relative paths under Vite's
- * `BASE_URL`.
+ * @fileoverview Helpers for normalizing configured origin URLs
+ * (`VITE_DC_API_ROOT`) and resolving application-relative paths against the
+ * active document URL.
  */
 
 const LEADING_SLASHES_PATTERN = /^\/+/;
 const TRAILING_SLASHES_PATTERN = /\/+$/;
+const SHELL_FILENAME_SUFFIX = /\/index\.html$/;
 
 /** Trims surrounding whitespace and trailing slashes from a URL or path. */
 export const trimTrailingSlashes = (value: string): string =>
   value.trim().replace(TRAILING_SLASHES_PATTERN, '');
 
 /**
- * Normalizes a raw base path into Vite's `/<subpath>/` format, or `'/'` when
- * empty or root.
+ * Resolves an application-relative path against `window.location.pathname` so
+ * the same compiled UI bundle resolves assets and `/agent/*` endpoints whether
+ * mounted at `/` or under a runtime `BASE_PATH` subpath (such as
+ * `/labs/discover/`), with or without a trailing slash.
  */
-export const normalizeBasePath = (rawBasePath?: string): string => {
-  const stripped = trimTrailingSlashes(rawBasePath ?? '').replace(
+export const withBaseUrl = (path: string): string => {
+  const cleanPath = path.trim().replace(LEADING_SLASHES_PATTERN, '');
+  if (typeof window === 'undefined') {
+    return `/${cleanPath}`;
+  }
+  const rawPathname = window.location.pathname.replace(
+    SHELL_FILENAME_SUFFIX,
+    '/',
+  );
+  const basePrefix = trimTrailingSlashes(rawPathname).replace(
     LEADING_SLASHES_PATTERN,
     '',
   );
-  return stripped ? `/${stripped}/` : '/';
-};
-
-/**
- * Prefixes a root-relative path with Vite's `BASE_URL` so root builds resolve
- * to `/<path>` and subpath builds resolve to `/<subpath>/<path>`.
- */
-export const withBaseUrl = (path: string): string => {
-  const base = trimTrailingSlashes(import.meta.env.BASE_URL || '/');
-  const cleanPath = path.trim().replace(LEADING_SLASHES_PATTERN, '');
-  return `${base}/${cleanPath}`;
+  return basePrefix ? `/${basePrefix}/${cleanPath}` : `/${cleanPath}`;
 };

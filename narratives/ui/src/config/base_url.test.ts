@@ -15,19 +15,14 @@
  */
 
 /**
- * @fileoverview Tests for trimTrailingSlashes, normalizeBasePath, and
- * withBaseUrl.
+ * @fileoverview Tests for trimTrailingSlashes and withBaseUrl.
  */
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import {
-  normalizeBasePath,
-  trimTrailingSlashes,
-  withBaseUrl,
-} from '@/src/config/base_url';
+import { trimTrailingSlashes, withBaseUrl } from '@/src/config/base_url';
 
 afterEach(() => {
-  vi.unstubAllEnvs();
+  vi.unstubAllGlobals();
 });
 
 describe('trimTrailingSlashes', () => {
@@ -48,47 +43,43 @@ describe('trimTrailingSlashes', () => {
   });
 });
 
-describe('normalizeBasePath', () => {
-  it.each([
-    [undefined, '/'],
-    ['', '/'],
-    ['   ', '/'],
-    ['/', '/'],
-    ['///', '/'],
-    ['/narratives', '/narratives/'],
-    ['/narratives/', '/narratives/'],
-    ['narratives', '/narratives/'],
-    ['  //narratives//  ', '/narratives/'],
-  ])('normalizes %j to %j', (raw, expected) => {
-    // Test: Normalization of `VITE_BASE_PATH` values into Vite's `base` format.
-    // Situation: `normalizeBasePath` receives undefined, blank, root, or
-    //            subpath strings with varying leading/trailing slashes.
-    // Expectation: Subpaths resolve to `/<subpath>/` and empty/root values
-    //              resolve to `/`.
-    expect(normalizeBasePath(raw)).toBe(expected);
-  });
-});
-
 describe('withBaseUrl', () => {
-  it('resolves paths at the root when BASE_URL is default', () => {
-    // Test: Path resolution under the default `/` base URL.
-    // Situation: `import.meta.env.BASE_URL` is `/` and `withBaseUrl` is called
-    //            with and without a leading slash.
-    // Expectation: Both inputs resolve to `/<path>`.
-    vi.stubEnv('BASE_URL', '/');
+  it.each([
+    ['https://autopush.datacommons.org/', ''],
+    ['https://autopush.datacommons.org/index.html', ''],
+    ['https://autopush.datacommons.org/narratives/', '/narratives'],
+    ['https://autopush.datacommons.org/labs/discover/', '/labs/discover'],
+    ['https://autopush.datacommons.org/labs/discover', '/labs/discover'],
+    [
+      'https://autopush.datacommons.org/labs/discover/index.html',
+      '/labs/discover',
+    ],
+    [
+      'https://autopush.datacommons.org/labs/discover/?q=india#/metrics',
+      '/labs/discover',
+    ],
+    ['https://autopush.datacommons.org//labs/discover/', '/labs/discover'],
+  ])('resolves paths under %s to prefix %j', (href, expectedPrefix) => {
+    // Test: Runtime path resolution against `window.location.pathname`.
+    // Situation: The document is served at the root, a single- or multi-segment
+    //            subpath (with or without a trailing slash), an explicit
+    //            `index.html`, repeated leading slashes, or query/hash params.
+    // Expectation: Assets and API endpoints resolve under a single-slash mount
+    //              prefix without generating protocol-relative `//` URLs.
+    vi.stubGlobal('location', new URL(href));
+    expect(withBaseUrl('/dc-logo.svg')).toBe(`${expectedPrefix}/dc-logo.svg`);
+    expect(withBaseUrl('agent/chat/stream')).toBe(
+      `${expectedPrefix}/agent/chat/stream`,
+    );
+  });
+
+  it('falls back to a root-relative path when window is undefined', () => {
+    // Test: Non-browser fallback when `window` is absent.
+    // Situation: `window` is undefined and `withBaseUrl` is called with and
+    //            without a leading slash.
+    // Expectation: Both inputs return `/<cleanPath>`.
+    vi.stubGlobal('window', undefined);
     expect(withBaseUrl('/dc-logo.svg')).toBe('/dc-logo.svg');
     expect(withBaseUrl('agent/chat/stream')).toBe('/agent/chat/stream');
-  });
-
-  it('prefixes paths with BASE_URL when mounted under a subpath', () => {
-    // Test: Path resolution under a subpath `BASE_URL`.
-    // Situation: `import.meta.env.BASE_URL` is `/narratives/` and `withBaseUrl`
-    //            is called with a root-relative asset path and API endpoint.
-    // Expectation: Both inputs resolve under `/narratives/`.
-    vi.stubEnv('BASE_URL', '/narratives/');
-    expect(withBaseUrl('/dc-logo.svg')).toBe('/narratives/dc-logo.svg');
-    expect(withBaseUrl('/agent/chat/stream')).toBe(
-      '/narratives/agent/chat/stream',
-    );
   });
 });
