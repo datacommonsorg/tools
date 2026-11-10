@@ -15,12 +15,14 @@
  */
 
 /**
- * @fileoverview Renders an answer's citations: provider, dataset, range, link.
+ * @fileoverview Renders an answer's citations: variable, provider, dataset,
+ * range, link.
  */
 
 import {
   citationAnchorId,
   displayCitationNumber,
+  getCitationVariableLabel,
 } from '@/src/components/chip_citation';
 import type { ProvenanceItem } from '@/src/hooks/use_sse_chat';
 
@@ -41,6 +43,9 @@ const FONT_STACK =
 /** The attribution every citation carries. */
 const PROCESSING_NOTE = 'with minor processing by Data Commons';
 
+/** Separates the items of one citation row. */
+const CITATION_ITEM_SEPARATOR = ', ';
+
 /** Section heading. */
 const CITATIONS_HEADING = 'Citations';
 
@@ -52,14 +57,10 @@ interface CitationsListProps {
   turnIndex?: number;
 }
 
-/** Strips the scheme and any trailing slash, so the link reads as a reference. */
-export function citationUrlLabel(url: string): string {
-  return url.replace(/^[a-z]+:\/\//i, '').replace(/\/+$/, '');
-}
-
 /**
- * The prose part of a citation: publisher, dataset, years. Each piece is
- * dropped when the data plane did not report it.
+ * The prose part of a citation: variable, publisher, dataset, years, joined
+ * by {@link CITATION_ITEM_SEPARATOR}. Each piece is dropped when the data
+ * plane did not report it.
  */
 export function citationLead(source: ProvenanceItem): string {
   const url = source.url.trim();
@@ -69,9 +70,10 @@ export function citationLead(source: ProvenanceItem): string {
     .filter((part) => part !== '' && part !== url);
   // The two fields are often the same string; saying it twice reads as a bug.
   const unique = parts.filter((part, index) => parts.indexOf(part) === index);
-  const lead = unique.join(', ');
-  if (!source.dateRange) return lead;
-  return lead ? `${lead} (${source.dateRange})` : `(${source.dateRange})`;
+  const dateRange = source.dateRange ? `(${source.dateRange})` : '';
+  return [getCitationVariableLabel(source), ...unique, dateRange]
+    .filter((part) => part !== '')
+    .join(CITATION_ITEM_SEPARATOR);
 }
 
 /** Numbered list of citations matching the [n] chips in the answer. */
@@ -107,7 +109,7 @@ export function CitationsList({
           fontFamily: FONT_STACK,
           fontSize: 16,
           lineHeight: '24px',
-          fontWeight: 500,
+          fontWeight: 400,
           color: COLOR_BODY,
         }}
       >
@@ -131,17 +133,17 @@ export function CitationsList({
                   wordBreak: 'break-word',
                 }}
               >
-                {lead && `${lead} `}(
+                {lead && `${lead}${CITATION_ITEM_SEPARATOR}`}
                 <a
                   href={source.url}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="hover:underline"
+                  className="underline"
                   style={{ color: COLOR_LINK }}
                 >
-                  {citationUrlLabel(source.url)}
+                  {source.url}
                 </a>
-                ){', '}
+                {CITATION_ITEM_SEPARATOR}
                 {PROCESSING_NOTE}
               </span>
             </li>

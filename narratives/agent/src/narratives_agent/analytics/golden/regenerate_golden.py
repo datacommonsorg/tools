@@ -22,6 +22,7 @@ import argparse
 import json
 import sys
 from collections.abc import Mapping, Sequence
+from dataclasses import replace
 from pathlib import Path
 
 from narratives_agent.analytics.alignment import (
@@ -193,12 +194,17 @@ def _build_table(
             f"{facet_id!r}."
         )
     variable_dcid, variable_name = variable
+    # `parse_observation_table` cites a table's source for its variable, so
+    # two variables of one source are two citations here too.
+    cited_source = replace(
+        source, variable_dcid=variable_dcid, variable_name=variable_name
+    )
     return ObservationTable(
         variable_dcid=variable_dcid,
         variable_name=variable_name,
         unit=unit,
         scaling_factor=scaling_factor,
-        provenance=Provenance(sources=(source,), facet_ids=(facet_id,)),
+        provenance=Provenance(sources=(cited_source,), facet_ids=(facet_id,)),
         rows=observation_rows,
         requested_places=target_places,
         place_names=place_names,
@@ -206,7 +212,7 @@ def _build_table(
         child_place_type=child_place_type,
         observation_period=observation_period,
         facet_id=facet_id,
-        source=source,
+        source=cited_source,
         alternative_sources=resolved_alternatives,
     )
 

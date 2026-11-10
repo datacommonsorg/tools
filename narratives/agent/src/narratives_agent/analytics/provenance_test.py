@@ -36,6 +36,25 @@ def test_source_defaults_optional_citation_fields_to_none() -> None:
     assert source.provider is None
     assert source.dataset is None
     assert source.date_range is None
+    assert source.variable_dcid is None
+    assert source.variable_name is None
+
+
+def test_merge_provenance_keeps_one_source_cited_for_two_variables() -> None:
+    # Test: Deduplication of sources that differ only in the variable.
+    # Situation: Two inputs cite one data source, one for `Count_Person` and
+    #   one for `Count_Person_Female`, and a third repeats the first.
+    # Expectation: The merged sources hold the two variables' sources once
+    #   each, in first-seen order.
+    wdi = Source(name="World Bank", url="https://wdi.example")
+    total = dataclasses.replace(wdi, variable_dcid="Count_Person")
+    female = dataclasses.replace(wdi, variable_dcid="Count_Person_Female")
+    merged = merge_provenance(
+        Provenance(sources=(total,)),
+        Provenance(sources=(female,)),
+        Provenance(sources=(total,)),
+    )
+    assert merged.sources == (total, female)
 
 
 def test_source_is_frozen_and_hashable_by_value() -> None:

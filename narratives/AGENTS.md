@@ -59,7 +59,8 @@ process and PR expectations: [`CONTRIBUTING.md`](../CONTRIBUTING.md).
       (`prompt_contracts.py`, with packaged contracts under `contracts/`),
       the discovery loop (`mcp_loop.py`), the per-turn cache of
       `CachedTable`s (`t<n>` fetched, `s<n>` derived), the merged
-      `VariableMetadataEnrichment`, and the locked facets (`turn_cache.py`),
+      `VariableMetadataEnrichment`, the variable metadata the server
+      requested, and the locked facets (`turn_cache.py`),
       the Pydantic fetch request models
       and the server-side fetch functions (`fetch_observations`,
       `fetch_child_observations`, `fetch_multi_entity_observations`), with
@@ -70,8 +71,10 @@ process and PR expectations: [`CONTRIBUTING.md`](../CONTRIBUTING.md).
       validation against the cache, and the default specification
       (`specification.py`), the bounded processing phase that runs a
       specification and returns an `AnalysisDigest` or a
-      `ProcessingDiagnostic` (`processing.py`), the chart grammar,
-      resolver, and wire serializer (`charts.py`),
+      `ProcessingDiagnostic` (`processing.py`), the best-effort request,
+      before a specification runs, for the variable metadata of the fetched
+      tables it reads (`metadata_backfill.py`), the chart
+      grammar, resolver, and wire serializer (`charts.py`),
       the default chart floor (`chart_defaults.py`),
       the synthesis prompt builder (`synthesis.py`),
       the streaming block splitter (`blocks.py`),
@@ -104,10 +107,12 @@ process and PR expectations: [`CONTRIBUTING.md`](../CONTRIBUTING.md).
     - `config.py`: loads `agent-config.json` (or the local `config.json`),
       layers the prompts, and returns the result as an `AgentConfig`; renders
       prompts with the turn's pinned `{{CURRENT_DATETIME}}`
-      (`pin_current_datetime`).
+      (`pin_current_datetime`); and resolves chat availability with the
+      `ENABLE_CHAT` and `UNAVAILABLE_MESSAGE` overrides (`get_chat_config`).
     - `config_model.py`: the frozen `AgentConfig` dataclasses, the parser
-      that applies the defaults, and the per-role Gemini model, temperature,
-      and thinking-level settings (`GeminiRole`,
+      that applies the defaults (failing closed on a malformed `chat`
+      section), and the per-role Gemini model, temperature, and
+      thinking-level settings (`GeminiRole`,
       `AgentConfig.resolve_role_config`); the workflows read configuration
       from it.
     - `dev.py` — local development server (`uv run narratives-agent-dev`).

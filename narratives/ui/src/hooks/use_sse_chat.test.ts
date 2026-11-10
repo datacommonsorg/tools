@@ -24,6 +24,7 @@ import {
   type ChatStreamEvent,
   type ChatTurn,
   type ConversationStateSlots,
+  getCitationKey,
   getTurnCharts,
   hasAnswer,
   type ProvenanceItem,
@@ -402,8 +403,8 @@ describe('applyEvent', () => {
     //   flag.
     // Expectation: The status matches the phase, the blocks are kept in
     //   order with the chart mapped to camelCase, `text` is the text blocks
-    //   joined by a blank line (the string the agent signs), duplicate
-    //   source URLs are removed, and truncation is set.
+    //   joined by a blank line (the string the agent signs), a repeated
+    //   source is removed, and truncation is set.
     const events: ChatStreamEvent[] = [
       { event: 'status', data: { phase: 'synthesis' } },
       { event: 'thought', data: { thought: 'Checking', phase: 'discovery' } },
@@ -439,7 +440,7 @@ describe('applyEvent', () => {
         data: {
           sources: [
             { name: 'INSEE', url: 'https://insee.fr/' },
-            { name: 'INSEE again', url: 'https://insee.fr/' },
+            { name: 'INSEE', url: 'https://insee.fr/' },
           ],
         },
       },
@@ -484,6 +485,31 @@ describe('applyEvent', () => {
       { name: 'INSEE', url: 'https://insee.fr/' },
     ]);
     expect(turn.truncated).toBe(true);
+  });
+
+  it('keeps one source cited for two variables as two citations', () => {
+    // Test: The sources frame with per-variable citations.
+    // Situation: The frame lists one URL twice, for two variables.
+    // Expectation: Both entries are kept with their variable fields, in
+    //   order, so `[2]` in the answer still names the second entry.
+    const gdp: ProvenanceItem = {
+      name: 'WDI',
+      url: 'https://worldbank.org/wdi',
+      variableDcid: 'Amount_GDP',
+      variableName: 'GDP',
+    };
+    const perCapita: ProvenanceItem = {
+      ...gdp,
+      variableDcid: 'Amount_GDP_PerCapita',
+      variableName: 'GDP per capita',
+    };
+
+    const turn = applyEvent(blankTurn(), {
+      event: 'content',
+      data: { sources: [gdp, perCapita] },
+    });
+
+    expect(turn.provenance).toEqual([gdp, perCapita]);
   });
 
   it('records whether the answer found data', () => {
@@ -1513,6 +1539,29 @@ function citedTurn(
   };
 }
 
+describe('getCitationKey', () => {
+  it('keys a citation by every field the server sends', () => {
+    // Test: Citation identity.
+    // Situation: Two equal citations, and copies that differ only in the
+    //   variable DCID, the variable name, or the license.
+    // Expectation: The equal citations share a key, and each copy has a key
+    //   of its own.
+    const gdp: ProvenanceItem = {
+      ...WDI,
+      variableDcid: 'Amount_GDP',
+      variableName: 'GDP',
+    };
+    const keys = [
+      { ...gdp, variableDcid: 'Amount_GDP_PerCapita' },
+      { ...gdp, variableName: 'GDP (current US$)' },
+      { ...gdp, license: 'CC BY 4.0' },
+    ].map(getCitationKey);
+
+    expect(getCitationKey({ ...gdp })).toBe(getCitationKey(gdp));
+    expect(new Set([getCitationKey(gdp), ...keys]).size).toBe(4);
+  });
+});
+
 describe('assignCitationNumbers', () => {
   it('numbers the first answer from one', () => {
     // Test: The base case.
@@ -1557,13 +1606,36 @@ describe('assignCitationNumbers', () => {
     ).toEqual([[1], [1, 2]]);
   });
 
-  it('matches on the url, not the display name', () => {
-    // Test: Identity of a source across answers.
-    // Situation: Two facets of one dataset carry different names.
-    // Expectation: One number -- the URL says they are the same source.
-    const renamed = { name: 'WDI (2024 revision)', url: WDI.url };
+  it('gives one URL under another display name a new number', () => {
+    // Test: Identity of a citation across answers.
+    // Situation: The second answer cites the first answer's URL under another
+    //   display name.
+    // Expectation: A new number -- a citation is every field the server
+    //   sends, so a different name is another citation.
+    const renamed = { ...WDI, name: 'WDI (2024 revision)' };
     expect(
       assignCitationNumbers([citedTurn([WDI]), citedTurn([renamed])]),
+    ).toEqual([[1], [2]]);
+  });
+
+  it('gives one source cited for another variable a new number', () => {
+    // Test: Per-variable identity across answers.
+    // Situation: The second answer cites the first answer's source for
+    //   another variable.
+    // Expectation: A new number, so the two variables never share one.
+    const perCapita = { ...WDI, variableDcid: 'Amount_GDP_PerCapita' };
+    expect(
+      assignCitationNumbers([citedTurn([WDI]), citedTurn([perCapita])]),
+    ).toEqual([[1], [2]]);
+  });
+
+  it('gives an equal citation in a later answer the number it already had', () => {
+    // Test: Repeat of a per-variable citation.
+    // Situation: Two answers cite the same source for the same variable.
+    // Expectation: The original number.
+    const gdp = { ...WDI, variableDcid: 'Amount_GDP', variableName: 'GDP' };
+    expect(
+      assignCitationNumbers([citedTurn([gdp]), citedTurn([{ ...gdp }])]),
     ).toEqual([[1], [1]]);
   });
 

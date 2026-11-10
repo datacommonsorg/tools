@@ -430,6 +430,38 @@ def test_external_metadata_and_urls_are_sanitized_to_single_lines() -> None:
     assert f"{long_url} - {long_url}" not in message
 
 
+def test_each_numbered_source_names_its_variable_on_one_line() -> None:
+    # Test: The variable in the NUMBERED SOURCES rows.
+    # Situation: One data source is cited for a variable whose name holds a
+    #   line break and a format character, and for a variable known only by
+    #   its DCID.
+    # Expectation: Each row names its variable, the first by its cleaned
+    #   name and the second by its DCID, and each row is a single line.
+    insee = Source(name="INSEE", url="https://insee.fr/")
+    sources = [
+        replace(
+            insee,
+            variable_dcid="Count_Person",
+            variable_name="Total\npopulation\u202e",
+        ),
+        replace(insee, variable_dcid="Count_Person_Female"),
+    ]
+
+    inputs = build_synthesis_inputs(
+        "q", AnalysisDigest((), ()), None, (), sources
+    )
+    message = render_synthesis_message(inputs)
+
+    assert [source.variable for source in inputs.sources] == [
+        "Total population",
+        "Count_Person_Female",
+    ]
+    assert (
+        "[1] INSEE, variable: Total population - https://insee.fr/\n"
+        "[2] INSEE, variable: Count_Person_Female - https://insee.fr/\n"
+    ) in message
+
+
 def test_a_multi_variable_step_renders_cite_by_variable() -> None:
     # Test: Rendering of per-variable citations in the synthesis user message.
     # Situation: `relate_cohorts` pairs a diabetes table from CDC PLACES with

@@ -49,6 +49,10 @@ MODEL_ARMOR_TEMPLATE_ENV = "MODEL_ARMOR_TEMPLATE"
 TRANSCRIPT_HMAC_SECRET_ENV = "TRANSCRIPT_HMAC_SECRET"
 TRANSCRIPT_HMAC_SECRET_NAME_ENV = "TRANSCRIPT_HMAC_SECRET_NAME"
 
+# Environment variable names of the chat availability overrides.
+ENABLE_CHAT_ENV = "ENABLE_CHAT"
+UNAVAILABLE_MESSAGE_ENV = "UNAVAILABLE_MESSAGE"
+
 
 def validate_hmac_secret(
     secret: str, source: str = TRANSCRIPT_HMAC_SECRET_ENV
@@ -96,6 +100,17 @@ def _is_truthy_env_value(value: bool | str) -> bool:
     return value.strip().lower() in _TRUTHY_ENV_VALUES
 
 
+def _parse_optional_env_bool(value: bool | str | None) -> bool | None:
+    """Returns `None` for an unset variable, else `_is_truthy_env_value`.
+
+    `None` is kept so that callers can tell an unset variable from an
+    explicit `false`.
+    """
+    if value is None:
+        return None
+    return _is_truthy_env_value(value)
+
+
 def _default_static_root(data: dict[str, Any]) -> Path:
     """Returns the `static` directory under the validated `agent_root`."""
     agent_root: Path = data["agent_root"]
@@ -115,6 +130,9 @@ def _default_defaults_dir(data: dict[str, Any]) -> Path:
 # trailing slashes, so they join with "/<path>" without doubling the separator.
 _UrlPathPrefixStr = Annotated[str, AfterValidator(_normalize_url_path_prefix)]
 _EnvBool = Annotated[bool, BeforeValidator(_is_truthy_env_value)]
+_OptionalEnvBool = Annotated[
+    bool | None, BeforeValidator(_parse_optional_env_bool)
+]
 
 
 class Settings(BaseSettings):
@@ -220,10 +238,16 @@ class Settings(BaseSettings):
     # unset, Model Armor screening is skipped.
     model_armor_template: str = ""
 
-    # When false, `/agent/chat/stream` aborts every turn with reason
-    # `chat_disabled` before making any Gemini or MCP calls.
-    # Acts as an application-level emergency off switch.
-    enable_chat: _EnvBool = True
+    # When set, overrides `chat.enabled` in agent-config.json in either
+    # direction; unset leaves `chat.enabled` in effect. While chat is
+    # disabled, `/agent/chat/stream` ends every turn with reason
+    # `chat_disabled` before making any Gemini or MCP calls, which makes this
+    # an application-level emergency off switch.
+    enable_chat: _OptionalEnvBool = None
+
+    # When set, overrides `chat.unavailable_message` in agent-config.json,
+    # the message of a turn while chat is disabled.
+    unavailable_message: str = ""
 
     # This Secret Manager secret, named in full or by a short secret ID, holds
     # the Gemini API key. When it is unset or yields no key, `gemini.api_key`

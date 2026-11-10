@@ -15,8 +15,8 @@
  */
 
 /**
- * @fileoverview Tests for DataAgent turn rendering, new-turn scrolling, and its
- * skeleton handoff timing.
+ * @fileoverview Tests for DataAgent turn rendering, new-turn and
+ * reasoning-close scrolling, and its skeleton handoff timing.
  */
 
 import { readFileSync } from 'node:fs';
@@ -36,7 +36,7 @@ import {
 } from '@/src/components/data_agent';
 import { DISCLAIMER_TEXT } from '@/src/components/note_disclaimer';
 import { ANSWER_SETTLE_MAX_MS } from '@/src/components/panel_answer';
-import { RETRY_LABEL } from '@/src/config/copy_chat';
+import { CLOSE_REASONING_LABEL, RETRY_LABEL } from '@/src/config/copy_chat';
 import {
   ChatSessionContext,
   type ChatSessionContextValue,
@@ -56,6 +56,7 @@ beforeEach(() => {
 afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
+  vi.restoreAllMocks();
   vi.useRealTimers();
 });
 
@@ -358,6 +359,124 @@ describe('DataAgent new-turn scroll', () => {
   });
 });
 
+describe('TurnView closing the reasoning', () => {
+  it.each([
+    [-100, 392],
+    [100, undefined],
+  ])('scrolls back to a question at %dpx only when it is above the band', (questionTop, target) => {
+    // Test: Closing the reasoning from its end brings the question back.
+    // Situation: A finished turn renders inside <main>, scrolled to 500px,
+    //            with its reasoning open. The question's top sits 100px above
+    //            the band, or 100px inside it, when the reader clicks close.
+    // Expectation: Above the band, the glide ends with the question 8px under
+    //              the band's top (scrollTop 392); inside it, nothing scrolls.
+    vi.stubGlobal('matchMedia', () => ({ matches: false }));
+    const frames: FrameRequestCallback[] = [];
+    vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) => {
+      frames.push(callback);
+      return frames.length;
+    });
+    const turn: ChatTurn = {
+      userMessage: 'What is the population of France?',
+      status: 'done',
+      toolCalls: [],
+      thoughts: [{ text: 'Looked it up.', phase: 'discovery' }],
+      text: 'About 68 million.',
+      blocks: [{ index: 0, type: 'text', markdown: 'About 68 million.' }],
+      provenance: [],
+    };
+    render(
+      <main>
+        <TurnView turn={turn} index={0} isLast isStreaming={false} />
+      </main>,
+    );
+    const main = screen.getByRole('main');
+    Object.defineProperty(main, 'scrollTop', { value: 500 });
+    const mainScrollTo = vi.fn();
+    main.scrollTo = mainScrollTo;
+    const question = main.querySelector<HTMLElement>('[data-turn-index="0"]');
+    if (question) {
+      question.getBoundingClientRect = () => ({ top: questionTop }) as DOMRect;
+    }
+    fireEvent.click(screen.getByRole('button', { name: /^Reasoning details/ }));
+
+    vi.spyOn(performance, 'now').mockReturnValue(10_000);
+    fireEvent.click(
+      screen.getByRole('button', { name: CLOSE_REASONING_LABEL }),
+    );
+    // Run the glide's frames past its full duration.
+    vi.spyOn(performance, 'now').mockReturnValue(20_000);
+    while (frames.length > 0) frames.shift()?.(performance.now());
+
+    expect(mainScrollTo.mock.lastCall).toEqual(
+      target === undefined ? undefined : [0, target],
+    );
+  });
+});
+
+describe('TurnView glide cancel', () => {
+  const finishedTurn: ChatTurn = {
+    userMessage: 'What is the population of France?',
+    status: 'done',
+    toolCalls: [],
+    thoughts: [{ text: 'Looked it up.', phase: 'discovery' }],
+    text: 'About 68 million.',
+    blocks: [{ index: 0, type: 'text', markdown: 'About 68 million.' }],
+    provenance: [],
+  };
+
+  /** Renders the turn scrolled past its question and closes the reasoning. */
+  const closeReasoning = () => {
+    vi.stubGlobal('matchMedia', () => ({ matches: false }));
+    vi.stubGlobal('requestAnimationFrame', () => 7);
+    const cancelAnimationFrame = vi.fn();
+    vi.stubGlobal('cancelAnimationFrame', cancelAnimationFrame);
+    const view = render(
+      <main>
+        <TurnView turn={finishedTurn} index={0} isLast isStreaming={false} />
+      </main>,
+    );
+    const main = screen.getByRole('main');
+    Object.defineProperty(main, 'scrollTop', { value: 500 });
+    main.scrollTo = vi.fn();
+    const question = main.querySelector<HTMLElement>('[data-turn-index="0"]');
+    if (question) {
+      question.getBoundingClientRect = () => ({ top: -100 }) as DOMRect;
+    }
+    fireEvent.click(screen.getByRole('button', { name: /^Reasoning details/ }));
+    fireEvent.click(
+      screen.getByRole('button', { name: CLOSE_REASONING_LABEL }),
+    );
+    return { ...view, cancelAnimationFrame };
+  };
+
+  it('cancels the glide in flight when the turn unmounts', () => {
+    // Test: Unmounting stops the scroll back to the question.
+    // Situation: The reader closes the reasoning, starting a glide, and the
+    //            turn unmounts before its next frame.
+    // Expectation: The queued frame is canceled.
+    const { unmount, cancelAnimationFrame } = closeReasoning();
+    expect(cancelAnimationFrame).not.toHaveBeenCalled();
+
+    unmount();
+    expect(cancelAnimationFrame).toHaveBeenCalledWith(7);
+  });
+
+  it('cancels the glide in flight when a new one starts', () => {
+    // Test: A second close replaces the first glide.
+    // Situation: The reader closes the reasoning, reopens it, and closes it
+    //            again before the first glide's next frame.
+    // Expectation: The first glide's queued frame is canceled.
+    const { cancelAnimationFrame } = closeReasoning();
+
+    fireEvent.click(screen.getByRole('button', { name: /^Reasoning details/ }));
+    fireEvent.click(
+      screen.getByRole('button', { name: CLOSE_REASONING_LABEL }),
+    );
+    expect(cancelAnimationFrame).toHaveBeenCalledWith(7);
+  });
+});
+
 describe('DataAgent skeleton handoff', () => {
   it('keeps HANDOFF_MS equal to the --animate-stream-in duration', () => {
     // Test: The skeleton unmount timer against the answer's fade-in.
@@ -370,6 +489,33 @@ describe('DataAgent skeleton handoff', () => {
     const duration = css.match(/--animate-stream-in:\s*stream-in\s+(\d+)ms/);
     expect(duration).not.toBeNull();
     expect(Number(duration?.[1])).toBe(HANDOFF_MS);
+  });
+
+  it('times the skeleton fade through --tw-duration only', () => {
+    // Test: The handoff fade leaves reduced motion instant.
+    // Situation: A turn streams in discovery, showing the skeleton.
+    // Expectation: The skeleton's fade wrapper sets `--tw-duration`, which
+    //              only the motion-safe transition reads, not
+    //              `transition-duration`.
+    const turn: ChatTurn = {
+      userMessage: 'What is the population of France?',
+      status: 'discovery',
+      toolCalls: [],
+      thoughts: [],
+      text: '',
+      blocks: [],
+      provenance: [],
+    };
+    const { container } = render(
+      <TurnView turn={turn} index={0} isLast isStreaming />,
+    );
+    const fade = container.querySelector<HTMLElement>(
+      '[class*="transition-opacity"]',
+    );
+    expect(fade?.style.getPropertyValue('--tw-duration')).toBe(
+      `${HANDOFF_MS}ms`,
+    );
+    expect(fade?.style.transitionDuration).toBe('');
   });
 
   it('fills --animate-stream-in backwards only', () => {
