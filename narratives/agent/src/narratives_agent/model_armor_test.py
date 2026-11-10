@@ -22,7 +22,6 @@ from typing import Any
 import google.auth.exceptions
 import httpx
 import pytest
-from google.auth.credentials import Credentials
 
 from narratives_agent import model_armor
 from narratives_agent.settings import MODEL_ARMOR_TEMPLATE_ENV
@@ -36,35 +35,15 @@ _EXPECTED_URL = (
     f"/v1/{_TEMPLATE}:sanitizeUserPrompt"
 )
 _QUERY = "What is the population of California?"
+_AUTH_HEADERS = {
+    "Authorization": "Bearer adc-token-123",
+    "x-goog-user-project": "datcom-website-autopush",
+}
 
 
-class _StubCredentials(Credentials):
-    """In-memory `google.auth` credentials stub for unit tests."""
-
-    def __init__(
-        self,
-        token: str | None = "test-access-token",
-        expired: bool = False,
-        quota_project_id: str | None = None,
-        *,
-        populate_on_refresh: bool = True,
-    ) -> None:
-        super().__init__()  # type: ignore[no-untyped-call]
-        self.token = token
-        self._expired = expired
-        self._quota_project_id = quota_project_id
-        self._populate_on_refresh = populate_on_refresh
-        self.refresh_calls = 0
-
-    @property
-    def expired(self) -> bool:
-        return self._expired
-
-    def refresh(self, request: Any) -> None:
-        self.refresh_calls += 1
-        self._expired = False
-        if self._populate_on_refresh:
-            self.token = f"refreshed-token-{self.refresh_calls}"
+async def _stub_auth_headers() -> dict[str, str]:
+    """Returns canned ADC headers for Model Armor HTTP tests."""
+    return dict(_AUTH_HEADERS)
 
 
 @pytest.fixture
@@ -89,6 +68,48 @@ def install_transport(
     return install
 
 
+def test_init_model_armor_logs_warning_when_template_unset(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    # Test: Startup warning when `MODEL_ARMOR_TEMPLATE` is unset.
+    # Situation: `MODEL_ARMOR_TEMPLATE` is not set in the environment.
+    # Expectation: `init_model_armor` logs a warning indicating screening is
+    #   disabled.
+    with caplog.at_level(logging.WARNING, logger=model_armor.logger.name):
+        model_armor.init_model_armor()
+
+    (record,) = caplog.records
+    assert "MODEL_ARMOR_TEMPLATE is unset" in record.getMessage()
+
+
+def test_init_model_armor_logs_nothing_when_template_set(
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    # Test: Startup log behavior when `MODEL_ARMOR_TEMPLATE` is set.
+    # Situation: `MODEL_ARMOR_TEMPLATE` is configured.
+    # Expectation: `init_model_armor` logs no warning.
+    monkeypatch.setenv(MODEL_ARMOR_TEMPLATE_ENV, _TEMPLATE)
+
+    with caplog.at_level(logging.WARNING, logger=model_armor.logger.name):
+        model_armor.init_model_armor()
+
+    assert caplog.records == []
+
+
+def test_init_model_armor_raises_when_template_malformed(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Test: Fail-fast startup validation of `MODEL_ARMOR_TEMPLATE`.
+    # Situation: `MODEL_ARMOR_TEMPLATE` is set to a string that does not match
+    #   `projects/<project>/locations/<location>/templates/<template>`.
+    # Expectation: `init_model_armor` raises `RuntimeError`.
+    monkeypatch.setenv(MODEL_ARMOR_TEMPLATE_ENV, "invalid-template-path")
+
+    with pytest.raises(RuntimeError, match="MODEL_ARMOR_TEMPLATE"):
+        model_armor.init_model_armor()
+
+
 @pytest.mark.asyncio
 async def test_unset_template_skips_screening_without_auth_or_http(
     monkeypatch: pytest.MonkeyPatch,
@@ -100,10 +121,10 @@ async def test_unset_template_skips_screening_without_auth_or_http(
     # Situation: `MODEL_ARMOR_TEMPLATE` is not set in the environment.
     # Expectation: `screen_user_prompt` returns `None` without loading
     #   credentials or sending an HTTP request.
-    def _unexpected_creds() -> Credentials:
-        raise AssertionError("Credentials must not be loaded when unset")
+    async def _unexpected_auth() -> dict[str, str]:
+        raise AssertionError("ADC headers must not be resolved when unset")
 
-    monkeypatch.setattr(model_armor, "_load_credentials", _unexpected_creds)
+    monkeypatch.setattr(model_armor, "get_adc_auth_headers", _unexpected_auth)
     requests = install_transport(lambda req: httpx.Response(200, json={}))
 
     result = await model_armor.screen_user_prompt(_QUERY)
@@ -113,27 +134,25 @@ async def test_unset_template_skips_screening_without_auth_or_http(
 
 
 @pytest.mark.asyncio
-async def test_malformed_template_logs_warning_and_skips_screening(
+async def test_malformed_template_raises_without_http(
     monkeypatch: pytest.MonkeyPatch,
     install_transport: Callable[
         [Callable[[httpx.Request], httpx.Response]], list[httpx.Request]
     ],
-    caplog: pytest.LogCaptureFixture,
 ) -> None:
-    # Test: Validation of `MODEL_ARMOR_TEMPLATE` resource path format.
+    # Test: Validation of `MODEL_ARMOR_TEMPLATE` resource path format in
+    #   `screen_user_prompt`.
     # Situation: `MODEL_ARMOR_TEMPLATE` is set to a string that does not match
     #   `projects/<project>/locations/<location>/templates/<template>`.
-    # Expectation: `screen_user_prompt` logs a warning and returns `None`
-    #   without making an HTTP request.
+    # Expectation: `screen_user_prompt` raises `RuntimeError` without making an
+    #   HTTP request instead of silently skipping screening.
     monkeypatch.setenv(MODEL_ARMOR_TEMPLATE_ENV, "invalid-template-path")
     requests = install_transport(lambda req: httpx.Response(200, json={}))
 
-    with caplog.at_level(logging.WARNING, logger=model_armor.logger.name):
-        result = await model_armor.screen_user_prompt(_QUERY)
+    with pytest.raises(RuntimeError, match="MODEL_ARMOR_TEMPLATE"):
+        await model_armor.screen_user_prompt(_QUERY)
 
-    assert result is None
     assert requests == []
-    assert "Invalid MODEL_ARMOR_TEMPLATE" in caplog.text
 
 
 @pytest.mark.asyncio
@@ -147,13 +166,10 @@ async def test_no_match_found_returns_none_and_sends_regional_request(
     # Situation: `MODEL_ARMOR_TEMPLATE` is configured in `us-central1` and
     #   Model Armor responds with `filterMatchState="NO_MATCH_FOUND"`.
     # Expectation: `screen_user_prompt` sends a POST request to the regional
-    #   `us-central1` endpoint with the ADC Bearer token and `userPromptData`
+    #   `us-central1` endpoint with the ADC headers and `userPromptData`
     #   payload, and returns `None`.
-    creds = _StubCredentials(
-        token="adc-token-123", quota_project_id="datcom-website-autopush"
-    )
     monkeypatch.setenv(MODEL_ARMOR_TEMPLATE_ENV, f"/{_TEMPLATE}/")
-    monkeypatch.setattr(model_armor, "_load_credentials", lambda: creds)
+    monkeypatch.setattr(model_armor, "get_adc_auth_headers", _stub_auth_headers)
     requests = install_transport(
         lambda req: httpx.Response(
             200,
@@ -169,7 +185,6 @@ async def test_no_match_found_returns_none_and_sends_regional_request(
     result = await model_armor.screen_user_prompt(_QUERY)
 
     assert result is None
-    assert creds.refresh_calls == 0
     (request,) = requests
     assert str(request.url) == _EXPECTED_URL
     assert request.headers["Authorization"] == "Bearer adc-token-123"
@@ -237,9 +252,7 @@ async def test_match_found_returns_matched_filter_names(
     # Expectation: `screen_user_prompt` returns the comma-separated names of
     #   the matched filters, or `"model_armor"` when none are listed.
     monkeypatch.setenv(MODEL_ARMOR_TEMPLATE_ENV, _TEMPLATE)
-    monkeypatch.setattr(
-        model_armor, "_load_credentials", lambda: _StubCredentials()
-    )
+    monkeypatch.setattr(model_armor, "get_adc_auth_headers", _stub_auth_headers)
     install_transport(
         lambda req: httpx.Response(
             200,
@@ -255,45 +268,6 @@ async def test_match_found_returns_matched_filter_names(
     result = await model_armor.screen_user_prompt(_QUERY)
 
     assert result == expected_match
-
-
-@pytest.mark.asyncio
-async def test_expired_credentials_are_refreshed_and_reused(
-    monkeypatch: pytest.MonkeyPatch,
-    install_transport: Callable[
-        [Callable[[httpx.Request], httpx.Response]], list[httpx.Request]
-    ],
-) -> None:
-    # Test: ADC credential refresh and reuse across calls.
-    # Situation: The loaded credentials start without a token (`expired=True`)
-    #   and two `screen_user_prompt` calls are made in succession.
-    # Expectation: The first call refreshes the credentials once, and the
-    #   second call reuses the refreshed token without refreshing again.
-    creds = _StubCredentials(token=None, expired=True)
-    load_calls = 0
-
-    def _load() -> Credentials:
-        nonlocal load_calls
-        load_calls += 1
-        return creds
-
-    monkeypatch.setenv(MODEL_ARMOR_TEMPLATE_ENV, _TEMPLATE)
-    monkeypatch.setattr(model_armor, "_load_credentials", _load)
-    requests = install_transport(
-        lambda req: httpx.Response(
-            200,
-            json={"sanitizationResult": {"filterMatchState": "NO_MATCH_FOUND"}},
-        )
-    )
-
-    await model_armor.screen_user_prompt(_QUERY)
-    await model_armor.screen_user_prompt(_QUERY)
-
-    assert load_calls == 1
-    assert creds.refresh_calls == 1
-    assert len(requests) == 2
-    assert requests[0].headers["Authorization"] == "Bearer refreshed-token-1"
-    assert requests[1].headers["Authorization"] == "Bearer refreshed-token-1"
 
 
 @pytest.mark.parametrize(
@@ -345,9 +319,7 @@ async def test_upstream_errors_fail_open_without_logging_query(
     # Expectation: `screen_user_prompt` logs a warning containing the failure
     #   summary (without leaking the user query text) and returns `None`.
     monkeypatch.setenv(MODEL_ARMOR_TEMPLATE_ENV, _TEMPLATE)
-    monkeypatch.setattr(
-        model_armor, "_load_credentials", lambda: _StubCredentials()
-    )
+    monkeypatch.setattr(model_armor, "get_adc_auth_headers", _stub_auth_headers)
     install_transport(response_factory)
 
     with caplog.at_level(logging.WARNING, logger=model_armor.logger.name):
@@ -359,18 +331,16 @@ async def test_upstream_errors_fail_open_without_logging_query(
 
 
 @pytest.mark.parametrize(
-    ("creds_loader", "expected_log"),
+    ("error", "expected_log"),
     [
         pytest.param(
-            lambda: (_ for _ in ()).throw(
-                google.auth.exceptions.DefaultCredentialsError("no ADC")  # type: ignore[no-untyped-call]
-            ),
+            google.auth.exceptions.DefaultCredentialsError("no ADC"),  # type: ignore[no-untyped-call]
             "DefaultCredentialsError",
             id="default-credentials-error",
         ),
         pytest.param(
-            lambda: _StubCredentials(
-                token=None, expired=False, populate_on_refresh=False
+            RuntimeError(
+                "Application Default Credentials returned no access token"
             ),
             "RuntimeError",
             id="missing-access-token",
@@ -384,17 +354,20 @@ async def test_auth_errors_fail_open_without_http_or_logging_query(
         [Callable[[httpx.Request], httpx.Response]], list[httpx.Request]
     ],
     caplog: pytest.LogCaptureFixture,
-    creds_loader: Callable[[], Credentials],
+    error: Exception,
     expected_log: str,
 ) -> None:
     # Test: Fail-open error handling on ADC credential failures.
-    # Situation: Loading or building ADC headers raises `GoogleAuthError` or
+    # Situation: Resolving ADC headers raises `GoogleAuthError` or
     #   `RuntimeError`.
     # Expectation: `screen_user_prompt` logs a warning with the exception type
     #   (without leaking the user query text), makes no HTTP request, and
     #   returns `None`.
+    async def _failing_headers() -> dict[str, str]:
+        raise error
+
     monkeypatch.setenv(MODEL_ARMOR_TEMPLATE_ENV, _TEMPLATE)
-    monkeypatch.setattr(model_armor, "_load_credentials", creds_loader)
+    monkeypatch.setattr(model_armor, "get_adc_auth_headers", _failing_headers)
     requests = install_transport(lambda req: httpx.Response(200, json={}))
 
     with caplog.at_level(logging.WARNING, logger=model_armor.logger.name):
@@ -416,7 +389,7 @@ async def test_auth_header_timeout_fails_open_without_http_or_logging_query(
 ) -> None:
     # Test: Bounded timeout around ADC credential resolution in
     #   `screen_user_prompt`.
-    # Situation: `_get_auth_headers` stalls longer than
+    # Situation: `get_adc_auth_headers` stalls longer than
     #   `_REQUEST_TIMEOUT_SECONDS`.
     # Expectation: `screen_user_prompt` times out, logs a `TimeoutError`
     #   warning (without the query text), makes no HTTP request, and returns
@@ -427,7 +400,7 @@ async def test_auth_header_timeout_fails_open_without_http_or_logging_query(
 
     monkeypatch.setenv(MODEL_ARMOR_TEMPLATE_ENV, _TEMPLATE)
     monkeypatch.setattr(model_armor, "_REQUEST_TIMEOUT_SECONDS", 0.01)
-    monkeypatch.setattr(model_armor, "_get_auth_headers", _slow_headers)
+    monkeypatch.setattr(model_armor, "get_adc_auth_headers", _slow_headers)
     requests = install_transport(lambda req: httpx.Response(200, json={}))
 
     with caplog.at_level(logging.WARNING, logger=model_armor.logger.name):
@@ -485,9 +458,7 @@ async def test_non_success_invocation_result_logs_warning_and_preserves_verdict(
     #   `invocationResult` value, returns `None` when no filter matched, and
     #   still enforces `MATCH_FOUND` when a partial invocation matched a filter.
     monkeypatch.setenv(MODEL_ARMOR_TEMPLATE_ENV, _TEMPLATE)
-    monkeypatch.setattr(
-        model_armor, "_load_credentials", lambda: _StubCredentials()
-    )
+    monkeypatch.setattr(model_armor, "get_adc_auth_headers", _stub_auth_headers)
     install_transport(
         lambda req: httpx.Response(
             200, json={"sanitizationResult": sanitization_result}
@@ -517,9 +488,7 @@ async def test_aclose_closes_the_shared_http_client(
     #   `aclose()` is called on the same event loop.
     # Expectation: The client is closed and cleared from `_STATE`.
     monkeypatch.setenv(MODEL_ARMOR_TEMPLATE_ENV, _TEMPLATE)
-    monkeypatch.setattr(
-        model_armor, "_load_credentials", lambda: _StubCredentials()
-    )
+    monkeypatch.setattr(model_armor, "get_adc_auth_headers", _stub_auth_headers)
     install_transport(
         lambda req: httpx.Response(
             200,

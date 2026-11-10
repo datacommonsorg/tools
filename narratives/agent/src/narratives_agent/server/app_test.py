@@ -220,6 +220,23 @@ def test_startup_fails_on_kubernetes_without_a_signing_secret(
         pass
 
 
+def test_startup_fails_with_a_malformed_model_armor_template(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Test: Startup validation of `MODEL_ARMOR_TEMPLATE`.
+    # Situation: `MODEL_ARMOR_TEMPLATE` is set to a malformed resource path and
+    #   the application lifespan starts.
+    # Expectation: Entering the `TestClient` context raises `RuntimeError`
+    #   before the server accepts requests.
+    monkeypatch.setenv("MODEL_ARMOR_TEMPLATE", "invalid-template-path")
+
+    with (
+        pytest.raises(RuntimeError, match="MODEL_ARMOR_TEMPLATE"),
+        TestClient(create_app()),
+    ):
+        pass
+
+
 def test_lifespan_flushes_telemetry_at_shutdown(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

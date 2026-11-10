@@ -17,7 +17,7 @@ from collections.abc import Iterator
 
 import pytest
 
-from narratives_agent.gcp_auth import reset_dc_api_key
+from narratives_agent.gcp_auth import reset_adc_credentials, reset_dc_api_key
 from narratives_agent.model_armor import reset_model_armor_client
 from narratives_agent.secret_manager import reset_secret_manager_client
 from narratives_agent.settings import (
@@ -57,11 +57,13 @@ def clear_settings_cache(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
     get_settings.cache_clear()
     reset_signing_key()
     reset_dc_api_key()
+    reset_adc_credentials()
     reset_model_armor_client()
     reset_secret_manager_client()
     yield
     get_settings.cache_clear()
     reset_signing_key()
     reset_dc_api_key()
+    reset_adc_credentials()
     reset_model_armor_client()
     reset_secret_manager_client()
