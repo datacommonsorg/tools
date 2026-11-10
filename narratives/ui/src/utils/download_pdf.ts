@@ -464,6 +464,41 @@ export function pageBreak(
   return shortened;
 }
 
+/**
+ * Readies the mounted clone for paper: no panel backgrounds, and nothing that
+ * clips text.
+ *
+ * Runs after mounting, since it reads computed styles. Inlined charts keep
+ * their own styling, as a legend swatch is a background color, and
+ * screen-reader-only text stays clipped out of sight.
+ */
+export function flattenForPrint(clone: HTMLElement) {
+  clone.querySelectorAll<HTMLElement>('*').forEach((el) => {
+    if (el.closest('[data-chart-inner], .sr-only')) return;
+    el.style.background = 'none';
+    const computed = window.getComputedStyle(el);
+    if (computed.overflowX !== 'visible' || computed.overflowY !== 'visible') {
+      el.style.overflow = 'visible';
+    }
+    if (computed.textOverflow === 'ellipsis') {
+      el.style.textOverflow = 'clip';
+      el.style.whiteSpace = 'normal';
+    }
+  });
+  // A table scrolls sideways on screen, but paper has no scrollbar: fit it to
+  // the page, letting cells break long values only when nothing else fits.
+  clone
+    .querySelectorAll<HTMLElement>('.markdown-body table')
+    .forEach((table) => {
+      table.style.width = '100%';
+      table.style.minWidth = '0';
+      table.querySelectorAll<HTMLElement>('th, td').forEach((cell) => {
+        cell.style.whiteSpace = 'normal';
+        cell.style.overflowWrap = 'anywhere';
+      });
+    });
+}
+
 /** Turns the question into a filesystem-safe basename. */
 function fileNameFor(question: string): string {
   const slug = question
@@ -545,8 +580,7 @@ async function renderToPdf(
     numeric.style.cursor = 'auto';
   });
 
-  // The question is the document's heading: undo its on-screen one-line
-  // truncation so a long question is not cut off.
+  // The question is the document's heading.
   clone.querySelectorAll<HTMLElement>('.print-question').forEach((heading) => {
     heading.style.whiteSpace = 'normal';
     heading.style.textOverflow = 'clip';
@@ -562,7 +596,6 @@ async function renderToPdf(
       row.style.minHeight = '0';
       row.style.alignItems = 'flex-start';
       row.style.padding = '0 0 12px 0';
-      row.style.background = '#ffffff';
       row.style.borderBottom = '0';
     }
   });
@@ -588,6 +621,7 @@ async function renderToPdf(
 
   stage.appendChild(clone);
   document.body.appendChild(stage);
+  flattenForPrint(clone);
   scaleChartsToWidth(stage);
   fitCardsToPage(stage, pageHeightFor(clone));
 
