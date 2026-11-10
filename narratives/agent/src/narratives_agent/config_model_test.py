@@ -31,9 +31,9 @@ Covers the per-field rules the parser applies to a configuration document:
 
 And the resolution of each `GeminiRole` to its model, temperature, and
 thinking level, with and without configured values, including the clamp that
-raises a level the role's model does not accept, and the environment
-overrides `resolve_chat_config` applies to the `chat` section. The loading
-paths that produce the document are tested in `config_test.py`.
+raises a level the role's model does not accept. The loading paths that
+produce the document, and the environment overrides of the `chat` section,
+are tested in `config_test.py`.
 """
 
 import logging
@@ -56,7 +56,6 @@ from narratives_agent.config_model import (
     RoleConfig,
     ThinkingLevels,
     parse_agent_config,
-    resolve_chat_config,
 )
 
 _ABSENT = object()
@@ -761,85 +760,3 @@ def test_an_unusable_unavailable_message_gives_the_default(
     assert [
         "'chat.unavailable_message'" in message for message in _warnings(caplog)
     ] == [True]
-
-
-_DISABLED_CONFIG = AgentConfig(
-    chat=ChatConfig(enabled=False, unavailable_message="Configured.")
-)
-
-
-@pytest.mark.parametrize(
-    ("config", "enable_chat", "unavailable_message", "expected"),
-    [
-        pytest.param(
-            _DISABLED_CONFIG,
-            True,
-            "",
-            ChatConfig(enabled=True, unavailable_message="Configured."),
-            id="true overrides disabled config",
-        ),
-        pytest.param(
-            AgentConfig(),
-            False,
-            "",
-            ChatConfig(enabled=False),
-            id="false overrides enabled config",
-        ),
-        pytest.param(
-            _DISABLED_CONFIG,
-            None,
-            "",
-            ChatConfig(enabled=False, unavailable_message="Configured."),
-            id="unset keeps config",
-        ),
-        pytest.param(
-            _DISABLED_CONFIG,
-            None,
-            " Environment. ",
-            ChatConfig(enabled=False, unavailable_message="Environment."),
-            id="message overrides config",
-        ),
-        pytest.param(
-            _DISABLED_CONFIG,
-            None,
-            "   ",
-            ChatConfig(enabled=False, unavailable_message="Configured."),
-            id="blank message keeps config",
-        ),
-        pytest.param(
-            None,
-            None,
-            "",
-            ChatConfig(),
-            id="no config",
-        ),
-        pytest.param(
-            None,
-            False,
-            "Environment.",
-            ChatConfig(enabled=False, unavailable_message="Environment."),
-            id="no config with overrides",
-        ),
-    ],
-)
-def test_resolve_chat_config_applies_the_environment_overrides(
-    config: AgentConfig | None,
-    enable_chat: bool | None,
-    unavailable_message: str,
-    expected: ChatConfig,
-) -> None:
-    # Test: Override precedence in `resolve_chat_config`.
-    # Situation: The configuration enables or disables chat, or is absent,
-    #   and `enable_chat` and `unavailable_message` are unset, blank, or set.
-    # Expectation: A boolean `enable_chat` replaces `chat.enabled` in either
-    #   direction and `None` keeps it; a non-blank message replaces
-    #   `chat.unavailable_message` after stripping and a blank one keeps it;
-    #   without a configuration the overrides apply to `ChatConfig()`.
-    assert (
-        resolve_chat_config(
-            config,
-            enable_chat=enable_chat,
-            unavailable_message=unavailable_message,
-        )
-        == expected
-    )

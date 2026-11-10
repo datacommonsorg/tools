@@ -19,9 +19,7 @@ local `config.json`), layers the prompt bodies into it, and calls
 `AgentConfig`, so the document's shape, the type of each value, and the
 default that applies when a value is absent are known in this one module.
 Field names follow the JSON keys, so `config.thinking.discovery_level` is
-`thinking.discovery_level` in the document. `resolve_chat_config` combines
-the `chat` section with the `ENABLE_CHAT` and `UNAVAILABLE_MESSAGE` values
-that its caller reads from the environment.
+`thinking.discovery_level` in the document.
 
 The module also holds the Gemini settings of every role in the agent loop.
 `GeminiRole` names the roles, `_ROLE_TEMPERATURES` and
@@ -205,8 +203,8 @@ class ChatConfig:
     """Holds the `chat` section: chat availability settings.
 
     `enabled` set to `False` ends every chat turn with a `chat_disabled`
-    error carrying `unavailable_message`. `resolve_chat_config` applies the
-    environment overrides to these values.
+    error carrying `unavailable_message`. `get_chat_config` in `config.py`
+    applies the environment overrides to these values.
     """
 
     enabled: bool = True
@@ -563,29 +561,3 @@ def parse_agent_config(document: Mapping[str, Any]) -> AgentConfig:
         ),
         template_vars=_read_template_vars(document),
     )
-
-
-def resolve_chat_config(
-    config: AgentConfig | None,
-    *,
-    enable_chat: bool | None = None,
-    unavailable_message: str = "",
-) -> ChatConfig:
-    """Returns chat availability with the environment overrides applied.
-
-    Args:
-        config: The loaded configuration, or `None` when none is loaded, in
-            which case `ChatConfig()` is the base.
-        enable_chat: The `ENABLE_CHAT` override, or `None` when unset. A
-            boolean replaces `chat.enabled` in either direction.
-        unavailable_message: The `UNAVAILABLE_MESSAGE` override. A blank
-            value leaves `chat.unavailable_message` in place.
-
-    Returns:
-        The effective chat availability settings.
-    """
-    base = config.chat if config is not None else ChatConfig()
-    enabled = base.enabled if enable_chat is None else enable_chat
-    stripped_message = unavailable_message.strip()
-    message = stripped_message if stripped_message else base.unavailable_message
-    return ChatConfig(enabled=enabled, unavailable_message=message)

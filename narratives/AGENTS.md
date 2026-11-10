@@ -105,14 +105,13 @@ process and PR expectations: [`CONTRIBUTING.md`](../CONTRIBUTING.md).
       layers the prompts, and returns the result as an `AgentConfig`; renders
       prompts with the turn's pinned `{{CURRENT_DATETIME}}`
       (`pin_current_datetime`); and resolves chat availability with the
-      `ENABLE_CHAT` and `UNAVAILABLE_MESSAGE` overrides
-      (`apply_chat_environment`, `get_chat_config`).
+      `ENABLE_CHAT` and `UNAVAILABLE_MESSAGE` overrides (`get_chat_config`).
     - `config_model.py`: the frozen `AgentConfig` dataclasses, the parser
       that applies the defaults (failing closed on a malformed `chat`
-      section), the per-role Gemini model, temperature, and thinking-level
-      settings (`GeminiRole`, `AgentConfig.resolve_role_config`), and the
-      chat override resolver (`ChatConfig`, `resolve_chat_config`); the
-      workflows read configuration from it.
+      section), and the per-role Gemini model, temperature, and
+      thinking-level settings (`GeminiRole`,
+      `AgentConfig.resolve_role_config`); the workflows read configuration
+      from it.
     - `dev.py` — local development server (`uv run narratives-agent-dev`).
     - `json_value.py`: the `JsonValue` and `JsonObject` aliases for data
       that is JSON by nature, such as MCP tool arguments and results, and

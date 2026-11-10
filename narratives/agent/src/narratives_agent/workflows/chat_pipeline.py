@@ -37,7 +37,7 @@ from narratives_agent.analytics.digest import AnalysisDigest
 from narratives_agent.analytics.provenance import Source
 from narratives_agent.analytics.tables import ObservationTable
 from narratives_agent.config import (
-    apply_chat_environment,
+    get_chat_config,
     load_config,
     pin_current_datetime,
 )
@@ -893,10 +893,9 @@ async def run_turn(transcript: Transcript, emit: Emit) -> None:
     state: TerminalState | None = None
     error_type: ErrorType | RefusedReason | None = None
     try:
-        loaded_config = load_config()
         # Chat availability is checked before the configuration is required,
         # so `ENABLE_CHAT=false` ends the turn even when none is loaded.
-        chat = apply_chat_environment(loaded_config)
+        chat = get_chat_config()
         if not chat.enabled:
             state, error_type = TerminalState.REFUSED, ErrorType.CHAT_DISABLED
             emit(
@@ -908,7 +907,7 @@ async def run_turn(transcript: Transcript, emit: Emit) -> None:
                 )
             )
             return
-        config = _require_turn_config(loaded_config)
+        config = _require_turn_config(load_config())
         # Every prompt of the turn renders `{{CURRENT_DATETIME}}` as one
         # timestamp, isolated from concurrent turns.
         with pin_current_datetime():

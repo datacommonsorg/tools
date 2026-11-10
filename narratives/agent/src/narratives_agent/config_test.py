@@ -963,24 +963,43 @@ def test_load_config_reports_a_value_of_the_wrong_type_once(
 # --- chat availability ------------------------------------------------------
 
 
+_CLOSED_CONFIG = AgentConfig(
+    chat=ChatConfig(enabled=False, unavailable_message="Closed.")
+)
+
+
 @pytest.mark.parametrize(
     ("loaded", "env", "expected"),
     [
         pytest.param(
-            AgentConfig(
-                chat=ChatConfig(enabled=False, unavailable_message="Closed.")
-            ),
+            _CLOSED_CONFIG,
             {},
             ChatConfig(enabled=False, unavailable_message="Closed."),
-            id="configuration only",
+            id="unset keeps configuration",
         ),
         pytest.param(
-            AgentConfig(
-                chat=ChatConfig(enabled=False, unavailable_message="Closed.")
-            ),
-            {ENABLE_CHAT_ENV: "true", UNAVAILABLE_MESSAGE_ENV: " Back soon. "},
-            ChatConfig(enabled=True, unavailable_message="Back soon."),
-            id="environment overrides configuration",
+            _CLOSED_CONFIG,
+            {ENABLE_CHAT_ENV: "true"},
+            ChatConfig(enabled=True, unavailable_message="Closed."),
+            id="ENABLE_CHAT=true overrides disabled configuration",
+        ),
+        pytest.param(
+            AgentConfig(),
+            {ENABLE_CHAT_ENV: "false"},
+            ChatConfig(enabled=False),
+            id="ENABLE_CHAT=false overrides enabled configuration",
+        ),
+        pytest.param(
+            _CLOSED_CONFIG,
+            {UNAVAILABLE_MESSAGE_ENV: " Back soon. "},
+            ChatConfig(enabled=False, unavailable_message="Back soon."),
+            id="UNAVAILABLE_MESSAGE overrides configuration",
+        ),
+        pytest.param(
+            _CLOSED_CONFIG,
+            {UNAVAILABLE_MESSAGE_ENV: "   "},
+            ChatConfig(enabled=False, unavailable_message="Closed."),
+            id="blank UNAVAILABLE_MESSAGE keeps configuration",
         ),
         pytest.param(
             None,
@@ -990,9 +1009,9 @@ def test_load_config_reports_a_value_of_the_wrong_type_once(
         ),
         pytest.param(
             None,
-            {ENABLE_CHAT_ENV: "false"},
-            ChatConfig(enabled=False),
-            id="no configuration with ENABLE_CHAT=false",
+            {ENABLE_CHAT_ENV: "false", UNAVAILABLE_MESSAGE_ENV: "Back soon."},
+            ChatConfig(enabled=False, unavailable_message="Back soon."),
+            id="no configuration with overrides",
         ),
     ],
 )
@@ -1002,12 +1021,15 @@ def test_get_chat_config_applies_the_environment_to_the_loaded_config(
     env: dict[str, str],
     expected: ChatConfig,
 ) -> None:
-    # Test: `get_chat_config` combining `load_config` with the environment.
-    # Situation: The loaded configuration disables chat with a custom
-    #   message, or no configuration is loaded, and `ENABLE_CHAT` and
-    #   `UNAVAILABLE_MESSAGE` are unset or set.
-    # Expectation: The environment values replace the configured ones when
-    #   set, and apply to `ChatConfig()` when no configuration is loaded.
+    # Test: Override precedence in `get_chat_config`.
+    # Situation: The loaded configuration enables or disables chat, or no
+    #   configuration is loaded, and `ENABLE_CHAT` and `UNAVAILABLE_MESSAGE`
+    #   are unset, blank, or set.
+    # Expectation: An explicit `ENABLE_CHAT` replaces `chat.enabled` in
+    #   either direction and an unset one keeps it; a non-blank message
+    #   replaces `chat.unavailable_message` after stripping and a blank one
+    #   keeps it; without a configuration the overrides apply to
+    #   `ChatConfig()`.
     _with_config(monkeypatch, loaded)
     for name, value in env.items():
         monkeypatch.setenv(name, value)

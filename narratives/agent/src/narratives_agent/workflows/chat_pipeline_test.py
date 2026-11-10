@@ -371,6 +371,20 @@ async def _run_accepted_loop(cache: TurnCache, **_: object) -> DiscoveryResult:
     )
 
 
+def _use_config(
+    monkeypatch: pytest.MonkeyPatch, loaded: AgentConfig | None
+) -> None:
+    """Makes every configuration read of the turn return `loaded`.
+
+    `run_turn` reads the configuration through `chat_pipeline.load_config`
+    and resolves chat availability through `config.get_chat_config`, which
+    calls `config.load_config`, so both names are replaced; replacing one
+    would let the other read the developer's local configuration.
+    """
+    monkeypatch.setattr(chat_pipeline, "load_config", lambda: loaded)
+    monkeypatch.setattr(config, "load_config", lambda: loaded)
+
+
 @pytest.fixture
 def turn(monkeypatch: pytest.MonkeyPatch) -> _Turn:
     """Stubs every external call of a turn so each stage succeeds at once."""
@@ -436,10 +450,9 @@ def turn(monkeypatch: pytest.MonkeyPatch) -> _Turn:
         return list(_FOLLOW_UPS) if topics.unused or topics.reported else []
 
     monkeypatch.setattr(chat_pipeline, "TurnTelemetry", create_telemetry)
-    monkeypatch.setattr(
-        chat_pipeline,
-        "load_config",
-        lambda: AgentConfig(
+    _use_config(
+        monkeypatch,
+        AgentConfig(
             prompts=Prompts(discovery="Gather data.", synthesis="Write prose.")
         ),
     )
@@ -1475,7 +1488,7 @@ async def test_missing_config_ends_the_turn_before_classify(
     # Expectation: The turn ends immediately in one `error` terminal event with
     #   reason `config_missing`, without calling classify, discovery, or
     #   synthesis.
-    monkeypatch.setattr(chat_pipeline, "load_config", lambda: None)
+    _use_config(monkeypatch, None)
 
     await chat_pipeline.run_turn(_TRANSCRIPT, turn.emit)
 
@@ -2282,7 +2295,7 @@ async def test_enable_chat_false_refuses_the_turn_without_a_config(
     # Expectation: The turn ends with reason `chat_disabled`, the default
     #   message, and `is_retryable` false rather than `config_missing`.
     monkeypatch.setenv(ENABLE_CHAT_ENV, "false")
-    monkeypatch.setattr(chat_pipeline, "load_config", lambda: None)
+    _use_config(monkeypatch, None)
 
     await chat_pipeline.run_turn(_TRANSCRIPT, turn.emit)
 
@@ -2303,10 +2316,9 @@ async def test_config_chat_disabled_refuses_the_turn_with_its_message(
     # Expectation: The turn ends in one non-retryable `error` terminal frame
     #   carrying the configured message and reason `chat_disabled`, without a
     #   classifier or synthesis call.
-    monkeypatch.setattr(
-        chat_pipeline,
-        "load_config",
-        lambda: AgentConfig(
+    _use_config(
+        monkeypatch,
+        AgentConfig(
             chat=ChatConfig(enabled=False, unavailable_message=_CLOSED)
         ),
     )
@@ -2336,10 +2348,9 @@ async def test_enable_chat_true_overrides_a_disabled_config(
     #   `"true"`.
     # Expectation: The turn runs to a `complete` terminal frame.
     monkeypatch.setenv(ENABLE_CHAT_ENV, "true")
-    monkeypatch.setattr(
-        chat_pipeline,
-        "load_config",
-        lambda: AgentConfig(
+    _use_config(
+        monkeypatch,
+        AgentConfig(
             prompts=Prompts(discovery="Gather data.", synthesis="Write prose."),
             chat=ChatConfig(enabled=False, unavailable_message=_CLOSED),
         ),
