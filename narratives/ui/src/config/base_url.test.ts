@@ -46,8 +46,10 @@ describe('trimTrailingSlashes', () => {
 describe('withBaseUrl', () => {
   it.each([
     ['https://autopush.datacommons.org/', ''],
+    ['https://autopush.datacommons.org/index.html', ''],
     ['https://autopush.datacommons.org/narratives/', '/narratives'],
     ['https://autopush.datacommons.org/labs/discover/', '/labs/discover'],
+    ['https://autopush.datacommons.org/labs/discover', '/labs/discover'],
     [
       'https://autopush.datacommons.org/labs/discover/index.html',
       '/labs/discover',
@@ -56,12 +58,14 @@ describe('withBaseUrl', () => {
       'https://autopush.datacommons.org/labs/discover/?q=india#/metrics',
       '/labs/discover',
     ],
+    ['https://autopush.datacommons.org//labs/discover/', '/labs/discover'],
   ])('resolves paths under %s to prefix %j', (href, expectedPrefix) => {
-    // Test: Runtime path resolution against `window.location.href`.
-    // Situation: The document is served at the root, a single-segment subpath,
-    //            a multi-segment subpath, an explicit `index.html`, or a URL
-    //            carrying query and hash parameters.
-    // Expectation: Assets and API endpoints resolve under the mount directory.
+    // Test: Runtime path resolution against `window.location.pathname`.
+    // Situation: The document is served at the root, a single- or multi-segment
+    //            subpath (with or without a trailing slash), an explicit
+    //            `index.html`, repeated leading slashes, or query/hash params.
+    // Expectation: Assets and API endpoints resolve under a single-slash mount
+    //              prefix without generating protocol-relative `//` URLs.
     vi.stubGlobal('location', new URL(href));
     expect(withBaseUrl('/dc-logo.svg')).toBe(`${expectedPrefix}/dc-logo.svg`);
     expect(withBaseUrl('agent/chat/stream')).toBe(

@@ -22,21 +22,30 @@
 
 const LEADING_SLASHES_PATTERN = /^\/+/;
 const TRAILING_SLASHES_PATTERN = /\/+$/;
+const SHELL_FILENAME_SUFFIX = /\/index\.html$/;
 
 /** Trims surrounding whitespace and trailing slashes from a URL or path. */
 export const trimTrailingSlashes = (value: string): string =>
   value.trim().replace(TRAILING_SLASHES_PATTERN, '');
 
 /**
- * Resolves an application-relative path against `window.location.href` so the
- * same compiled UI bundle resolves assets and `/agent/*` endpoints whether
+ * Resolves an application-relative path against `window.location.pathname` so
+ * the same compiled UI bundle resolves assets and `/agent/*` endpoints whether
  * mounted at `/` or under a runtime `BASE_PATH` subpath (such as
- * `/labs/discover/`).
+ * `/labs/discover/`), with or without a trailing slash.
  */
 export const withBaseUrl = (path: string): string => {
   const cleanPath = path.trim().replace(LEADING_SLASHES_PATTERN, '');
   if (typeof window === 'undefined') {
     return `/${cleanPath}`;
   }
-  return new URL(cleanPath, window.location.href).pathname;
+  const rawPathname = window.location.pathname.replace(
+    SHELL_FILENAME_SUFFIX,
+    '/',
+  );
+  const basePrefix = trimTrailingSlashes(rawPathname).replace(
+    LEADING_SLASHES_PATTERN,
+    '',
+  );
+  return basePrefix ? `/${basePrefix}/${cleanPath}` : `/${cleanPath}`;
 };
