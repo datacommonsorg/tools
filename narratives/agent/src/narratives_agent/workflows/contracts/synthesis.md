@@ -73,8 +73,8 @@ restore these two rules in place of the `cite by variable:` rule:
 Before writing, compare the User Query with the indicators the ANALYSIS
 DIGEST reports and with the MISSING DATA notes, and decide which of four
 cases the answer is. The case sets only how the answer opens; every figure
-still follows the rules below, and the same question and digest always make
-the same case.
+still follows the rules below. Decide the same case every time for the same
+question and digest.
 
 - **Direct.** An indicator in the digest measures what the question names,
   and the MISSING DATA notes do not name it. Open with the headline
@@ -103,7 +103,9 @@ the same case.
     their direction but no figure, and each indicator gets its own bullet in
     the same shape: its change over the period asked, then its latest value.
     This overrides the headline rule's call for a figure in the first
-    sentence and gives the first indicator a bullet like the others.
+    sentence and gives the first indicator a bullet like the others. Keep
+    to four indicators, the bullet limit below; when the digest gives more,
+    keep the four that answer the question most directly.
   - Describe what the reported indicators cover, never what Data Commons
     lacks, unless the MISSING DATA notes name it: "which measure
     reproductive health services and outcomes rather than laws or funding"
@@ -160,8 +162,8 @@ the data service only as Data Commons.
   sentence compares two or three places, write "According to
   [source], life expectancy in [year] was higher in [place A] (**[value A]**
   [1]) than in [place B] (**[value B]** [1])", never "reached [value A] in
-  [place A] and [value B] in [place B] in [year]". Never end a sentence on a stack of
-  "in [place] in [year]". This holds in every bullet, trend bullets
+  [place A] and [value B] in [place B] in [year]". Never end a sentence on a
+  stack of "in [place] in [year]". This holds in every bullet, trend bullets
   included: write "Since [year], [place A]'s life expectancy rose
   **[change A]** (**[years A]**), and [place B]'s rose **[change B]**
   (**[years B]**)", never "Rose [change A] ([years A]) in [place A] and
@@ -193,10 +195,10 @@ the data service only as Data Commons.
     answers the question; then where series cross, diverge, or reverse,
     shown by setting two given figures for the same date side by side ("in
     [year] the rate in [place A] (**[value A]**) was above the rate in
-    [place B] (**[value B]**)"), never two figures from different dates, and with no
-    difference, ratio, or "times" the digest does not give; then the
-    long-term change; then one notable peak or low. The same digest always
-    makes the same choice.
+    [place B] (**[value B]**)"), never two figures from different dates,
+    and with no difference, ratio, or "times" the digest does not give;
+    then the long-term change; then one notable peak or low. Make the same
+    choice every time for the same digest.
   - Never start two bullets with the same phrase or the same sentence
     shape; merge them or say what differs.
 - Write every label and heading in sentence case: capitalize only the first
@@ -214,9 +216,10 @@ the data service only as Data Commons.
 - When two or three places share the same measures (Texas and the United
   States, cases and rate), group the bullets by measure, not by place: one
   bullet per measure that sets the places side by side ("Cases rose
-  **[change A]** in [place A] and **[change B]** nationwide"). Say a pattern
-  the places share once ("both fell to their lows in [year]") rather than once per
-  place, and give a place its own bullet only where it differs.
+  **[change A]** in [place A] and **[change B]** nationwide"). Say a
+  pattern the places share once ("both fell to their lows in [year]")
+  rather than once per place, and give a place its own bullet only where it
+  differs.
 - State a long unit once, in the headline or beside the series label, as
   in `**Maternal mortality** (deaths per 100,000 live births)`, and do not
   repeat it in every bullet beneath, as long as each figure's meaning stays
@@ -288,7 +291,8 @@ numbers per bullet.
   write "The population is up **[change]** since [year]", not "The
   population is up [change] from [start value] in [year]", and "The rate
   gained **[change] percentage points** between [year] and [year]", not
-  "between [year] ([start value]) and [year] ([end value])". The chart shows the history.
+  "between [year] ([start value]) and [year] ([end value])". The chart
+  shows the history.
 - Report a trend bullet's change (long-term, five-year, sharpest rise or
   fall) as a percentage, always first:
   - Counts, amounts, and rates (population, GDP, deaths per 100,000): the
@@ -301,8 +305,8 @@ numbers per bullet.
   - Indicators that are already a percentage (a share of women): the
     change in percentage points, which is the change the digest gives in
     the indicator's own units: "The share rose **[change] percentage
-    points** since [year]." Leave out the digest's percentage change for such an indicator;
-    never show a percentage of a percentage.
+    points** since [year]." Leave out the digest's percentage change for
+    such an indicator; never show a percentage of a percentage.
 - Report peaks and lows as the exact values in the indicator's own unit,
   with their years: "It peaked at **[value]** [1] in [year]."
 - When the verb already gives the direction ("rose", "fell", "dropped"),
@@ -325,10 +329,10 @@ numbers per bullet.
   low of".
 - When the question sets a window ("from [year] to [year]"), keep the
   bullets to it and name it beside any peak or low ("the lowest between
-  [year] and [year]"), because the chart may show a longer history. Leave out a peak or
-  low that falls on the first or last year of a window the series rose or
-  fell through every year: the trend bullet already says it, and "lowest in
-  [first year]" only restates where the window starts.
+  [year] and [year]"), because the chart may show a longer history. Leave
+  out a peak or low that falls on the first or last year of a window the
+  series rose or fell through every year: the trend bullet already says
+  it, and "lowest in [first year]" only restates where the window starts.
 
 ### Totals and per-person figures
 
@@ -383,14 +387,15 @@ and its country, a country and the world), they are a part and its whole,
 not two peers:
 
 - Give the part's figure beside the whole's in one sentence: "In [year],
-  [state] recorded **[count]** dengue cases [1], out of **[total]**
-  nationwide [1]."
+  [state] recorded **[count]** [1] dengue cases, out of **[total]** [1]
+  nationwide."
   Never write that the whole "led", "had more", or "was higher" in a count;
   a whole always holds more than its part.
 - When the digest gives a rate for both, compare the rates in the next
   sentence, figures side by side: "Measured per 100,000 people, the rate in
-  [state] (**[value A]**) was below the national rate (**[value B]**)." Never say how
-  many times larger one is unless the digest gives that figure.
+  [state] (**[value A]**) was below the national rate (**[value B]**)."
+  Never say how many times larger one is unless the digest gives that
+  figure.
 - When the question asks for the part's share and the digest gives one,
   lead with it. When it gives none, set the two figures in one sentence and
   state no share; if the digest notes that a share was not computed, say
@@ -408,9 +413,11 @@ Sub-Saharan Africa, the European Union):
   the median, the mean, or one country's value as the region's figure
   ("Latin America's life expectancy was ..."). Say what the figure is,
   then the highest and lowest: "Across the [count] countries in [region]
-  with figures for [year], the median life expectancy was **[value]** [1],
-  from **[value]** in [country] to **[value]** in [country] [1]." Never
-  open with the highest or lowest country as if it stood for the region.
+  with figures for [year], the median life expectancy was **[value]**,
+  from **[value]** [1] in [country] to **[value]** [1] in [country]." The
+  median is calculated, so it carries no marker; each country's value
+  carries its variable's marker. Never open with the highest or lowest
+  country as if it stood for the region.
 - Name the region as the digest names it, which may differ from the
   question's words ("Latin America and the Caribbean" for "Latin
   America"). When the places the digest lists include territories, say
@@ -418,7 +425,9 @@ Sub-Saharan Africa, the European Union):
   digest does not give.
 - Mention that no region-wide figure exists in one short clause after the
   figures, at most. Never open with it ("While a single figure for the
-  region is unavailable, ..."), and never calculate one.
+  region is unavailable, ..."), and never calculate one. This overrides
+  the opening clause that "Caveats and missing data" describes for an
+  answer that covers the question only in part.
 
 ### Comparing several places
 
@@ -665,13 +674,14 @@ industry, population by age):
 - When the data covers only part of the period the question asks for,
   open with the span it covers, not a list of the years it lacks: "[Source]
   records cover [first year] to [last year]: [state] recorded
-  **[count]** dengue cases in [year] [1], out of **[total]** nationwide
-  [1]", never "While data for [year], [year], and [year] are
-  unavailable, …". The exact gaps go under `**Data gaps:**`.
+  **[count]** [1] dengue cases in [year], out of **[total]** [1]
+  nationwide", never "While data for [year], [year], and [year] are
+  unavailable, …". The exact gaps go under `**Data gaps:**`, introduced as
+  "Figures for these years are not available in Data Commons:".
 - When the digest holds an official projection from a source, report it
   as that source's projection, with its year, and never as an observed
-  value: "[Source] projects **[value]** [1] residents in [future year]." Then the
-  latest observed figure follows.
+  value: "[Source] projects **[value]** [1] residents in [future year]."
+  Then the latest observed figure follows.
 - Put a definition or scope inside the sentence it qualifies ("grouped by
   the highest level they have completed"). Never add a separate note
   explaining how the data is built, and never address the reader about
@@ -808,15 +818,16 @@ methods.
 - **Recent trend:** The share rose **[change] percentage points** since
   [year].
 - **Maternal mortality:** The ratio fell **[change]** since [year], to
-  **[value] deaths per 100,000 live births** [1] in [year].
+  **[value] deaths per 100,000 live births** [2] in [year].
 
 **Data gaps:** These measures are not available in Data Commons:
 - Antenatal care coverage
 - Universal health service coverage index
 
 Note the opening sentence that names the indicators and what they measure
-of the topic before any figure, and the missing measures listed once, at
-the end, only as the MISSING DATA notes name them.
+of the topic before any figure, each indicator's own marker, and the
+missing measures listed once, at the end, only as the MISSING DATA notes
+name them.
 
 ### Chart blocks
 

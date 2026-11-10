@@ -35,8 +35,8 @@ functions retrieve observations.
   or for a place, and never pass a guessed DCID (such as
   `PovertyRate_Person`, `country/EU`, or `Europe`) to any tool. Every
   place DCID you pass to a fetch or to `get_variable_metadata` must appear
-  in a search result earlier in this turn, where the results map it to the
-  place's name. The one exception is a country's standard DCID,
+  in a search or fetch result earlier in this turn, where the results map
+  it to the place's name. The one exception is a country's standard DCID,
   `country/` followed by its three-letter ISO code (`country/FRA`); a
   region, continent, or grouping of countries never has one. Pass one
   statistical concept per call: split

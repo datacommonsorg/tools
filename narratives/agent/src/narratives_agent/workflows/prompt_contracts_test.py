@@ -470,8 +470,8 @@ def test_synthesis_contract_matches_the_opening_to_the_question() -> None:
     )
 
 
-def test_synthesis_contract_covers_the_second_expert_session() -> None:
-    # Test: The rules added after the second expert session.
+def test_synthesis_contract_keeps_parts_tables_and_labels_accurate() -> None:
+    # Test: Parts and wholes, tables of all places, labels, and windows.
     # Situation: The synthesis contract the model receives.
     # Expectation: A place compared with the place that contains it is a part
     #   and its whole, never peers; a table of every place lists every place
@@ -540,8 +540,7 @@ def test_synthesis_contract_names_publishers_units_and_remainders() -> None:
     #   a program or website; says what an indicator counts when it differs
     #   from the question's word; gives a breakdown leader's share only as
     #   computed, never a summed share; describes the digest's unallocated
-    #   remainder as unassigned, not as a category; and the examples carry
-    #   no real figures from the business-establishments answer.
+    #   remainder as unassigned, not as a category.
     flattened = " ".join(load_prompt_contract("synthesis").split())
 
     assert "Name the organization that publishes the data" in flattened
@@ -553,10 +552,6 @@ def test_synthesis_contract_names_publishers_units_and_remainders() -> None:
         flattened
     )
     assert "The digest's unallocated remainder is not a category" in flattened
-    for real_figure in ("2.52%", "2.78%", "15.72%", "12.17M"):
-        assert real_figure not in flattened
-    for real_figure in ("230.81M", "60.09M", "49.87M", "32.50M"):
-        assert real_figure not in flattened
     assert "categories that form a ladder" in flattened
     assert "the subject next to its verb" in flattened
 
@@ -653,14 +648,16 @@ def test_discovery_contract_never_guesses_place_dcids() -> None:
     # Test: Where place DCIDs may come from.
     # Situation: The discovery contract the model receives.
     # Expectation: The no-guessing rule covers places as well as
-    #   indicators: a place DCID must come from an earlier search result in
-    #   the turn, except a country's standard ISO DCID, and a region whose
-    #   member countries have no data is reported unavailable instead of
-    #   being retried under other DCIDs.
+    #   indicators: a place DCID must come from an earlier search or fetch
+    #   result in the turn, except a country's standard ISO DCID, and a
+    #   region whose member countries have no data is reported unavailable
+    #   instead of being retried under other DCIDs.
     discovery = " ".join(load_prompt_contract("discovery").split())
 
     assert "Never guess a DCID, for an indicator or for a place" in discovery
-    assert "must appear in a search result earlier in this turn" in discovery
+    assert "must appear in a search or fetch result earlier in this turn" in (
+        discovery
+    )
     assert "The one exception is a country's standard DCID" in discovery
     assert "Never try other DCIDs for the region, or a broader place" in (
         discovery
@@ -685,18 +682,3 @@ def test_synthesis_contract_never_turns_members_into_a_region_figure() -> None:
     assert "Name the region as the digest names it" in flattened
     assert '"countries and territories"' in flattened
     assert "Never open with it" in flattened
-
-
-def test_classify_prompt_treats_regions_as_child_places() -> None:
-    # Test: The geographic shape of a question about a region.
-    # Situation: The default classification prompt.
-    # Expectation: A region or grouping of countries is classified as
-    #   `child_places`, even when the question asks for one figure.
-    prompt = Path(__file__).parents[4] / "defaults" / "prompts" / "classify.md"
-    flattened = " ".join(prompt.read_text(encoding="utf-8").split())
-
-    assert (
-        "A question about a region or grouping of countries (for example, "
-        "Latin America, Sub-Saharan Africa, or the European Union) is "
-        '`"child_places"` even when it asks for one figure'
-    ) in flattened

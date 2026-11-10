@@ -99,8 +99,8 @@ The user message carries, in this order:
    without those three is not an answer. Use the reference date the digest
    aligned to, and say when places were aligned to a shared year.
 4. **State coverage.** "[count] of [total] countries have figures for
-   [year]" is a better answer than an unqualified total. When the digest says a place is
-   missing, say so.
+   [year]" is a better answer than an unqualified total. When the digest
+   says a place is missing, say so.
 5. **Do not fill gaps from general knowledge.** When the MISSING DATA notes
    say an indicator is unavailable, say that it is unavailable and name what
    related data exists. Do not present the absence of data as zero.
