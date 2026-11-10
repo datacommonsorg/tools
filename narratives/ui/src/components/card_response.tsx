@@ -68,8 +68,6 @@ interface ResponseCardProps {
   revealing?: boolean;
 }
 
-const LINK_COLOR = 'var(--color-theme-primary)';
-
 /** Renders the agent's answer text as markdown, with citation chips. */
 export function ResponseCard({
   title,
@@ -82,7 +80,7 @@ export function ResponseCard({
 }: ResponseCardProps) {
   const markdown = (
     <div
-      className={`${bare ? '' : 'px-[56px] py-6 text-on-surface '}markdown-body${
+      className={`${bare ? '' : 'text-on-surface '}markdown-body wrap-break-word${
         revealing ? ' markdown-stream' : ''
       }`}
     >
@@ -135,25 +133,37 @@ function ReactMarkdownInner({
           {children}
         </StreamSpan>
       ),
-      p: ({ children }) => (
-        <p className="text-body-large mb-3 last:mb-0">
-          {renderWithCitations(children, sources)}
-        </p>
-      ),
+      p: ({ children, node }) => {
+        // A paragraph that is nothing but bold text is the model's way of
+        // writing a subheading, so it renders as one.
+        if (isBoldOnly(node as MarkdownNode | undefined)) {
+          const strong = Children.toArray(children).find(isValidElement) as
+            | ReactElement<{ children?: ReactNode }>
+            | undefined;
+          return (
+            <h3 className={H3_CLASS}>
+              {renderWithCitations(strong?.props.children, sources)}
+            </h3>
+          );
+        }
+        return (
+          <p className="text-body-large mb-3 last:mb-0">
+            {renderWithCitations(children, sources)}
+          </p>
+        );
+      },
       h1: ({ children }) => (
         <h1 className="text-2xl font-medium mt-4 mb-2">
           {renderWithCitations(children, sources)}
         </h1>
       ),
       h2: ({ children }) => (
-        <h2 className="text-xl font-medium mt-4 mb-2">
+        <h2 className="text-2xl font-medium mt-4 mb-2">
           {renderWithCitations(children, sources)}
         </h2>
       ),
       h3: ({ children }) => (
-        <h3 className="text-lg font-medium mt-3 mb-2">
-          {renderWithCitations(children, sources)}
-        </h3>
+        <h3 className={H3_CLASS}>{renderWithCitations(children, sources)}</h3>
       ),
       h4: ({ children }) => (
         <h4 className="text-base font-medium mt-3 mb-2">
@@ -181,8 +191,7 @@ function ReactMarkdownInner({
           href={href}
           target="_blank"
           rel="noopener noreferrer"
-          className="hover:underline"
-          style={{ color: LINK_COLOR }}
+          className="text-theme-primary hover:underline"
         >
           <PlainTextContext.Provider value={true}>
             {children}
@@ -252,6 +261,16 @@ function ReactMarkdownInner({
       {body}
     </ReactMarkdown>
   );
+}
+
+const H3_CLASS = 'text-xl font-medium mt-3 mb-2';
+
+/** Whether a paragraph's only content, whitespace aside, is one `strong`. */
+function isBoldOnly(node: MarkdownNode | undefined): boolean {
+  const content = (node?.children ?? []).filter(
+    (child) => !(child.type === 'text' && !child.value?.trim()),
+  );
+  return content.length === 1 && content[0].tagName === 'strong';
 }
 
 /** True inside code and links, whose text renders verbatim: no citation chips. */
@@ -339,16 +358,6 @@ function MarkdownRow({ children }: MarkdownCellProps) {
   );
 }
 
-/** Alignment: what the markdown asked for, else right when numeric. */
-function cellAlignment(
-  style: CSSProperties | undefined,
-  numeric: boolean,
-  fallback: CSSProperties['textAlign'],
-): CSSProperties['textAlign'] {
-  if (style?.textAlign) return style.textAlign;
-  return numeric ? 'right' : fallback;
-}
-
 /**
  * A header cell, carrying its column's citation when every body cell in the
  * column cited the same source. Appended only when the header does not
@@ -370,8 +379,12 @@ function HeaderCell({
 
   return (
     <th
-      className="border border-outline px-3 py-2 font-medium"
-      style={{ ...style, textAlign: cellAlignment(style, numeric, 'left') }}
+      // An explicit markdown alignment arrives in `style` and wins over the
+      // class.
+      className={`border border-outline px-6 pb-2 pt-3 font-medium ${
+        numeric ? 'text-right' : 'text-left'
+      }`}
+      style={style}
     >
       {renderWithCitations(children, sources)}
       {toAppend.map((n) => (
@@ -395,10 +408,12 @@ function DataCell({ children, colIndex, style, sources }: MarkdownCellProps) {
 
   return (
     <td
-      className={`border border-outline px-3 py-2${
-        numeric ? ' tabular-nums' : ''
+      // An explicit markdown alignment arrives in `style` and wins over the
+      // class.
+      className={`border border-outline px-6 py-2 ${
+        numeric ? ' tabular-nums text-right' : ''
       }`}
-      style={{ ...style, textAlign: cellAlignment(style, numeric, undefined) }}
+      style={style}
     >
       <HideCitationsProvider value={hoisted}>
         {renderWithCitations(children, sources)}

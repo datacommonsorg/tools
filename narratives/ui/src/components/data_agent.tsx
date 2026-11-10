@@ -412,7 +412,10 @@ export function TurnView({
       {(showSkeleton || showAnswer) && (
         <div
           ref={answerCardRef}
-          className="self-start shrink-0 w-full max-w-4xl grid *:col-start-1 *:row-start-1"
+          // `grid-cols-1` is `minmax(0, 1fr)`: an implicit `auto` track would grow
+          // to a wide table's min-content and push the card past the viewport,
+          // instead of letting the table scroll inside it.
+          className="self-start shrink-0 w-full max-w-4xl grid grid-cols-1 *:col-start-1 *:row-start-1"
         >
           {(showSkeleton || crossfading) && (
             <div

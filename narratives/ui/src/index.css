@@ -457,6 +457,15 @@ select:not(:disabled) {
   letter-spacing: 0;
 }
 
+.text-label-medium-emphasized {
+  font-family: var(--static-label-small-font, 'Google Sans Text');
+  font-size: var(--static-label-small-size, 12px);
+  font-style: normal;
+  font-weight: 700;
+  line-height: var(--static-label-small-line-height, 16px);
+  letter-spacing: 0;
+}
+
 .text-caption {
   font-family: var(--static-caption-font, 'Google Sans Text');
   font-size: var(--static-caption-size, 12px);

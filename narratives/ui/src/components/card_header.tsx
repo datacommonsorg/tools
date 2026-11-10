@@ -33,11 +33,11 @@ interface CardHeaderProps {
  */
 export function CardHeader({ title, children }: CardHeaderProps) {
   return (
-    <div className="flex items-center gap-3 py-2 pr-2 pl-5 border-b border-border bg-surface">
+    <div className="flex items-start sm:items-center gap-3 py-2 pr-2 pl-5 border-b border-border bg-surface">
       {/* One line on screen; utils/download_pdf.ts finds this class and shows
           the full question as the PDF's heading. */}
       <span
-        className="flex-1 truncate print-question text-label-large text-on-surface"
+        className="flex-1 print-question text-label-large text-on-surface"
         title={title}
       >
         {title}

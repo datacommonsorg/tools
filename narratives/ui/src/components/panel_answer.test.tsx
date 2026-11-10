@@ -506,6 +506,21 @@ describe('AnswerPanel', () => {
     expect(screen.getByRole('button', followUp)).not.toBeNull();
   });
 
+  it('opens with the question as its h1, visible during the reveal', () => {
+    // Test: Intro block.
+    // Situation: A streaming answer that has not finished revealing.
+    // Expectation: The question is the panel's level-one heading and is not
+    //   inside the content body the reveal hides.
+    const turn = buildTurnWithBlocks([
+      { index: 0, type: 'text', markdown: 'France has about 68 million.' },
+    ]);
+    render(<AnswerPanel turn={turn} isStreaming />);
+    const heading = screen.getByRole('heading', { level: 1 });
+
+    expect(heading.textContent).toBe(turn.userMessage);
+    expect(heading.closest('[class*="opacity-0"]')).toBeNull();
+  });
+
   it('places back-to-back charts in one shared tile', () => {
     // Test: Grouping of consecutive chart blocks.
     // Situation: A finished turn whose blocks are a paragraph followed by
