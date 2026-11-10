@@ -19,7 +19,6 @@ Environment overrides (with defaults):
   AR_REGION       Artifact Registry region   (us-central1)
   AR_REPO         Artifact Registry repo     (custom-dc)
   PROJECT         GCP project                (defaults to the active gcloud project)
-  VITE_BASE_PATH  SPA base path              (/)
 USAGE
 }
 
@@ -60,7 +59,6 @@ echo "  PROJECT=${PROJECT} AR_REGION=${AR_REGION} AR_REPO=${AR_REPO}"
 
 docker buildx build \
     --platform linux/amd64 \
-    --build-arg "VITE_BASE_PATH=${VITE_BASE_PATH:-/}" \
     -t "${FULL_IMAGE}" \
     -t "${LATEST_IMAGE}" \
     --load \

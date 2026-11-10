@@ -41,6 +41,7 @@ afterEach(() => {
   document.head.innerHTML = '';
   resetInstanceConfigForTests();
   vi.unstubAllEnvs();
+  vi.unstubAllGlobals();
   vi.restoreAllMocks();
 });
 
@@ -53,18 +54,25 @@ describe('getInstanceConfig', () => {
     expect(getInstanceConfig()).toEqual(DEFAULT_INSTANCE_CONFIG);
   });
 
-  it("prefixes default asset URLs with Vite's BASE_URL when mounted under a subpath", () => {
-    // Test: Built-in default asset URLs under a non-root `BASE_URL`.
-    // Situation: `import.meta.env.BASE_URL` is `/narratives/` and no
+  it('resolves default asset URLs relative to the document subpath', () => {
+    // Test: Built-in default asset URLs when mounted under a runtime subpath.
+    // Situation: `window.location` is at `/labs/discover/` and no
     //   `#instance-config` overrides are present.
     // Expectation: `logoUrl`, `thinkingIndicatorUrl`, and `doneIndicatorUrl`
-    //   resolve under `/narratives/`.
-    vi.stubEnv('BASE_URL', '/narratives/');
+    //   resolve under `/labs/discover/`.
+    vi.stubGlobal(
+      'location',
+      new URL('https://autopush.datacommons.org/labs/discover/'),
+    );
     document.head.innerHTML = '';
     const config = getInstanceConfig();
-    expect(config.logoUrl).toBe('/narratives/dc-logo.svg');
-    expect(config.thinkingIndicatorUrl).toBe('/narratives/agent-thinking.svg');
-    expect(config.doneIndicatorUrl).toBe('/narratives/agent-done-thinking.svg');
+    expect(config.logoUrl).toBe('/labs/discover/dc-logo.svg');
+    expect(config.thinkingIndicatorUrl).toBe(
+      '/labs/discover/agent-thinking.svg',
+    );
+    expect(config.doneIndicatorUrl).toBe(
+      '/labs/discover/agent-done-thinking.svg',
+    );
   });
 
   it('returns the built-in defaults when the slot is empty', () => {
