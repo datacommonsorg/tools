@@ -5,7 +5,10 @@ import path from 'node:path';
 import tailwindcss from '@tailwindcss/vite';
 import react from '@vitejs/plugin-react';
 import { defineConfig, loadEnv, type Plugin } from 'vite';
-import { copyAgentRuntimeConfig } from './src/config/runtime_config';
+import {
+  copyAgentRuntimeConfig,
+  resolveAgentShellUrl,
+} from './src/config/runtime_config_dev';
 
 // Dev-proxy default for a local agent.
 const DEFAULT_AGENT_URL = 'http://localhost:5001';
@@ -31,7 +34,9 @@ export default defineConfig(({ command, mode }) => {
   // or under any runtime `BASE_PATH`; `vite dev` keeps `/` for the `/agent` proxy.
   const base = command === 'build' ? './' : '/';
   const agentTarget = env.AGENT_URL || DEFAULT_AGENT_URL;
-  const agentShellUrl = new URL(base, agentTarget).href;
+  // `/agent/*` forwards to AGENT_URL's own path, and the agent's HTML shell
+  // lives at that same path.
+  const agentShellUrl = resolveAgentShellUrl(agentTarget);
   // By default, the agent serves its API under /agent (AGENT_API_PREFIX), so
   // /agent/* requests are forwarded verbatim to AGENT_URL, whether a local
   // agent or a deployed instance.

@@ -413,6 +413,8 @@ startup. When `enable_chat` is `false`, `App` renders `UnavailableView`
 Data Agent route instead of the chat, keeps `Header` and `MetricsPage`
 available, and hides the "New chat" controls. Under `pnpm dev:ui`, the Vite
 dev server fetches the shell from the agent at `AGENT_URL` on every page load
-and copies its `#runtime-config` (`copyAgentRuntimeConfig`), parsing and
-re-escaping the value; when the agent cannot be read, the element stays empty
-and Vite logs a warning.
+and copies its `#runtime-config` (`copyAgentRuntimeConfig` in
+`ui/src/config/runtime_config_dev.ts`, which only `vite.config.ts` imports),
+parsing and re-escaping the value. The shell is fetched from the `AGENT_URL`
+path without following redirects; when the agent cannot be read, the element
+stays empty and Vite logs a warning with the reason.

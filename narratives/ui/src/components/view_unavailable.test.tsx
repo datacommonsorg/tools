@@ -33,12 +33,19 @@ vi.mock('motion/react', async (importOriginal) => ({
   useReducedMotion: vi.fn(),
 }));
 
+/**
+ * Replaces the `<script>` element `id` with one holding `payload`, and clears
+ * both cached configurations so the next read sees it.
+ */
 const writeSlot = (id: string, payload: Record<string, unknown>): void => {
+  document.getElementById(id)?.remove();
   const slot = document.createElement('script');
   slot.id = id;
   slot.type = 'application/json';
   slot.textContent = JSON.stringify(payload);
   document.head.appendChild(slot);
+  resetInstanceConfigForTests();
+  resetRuntimeConfigForTests();
 };
 
 beforeEach(() => {
@@ -55,12 +62,12 @@ afterEach(() => {
 });
 
 describe('UnavailableView', () => {
-  it('renders the headline, tagline, and configured message in a status region', () => {
+  it('renders the headline, tagline, and configured message in a note', () => {
     // Test: Chat disabled with a custom message and custom branding.
     // Situation: #instance-config sets a headline and tagline, and
     //   #runtime-config disables chat with a custom message.
     // Expectation: The heading and tagline render, and the message renders
-    //   inside the `status` region.
+    //   inside the `note`.
     writeSlot('instance-config', {
       headline: 'Acme explorer',
       tagline: 'powered by Acme',
@@ -74,7 +81,7 @@ describe('UnavailableView', () => {
       'Acme explorer',
     );
     expect(screen.getByText('powered by Acme')).toBeTruthy();
-    expect(screen.getByRole('status').textContent).toBe(
+    expect(screen.getByRole('note').textContent).toBe(
       'Chat is paused for maintenance.',
     );
   });
@@ -82,10 +89,10 @@ describe('UnavailableView', () => {
   it('renders the default message when none is configured', () => {
     // Test: Chat disabled without a message.
     // Situation: #runtime-config holds only `enable_chat: false`.
-    // Expectation: The status region holds the default unavailable message.
+    // Expectation: The note holds the default unavailable message.
     writeSlot('runtime-config', { enable_chat: false });
     render(<UnavailableView />);
-    expect(screen.getByRole('status').textContent).toBe(
+    expect(screen.getByRole('note').textContent).toBe(
       DEFAULT_UNAVAILABLE_MESSAGE,
     );
   });
@@ -119,7 +126,7 @@ describe('UnavailableView', () => {
     vi.mocked(useReducedMotion).mockReturnValue(true);
     render(<UnavailableView />);
     expect(screen.getByRole('heading', { level: 1 }).style.opacity).toBe('');
-    expect(screen.getByRole('status').textContent).toBe(
+    expect(screen.getByRole('note').textContent).toBe(
       DEFAULT_UNAVAILABLE_MESSAGE,
     );
   });
@@ -132,7 +139,7 @@ describe('UnavailableView', () => {
     vi.mocked(useReducedMotion).mockReturnValue(false);
     render(<UnavailableView />);
     expect(screen.getByRole('heading', { level: 1 }).style.opacity).toBe('0');
-    expect(screen.getByRole('status').textContent).toBe(
+    expect(screen.getByRole('note').textContent).toBe(
       DEFAULT_UNAVAILABLE_MESSAGE,
     );
   });

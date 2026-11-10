@@ -69,7 +69,19 @@ against an already-deployed Cloud Run backend.
    AGENT_URL="http://localhost:5001"
    ```
 
-2. Start the backend agent and frontend dev server in two separate terminals:
+2. Build the UI once:
+
+   ```sh
+   pnpm build
+   ```
+
+   The local agent serves `index.html` only after a build has staged it into
+   `agent/static/`, and `pnpm dev:ui` reads chat availability from that page
+   (see [Chat availability under `pnpm dev:ui`](#chat-availability-under-pnpm-devui)).
+   Without a build, the page shows chat as enabled whatever the agent's
+   setting. Rebuild only when you want to test the compiled SPA.
+
+3. Start the backend agent and frontend dev server in two separate terminals:
 
    ```sh
    # Terminal 1: Start the Python agent on http://127.0.0.1:5001
@@ -83,7 +95,11 @@ against an already-deployed Cloud Run backend.
    `defaults/` + `config/`, and starts Uvicorn with auto-reload. Set
    `AGENT_PORT` to override port `5001`.
 
-3. Open `http://localhost:3000` in your browser.
+   To preview the unavailable view, start the agent with chat disabled
+   (`ENABLE_CHAT=false pnpm dev:agent`, optionally with
+   `UNAVAILABLE_MESSAGE`) and reload the page.
+
+4. Open `http://localhost:3000` in your browser.
 
 #### Optional: Verify the local agent API directly
 
@@ -131,16 +147,24 @@ you can run the Vite dev server without starting the local Python agent:
 Vite's development proxy (`ui/vite.config.ts`) forwards `/agent/*` to
 `AGENT_URL`. Restart `pnpm dev:ui` after editing `.env.local`.
 
+If the deployed instance sits behind IAP, the Vite dev server cannot read its
+chat availability, so the page shows chat as enabled and Vite logs a
+`[runtime-config]` warning naming the sign-in redirect.
+
+### Chat availability under `pnpm dev:ui`
+
 Under `pnpm dev:ui`, the page shows the chat availability of the agent at
 `AGENT_URL`: on every page load, the Vite dev server fetches the agent's
-`index.html` and copies its `#runtime-config` into the page it serves. To
-preview the unavailable view, set `ENABLE_CHAT` and `UNAVAILABLE_MESSAGE` on
-the agent (for example `ENABLE_CHAT=false pnpm dev:agent`), not on Vite, and
-reload the page. A local agent serves `index.html` only after `pnpm build` has
-run once. When the agent cannot be read (it is stopped, has no build, or sits
-behind IAP), the element stays empty, so the page shows chat as enabled, and
-Vite logs a `[runtime-config]` warning. A production build leaves the element
-empty for the agent server to stamp.
+`index.html` and copies its `#runtime-config` into the page it serves.
+`ENABLE_CHAT` and `UNAVAILABLE_MESSAGE` are therefore set on the agent, not on
+Vite. The page is fetched from the `AGENT_URL` path, so an `AGENT_URL` with a
+subpath (for example `https://<host>/narratives`) reads the agent mounted
+there. The fetch does not follow redirects.
+
+When the agent cannot be read (it is stopped, has no build, or answers with a
+redirect such as an IAP sign-in), the element stays empty, so the page shows
+chat as enabled, and Vite logs a `[runtime-config]` warning with the reason. A
+production build leaves the element empty for the agent server to stamp.
 
 ## Workspace scripts
 

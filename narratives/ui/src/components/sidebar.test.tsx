@@ -60,6 +60,20 @@ const stubFetch = (): void => {
   );
 };
 
+/**
+ * Replaces `#runtime-config` with one holding `payload`, and clears the
+ * cached runtime configuration.
+ */
+const writeRuntimeConfigSlot = (payload: Record<string, unknown>): void => {
+  document.getElementById('runtime-config')?.remove();
+  const slot = document.createElement('script');
+  slot.id = 'runtime-config';
+  slot.type = 'application/json';
+  slot.textContent = JSON.stringify(payload);
+  document.head.appendChild(slot);
+  resetRuntimeConfigForTests();
+};
+
 afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
@@ -95,11 +109,7 @@ describe('Sidebar', () => {
     //   the Agent tab.
     // Expectation: The rail still renders, so the layout width is unchanged,
     //   and the New chat control is absent.
-    const slot = document.createElement('script');
-    slot.id = 'runtime-config';
-    slot.type = 'application/json';
-    slot.textContent = JSON.stringify({ enable_chat: false });
-    document.head.appendChild(slot);
+    writeRuntimeConfigSlot({ enable_chat: false });
     window.location.hash = '#/agent';
     const { container } = render(
       <ChatSessionProvider>

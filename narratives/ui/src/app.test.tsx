@@ -55,8 +55,12 @@ const goTo = (hash: string): void => {
   });
 };
 
-/** Writes `#runtime-config` with chat disabled and a custom message. */
+/**
+ * Replaces `#runtime-config` with one that disables chat with a custom
+ * message, and clears the cached runtime configuration.
+ */
 const writeChatDisabledSlot = (): void => {
+  document.getElementById('runtime-config')?.remove();
   const slot = document.createElement('script');
   slot.id = 'runtime-config';
   slot.type = 'application/json';
@@ -65,6 +69,7 @@ const writeChatDisabledSlot = (): void => {
     unavailable_message: UNAVAILABLE_MESSAGE,
   });
   document.head.appendChild(slot);
+  resetRuntimeConfigForTests();
 };
 
 beforeEach(() => {
@@ -188,7 +193,7 @@ describe('App with chat disabled', () => {
     writeChatDisabledSlot();
     window.location.hash = hash;
     render(<App />);
-    expect(screen.getByRole('status').textContent).toBe(UNAVAILABLE_MESSAGE);
+    expect(screen.getByRole('note').textContent).toBe(UNAVAILABLE_MESSAGE);
     expect(screen.queryByRole('textbox', { name: LANDING_PROMPT })).toBeNull();
     expect(
       screen.queryByText(DEFAULT_INSTANCE_CONFIG.suggestions[0]),
@@ -208,11 +213,11 @@ describe('App with chat disabled', () => {
 
     goTo('#/metrics');
     expect(screen.getByRole('heading', { name: 'Key Metrics' })).toBeTruthy();
-    expect(screen.queryByRole('status')).toBeNull();
+    expect(screen.queryByRole('note')).toBeNull();
 
     mainScrollTo.mockClear();
     goTo('#/agent');
-    expect(screen.getByRole('status').textContent).toBe(UNAVAILABLE_MESSAGE);
+    expect(screen.getByRole('note').textContent).toBe(UNAVAILABLE_MESSAGE);
     expect(mainScrollTo).toHaveBeenCalledWith(0, 0);
   });
 });
