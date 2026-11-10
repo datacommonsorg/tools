@@ -143,23 +143,6 @@ export function ChevronDownIcon({ size = 'xs', ...props }: IconProps) {
 }
 
 /**
- * `inspect` — a magnifier over a document, used for the provenance inspector.
- * A magnifier rather than an info glyph: this opens a detailed audit view, it is
- * not a tooltip. GeminiInfoIcon already carries the "explanatory note" meaning
- * on the disclaimer, so reusing it here would blur the two.
- */
-export function InspectIcon({ size = 'sm', ...props }: IconProps) {
-  return (
-    <svg aria-hidden="true" viewBox="0 0 20 20" {...getSvgProps(size, props)}>
-      {/* Document */}
-      <path d="M3 1.5C3 0.947715 3.44772 0.5 4 0.5H11.5L15.5 4.5V9.2C15.0374 8.94341 14.5327 8.75558 14 8.64957V5.5H10.5V2H4.5V16H8.14957C8.25558 16.5327 8.44341 17.0374 8.7 17.5H4C3.44772 17.5 3 17.0523 3 16.5V1.5Z" />
-      {/* Magnifier over its lower-right corner */}
-      <path d="M13 10C11.067 10 9.5 11.567 9.5 13.5C9.5 15.433 11.067 17 13 17C13.7418 17 14.4297 16.7692 14.9963 16.3748L17.4393 18.8178C17.7322 19.1107 18.2071 19.1107 18.5 18.8178C18.7929 18.5249 18.7929 18.05 18.5 17.7571L16.0748 15.3319C16.4692 14.7653 16.7 14.0774 16.7 13.3356C16.7 11.4026 15.133 9.83564 13.2 9.83564L13 10ZM11 13.5C11 12.3954 11.8954 11.5 13 11.5C14.1046 11.5 15 12.3954 15 13.5C15 14.6046 14.1046 15.5 13 15.5C11.8954 15.5 11 14.6046 11 13.5Z" />
-    </svg>
-  );
-}
-
-/**
  * `output` — an arrow leaving a container; leading glyph on the Export PDF
  * button. Supersedes the `edit` pencil Figma had left in as a placeholder.
  */
@@ -167,6 +150,22 @@ export function ExportIcon({ size = 'sm', ...props }: IconProps) {
   return (
     <svg aria-hidden="true" viewBox="0 0 15 14" {...getSvgProps(size, props)}>
       <path d="M1.5 14C1.08333 14 0.729167 13.8542 0.4375 13.5625C0.145834 13.2708 1.19209e-07 12.9167 1.19209e-07 12.5V1.5C1.19209e-07 1.08333 0.145834 0.729166 0.4375 0.437499C0.729167 0.145833 1.08333 -4.76837e-07 1.5 -4.76837e-07H12.5C12.9167 -4.76837e-07 13.2708 0.145833 13.5625 0.437499C13.8542 0.729166 14 1.08333 14 1.5V3H12.5V1.5H1.5V12.5H12.5V11H14V12.5C14 12.9167 13.8542 13.2708 13.5625 13.5625C13.2708 13.8542 12.9167 14 12.5 14H1.5ZM11 11L9.9375 9.9375L12.125 7.75H5V6.25H12.125L9.9375 4.0625L11 3L15 7L11 11Z" />
+    </svg>
+  );
+}
+
+/**
+ * `bug_report` — the Material Symbols Outlined 24px bug glyph on the debug panel
+ * trigger button.
+ */
+export function BugReportIcon({ size = 'sm', ...props }: IconProps) {
+  return (
+    <svg
+      aria-hidden="true"
+      viewBox="0 -960 960 960"
+      {...getSvgProps(size, props)}
+    >
+      <path d="M480-200q66 0 113-47t47-113v-160q0-66-47-113t-113-47q-66 0-113 47t-47 113v160q0 66 47 113t113 47Zm-80-120h160v-80H400v80Zm0-160h160v-80H400v80Zm80 40Zm0 320q-65 0-120.5-32T272-240H160v-80h84q-3-20-3.5-40t-.5-40h-80v-80h80q0-20 .5-40t3.5-40h-84v-80h112q14-23 31.5-43t40.5-35l-64-66 56-56 86 86q28-9 57-9t57 9l88-86 56 56-66 66q23 15 41.5 34.5T688-640h112v80h-84q3 20 3.5 40t.5 40h80v80h-80q0 20-.5 40t-3.5 40h84v80H688q-32 56-87.5 88T480-120Z" />
     </svg>
   );
 }
