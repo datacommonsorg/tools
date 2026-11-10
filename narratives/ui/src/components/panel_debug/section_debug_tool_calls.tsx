@@ -81,7 +81,7 @@ export const ToolCallsSection = ({ toolCalls }: ToolCallsSectionProps) => {
                     type="button"
                     aria-expanded={isResultOpen}
                     onClick={() => toggleResult(index)}
-                    className="self-start min-h-11 inline-flex items-center text-label-large cursor-pointer bg-transparent p-0 text-theme-primary"
+                    className="self-start min-h-11 inline-flex items-center text-label-large text-theme-primary"
                   >
                     {formatRawResponseToggleLabel(
                       isResultOpen,

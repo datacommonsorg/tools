@@ -234,7 +234,7 @@ export const DebugPanel = ({ turn }: DebugPanelProps) => {
                       type="button"
                       onClick={() => setIsOpen(false)}
                       aria-label={DEBUG_PANEL_COPY.closeButtonLabel}
-                      className="w-11 h-11 shrink-0 flex items-center justify-center rounded-full bg-transparent cursor-pointer hover:bg-button-hover transition-colors text-on-surface-variant text-title-medium"
+                      className="w-11 h-11 shrink-0 flex items-center justify-center rounded-full hover:bg-button-hover transition-colors text-on-surface-variant text-title-medium"
                     >
                       <span aria-hidden="true">
                         {DEBUG_PANEL_COPY.closeButtonGlyph}
@@ -265,7 +265,7 @@ export const DebugPanel = ({ turn }: DebugPanelProps) => {
         aria-expanded={isOpen}
         title={DEBUG_PANEL_COPY.openButtonTitle}
         data-non-print="true"
-        className="group w-11 h-11 flex items-center justify-center rounded-full bg-transparent cursor-pointer hover:bg-button-hover transition-colors text-error"
+        className="group w-11 h-11 flex items-center justify-center rounded-full hover:bg-button-hover transition-colors text-error"
       >
         <BugReportIcon
           size="sm"
