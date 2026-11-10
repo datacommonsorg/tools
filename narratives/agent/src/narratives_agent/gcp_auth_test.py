@@ -291,3 +291,42 @@ async def test_get_adc_auth_headers_raises_when_refresh_leaves_token_empty(
 
     with pytest.raises(RuntimeError, match="no access token"):
         await gcp_auth.get_adc_auth_headers()
+
+
+@pytest.mark.asyncio
+async def test_get_adc_auth_headers_delegates_when_lock_is_contended(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Test: Non-blocking acquisition of `_ADC_LOCK` in `get_adc_auth_headers`.
+    # Situation: `_ADC_LOCK.acquire(blocking=False)` indicates lock contention.
+    # Expectation: `get_adc_auth_headers` does not block the event loop; it
+    #   delegates to `_resolve_adc_auth_headers_sync` via `asyncio.to_thread`.
+    delegated = False
+
+    def _fake_resolve() -> dict[str, str]:
+        nonlocal delegated
+        delegated = True
+        return {"Authorization": "Bearer delegated-token"}
+
+    class _ContendedLock:
+        def acquire(self, blocking: bool = True) -> bool:
+            return False
+
+        def release(self) -> None:
+            pass
+
+        def __enter__(self) -> bool:
+            return True
+
+        def __exit__(self, *args: object) -> None:
+            pass
+
+    monkeypatch.setattr(gcp_auth, "_ADC_LOCK", _ContendedLock())
+    monkeypatch.setattr(
+        gcp_auth, "_resolve_adc_auth_headers_sync", _fake_resolve
+    )
+
+    headers = await gcp_auth.get_adc_auth_headers()
+
+    assert delegated is True
+    assert headers == {"Authorization": "Bearer delegated-token"}

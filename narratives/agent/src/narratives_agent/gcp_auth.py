@@ -153,14 +153,19 @@ def _resolve_adc_auth_headers_sync() -> dict[str, str]:
 
 async def get_adc_auth_headers() -> dict[str, str]:
     """Returns valid ADC request headers without blocking the event loop."""
-    credentials = _adc_credentials
-    if (
-        credentials is not None
-        and credentials.valid
-        and isinstance(credentials.token, str)
-        and credentials.token
-    ):
-        return _build_adc_auth_headers(credentials)
+    if not _ADC_LOCK.acquire(blocking=False):
+        return await asyncio.to_thread(_resolve_adc_auth_headers_sync)
+    try:
+        credentials = _adc_credentials
+        if (
+            credentials is not None
+            and credentials.valid
+            and isinstance(credentials.token, str)
+            and credentials.token
+        ):
+            return _build_adc_auth_headers(credentials)
+    finally:
+        _ADC_LOCK.release()
     return await asyncio.to_thread(_resolve_adc_auth_headers_sync)
 
 
