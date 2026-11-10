@@ -17,8 +17,8 @@
 #
 # Build from the `narratives/` directory:
 #   docker buildx build --platform linux/amd64 .
-# To serve under a URL subpath (such as `/narratives/`), pass VITE_BASE_PATH:
-#   docker buildx build --platform linux/amd64 --build-arg VITE_BASE_PATH=/narratives/ .
+# The UI compiles with relative asset paths (`./`), so the same image serves at
+# `/` or under any runtime `BASE_PATH` subpath (for example, `/labs/discover`).
 
 # Force linux/amd64 architecture so images built on Apple Silicon run on Cloud
 # Run and GKE amd64 node pools.
@@ -34,8 +34,6 @@ COPY ui/package.json ./ui/
 RUN pnpm install --frozen-lockfile
 
 COPY ui/ ./ui/
-ARG VITE_BASE_PATH=/
-ENV VITE_BASE_PATH=${VITE_BASE_PATH}
 RUN pnpm -C ui build
 
 # Force linux/amd64 architecture — Cloud Run rejects arm64 silently with a

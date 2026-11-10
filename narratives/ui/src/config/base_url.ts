@@ -15,9 +15,9 @@
  */
 
 /**
- * @fileoverview Helpers for normalizing build-time base URLs (`VITE_BASE_PATH`,
- * `VITE_DC_API_ROOT`) and resolving root-relative paths under Vite's
- * `BASE_URL`.
+ * @fileoverview Helpers for normalizing configured origin URLs
+ * (`VITE_DC_API_ROOT`) and resolving application-relative paths against the
+ * active document URL.
  */
 
 const LEADING_SLASHES_PATTERN = /^\/+/;
@@ -28,23 +28,15 @@ export const trimTrailingSlashes = (value: string): string =>
   value.trim().replace(TRAILING_SLASHES_PATTERN, '');
 
 /**
- * Normalizes a raw base path into Vite's `/<subpath>/` format, or `'/'` when
- * empty or root.
- */
-export const normalizeBasePath = (rawBasePath?: string): string => {
-  const stripped = trimTrailingSlashes(rawBasePath ?? '').replace(
-    LEADING_SLASHES_PATTERN,
-    '',
-  );
-  return stripped ? `/${stripped}/` : '/';
-};
-
-/**
- * Prefixes a root-relative path with Vite's `BASE_URL` so root builds resolve
- * to `/<path>` and subpath builds resolve to `/<subpath>/<path>`.
+ * Resolves an application-relative path against `window.location.href` so the
+ * same compiled UI bundle resolves assets and `/agent/*` endpoints whether
+ * mounted at `/` or under a runtime `BASE_PATH` subpath (such as
+ * `/labs/discover/`).
  */
 export const withBaseUrl = (path: string): string => {
-  const base = trimTrailingSlashes(import.meta.env.BASE_URL || '/');
   const cleanPath = path.trim().replace(LEADING_SLASHES_PATTERN, '');
-  return `${base}/${cleanPath}`;
+  if (typeof window === 'undefined') {
+    return `/${cleanPath}`;
+  }
+  return new URL(cleanPath, window.location.href).pathname;
 };

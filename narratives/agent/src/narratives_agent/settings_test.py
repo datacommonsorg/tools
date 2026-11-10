@@ -150,6 +150,12 @@ def test_blank_variable_counts_as_unset(
             "/narratives",
             id="base-path-repeated-slashes",
         ),
+        pytest.param(
+            "BASE_PATH",
+            "/labs/discover/",
+            "/labs/discover",
+            id="nested-base-path",
+        ),
     ],
 )
 def test_trailing_slashes_are_stripped(
