@@ -19,11 +19,104 @@
  * variables and data sources an answer used.
  */
 
+import {
+  AnimatePresence,
+  domAnimation,
+  LazyMotion,
+  m,
+  useReducedMotion,
+} from 'motion/react';
 import { useEffect, useRef, useState } from 'react';
-import { InspectIcon } from '@/src/components/icons';
+import { createPortal } from 'react-dom';
+import { BugReportIcon } from '@/src/components/icons';
 import { DebugPanelBody } from '@/src/components/panel_debug/body_debug';
 import { DEBUG_PANEL_COPY } from '@/src/components/panel_debug/copy_debug';
+import { EASE_OUT } from '@/src/config/motion';
 import type { ChatTurn } from '@/src/hooks/use_sse_chat';
+
+/** Duration of the debug drawer's slide transition, in seconds. */
+const DRAWER_TRANSITION_SECONDS = 0.25;
+
+/** Duration of the backdrop scrim's fade transition, in seconds. */
+const SCRIM_TRANSITION_SECONDS = 0.2;
+
+const SCRIM_MOTION_PROPS = {
+  initial: { opacity: 0 },
+  animate: { opacity: 1 },
+  exit: { opacity: 0 },
+  transition: { duration: SCRIM_TRANSITION_SECONDS, ease: EASE_OUT },
+};
+
+const DRAWER_MOTION_PROPS = {
+  initial: { x: '100%' },
+  animate: { x: 0 },
+  exit: { x: '100%' },
+  transition: { duration: DRAWER_TRANSITION_SECONDS, ease: EASE_OUT },
+};
+
+const FOCUSABLE_SELECTOR =
+  'button:not([disabled]), a[href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"]):not([disabled])';
+
+/** Reports whether `element` is visible and tabbable inside `container`. */
+const isElementVisibleWithin = (
+  element: HTMLElement,
+  container: HTMLElement,
+): boolean => {
+  if (
+    element.tabIndex < 0 ||
+    element.closest('[hidden], [inert], [aria-hidden="true"]')
+  ) {
+    return false;
+  }
+  const visibility = window.getComputedStyle(element).visibility;
+  if (visibility === 'hidden' || visibility === 'collapse') {
+    return false;
+  }
+  let current: HTMLElement | null = element;
+  while (current && current !== container) {
+    if (window.getComputedStyle(current).display === 'none') {
+      return false;
+    }
+    current = current.parentElement;
+  }
+  return true;
+};
+
+/** Returns enabled, visible focusable descendants of `container` in DOM order. */
+const getFocusableElements = (container: HTMLElement): HTMLElement[] =>
+  Array.from(
+    container.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR),
+  ).filter((element) => isElementVisibleWithin(element, container));
+
+/** Wraps Tab and Shift+Tab focus at the boundaries of `dialog`. */
+const trapDialogFocus = (
+  event: KeyboardEvent,
+  dialog: HTMLElement | null,
+): void => {
+  if (!dialog?.isConnected) {
+    return;
+  }
+  const focusables = getFocusableElements(dialog);
+  if (focusables.length === 0) {
+    event.preventDefault();
+    return;
+  }
+  const first = focusables[0];
+  const last = focusables[focusables.length - 1];
+  const active = document.activeElement;
+  if (!dialog.contains(active)) {
+    event.preventDefault();
+    first.focus();
+    return;
+  }
+  if (event.shiftKey && active === first) {
+    event.preventDefault();
+    last.focus();
+  } else if (!event.shiftKey && active === last) {
+    event.preventDefault();
+    first.focus();
+  }
+};
 
 /**
  * Reports whether the debug panel is enabled, that is, whether the page was
@@ -46,86 +139,140 @@ interface DebugPanelProps {
  * and multi-kilobyte raw responses would push the answer off screen. Out of
  * flow, it scrolls independently and can be dismissed.
  *
- * Follows drawer_menu.tsx: a scrim over the page, the panel above it, closed
- * by the button, the scrim, or Escape.
+ * `TurnView` wraps `AnswerPanel` in `motion-safe:animate-stream-in`
+ * (`animation-fill-mode: both` on `opacity`), creating a permanent stacking
+ * context that traps fixed descendants beneath the sticky header and prompt
+ * bar (`z-[5]`). Rendering the scrim and dialog through `createPortal` into
+ * `document.body` escapes that stacking context.
  */
 export const DebugPanel = ({ turn }: DebugPanelProps) => {
   const [isOpen, setIsOpen] = useState(false);
+  const [hasOpened, setHasOpened] = useState(false);
+  const shouldReduceMotion = Boolean(useReducedMotion());
+  const triggerButtonRef = useRef<HTMLButtonElement>(null);
+  const dialogRef = useRef<HTMLElement>(null);
   const closeButtonRef = useRef<HTMLButtonElement>(null);
+  const wasOpenRef = useRef(false);
+  const hasToolCalls = turn.toolCalls.length > 0;
 
-  // Escape closes, and focus moves into the panel so keyboard focus does not
-  // stay behind the scrim.
+  // Move focus into the dialog on open, trap Tab inside it, close on Escape,
+  // and restore focus to the trigger when closing if it remains connected.
   useEffect(() => {
-    if (!isOpen) {
+    if (!isOpen || !hasToolCalls) {
+      if (wasOpenRef.current && triggerButtonRef.current?.isConnected) {
+        triggerButtonRef.current.focus();
+      }
+      wasOpenRef.current = false;
       return;
     }
-    const closeOnEscape = (event: KeyboardEvent) => {
+    wasOpenRef.current = true;
+    if (closeButtonRef.current?.isConnected) {
+      closeButtonRef.current.focus();
+    }
+    const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
+        event.preventDefault();
         setIsOpen(false);
+        return;
+      }
+      if (event.key === 'Tab') {
+        trapDialogFocus(event, dialogRef.current);
       }
     };
-    document.addEventListener('keydown', closeOnEscape);
-    closeButtonRef.current?.focus();
-    return () => document.removeEventListener('keydown', closeOnEscape);
-  }, [isOpen]);
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [hasToolCalls, isOpen]);
 
-  const hasToolCalls = turn.toolCalls.length > 0;
   if (!hasToolCalls) {
     return null;
   }
 
+  const openDrawer = () => {
+    setHasOpened(true);
+    setIsOpen(true);
+  };
+
+  const drawerPortal =
+    hasOpened && typeof document !== 'undefined'
+      ? createPortal(
+          <LazyMotion features={domAnimation} strict>
+            <AnimatePresence>
+              {isOpen && (
+                <m.div
+                  key="debug-scrim"
+                  {...(!shouldReduceMotion && SCRIM_MOTION_PROPS)}
+                  data-non-print="true"
+                  className="fixed inset-0 z-30 bg-scrim/30"
+                  onClick={() => setIsOpen(false)}
+                  aria-hidden="true"
+                />
+              )}
+              {isOpen && (
+                <m.aside
+                  key="debug-drawer"
+                  ref={dialogRef}
+                  {...(!shouldReduceMotion && DRAWER_MOTION_PROPS)}
+                  role="dialog"
+                  aria-modal="true"
+                  aria-label={DEBUG_PANEL_COPY.title}
+                  data-non-print="true"
+                  className="fixed top-0 right-0 h-full w-140 max-w-screen z-40 bg-surface border-l border-outline shadow-lg flex flex-col"
+                >
+                  <header className="flex items-start justify-between gap-3 p-4 border-b border-outline shrink-0">
+                    <div className="flex flex-col gap-0.5 min-w-0">
+                      <h3 className="m-0 text-title-medium text-on-surface">
+                        {DEBUG_PANEL_COPY.title}
+                      </h3>
+                      <p className="m-0 text-body-medium text-on-surface-variant truncate">
+                        {turn.userMessage}
+                      </p>
+                    </div>
+                    <button
+                      ref={closeButtonRef}
+                      type="button"
+                      onClick={() => setIsOpen(false)}
+                      aria-label={DEBUG_PANEL_COPY.closeButtonLabel}
+                      className="w-11 h-11 shrink-0 flex items-center justify-center rounded-full hover:bg-button-hover transition-colors text-on-surface-variant text-title-medium"
+                    >
+                      <span aria-hidden="true">
+                        {DEBUG_PANEL_COPY.closeButtonGlyph}
+                      </span>
+                    </button>
+                  </header>
+
+                  <div className="flex-1 overflow-y-auto p-4">
+                    <DebugPanelBody turn={turn} />
+                  </div>
+                </m.aside>
+              )}
+            </AnimatePresence>
+          </LazyMotion>,
+          document.body,
+        )
+      : null;
+
   return (
     <>
+      {/* `download_pdf.ts` and `index.css` strip `[data-non-print="true"]`
+          elements from print and PDF exports. */}
       <button
+        ref={triggerButtonRef}
         type="button"
-        onClick={() => setIsOpen(true)}
+        onClick={openDrawer}
         aria-label={DEBUG_PANEL_COPY.openButtonLabel}
         aria-expanded={isOpen}
         title={DEBUG_PANEL_COPY.openButtonTitle}
-        className="w-9 h-9 flex items-center justify-center rounded-full bg-transparent cursor-pointer hover:bg-button-hover transition-colors text-on-surface-variant"
+        data-non-print="true"
+        className="group w-11 h-11 flex items-center justify-center rounded-full hover:bg-button-hover transition-colors text-error"
       >
-        <InspectIcon size="sm" />
+        <BugReportIcon
+          size="sm"
+          className="motion-safe:transition-transform motion-safe:duration-400 motion-safe:group-hover:rotate-25"
+        />
       </button>
-
-      {isOpen && (
-        <>
-          <div
-            className="fixed inset-0 z-30 bg-scrim/30"
-            onClick={() => setIsOpen(false)}
-            aria-hidden="true"
-          />
-          <aside
-            role="dialog"
-            aria-modal="true"
-            aria-label={DEBUG_PANEL_COPY.title}
-            className="fixed top-0 right-0 h-full w-140 max-w-screen z-40 bg-surface border-l border-outline shadow-lg flex flex-col"
-          >
-            <header className="flex items-start justify-between gap-3 p-4 border-b border-outline shrink-0">
-              <div className="flex flex-col gap-0.5 min-w-0">
-                <h3 className="m-0 text-title-medium text-on-surface">
-                  {DEBUG_PANEL_COPY.title}
-                </h3>
-                <p className="m-0 text-body-medium text-on-surface-variant truncate">
-                  {turn.userMessage}
-                </p>
-              </div>
-              <button
-                ref={closeButtonRef}
-                type="button"
-                onClick={() => setIsOpen(false)}
-                aria-label={DEBUG_PANEL_COPY.closeButtonLabel}
-                className="w-9 h-9 shrink-0 flex items-center justify-center rounded-full bg-transparent cursor-pointer hover:bg-button-hover transition-colors text-on-surface-variant text-title-medium"
-              >
-                {DEBUG_PANEL_COPY.closeButtonGlyph}
-              </button>
-            </header>
-
-            <div className="flex-1 overflow-y-auto p-4">
-              <DebugPanelBody turn={turn} />
-            </div>
-          </aside>
-        </>
-      )}
+      {drawerPortal}
     </>
   );
 };

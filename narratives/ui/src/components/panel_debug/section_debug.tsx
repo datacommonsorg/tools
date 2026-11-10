@@ -24,10 +24,10 @@ import type { ReactNode } from 'react';
 /**
  * Classes for monospaced body text. `.text-body-medium` is unlayered CSS in
  * index.css and sets its own font family, so it outranks the layered
- * `font-mono-plex` utility on the same element; the important modifier
- * restores the monospaced family.
+ * `font-mono` utility on the same element; the important modifier restores the
+ * monospaced family.
  */
-export const DEBUG_MONO_TEXT_CLASSES = 'text-body-medium font-mono-plex!';
+export const DEBUG_MONO_TEXT_CLASSES = 'text-body-medium font-mono!';
 
 interface DebugSectionProps {
   label: string;
@@ -58,7 +58,7 @@ export const DebugDetail = ({ label, value }: DebugDetailProps) => {
   }
   return (
     <span className="text-body-medium text-on-surface-variant">
-      {label} <span className="font-mono-plex">{value}</span>
+      {label} <span className="font-mono">{value}</span>
     </span>
   );
 };

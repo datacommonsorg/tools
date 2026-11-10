@@ -20,8 +20,23 @@
  * chart blocks.
  */
 
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from '@testing-library/react';
+import {
+  afterAll,
+  afterEach,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from 'vitest';
 import { VARIABLE_NAME_SEPARATOR } from '@/src/components/panel_debug/copy_debug';
 import {
   DebugPanel,
@@ -109,6 +124,27 @@ const buildDescribedFacetCall = (
   }),
 });
 
+/** Builds a turn whose open dialog renders close, link, and toggle controls. */
+const buildMultiControlTurn = (): ChatTurn =>
+  buildFinishedTurn({
+    toolCalls: [
+      buildDescribedFacetCall({ url: 'https://example.org/data' }),
+      buildServedFetchCall('111'),
+    ],
+  });
+
+/** Returns the rendered inspect trigger button. */
+const getInspectButton = (): HTMLElement =>
+  screen.getByLabelText('Inspect data sources for this answer');
+
+/** Returns the open slide-over's close button. */
+const getCloseButton = (): HTMLElement =>
+  screen.getByLabelText('Close provenance inspector');
+
+/** Dispatches a cancelable Tab keydown on document and reports defaultPrevented. */
+const pressTabKey = (shiftKey = false): boolean =>
+  !fireEvent.keyDown(document, { key: 'Tab', shiftKey });
+
 /** Renders the inspector for the turn and opens its slide-over. */
 const openInspector = (turn: ChatTurn) => {
   render(<DebugPanel turn={turn} />);
@@ -126,8 +162,45 @@ const getScrim = (): HTMLElement => {
   return scrim;
 };
 
+let prefersReducedMotion = false;
+const reducedMotionListeners = new Set<() => void>();
+
+/** Updates the stubbed prefers-reduced-motion query and notifies subscribers. */
+const setReducedMotionPreference = (shouldReduce: boolean): void => {
+  prefersReducedMotion = shouldReduce;
+  for (const listener of reducedMotionListeners) {
+    listener();
+  }
+};
+
+beforeAll(() => {
+  vi.stubGlobal('matchMedia', (query: string) => ({
+    get matches() {
+      return query.includes('prefers-reduced-motion') && prefersReducedMotion;
+    },
+    media: query,
+    addEventListener: (_type: string, listener: () => void) => {
+      if (query.includes('prefers-reduced-motion')) {
+        reducedMotionListeners.add(listener);
+      }
+    },
+    removeEventListener: (_type: string, listener: () => void) => {
+      reducedMotionListeners.delete(listener);
+    },
+  }));
+});
+
 afterEach(() => {
   cleanup();
+  vi.restoreAllMocks();
+  if (prefersReducedMotion) {
+    setReducedMotionPreference(false);
+  }
+});
+
+afterAll(() => {
+  reducedMotionListeners.clear();
+  vi.unstubAllGlobals();
 });
 
 describe('DebugPanel', () => {
@@ -167,34 +240,244 @@ describe('DebugPanel', () => {
     );
   });
 
-  it('closes the dialog from the close button', () => {
+  it('closes the dialog from the close button', async () => {
     // Test: Dismissal by the close button.
     // Situation: The open slide-over's close button is clicked.
-    // Expectation: The dialog is removed.
+    // Expectation: The dialog exits and unmounts.
     openInspector(buildFinishedTurn());
-    fireEvent.click(screen.getByLabelText('Close provenance inspector'));
+    fireEvent.click(getCloseButton());
 
-    expect(screen.queryByRole('dialog')).toBeNull();
+    await waitFor(() => {
+      expect(screen.queryByRole('dialog')).toBeNull();
+    });
   });
 
-  it('closes the dialog from the scrim', () => {
+  it('closes the dialog from the scrim', async () => {
     // Test: Dismissal by the scrim.
     // Situation: The scrim behind the open slide-over is clicked.
-    // Expectation: The dialog is removed.
+    // Expectation: The dialog exits and unmounts.
     openInspector(buildFinishedTurn());
     fireEvent.click(getScrim());
 
-    expect(screen.queryByRole('dialog')).toBeNull();
+    await waitFor(() => {
+      expect(screen.queryByRole('dialog')).toBeNull();
+    });
   });
 
-  it('closes the dialog on Escape', () => {
+  it('closes the dialog on Escape', async () => {
     // Test: Dismissal by the keyboard.
     // Situation: Escape is pressed while the slide-over is open.
-    // Expectation: The dialog is removed.
+    // Expectation: The dialog exits and unmounts.
     openInspector(buildFinishedTurn());
     fireEvent.keyDown(document, { key: 'Escape' });
 
+    await waitFor(() => {
+      expect(screen.queryByRole('dialog')).toBeNull();
+    });
+  });
+
+  it('unmounts the dialog synchronously on close when reduced motion is preferred', () => {
+    // Test: Reduced-motion dismissal.
+    // Situation: prefers-reduced-motion matches and the close button is clicked.
+    // Expectation: The dialog has no motion transform and unmounts immediately.
+    setReducedMotionPreference(true);
+    openInspector(buildFinishedTurn());
+    expect(screen.getByRole('dialog').style.transform).toBe('');
+
+    fireEvent.click(getCloseButton());
+
     expect(screen.queryByRole('dialog')).toBeNull();
+    expect(document.querySelector('div[aria-hidden="true"]')).toBeNull();
+  });
+
+  it('mounts no portal into document.body before the drawer is opened', () => {
+    // Test: Lazy portal mounting.
+    // Situation: A finished turn renders its inspect trigger without opening.
+    // Expectation: Neither a dialog nor a backdrop scrim exists in document.body.
+    render(<DebugPanel turn={buildFinishedTurn()} />);
+
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(document.body.querySelector('div[aria-hidden="true"]')).toBeNull();
+  });
+
+  it('portals the scrim and dialog into document.body outside the turn container', () => {
+    // Test: Portal target for escaping the turn stacking context.
+    // Situation: DebugPanel renders inside a mount container and is opened.
+    // Expectation: Both the scrim and dialog mount under document.body outside
+    //   the turn container.
+    const { container } = render(<DebugPanel turn={buildFinishedTurn()} />);
+    fireEvent.click(getInspectButton());
+
+    const dialog = screen.getByRole('dialog');
+    const scrim = getScrim();
+    expect(container.contains(dialog)).toBe(false);
+    expect(container.contains(scrim)).toBe(false);
+    expect(document.body.contains(dialog)).toBe(true);
+    expect(document.body.contains(scrim)).toBe(true);
+  });
+
+  it('marks the trigger, scrim, and dialog with data-non-print', () => {
+    // Test: Print and PDF exclusion attributes.
+    // Situation: The slide-over is opened on a finished turn.
+    // Expectation: Trigger, scrim, and dialog each carry data-non-print="true".
+    openInspector(buildFinishedTurn());
+
+    expect(getInspectButton().getAttribute('data-non-print')).toBe('true');
+    expect(getScrim().getAttribute('data-non-print')).toBe('true');
+    expect(screen.getByRole('dialog').getAttribute('data-non-print')).toBe(
+      'true',
+    );
+  });
+
+  it('renders a 44x44 red bug_report trigger with hover rotation classes', () => {
+    // Test: Trigger button sizing, color, icon glyph, and hover rotation.
+    // Situation: DebugPanel renders for a finished turn with tool calls.
+    // Expectation: The 44x44 trigger uses text-error and group, and wraps a
+    //   Material bug_report SVG with motion-safe 25-degree hover rotation.
+    render(<DebugPanel turn={buildFinishedTurn()} />);
+
+    const trigger = getInspectButton();
+    expect([...trigger.classList]).toEqual(
+      expect.arrayContaining(['w-11', 'h-11', 'group', 'text-error']),
+    );
+    expect(trigger.classList.contains('text-on-surface-variant')).toBe(false);
+
+    const icon = trigger.querySelector('svg');
+    expect(icon?.getAttribute('viewBox')).toBe('0 -960 960 960');
+    expect(icon?.getAttribute('aria-hidden')).toBe('true');
+    expect([...(icon?.classList ?? [])]).toEqual(
+      expect.arrayContaining([
+        'motion-safe:transition-transform',
+        'motion-safe:duration-400',
+        'motion-safe:group-hover:rotate-25',
+      ]),
+    );
+  });
+
+  it('renders a 44x44 close button with an aria-hidden glyph', () => {
+    // Test: Close button touch target and decorative glyph semantics.
+    // Situation: The slide-over is open.
+    // Expectation: The close button is w-11 h-11 and hides its glyph from AT.
+    openInspector(buildFinishedTurn());
+
+    const closeButton = getCloseButton();
+    expect([...closeButton.classList]).toEqual(
+      expect.arrayContaining(['w-11', 'h-11']),
+    );
+    expect(closeButton.querySelector('span')?.getAttribute('aria-hidden')).toBe(
+      'true',
+    );
+  });
+
+  it('wraps Tab focus from the last focusable control to the first', () => {
+    // Test: Forward focus wrap inside the open dialog.
+    // Situation: Focus sits on the dialog's last button and Tab is pressed.
+    // Expectation: Default tabbing is prevented and focus wraps to the close
+    //   button.
+    openInspector(buildMultiControlTurn());
+    screen
+      .getByRole('button', { name: 'Show raw response (18 chars)' })
+      .focus();
+
+    expect(pressTabKey()).toBe(true);
+    expect(document.activeElement).toBe(getCloseButton());
+  });
+
+  it('wraps Shift+Tab focus from the first focusable control to the last', () => {
+    // Test: Backward focus wrap inside the open dialog.
+    // Situation: Focus sits on the close button and Shift+Tab is pressed.
+    // Expectation: Default tabbing is prevented and focus wraps to the last
+    //   control in the dialog.
+    openInspector(buildMultiControlTurn());
+    const lastControl = screen.getByRole('button', {
+      name: 'Show raw response (18 chars)',
+    });
+
+    expect(pressTabKey(true)).toBe(true);
+    expect(document.activeElement).toBe(lastControl);
+  });
+
+  it('skips controls inside a display-none ancestor when wrapping focus', () => {
+    // Test: Ancestor visibility check in the dialog focus trap.
+    // Situation: The last tool-call item has display: none on its list item
+    //   ancestor while focus sits on the close button and Shift+Tab runs.
+    // Expectation: Focus wraps to the preceding visible button rather than the
+    //   control inside the hidden list item.
+    openInspector(buildMultiControlTurn());
+    const hiddenChildButton = screen.getByRole('button', {
+      name: 'Show raw response (18 chars)',
+    });
+    const precedingVisibleButton = screen.getByRole('button', {
+      name: 'Show raw response (238 chars)',
+    });
+    const parentItem = hiddenChildButton.closest('li');
+    if (!parentItem) {
+      throw new Error('Expected tool-call toggle to be inside a list item.');
+    }
+    parentItem.style.display = 'none';
+
+    expect(pressTabKey(true)).toBe(true);
+    expect(document.activeElement).toBe(precedingVisibleButton);
+  });
+
+  it('skips disabled controls with an explicit tabindex when wrapping focus', () => {
+    // Test: Disabled-element exclusion on the [tabindex] selector branch.
+    // Situation: The last button carries both tabIndex={0} and disabled while
+    //   focus sits on the close button and Shift+Tab runs.
+    // Expectation: Focus wraps to the preceding enabled button rather than the
+    //   disabled tabIndex={0} button.
+    openInspector(buildMultiControlTurn());
+    const lastButton = screen.getByRole('button', {
+      name: 'Show raw response (18 chars)',
+    }) as HTMLButtonElement;
+    const precedingEnabledButton = screen.getByRole('button', {
+      name: 'Show raw response (238 chars)',
+    });
+    lastButton.tabIndex = 0;
+    lastButton.disabled = true;
+
+    expect(pressTabKey(true)).toBe(true);
+    expect(document.activeElement).toBe(precedingEnabledButton);
+  });
+
+  it('returns Tab focus into the dialog when focus has moved outside', () => {
+    // Test: Focus containment when activeElement leaves the dialog.
+    // Situation: Focus sits on the trigger while the dialog is open and Tab runs.
+    // Expectation: Focus moves to the first focusable control inside the dialog.
+    openInspector(buildFinishedTurn());
+    getInspectButton().focus();
+
+    expect(pressTabKey()).toBe(true);
+    expect(document.activeElement).toBe(getCloseButton());
+  });
+
+  it('restores focus to a connected trigger button when the dialog closes', () => {
+    // Test: Focus restoration on dismissal.
+    // Situation: The open dialog is dismissed while its trigger stays mounted.
+    // Expectation: Focus returns to the trigger button.
+    openInspector(buildFinishedTurn());
+
+    fireEvent.keyDown(document, { key: 'Escape' });
+
+    expect(document.activeElement).toBe(getInspectButton());
+  });
+
+  it('skips focus restoration when the trigger button is disconnected', () => {
+    // Test: Liveness guard when restoring focus on dismissal.
+    // Situation: The turn container is detached from document.body before
+    //   Escape closes the portaled dialog.
+    // Expectation: Dismissal checks isConnected and does not call focus() on
+    //   the detached trigger button.
+    const { container } = render(<DebugPanel turn={buildFinishedTurn()} />);
+    const trigger = getInspectButton();
+    fireEvent.click(trigger);
+    const focusSpy = vi.spyOn(trigger, 'focus');
+    container.remove();
+
+    fireEvent.keyDown(document, { key: 'Escape' });
+
+    expect(trigger.isConnected).toBe(false);
+    expect(focusSpy).not.toHaveBeenCalled();
   });
 
   it('lists only the facets that supplied data', () => {
@@ -305,6 +588,28 @@ describe('DebugPanel', () => {
     expect(screen.getByText('Hide raw response (11 chars)')).toBeTruthy();
   });
 
+  it('updates aria-expanded on the 44px raw response toggle', () => {
+    // Test: Accessibility state and touch target height on raw response toggle.
+    // Situation: A tool call carries a raw response and its toggle is clicked.
+    // Expectation: The button has min-h-11 and switches aria-expanded from
+    //   "false" to "true".
+    openInspector(
+      buildFinishedTurn({
+        toolCalls: [{ ...FETCH_CALL, result: 'RAW-PAYLOAD' }],
+      }),
+    );
+
+    const toggle = screen.getByRole('button', {
+      name: 'Show raw response (11 chars)',
+    });
+    expect(toggle.classList.contains('min-h-11')).toBe(true);
+    expect(toggle.getAttribute('aria-expanded')).toBe('false');
+
+    fireEvent.click(toggle);
+
+    expect(toggle.getAttribute('aria-expanded')).toBe('true');
+  });
+
   it('keeps at most one raw response open', () => {
     // Test: The raw response disclosure across calls.
     // Situation: Two tool calls carry raw responses; the first call's toggle
@@ -378,7 +683,49 @@ describe('DebugPanel', () => {
     expect(link.getAttribute('href')).toBe(url);
     expect(link.getAttribute('title')).toBe(url);
     expect(link.getAttribute('target')).toBe('_blank');
-    expect(link.getAttribute('rel')).toBe('noreferrer');
+    expect(link.getAttribute('rel')).toBe('noopener noreferrer');
+  });
+
+  it('renders an unsafe facet URL as plain text without a link', () => {
+    // Test: Provenance section defense against unsafe schemes in tool output.
+    // Situation: A serving facet's metadata carries a javascript: URL.
+    // Expectation: The URL text stays visible in a span and no anchor renders.
+    const unsafeUrl = 'javascript:alert(1)';
+    openInspector(
+      buildFinishedTurn({
+        toolCalls: [
+          buildDescribedFacetCall({ url: unsafeUrl }),
+          buildServedFetchCall('111'),
+        ],
+      }),
+    );
+
+    expect(screen.queryByRole('link')).toBeNull();
+    expect(screen.getByText(unsafeUrl).tagName).toBe('SPAN');
+  });
+
+  it('applies font-mono classes to monospaced debug fields', () => {
+    // Test: Standard monospace utility classes in the debug drawer.
+    // Situation: The slide-over renders variables, facets, charts, and tool
+    //   calls.
+    // Expectation: Monospaced fields carry font-mono or font-mono! and zero
+    //   elements carry custom font-mono-* variants.
+    openInspector(
+      buildFinishedTurn({
+        toolCalls: [buildDescribedFacetCall({}), buildServedFetchCall('111')],
+        blocks: [{ index: 0, type: 'chart', chart: LINE_CHART }],
+      }),
+    );
+
+    expect(
+      screen.getByText('Count_Person').classList.contains('font-mono'),
+    ).toBe(true);
+    expect(
+      screen.getByText('fetch_observations').classList.contains('font-mono'),
+    ).toBe(true);
+    const pre = screen.getByRole('dialog').querySelector('pre');
+    expect(pre?.classList.contains('font-mono!')).toBe(true);
+    expect(document.querySelector('[class*="font-mono-"]')).toBeNull();
   });
 
   it('marks an errored tool call', () => {
