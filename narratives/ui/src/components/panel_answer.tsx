@@ -494,7 +494,7 @@ function ToolbarExportPdfPill({
         type="button"
         onClick={onExport}
         disabled={busy}
-        className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-theme-container text-on-theme-container text-label-large cursor-pointer hover:opacity-90"
+        className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-theme-container text-on-theme-container text-label-large hover:opacity-90"
         aria-label="Export PDF"
       >
         <ExportIcon size="xs" />
