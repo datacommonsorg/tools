@@ -1441,12 +1441,15 @@ describe('useSseChat', () => {
     expect(result.current.chat.error).toBeNull();
   });
 
-  it("prefixes the default chat endpoint with Vite's BASE_URL when mounted under a subpath", async () => {
-    // Test: Default streaming endpoint resolution under a non-root `BASE_URL`.
-    // Situation: `import.meta.env.BASE_URL` is `/narratives/` and `useSseChat`
+  it('resolves the default chat endpoint relative to the document subpath', async () => {
+    // Test: Default streaming endpoint resolution under a runtime subpath.
+    // Situation: `window.location` is at `/labs/discover/` and `useSseChat`
     //   is called without an explicit `endpoint` override.
-    // Expectation: `send` posts to `/narratives/agent/chat/stream`.
-    vi.stubEnv('BASE_URL', '/narratives/');
+    // Expectation: `send` posts to `/labs/discover/agent/chat/stream`.
+    vi.stubGlobal(
+      'location',
+      new URL('https://autopush.datacommons.org/labs/discover/'),
+    );
     const { result, fetchMock } = renderChat([
       frame('content', buildTextBlock('About 68 million.'), 1),
       frame('terminal', { state: 'complete', ...TERMINAL_FIELDS }, 2),
@@ -1457,7 +1460,7 @@ describe('useSseChat', () => {
     );
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
-    expect(fetchMock.mock.calls[0][0]).toBe('/narratives/agent/chat/stream');
+    expect(fetchMock.mock.calls[0][0]).toBe('/labs/discover/agent/chat/stream');
   });
 });
 
