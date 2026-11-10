@@ -56,13 +56,16 @@ c1() {
 }
 check 1 c1
 
-# 2. The hashed JS bundle is served with a script MIME type. Catches the
-#    classic SPA-fallback bug where a missing asset returns index.html as
-#    text/html and the browser silently refuses to execute it.
+# 2. The hashed JS bundle is referenced via a relative `./assets/...` path (so
+#    the image works under any runtime `BASE_PATH`) and served with a script
+#    MIME type. Catches both an accidental revert to root-absolute `/assets/...`
+#    paths and the SPA-fallback bug where a missing asset returns index.html as
+#    text/html.
 c2() {
-    local js code ctype
-    js=$(grep -oE '/assets/[^"]+\.js' "$TMP/home.html" | head -1)
-    [ -n "$js" ] || { echo "no /assets/*.js referenced in the page"; return 1; }
+    local rel_js js code ctype
+    rel_js=$(grep -oE '\./assets/[^"]+\.js' "$TMP/home.html" | head -1)
+    [ -n "$rel_js" ] || { echo "no ./assets/*.js referenced in the page"; return 1; }
+    js="${rel_js#.}"
     read -r code ctype < <(curl_cmd -sSI "$URL$js" \
         | awk 'BEGIN{IGNORECASE=1} /^HTTP/{c=$2} /^content-type:/{t=$2} END{print c, t}')
     [ "$code" = "200" ] || { echo "$js HTTP $code"; return 1; }

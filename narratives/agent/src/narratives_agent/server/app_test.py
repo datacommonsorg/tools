@@ -250,8 +250,17 @@ def test_lifespan_flushes_telemetry_at_shutdown(
 
 
 @pytest.mark.parametrize("base_path", ["/narratives", "/labs/discover"])
+@pytest.mark.parametrize(
+    "route",
+    [
+        "/healthz",
+        "{base_path}/healthz",
+        "{base_path}/agent/health",
+    ],
+)
 def test_base_path_mounts_api_and_health_routes_under_subpath(
     base_path: str,
+    route: str,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     # Test: API and health routes when `BASE_PATH` is set.
@@ -265,17 +274,13 @@ def test_base_path_mounts_api_and_health_routes_under_subpath(
     monkeypatch.setattr(system, "mcp_capabilities", lambda: Capabilities())
     client = TestClient(create_app())
 
-    for path in (
-        "/healthz",
-        f"{base_path}/healthz",
-        f"{base_path}/agent/health",
-    ):
-        get_response = client.get(path)
-        head_response = client.head(path)
-        assert get_response.status_code == 200
-        assert head_response.status_code == 200
-        assert head_response.content == b""
+    path = route.format(base_path=base_path)
+    get_response = client.get(path)
+    head_response = client.head(path)
 
+    assert get_response.status_code == 200
+    assert head_response.status_code == 200
+    assert head_response.content == b""
     assert client.get("/agent/health").status_code == 404
 
 
