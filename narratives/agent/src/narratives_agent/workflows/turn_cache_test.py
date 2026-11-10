@@ -391,3 +391,17 @@ def test_metadata_recorded_later_leaves_derived_tables_unchanged() -> None:
     assert backfilled is not None
     assert backfilled.table.variable_name == "Total population"
     assert cache.get("s1") == derived
+
+
+def test_a_metadata_request_is_recorded_per_variable_and_facet() -> None:
+    # Test: The record of variable metadata the server requested.
+    # Situation: The server marks `Count_Person` over facet `f1` requested.
+    # Expectation: That pair reads as requested, and the same variable over
+    #   another facet and another variable over the same facet do not.
+    cache = TurnCache()
+
+    cache.mark_metadata_requested("Count_Person", "f1")
+
+    assert cache.has_requested_metadata("Count_Person", "f1")
+    assert not cache.has_requested_metadata("Count_Person", "f2")
+    assert not cache.has_requested_metadata("Count_Household", "f1")

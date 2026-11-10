@@ -465,6 +465,134 @@ async def test_a_valid_specification_is_processed_and_ends_the_loop(
     assert telemetry.tool_calls == {"submit_specification": 1}
 
 
+def _install_metadata_server(
+    monkeypatch: pytest.MonkeyPatch,
+) -> list[JsonObject]:
+    """Answers `get_variable_metadata` with a World Bank source for `f1`.
+
+    Returns the list that receives the arguments of every metadata call.
+    """
+    requests: list[JsonObject] = []
+    payload: JsonObject = {
+        "provenances": {
+            "dc/base/WDI": {
+                "properties": {
+                    "isPartOf": "World Development Indicators",
+                    "source": "World Bank",
+                    "url": "https://wdi.example",
+                }
+            }
+        },
+        "variables": {
+            "Count_Person": {
+                "facets": [
+                    {
+                        "id": "f1",
+                        "provenanceId": "dc/base/WDI",
+                        "dateRange": {"start": "2000", "end": "2023"},
+                    }
+                ]
+            }
+        },
+    }
+
+    async def call_tool(name: str, arguments: JsonObject) -> JsonObject:
+        assert name == "get_variable_metadata"
+        requests.append(arguments)
+        return {"content": [{"type": "text", "text": json.dumps(payload)}]}
+
+    monkeypatch.setattr(mcp_client, "async_call_tool", call_tool)
+    return requests
+
+
+@pytest.mark.asyncio
+async def test_a_submission_cites_metadata_the_server_requested_itself(
+    monkeypatch: pytest.MonkeyPatch,
+    calls: list[str],
+    model_answers: Callable[..., list[list[Message]]],
+    telemetry: TurnTelemetry,
+) -> None:
+    # Test: The metadata backfill before a submitted specification runs.
+    # Situation: `t1` cites its inline source and no metadata was recorded;
+    #   the model submits a ranking over it without calling
+    #   `get_variable_metadata`, and the server describes the facet as World
+    #   Development Indicators by the World Bank.
+    # Expectation: The server requests the table's variable and places once,
+    #   the digest cites the World Bank dataset and date range for the
+    #   variable, and the request adds no tool-call record and no tool-call
+    #   count.
+    _ = calls
+    requests = _install_metadata_server(monkeypatch)
+    cache = TurnCache()
+    cache.store_fetched(_make_table("t1", {"a": 1.0, "b": 2.0}))
+    model_answers(
+        _make_submit_turn(
+            {"step_id": "s1", "script": "rank_cohort", "table": "t1"}
+        )
+    )
+
+    result = await _run_loop(telemetry, cache)
+
+    assert requests == [
+        {"variable_dcids": ["Count_Person"], "entity_dcids": ["a", "b"]}
+    ]
+    assert result.digest is not None
+    (source,) = result.digest.sources
+    assert (source.provider, source.dataset, source.date_range) == (
+        "World Bank",
+        "World Development Indicators",
+        "2000 \u2013 2023",
+    )
+    assert source.variable_dcid == "Count_Person"
+    assert [record["name"] for record in result.tool_calls] == [
+        "submit_specification"
+    ]
+    assert telemetry.tool_calls == {"submit_specification": 1}
+
+
+@pytest.mark.asyncio
+async def test_a_resubmission_does_not_request_metadata_again(
+    monkeypatch: pytest.MonkeyPatch,
+    calls: list[str],
+    model_answers: Callable[..., list[list[Message]]],
+    telemetry: TurnTelemetry,
+) -> None:
+    # Test: One metadata request per variable and facet in a turn.
+    # Situation: `t1` has one of four requested places with data, and every
+    #   metadata request fails at the tool layer; the model first ranks the
+    #   table, which refuses for coverage, then summarizes it as a series,
+    #   which succeeds.
+    # Expectation: Both submissions run, and the server requests the
+    #   table's metadata only before the first, although that request
+    #   recorded nothing.
+    _ = calls
+    requests: list[JsonObject] = []
+
+    async def fail_call(name: str, arguments: JsonObject) -> JsonObject:
+        requests.append(arguments)
+        raise mcp_client.McpToolError(name, "Metadata is unavailable.")
+
+    monkeypatch.setattr(mcp_client, "async_call_tool", fail_call)
+    cache = TurnCache()
+    cache.store_fetched(
+        _make_table("t1", {"a": 1.0}, requested=("a", "b", "c", "d"))
+    )
+    model_answers(
+        _make_submit_turn(
+            {"step_id": "s1", "script": "rank_cohort", "table": "t1"}
+        ),
+        _make_submit_turn(
+            {"step_id": "s1", "script": "analyze_timeseries", "table": "t1"}
+        ),
+    )
+
+    result = await _run_loop(telemetry, cache)
+
+    assert result.digest is not None
+    assert result.processing_retries == 1
+    assert len(requests) == 1
+
+
 @pytest.mark.asyncio
 async def test_invalid_specification_tag_is_not_echoed_in_error(
     calls: list[str],

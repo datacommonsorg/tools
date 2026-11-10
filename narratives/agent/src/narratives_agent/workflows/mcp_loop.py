@@ -45,6 +45,8 @@ from narratives_agent.mcp.capabilities import (
     TOOL_GET_VARIABLE_METADATA,
     TOOL_SEARCH_CHILD_INDICATORS,
     TOOL_SEARCH_INDICATORS,
+    Capabilities,
+    from_tools,
 )
 from narratives_agent.mcp.schema import transform_schema_for_gemini
 from narratives_agent.telemetry import ErrorType, TurnTelemetry
@@ -70,6 +72,9 @@ from narratives_agent.workflows.messages import (
 )
 from narratives_agent.workflows.messages import (
     PROCESSING_STATUS as _PROCESSING_STATUS_MESSAGE,
+)
+from narratives_agent.workflows.metadata_backfill import (
+    backfill_variable_metadata,
 )
 from narratives_agent.workflows.processing import (
     ProcessingDiagnostic,
@@ -656,12 +661,16 @@ class _Loop:
             discovery and processing, or `None` when status updates are not
             subscribed to.
         result: The `DiscoveryResult` populated as the loop runs.
+        capabilities: The MCP server's tools; variable metadata is requested
+            before a specification runs only when they include
+            `get_variable_metadata`.
     """
 
     cache: TurnCache
     telemetry: TurnTelemetry
     status_callback: StatusCallback | None
     result: DiscoveryResult
+    capabilities: Capabilities
 
     def emit_status(self, phase_and_message: tuple[StatusPhase, str]) -> None:
         """Reports a phase change to the UI, when a callback is installed.
@@ -713,6 +722,9 @@ class _Loop:
             )
         self.emit_status(PROCESSING_STATUS)
         with self.telemetry.phase("processing"):
+            await backfill_variable_metadata(
+                specification, self.cache, self.capabilities
+            )
             outcome = await execute_specification(specification, self.cache)
         if isinstance(outcome, ProcessingDiagnostic):
             self.result.last_diagnostic = outcome
@@ -1120,7 +1132,7 @@ async def execute_discovery_loop(
     # Open the turn's MCP session scope here so concurrent calls share it.
     mcp_client.ensure_session_scope()
     result = DiscoveryResult()
-    loop = _Loop(cache, telemetry, status_callback, result)
+    loop = _Loop(cache, telemetry, status_callback, result, from_tools(tools))
     try:
         async with asyncio.timeout(MCP_LOOP_TIMEOUT_SECONDS):
             await _iterate(

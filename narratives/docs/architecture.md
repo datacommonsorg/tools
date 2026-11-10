@@ -144,6 +144,13 @@ Otherwise, the request runs through the agent loop in five steps:
    deterministic analytics scripts (`workflows/processing.py`) under the
    `processing` status phase; a validation or step refusal is returned to the
    model for up to two retries, and an accepted `AnalysisDigest` ends the loop.
+   Before a specification runs, the server requests variable metadata
+   (`workflows/metadata_backfill.py`) for the fetched tables the
+   specification references whose facet has no metadata yet, best effort and
+   at most once per variable and facet in a turn, so citations can provide
+   the provider, dataset, date range, and license even when the model did
+   not call `get_variable_metadata`. These requests are not model tool calls
+   and stream no `tool_call` frame.
    A specification holds at most six steps. `analyze_timeseries` and
    `compute_composition` report every place they cover, so without `places`
    their input may cover at most ten places, and a ranking or relation
