@@ -262,8 +262,12 @@ export function AnswerPanel({
           body so the body's reveal does not hide it. A placeholder for a
           "synthesis" block, whose title will be a processed title and a
           synthesis of the answer, both sent by the agent; until then it shows
-          the raw question. */}
-        <div className="px-4 pt-4 sm:px-6 sm:pt-6 bg-surface-narrative">
+          the raw question. The PDF already takes the header's question as its
+          heading, so the export leaves this out. */}
+        <div
+          className="px-4 pt-4 sm:px-6 sm:pt-6 bg-surface-narrative"
+          data-non-print="true"
+        >
           <h1 className="text-title-large-emphasized text-on-surface wrap-break-word">
             {turn.userMessage}
           </h1>
@@ -494,7 +498,7 @@ function ToolbarExportPdfPill({
         type="button"
         onClick={onExport}
         disabled={busy}
-        className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-theme-container text-on-theme-container text-label-large hover:opacity-90"
+        className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-theme-container text-on-theme-container text-label-large enabled:hover:opacity-90 disabled:opacity-60"
         aria-label="Export PDF"
       >
         <ExportIcon size="xs" />

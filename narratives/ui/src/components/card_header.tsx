@@ -33,10 +33,10 @@ interface CardHeaderProps {
  */
 export function CardHeader({ title, children }: CardHeaderProps) {
   return (
-    <div className="flex items-start sm:items-center gap-3 py-2 pr-2 pl-5 border-b border-border bg-surface">
+    <div className="flex items-start gap-3 py-2 pr-2 pl-5 border-b border-border bg-surface">
       {/* Wraps onto as many lines as the question needs. utils/download_pdf.ts
           finds this class and restyles it as the PDF's heading. */}
-      <span className="flex-1 print-question text-label-large text-on-surface">
+      <span className="flex-1 min-w-0 py-1.5 wrap-break-word print-question text-label-large text-on-surface">
         {title}
       </span>
       {/* Always mounted at the pill's 32px height so the header doesn't grow

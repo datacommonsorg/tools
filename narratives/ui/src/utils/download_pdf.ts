@@ -471,21 +471,33 @@ export function pageBreak(
  * Runs after mounting, since it reads computed styles. Inlined charts keep
  * their own styling, as a legend swatch is a background color, and
  * screen-reader-only text stays clipped out of sight.
+ *
+ * Reads every computed style before writing any inline one: interleaving the
+ * two would force a style recalculation per element.
  */
 export function flattenForPrint(clone: HTMLElement) {
-  clone.querySelectorAll<HTMLElement>('*').forEach((el) => {
-    if (el.closest('[data-chart-inner], .sr-only')) return;
+  const snapshots = Array.from(clone.querySelectorAll<HTMLElement>('*'))
+    .filter((el) => !el.closest('[data-chart-inner], .sr-only'))
+    .map((el) => {
+      const computed = window.getComputedStyle(el);
+      return {
+        el,
+        clipsOverflow:
+          computed.overflowX !== 'visible' || computed.overflowY !== 'visible',
+        truncatesText: computed.textOverflow === 'ellipsis',
+      };
+    });
+  for (const { el, clipsOverflow, truncatesText } of snapshots) {
     el.style.backgroundColor = 'transparent';
     el.style.backgroundImage = 'none';
-    const computed = window.getComputedStyle(el);
-    if (computed.overflowX !== 'visible' || computed.overflowY !== 'visible') {
+    if (clipsOverflow) {
       el.style.overflow = 'visible';
     }
-    if (computed.textOverflow === 'ellipsis') {
+    if (truncatesText) {
       el.style.textOverflow = 'clip';
       el.style.whiteSpace = 'normal';
     }
-  });
+  }
   // A table scrolls sideways on screen, but paper has no scrollbar: fit it to
   // the page, letting cells break long values only when nothing else fits.
   clone

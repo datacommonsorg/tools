@@ -18,6 +18,7 @@ import { describe, expect, it } from 'vitest';
 import {
   analyzeMarkdownTable,
   citationsIn,
+  isBoldOnlyParagraph,
   type MarkdownNode,
   textOf,
 } from '@/src/utils/markdown_table';
@@ -64,6 +65,28 @@ describe('textOf', () => {
     // Situation: The column index is past the end of the row.
     // Expectation: An empty string rather than a crash.
     expect(textOf(undefined)).toBe('');
+  });
+});
+
+describe('isBoldOnlyParagraph', () => {
+  it('is true for a lone bold line, whitespace aside', () => {
+    // Test: The model's stand-in for a heading.
+    // Situation: `**Plan**` with surrounding whitespace text nodes.
+    // Expectation: Recognized as a bold-only paragraph.
+    const p = el('p', [text('\n'), el('strong', [text('Plan')]), text(' ')]);
+    expect(isBoldOnlyParagraph(p)).toBe(true);
+  });
+
+  it('is false when bold sits beside other text', () => {
+    // Test: Inline emphasis.
+    // Situation: A bold lead-in followed by prose.
+    // Expectation: An ordinary paragraph.
+    const p = el('p', [el('strong', [text('Note:')]), text(' rates rose.')]);
+    expect(isBoldOnlyParagraph(p)).toBe(false);
+  });
+
+  it('is false for a missing node', () => {
+    expect(isBoldOnlyParagraph(undefined)).toBe(false);
   });
 });
 

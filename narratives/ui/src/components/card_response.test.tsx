@@ -402,12 +402,12 @@ describe('ResponseCard bold-only paragraphs', () => {
     // Test: Bold-only paragraphs.
     // Situation: One paragraph is all bold, streamed word by word; another
     //   mixes bold with plain text.
-    // Expectation: The first becomes an h4, ranked as a `###`, with no
-    //   strong inside; the second stays a paragraph with its strong.
+    // Expectation: The first becomes an h3, with no strong inside; the second
+    //   stays a paragraph with its strong.
     const { container } = renderStreamingMarkdown(
       '**Ten highest-income places:**\n\nThe **top** one leads.',
     );
-    const heading = container.querySelector('h4');
+    const heading = container.querySelector('h3');
 
     expect(heading?.textContent).toBe('Ten highest-income places:');
     expect(heading?.querySelector('strong')).toBeNull();
@@ -424,7 +424,7 @@ describe('ResponseCard bold-only paragraphs', () => {
       '- **Total**\n\n- **Average**\n\n> **Note**',
     );
 
-    expect(container.querySelector('h4')).toBeNull();
+    expect(container.querySelector('h3')).toBeNull();
     expect(
       Array.from(container.querySelectorAll('p > strong')).map(
         (strong) => strong.textContent,

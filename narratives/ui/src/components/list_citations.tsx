@@ -81,9 +81,12 @@ export function CitationsList({
   // `my-6` adds to the answer card's flex gap, setting the citations apart
   // from the answer above and the disclaimer below.
   return (
-    <section aria-labelledby="citations-heading" className="my-6">
+    <section
+      aria-labelledby={`citations-heading-${turnIndex ?? 0}`}
+      className="my-6"
+    >
       <h2
-        id="citations-heading"
+        id={`citations-heading-${turnIndex ?? 0}`}
         className="text-title-large-emphasized text-on-surface mb-6"
       >
         {CITATIONS_HEADING}

@@ -144,8 +144,8 @@ export function CitationChip({
   const shown = displayCitationNumber(n, numbers);
   const anchor = citationAnchorId(turnIndex, shown);
   const label = sourceLabel(n, sources);
-  // Preflight's `sup` sets it at 75% and raised, with zero line height, so the
-  // chip does not open up the line it sits in.
+  // CHIP_TEXT_CLASS sets a fixed 12px size; Preflight's `sup` raises it with
+  // relative positioning, so the chip does not open up the line it sits in.
   return (
     <sup className={CHIP_TEXT_CLASS}>
       <Tooltip label={label}>

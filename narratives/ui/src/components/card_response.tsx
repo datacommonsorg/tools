@@ -40,6 +40,7 @@ import type { ProvenanceItem } from '@/src/hooks/use_sse_chat';
 import {
   analyzeMarkdownTable,
   citationsIn,
+  isBoldOnlyParagraph,
   type MarkdownNode,
   type TableAnalysis,
   textOf,
@@ -69,14 +70,16 @@ interface ResponseCardProps {
 }
 
 /**
- * Markdown heading styles, by markdown level. The rendered element sits one
- * level down (`#` is an h2), since the answer panel's intro block owns the h1.
- * A bold-only paragraph is styled and ranked as a `###`.
+ * Markdown heading styles. The rendered element sits one level down (`#` is
+ * an h2), since the answer panel's intro block owns the h1. `##` and `###`
+ * share a style. A bold-only paragraph renders as an h3, ranked as a `##`,
+ * with the `####` style.
  */
-const HEADING_1_CLASS = 'text-2xl font-medium mt-4 mb-2';
-const HEADING_2_CLASS = 'text-2xl font-medium mt-4 mb-2';
-const HEADING_3_CLASS = 'text-xl font-medium mt-3 mb-2';
-const HEADING_4_CLASS = 'text-base font-medium mt-3 mb-2';
+const HEADING_1_CLASS = 'font-display text-xl font-medium mt-4 first:mt-0 mb-2';
+const HEADING_2_CLASS = 'font-display text-lg font-medium mt-4 first:mt-0 mb-2';
+const HEADING_3_CLASS =
+  'font-display text-base font-medium mt-3 first:mt-0 mb-2';
+const HEADING_4_CLASS = 'font-display text-sm font-medium mt-3 first:mt-0 mb-2';
 
 /** Renders the agent's answer text as markdown, with citation chips. */
 export function ResponseCard({
@@ -159,14 +162,24 @@ function ReactMarkdownInner({
         </h3>
       ),
       h3: ({ children }) => (
-        <h4 className={HEADING_3_CLASS}>
+        <h4 className={HEADING_2_CLASS}>
           {renderWithCitations(children, sources)}
         </h4>
       ),
       h4: ({ children }) => (
-        <h5 className={HEADING_4_CLASS}>
+        <h5 className={HEADING_3_CLASS}>
           {renderWithCitations(children, sources)}
         </h5>
+      ),
+      h5: ({ children }) => (
+        <h6 className={HEADING_4_CLASS}>
+          {renderWithCitations(children, sources)}
+        </h6>
+      ),
+      h6: ({ children }) => (
+        <h6 className={HEADING_4_CLASS}>
+          {renderWithCitations(children, sources)}
+        </h6>
       ),
       em: ({ children }) => (
         <em className="italic">{renderWithCitations(children, sources)}</em>
@@ -271,12 +284,10 @@ function ReactMarkdownInner({
  */
 const NestedBlockContext = createContext(false);
 
-/** Whether a paragraph's only content, whitespace aside, is one `strong`. */
-function isBoldOnly(node: MarkdownNode | undefined): boolean {
-  const content = (node?.children ?? []).filter(
-    (child) => !(child.type === 'text' && !child.value?.trim()),
-  );
-  return content.length === 1 && content[0].tagName === 'strong';
+interface MarkdownParagraphProps {
+  children?: ReactNode;
+  node?: unknown;
+  sources?: ProvenanceItem[];
 }
 
 /**
@@ -287,20 +298,16 @@ function MarkdownParagraph({
   children,
   node,
   sources,
-}: {
-  children?: ReactNode;
-  node?: unknown;
-  sources?: ProvenanceItem[];
-}) {
+}: MarkdownParagraphProps) {
   const isNested = useContext(NestedBlockContext);
-  if (!isNested && isBoldOnly(node as MarkdownNode | undefined)) {
-    const strong = Children.toArray(children).find(isValidElement) as
-      | ReactElement<{ children?: ReactNode }>
-      | undefined;
+  if (!isNested && isBoldOnlyParagraph(node as MarkdownNode | undefined)) {
+    const strong = Children.toArray(children).find(
+      isValidElement<{ children?: ReactNode }>,
+    );
     return (
-      <h4 className={HEADING_3_CLASS}>
+      <h3 className={HEADING_3_CLASS}>
         {renderWithCitations(strong?.props.children, sources)}
-      </h4>
+      </h3>
     );
   }
   return (
@@ -418,7 +425,7 @@ function HeaderCell({
     <th
       // An explicit markdown alignment arrives in `style` and wins over the
       // class.
-      className={`border border-outline px-6 pb-2 pt-3 font-medium ${
+      className={`border border-border px-6 pb-2 pt-3 font-medium ${
         numeric ? 'text-right' : 'text-left'
       }`}
       style={style}
@@ -447,7 +454,7 @@ function DataCell({ children, colIndex, style, sources }: MarkdownCellProps) {
     <td
       // An explicit markdown alignment arrives in `style` and wins over the
       // class.
-      className={`border border-outline px-6 py-2${
+      className={`border border-border px-6 py-2${
         numeric ? ' tabular-nums text-right' : ''
       }`}
       style={style}
