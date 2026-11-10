@@ -23,8 +23,10 @@ Verifies that `Settings`:
    the copy staged under `agent_root` or to the repository copy beside it.
 6. Defaults `google_genai_use_vertexai` to `False`, and parses an explicit
    value after stripping and lowercasing it.
-7. Rejects a port that is not a number.
-8. Reads `transcript_hmac_secret` without revealing it in `repr()` output, and
+7. Leaves `enable_chat` `None` and `unavailable_message` empty when their
+   variables are unset, and parses an explicit value.
+8. Rejects a port that is not a number.
+9. Reads `transcript_hmac_secret` without revealing it in `repr()` output, and
    rejects a value shorter than `MIN_SECRET_BYTES`.
 """
 
@@ -35,9 +37,11 @@ from pydantic import ValidationError
 
 from narratives_agent.settings import (
     DC_API_KEY_SECRET_ENV,
+    ENABLE_CHAT_ENV,
     MIN_SECRET_BYTES,
     TRANSCRIPT_HMAC_SECRET_ENV,
     TRANSCRIPT_HMAC_SECRET_NAME_ENV,
+    UNAVAILABLE_MESSAGE_ENV,
     Settings,
     validate_hmac_secret,
 )
@@ -281,7 +285,9 @@ def test_google_genai_use_vertexai_parses_truthy_values(
 @pytest.mark.parametrize(
     ("raw", "expected"),
     [
-        pytest.param(None, True, id="unset"),
+        pytest.param(None, None, id="unset"),
+        pytest.param("", None, id="empty"),
+        pytest.param(" \t ", None, id="blank"),
         pytest.param(" TRUE ", True, id="padded-true"),
         pytest.param("yes", True, id="yes"),
         pytest.param("1", True, id="one"),
@@ -290,17 +296,40 @@ def test_google_genai_use_vertexai_parses_truthy_values(
         pytest.param("no", False, id="no"),
     ],
 )
-def test_enable_chat_defaults_to_true_and_parses_env_values(
-    monkeypatch: pytest.MonkeyPatch, raw: str | None, expected: bool
+def test_enable_chat_is_none_when_unset_and_parses_env_values(
+    monkeypatch: pytest.MonkeyPatch, raw: str | None, expected: bool | None
 ) -> None:
     # Test: Default and parsing of `ENABLE_CHAT`.
-    # Situation: `ENABLE_CHAT` is unset, or set to a truthy or non-truthy
-    #   string, with or without surrounding whitespace.
-    # Expectation: When unset or set to "1", "true", or "yes" (in any case),
-    #   chat is enabled; any other non-blank value disables it.
-    env = {} if raw is None else {"ENABLE_CHAT": raw}
+    # Situation: `ENABLE_CHAT` is unset, empty, or blank, or set to a truthy
+    #   or non-truthy string, with or without surrounding whitespace.
+    # Expectation: Unset, empty, and blank give `None`, which leaves
+    #   `chat.enabled` in effect; "1", "true", or "yes" (in any case) give
+    #   `True`; any other value gives `False`.
+    env = {} if raw is None else {ENABLE_CHAT_ENV: raw}
     settings = _read_settings(monkeypatch, env)
     assert settings.enable_chat is expected
+
+
+@pytest.mark.parametrize(
+    ("raw", "expected"),
+    [
+        pytest.param(None, "", id="unset"),
+        pytest.param(" \t ", "", id="blank"),
+        pytest.param(" Back at noon. \n", "Back at noon.", id="padded"),
+    ],
+)
+def test_unavailable_message_is_read_and_stripped(
+    monkeypatch: pytest.MonkeyPatch, raw: str | None, expected: str
+) -> None:
+    # Test: Default and parsing of `UNAVAILABLE_MESSAGE`.
+    # Situation: `UNAVAILABLE_MESSAGE` is unset, blank, or a message padded
+    #   with whitespace.
+    # Expectation: Unset and blank give `""`, which leaves
+    #   `chat.unavailable_message` in effect; a message is stripped of its
+    #   surrounding whitespace.
+    env = {} if raw is None else {UNAVAILABLE_MESSAGE_ENV: raw}
+    settings = _read_settings(monkeypatch, env)
+    assert settings.unavailable_message == expected
 
 
 @pytest.mark.parametrize("name", ["AGENT_PORT", "MCP_PORT"])

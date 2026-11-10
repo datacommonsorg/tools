@@ -26,16 +26,36 @@ Verifies that:
 5. Percent-encoded `..` segments cannot reach files outside the static root,
    and an unknown file or a missing static root returns 404.
 6. `/healthz` answers `ok`.
+7. The root `index.html` is served with the effective chat availability
+   stamped into `#runtime-config`, escaped for a `<script>` element, under a
+   SHA-256 `ETag` of the stamped bytes that changes with the chat settings,
+   without `Last-Modified`, and revalidated only through `If-None-Match`.
 """
 
+import hashlib
+import json
 from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
 
 from narratives_agent.server.app import create_app
+from narratives_agent.settings import (
+    ENABLE_CHAT_ENV,
+    UNAVAILABLE_MESSAGE_ENV,
+    get_settings,
+)
 
-_INDEX = b"<!doctype html><title>Narratives</title>"
+_SHELL_HEAD = b"<!doctype html><title>Narratives</title>"
+_RUNTIME_OPEN = b'<script id="runtime-config" type="application/json">'
+_INDEX = _SHELL_HEAD + _RUNTIME_OPEN + b"</script>"
+# `_INDEX` as served when chat is enabled with the default message.
+_STAMPED_INDEX = (
+    _SHELL_HEAD
+    + _RUNTIME_OPEN
+    + b'{"enable_chat":true,"unavailable_message":"Due to high traffic, '
+    + b'the application is currently unavailable."}</script>'
+)
 _BUNDLE = b"console.log('narratives');"
 _LOGO = b"\x89PNG\r\n\x1a\n"
 _SVG = b"<svg xmlns='http://www.w3.org/2000/svg'/>"
@@ -69,8 +89,8 @@ def client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> TestClient:
 @pytest.mark.parametrize(
     ("path", "body", "cache_control"),
     [
-        ("/", _INDEX, "no-cache"),
-        ("/index.html", _INDEX, "no-cache"),
+        ("/", _STAMPED_INDEX, "no-cache"),
+        ("/index.html", _STAMPED_INDEX, "no-cache"),
         ("/assets/index-a1b2c3d4.js", _BUNDLE, _IMMUTABLE),
         ("/theme/logo-e5f6a7b8.svg", _SVG, _IMMUTABLE),
         ("/logo.png", _LOGO, "no-cache"),
@@ -242,8 +262,8 @@ def test_healthz_answers_ok(client: TestClient) -> None:
 @pytest.mark.parametrize(
     ("path", "body", "cache_control"),
     [
-        ("/narratives/", _INDEX, "no-cache"),
-        ("/narratives/index.html", _INDEX, "no-cache"),
+        ("/narratives/", _STAMPED_INDEX, "no-cache"),
+        ("/narratives/index.html", _STAMPED_INDEX, "no-cache"),
         ("/narratives/assets/index-a1b2c3d4.js", _BUNDLE, _IMMUTABLE),
         ("/narratives/dc-logo.svg", _SVG, "no-cache"),
     ],
@@ -278,3 +298,192 @@ def test_static_files_serve_under_base_path(
     assert response.content == body
     assert response.headers["cache-control"] == cache_control
     assert subpath_client.get("/").status_code == 404
+
+
+def _set_chat_env(
+    monkeypatch: pytest.MonkeyPatch, name: str, value: str
+) -> None:
+    """Exports `name` and drops the cached settings so the next read sees it."""
+    monkeypatch.setenv(name, value)
+    get_settings.cache_clear()
+
+
+def _read_runtime_config(body: bytes) -> object:
+    """Returns the JSON decoded from the stamped `#runtime-config` element."""
+    start = body.index(_RUNTIME_OPEN) + len(_RUNTIME_OPEN)
+    return json.loads(body[start : body.index(b"</script>", start)])
+
+
+@pytest.mark.parametrize("path", ["/", "/index.html"])
+def test_the_shell_carries_a_hash_of_the_stamped_bytes(
+    path: str, client: TestClient
+) -> None:
+    # Test: Headers of the stamped HTML shell.
+    # Situation: A client requests `/` or `/index.html` with no chat
+    #   settings configured.
+    # Expectation: The body is the shell with the default chat availability
+    #   stamped in, served as HTML with a strong `ETag` that is the SHA-256 of
+    #   those bytes, a matching `Content-Length`, and no `Last-Modified`.
+    response = client.get(path)
+
+    assert response.status_code == 200
+    assert response.content == _STAMPED_INDEX
+    assert response.headers["content-type"] == "text/html; charset=utf-8"
+    assert response.headers["etag"] == (
+        f'"{hashlib.sha256(_STAMPED_INDEX).hexdigest()}"'
+    )
+    assert response.headers["content-length"] == str(len(_STAMPED_INDEX))
+    assert "last-modified" not in response.headers
+
+
+@pytest.mark.parametrize(
+    ("name", "value", "expected"),
+    [
+        pytest.param(
+            ENABLE_CHAT_ENV,
+            "false",
+            {
+                "enable_chat": False,
+                "unavailable_message": (
+                    "Due to high traffic, the application is currently "
+                    "unavailable."
+                ),
+            },
+            id="ENABLE_CHAT",
+        ),
+        pytest.param(
+            UNAVAILABLE_MESSAGE_ENV,
+            "Back at noon.",
+            {"enable_chat": True, "unavailable_message": "Back at noon."},
+            id="UNAVAILABLE_MESSAGE",
+        ),
+    ],
+)
+def test_a_chat_setting_change_invalidates_the_shell_etag(
+    monkeypatch: pytest.MonkeyPatch,
+    client: TestClient,
+    name: str,
+    value: str,
+    expected: dict[str, object],
+) -> None:
+    # Test: Revalidation of the shell after a chat setting changes.
+    # Situation: A client holds the `ETag` of the shell served with the
+    #   default settings; `ENABLE_CHAT` or `UNAVAILABLE_MESSAGE` then changes.
+    # Expectation: Revalidating with the old `ETag` returns 200 with the new
+    #   settings stamped in and a different `ETag`, and revalidating with the
+    #   new `ETag` returns 304 with the cache and security headers.
+    old_etag = client.get("/").headers["etag"]
+    _set_chat_env(monkeypatch, name, value)
+
+    updated = client.get("/", headers={"If-None-Match": old_etag})
+
+    assert updated.status_code == 200
+    assert _read_runtime_config(updated.content) == expected
+    new_etag = updated.headers["etag"]
+    assert new_etag != old_etag
+
+    revalidated = client.get("/", headers={"If-None-Match": new_etag})
+
+    assert revalidated.status_code == 304
+    assert revalidated.headers["etag"] == new_etag
+    assert revalidated.headers["cache-control"] == "no-cache"
+    assert revalidated.headers["x-content-type-options"] == "nosniff"
+
+
+@pytest.mark.parametrize(
+    "if_none_match",
+    ["*", "W/{etag}", '"other", {etag}'],
+    ids=["wildcard", "weak", "list"],
+)
+def test_the_shell_honors_if_none_match_forms(
+    client: TestClient, if_none_match: str
+) -> None:
+    # Test: `If-None-Match` forms accepted for the shell.
+    # Situation: A client revalidates `/` with `*`, the weak form of the
+    #   current `ETag`, or a list that contains the current `ETag`.
+    # Expectation: Each revalidation returns 304.
+    etag = client.get("/").headers["etag"]
+
+    response = client.get(
+        "/", headers={"If-None-Match": if_none_match.format(etag=etag)}
+    )
+
+    assert response.status_code == 304
+
+
+def test_if_modified_since_alone_never_returns_a_stale_shell(
+    client: TestClient,
+) -> None:
+    # Test: `If-Modified-Since` without `If-None-Match` on the shell.
+    # Situation: A client sends a date later than the file's modification
+    #   time and no `If-None-Match`.
+    # Expectation: The server returns 200 with the stamped body, because the
+    #   file date does not change when the chat settings do.
+    response = client.get(
+        "/", headers={"If-Modified-Since": "Fri, 01 Jan 2100 00:00:00 GMT"}
+    )
+
+    assert response.status_code == 200
+    assert response.content == _STAMPED_INDEX
+
+
+def test_head_of_the_shell_reports_the_stamped_length(
+    client: TestClient,
+) -> None:
+    # Test: HEAD request against the stamped shell.
+    # Situation: A client sends `HEAD /`.
+    # Expectation: The server returns 200 with an empty body, the
+    #   `Content-Length` of the stamped body, and the same `ETag` as GET.
+    response = client.head("/")
+
+    assert response.status_code == 200
+    assert response.content == b""
+    assert response.headers["content-length"] == str(len(_STAMPED_INDEX))
+    assert response.headers["etag"] == client.get("/").headers["etag"]
+    assert response.headers["cache-control"] == "no-cache"
+    assert response.headers["x-content-type-options"] == "nosniff"
+
+
+def test_the_unavailable_message_cannot_break_out_of_the_script(
+    monkeypatch: pytest.MonkeyPatch, client: TestClient
+) -> None:
+    # Test: Escaping of the stamped JSON.
+    # Situation: `UNAVAILABLE_MESSAGE` holds `</script><script>`, `&`,
+    #   U+2028, and U+2029.
+    # Expectation: `<`, `>`, `&`, U+2028, and U+2029 are written as JSON
+    #   escapes, so the page holds one `</script>` (the element's own close
+    #   tag), and the decoded JSON carries the message unchanged.
+    message = "</script><script>alert(1)&\u2028\u2029end"
+    _set_chat_env(monkeypatch, UNAVAILABLE_MESSAGE_ENV, message)
+
+    body = client.get("/").content
+
+    assert body.count(b"</script>") == 1
+    assert (
+        b"\\u003c/script\\u003e\\u003cscript\\u003ealert(1)\\u0026"
+        b"\\u2028\\u2029end" in body
+    )
+    assert _read_runtime_config(body) == {
+        "enable_chat": True,
+        "unavailable_message": message,
+    }
+
+
+def test_a_shell_without_the_slot_is_served_unchanged(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Test: Serving an `index.html` that has no `#runtime-config` element.
+    # Situation: The static root holds an `index.html` without the slot.
+    # Expectation: The body is the file's bytes, with a matching `ETag`.
+    static_root = tmp_path / "agent" / "static"
+    static_root.mkdir(parents=True)
+    (static_root / "index.html").write_bytes(_SHELL_HEAD)
+    monkeypatch.setenv("AGENT_ROOT", str(tmp_path / "agent"))
+    monkeypatch.setenv("STATIC_ROOT", str(static_root))
+
+    response = TestClient(create_app()).get("/")
+
+    assert response.content == _SHELL_HEAD
+    assert response.headers["etag"] == (
+        f'"{hashlib.sha256(_SHELL_HEAD).hexdigest()}"'
+    )

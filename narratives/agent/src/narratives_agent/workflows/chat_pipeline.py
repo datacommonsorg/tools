@@ -36,7 +36,11 @@ from dataclasses import dataclass, field, replace
 from narratives_agent.analytics.digest import AnalysisDigest
 from narratives_agent.analytics.provenance import Source
 from narratives_agent.analytics.tables import ObservationTable
-from narratives_agent.config import load_config, pin_current_datetime
+from narratives_agent.config import (
+    get_chat_config,
+    load_config,
+    pin_current_datetime,
+)
 from narratives_agent.config_model import AgentConfig, GeminiRole
 from narratives_agent.gemini.client import (
     GeminiBlockedError,
@@ -49,7 +53,6 @@ from narratives_agent.gemini.schemas import QueryClassification, QueryPattern
 from narratives_agent.json_value import JsonObject
 from narratives_agent.mcp import client as mcp_client
 from narratives_agent.mcp.capabilities import warn_on_missing_tools
-from narratives_agent.settings import get_settings
 from narratives_agent.telemetry import ErrorType, TerminalState, TurnTelemetry
 from narratives_agent.workflows.blocks import BlockSplitter, TextBlock
 from narratives_agent.workflows.chart_defaults import build_default_charts
@@ -77,7 +80,6 @@ from narratives_agent.workflows.mcp_loop import (
     execute_discovery_loop,
 )
 from narratives_agent.workflows.messages import (
-    CHAT_DISABLED,
     CLASSIFY_STATUS,
     CONFIG_MISSING,
     INTERNAL_ERROR,
@@ -842,8 +844,11 @@ async def run_followups(
         logger.warning("Follow-up generation failed: %s", type(error).__name__)
 
 
-def _load_turn_config() -> AgentConfig:
-    """Returns the agent configuration, or raises `TurnAbortedError`.
+def _require_turn_config(config: AgentConfig | None) -> AgentConfig:
+    """Returns `config`, or raises `TurnAbortedError` when it is `None`.
+
+    Args:
+        config: The configuration `load_config` returned for the turn.
 
     Returns:
         The loaded `AgentConfig`.
@@ -852,7 +857,6 @@ def _load_turn_config() -> AgentConfig:
         TurnAbortedError: With reason `config_missing` if no configuration
             is loaded.
     """
-    config = load_config()
     if config is None:
         raise TurnAbortedError(
             ErrorType.CONFIG_MISSING, CONFIG_MISSING, is_retryable=False
@@ -863,12 +867,14 @@ def _load_turn_config() -> AgentConfig:
 async def run_turn(transcript: Transcript, emit: Emit) -> None:
     """Runs one chat turn and emits its typed SSE frames through `emit`.
 
-    Runs classification first: refuses adversarial or off-domain queries,
-    streams and signs a clarification question when disambiguation is
-    required, or admits the query into the discovery loop, synthesis, and
-    turn signing. A model call that Gemini blocks in any of those phases
-    ends the turn as `refused` with reason `safety_blocked`; the phases let
-    `GeminiBlockedError` propagate here rather than each translating it.
+    Ends the turn at once with reason `chat_disabled` and the configured
+    unavailable message when chat is disabled. Otherwise runs classification
+    first: refuses adversarial or off-domain queries, streams and signs a
+    clarification question when disambiguation is required, or admits the
+    query into the discovery loop, synthesis, and turn signing. A model call
+    that Gemini blocks in any of those phases ends the turn as `refused`
+    with reason `safety_blocked`; the phases let `GeminiBlockedError`
+    propagate here rather than each translating it.
     Every non-canceled turn ends in one `terminal` frame (`complete`,
     `refused`, or `error`) and records its outcome and classified pattern
     in telemetry. Only `asyncio.CancelledError` is re-raised to the caller;
@@ -887,18 +893,21 @@ async def run_turn(transcript: Transcript, emit: Emit) -> None:
     state: TerminalState | None = None
     error_type: ErrorType | RefusedReason | None = None
     try:
-        if not get_settings().enable_chat:
+        # Chat availability is checked before the configuration is required,
+        # so `ENABLE_CHAT=false` ends the turn even when none is loaded.
+        chat = get_chat_config()
+        if not chat.enabled:
             state, error_type = TerminalState.REFUSED, ErrorType.CHAT_DISABLED
             emit(
                 TerminalErrorFrame(
                     idempotency_key=idempotency_key,
-                    error=CHAT_DISABLED,
+                    error=chat.unavailable_message,
                     reason=ErrorType.CHAT_DISABLED,
                     is_retryable=False,
                 )
             )
             return
-        config = _load_turn_config()
+        config = _require_turn_config(load_config())
         # Every prompt of the turn renders `{{CURRENT_DATETIME}}` as one
         # timestamp, isolated from concurrent turns.
         with pin_current_datetime():

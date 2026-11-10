@@ -132,15 +132,17 @@ c3() {
 }
 check 3 c3
 
-# 4. Verify that the HTML shell includes the #theme-tokens and #instance-config
-#    elements.
+# 4. Verify that the HTML shell includes the #theme-tokens, #instance-config,
+#    and #runtime-config elements, with the runtime JSON stamped in.
 c4() {
     local slot
-    for slot in theme-tokens instance-config; do
+    for slot in theme-tokens instance-config runtime-config; do
         grep -q "id=\"$slot\"" "$TMP/home.html" \
             || { echo "no id=\"$slot\" in the page"; return 1; }
     done
-    echo "theme-tokens and instance-config slots present"
+    grep -q '"enable_chat":' "$TMP/home.html" \
+        || { echo "#runtime-config is not stamped"; return 1; }
+    echo "theme-tokens, instance-config, and stamped runtime-config present"
 }
 check 4 c4
 

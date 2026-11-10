@@ -104,10 +104,12 @@ process and PR expectations: [`CONTRIBUTING.md`](../CONTRIBUTING.md).
     - `config.py`: loads `agent-config.json` (or the local `config.json`),
       layers the prompts, and returns the result as an `AgentConfig`; renders
       prompts with the turn's pinned `{{CURRENT_DATETIME}}`
-      (`pin_current_datetime`).
+      (`pin_current_datetime`); and resolves chat availability with the
+      `ENABLE_CHAT` and `UNAVAILABLE_MESSAGE` overrides (`get_chat_config`).
     - `config_model.py`: the frozen `AgentConfig` dataclasses, the parser
-      that applies the defaults, and the per-role Gemini model, temperature,
-      and thinking-level settings (`GeminiRole`,
+      that applies the defaults (failing closed on a malformed `chat`
+      section), and the per-role Gemini model, temperature, and
+      thinking-level settings (`GeminiRole`,
       `AgentConfig.resolve_role_config`); the workflows read configuration
       from it.
     - `dev.py` — local development server (`uv run narratives-agent-dev`).
