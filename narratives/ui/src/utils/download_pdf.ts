@@ -475,7 +475,8 @@ export function pageBreak(
 export function flattenForPrint(clone: HTMLElement) {
   clone.querySelectorAll<HTMLElement>('*').forEach((el) => {
     if (el.closest('[data-chart-inner], .sr-only')) return;
-    el.style.background = 'none';
+    el.style.backgroundColor = 'transparent';
+    el.style.backgroundImage = 'none';
     const computed = window.getComputedStyle(el);
     if (computed.overflowX !== 'visible' || computed.overflowY !== 'visible') {
       el.style.overflow = 'visible';

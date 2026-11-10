@@ -205,7 +205,8 @@ describe('flattenForPrint', () => {
     `);
     const byId = (id: string) => root.querySelector<HTMLElement>(`#${id}`);
 
-    expect(byId('panel')?.style.backgroundColor).not.toBe('rgb(245, 250, 255)');
+    expect(byId('panel')?.style.backgroundColor).toBe('transparent');
+    expect(byId('panel')?.style.backgroundImage).toBe('none');
     expect(byId('swatch')?.style.backgroundColor).toBe('rgb(11, 87, 208)');
     expect(byId('hidden')?.style.overflow).toBe('hidden');
   });
