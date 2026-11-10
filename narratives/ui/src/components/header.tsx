@@ -23,6 +23,7 @@ import { MenuIcon } from '@/src/components/icons';
 import { Tooltip } from '@/src/components/tooltip';
 import { getInstanceConfig } from '@/src/config/instance_config';
 import { resolveNavItems } from '@/src/config/nav_config';
+import { getRuntimeConfig } from '@/src/config/runtime_config';
 import { useChatSession } from '@/src/hooks/chat_session_context';
 import { useHashRoute } from '@/src/hooks/use_hash_route';
 
@@ -34,6 +35,9 @@ export function Header() {
   const navItems = resolveNavItems(navigation);
   const activeId = route || 'agent';
   const { toggleDrawer, isDrawerOpen } = useChatSession();
+  const { isChatEnabled } = getRuntimeConfig();
+  // The drawer holds New chat while chat is enabled, and the section links.
+  const hasDrawerItems = isChatEnabled || navItems.length > 0;
 
   // Leave the alternative text empty when the wordmark is displayed next to
   // the logo so screen readers do not announce the instance name twice.
@@ -89,22 +93,25 @@ export function Header() {
         </nav>
       )}
 
-      {/* Show the mobile menu button below the lg breakpoint where the sidebar rail is hidden. */}
-      <Tooltip label="Menu" placement="bottom">
-        <button
-          type="button"
-          aria-label="Open menu"
-          aria-expanded={isDrawerOpen}
-          onClick={toggleDrawer}
-          className={`lg:hidden shrink-0 ml-1 w-10 h-10 flex items-center justify-center rounded-full transition-colors ${
-            isDrawerOpen
-              ? 'bg-button-hover text-on-surface'
-              : 'hover:bg-button-hover text-on-surface-variant'
-          }`}
-        >
-          <MenuIcon size="lg" />
-        </button>
-      </Tooltip>
+      {/* Show the mobile menu button below the lg breakpoint where the sidebar
+          rail is hidden, and only when the drawer has an item to show. */}
+      {hasDrawerItems && (
+        <Tooltip label="Menu" placement="bottom">
+          <button
+            type="button"
+            aria-label="Open menu"
+            aria-expanded={isDrawerOpen}
+            onClick={toggleDrawer}
+            className={`lg:hidden shrink-0 ml-1 w-10 h-10 flex items-center justify-center rounded-full transition-colors ${
+              isDrawerOpen
+                ? 'bg-button-hover text-on-surface'
+                : 'hover:bg-button-hover text-on-surface-variant'
+            }`}
+          >
+            <MenuIcon size="lg" />
+          </button>
+        </Tooltip>
+      )}
     </header>
   );
 }

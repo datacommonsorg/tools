@@ -135,6 +135,12 @@
       }
     },
     {
+      "includes": ["ui/src/config/runtime_config_dev.ts"],
+      "linter": {
+        "rules": { "style": { "noRestrictedImports": "off" } }
+      }
+    },
+    {
       "includes": ["ui/src/types/*.d.ts"],
       "linter": { "rules": { "style": { "noNamespace": "off" } } }
     }
