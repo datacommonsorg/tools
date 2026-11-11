@@ -24,6 +24,7 @@ import { NewChatIcon } from '@/src/components/icons';
 import { Tooltip } from '@/src/components/tooltip';
 import { getInstanceConfig } from '@/src/config/instance_config';
 import { resolveNavItems } from '@/src/config/nav_config';
+import { getRuntimeConfig } from '@/src/config/runtime_config';
 import { useChatSession } from '@/src/hooks/chat_session_context';
 import { useHashRoute } from '@/src/hooks/use_hash_route';
 
@@ -40,6 +41,8 @@ export function MenuDrawer() {
   const { newChat, isDrawerOpen, closeDrawer } = useChatSession();
   const { navigation } = getInstanceConfig();
   const navItems = resolveNavItems(navigation);
+  const { isChatEnabled } = getRuntimeConfig();
+  const shouldShowSectionDivider = isChatEnabled && navItems.length > 0;
 
   // Drives the active-tab highlight in the section nav below.
   const [route] = useHashRoute();
@@ -85,17 +88,27 @@ export function MenuDrawer() {
 
         <div className="border-t border-outline shrink-0" />
 
-        <nav className="flex flex-col py-2 shrink-0">
-          {/* Starts an empty chat; newChat closes the drawer behind it. */}
-          <MenuItem icon={<NewChatIcon />} label="New chat" onClick={newChat} />
-        </nav>
+        {isChatEnabled && (
+          <nav className="flex flex-col py-2 shrink-0">
+            {/* Starts an empty chat; newChat closes the drawer behind it. */}
+            <MenuItem
+              icon={<NewChatIcon />}
+              label="New chat"
+              onClick={newChat}
+            />
+          </nav>
+        )}
 
         {navItems.length > 0 && (
           <>
-            {/* Align the divider with the menu item label text column. */}
-            <div className="shrink-0 pl-13 pr-4">
-              <div className="border-t border-outline" />
-            </div>
+            {/* Align the divider with the menu item label text column. Without
+                New chat above, the full-width rule already separates the
+                section links from the close button. */}
+            {shouldShowSectionDivider && (
+              <div className="shrink-0 pl-13 pr-4">
+                <div className="border-t border-outline" />
+              </div>
+            )}
 
             <nav className="flex flex-col py-2 shrink-0" aria-label="Sections">
               {navItems.map((item) => {

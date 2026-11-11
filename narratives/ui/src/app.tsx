@@ -24,6 +24,8 @@ import { MenuDrawer } from '@/src/components/drawer_menu';
 import { Header } from '@/src/components/header';
 import { MetricsPage } from '@/src/components/metrics_page';
 import { Sidebar } from '@/src/components/sidebar';
+import { UnavailableView } from '@/src/components/view_unavailable';
+import { getRuntimeConfig } from '@/src/config/runtime_config';
 import {
   ChatSessionProvider,
   useChatSession,
@@ -39,12 +41,12 @@ function getView(route: string): View {
 }
 
 /** Renders the main view for the current hash route. */
-function renderContent(view: View) {
+function renderContent(view: View, isChatEnabled: boolean) {
   switch (view) {
     case 'metrics':
       return <MetricsPage />;
     default:
-      return <DataAgent />;
+      return isChatEnabled ? <DataAgent /> : <UnavailableView />;
   }
 }
 
@@ -52,6 +54,7 @@ function renderContent(view: View) {
 export function App() {
   const [route] = useHashRoute();
   const view = getView(route);
+  const { isChatEnabled } = getRuntimeConfig();
 
   return (
     <ChatSessionProvider>
@@ -61,7 +64,7 @@ export function App() {
         <MenuDrawer />
         <main className="flex-1 flex flex-col relative min-w-0 overflow-y-auto overscroll-none">
           <Header />
-          {renderContent(view)}
+          {renderContent(view, isChatEnabled)}
         </main>
       </div>
     </ChatSessionProvider>

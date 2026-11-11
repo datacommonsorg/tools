@@ -15,13 +15,15 @@
  */
 
 /**
- * @fileoverview Tests for Header navigation, wordmark, and logo alt text.
+ * @fileoverview Tests for Header navigation, wordmark, logo alt text, and the
+ * menu button.
  */
 
 import { cleanup, render, screen, within } from '@testing-library/react';
 import { afterEach, describe, expect, it } from 'vitest';
 import { Header } from '@/src/components/header';
 import { resetInstanceConfigForTests } from '@/src/config/instance_config';
+import { resetRuntimeConfigForTests } from '@/src/config/runtime_config';
 import { ChatSessionProvider } from '@/src/hooks/chat_session_context';
 
 const writeSlot = (themeDocument: Record<string, unknown>): void => {
@@ -31,6 +33,15 @@ const writeSlot = (themeDocument: Record<string, unknown>): void => {
   slot.textContent = JSON.stringify(themeDocument);
   document.head.appendChild(slot);
   resetInstanceConfigForTests();
+};
+
+const writeChatDisabledSlot = (): void => {
+  const slot = document.createElement('script');
+  slot.id = 'runtime-config';
+  slot.type = 'application/json';
+  slot.textContent = JSON.stringify({ enable_chat: false });
+  document.head.appendChild(slot);
+  resetRuntimeConfigForTests();
 };
 
 const renderHeader = () =>
@@ -46,7 +57,9 @@ const getLogoAlt = (container: HTMLElement): string | null =>
 afterEach(() => {
   cleanup();
   document.getElementById('instance-config')?.remove();
+  document.getElementById('runtime-config')?.remove();
   resetInstanceConfigForTests();
+  resetRuntimeConfigForTests();
 });
 
 describe('Header', () => {
@@ -112,5 +125,35 @@ describe('Header', () => {
     writeSlot(themeDocument);
     const { container } = renderHeader();
     expect(getLogoAlt(container)).toBe('Acme logo');
+  });
+
+  it('omits the menu button when chat is disabled and there are no tabs', () => {
+    // Test: Header while chat is disabled on the built-in configuration.
+    // Situation: #runtime-config holds `enable_chat: false` and `navigation`
+    //   is empty, so the drawer would hold no item.
+    // Expectation: The logo and wordmark render, and the menu button does not.
+    writeChatDisabledSlot();
+    const { container } = renderHeader();
+    expect(container.querySelector('img')).not.toBeNull();
+    expect(screen.getByText('Data Commons')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Open menu' })).toBeNull();
+  });
+
+  it('keeps the tabs and the menu button when chat is disabled and tabs exist', () => {
+    // Test: Header while chat is disabled on an instance with tabs.
+    // Situation: #runtime-config holds `enable_chat: false` and the theme
+    //   document declares two navigation tabs.
+    // Expectation: The "Primary" navigation landmark and the menu button
+    //   render.
+    writeChatDisabledSlot();
+    writeSlot({
+      navigation: [
+        { label: 'Explore', href: '#/agent' },
+        { label: 'Dashboards', href: '#/metrics' },
+      ],
+    });
+    renderHeader();
+    expect(screen.getByRole('navigation', { name: 'Primary' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Open menu' })).toBeTruthy();
   });
 });

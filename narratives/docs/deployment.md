@@ -418,7 +418,12 @@ immediately returns a terminal error event (`reason: "chat_disabled"`,
 classifier, MCP tool loop, or synthesis models, so the UI shows the message
 without a retry button. The server stamps the effective
 `{"enable_chat": ..., "unavailable_message": "..."}` into the
-`#runtime-config` element of the HTML shell on every request. `/healthz` and
+`#runtime-config` element of the HTML shell on every request. On page load,
+the UI reads that element through `getRuntimeConfig()` and replaces the chat
+prompt with an unavailable view showing `unavailable_message`, while the
+header and the Key Metrics dashboard stay available. A local `pnpm dev:ui`
+copies the element from the agent at `AGENT_URL`, so set `ENABLE_CHAT` and
+`UNAVAILABLE_MESSAGE` on the agent; Vite does not read them. `/healthz` and
 `/agent/health` keep answering `200`.
 
 - **Cloud Run:**

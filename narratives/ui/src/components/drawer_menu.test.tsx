@@ -32,6 +32,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { MenuDrawer } from '@/src/components/drawer_menu';
 import { Header } from '@/src/components/header';
 import { resetInstanceConfigForTests } from '@/src/config/instance_config';
+import { resetRuntimeConfigForTests } from '@/src/config/runtime_config';
 import {
   ChatSessionProvider,
   useChatSession,
@@ -44,6 +45,15 @@ const writeSlot = (themeDocument: Record<string, unknown>): void => {
   slot.textContent = JSON.stringify(themeDocument);
   document.head.appendChild(slot);
   resetInstanceConfigForTests();
+};
+
+const writeRuntimeConfigSlot = (payload: Record<string, unknown>): void => {
+  const slot = document.createElement('script');
+  slot.id = 'runtime-config';
+  slot.type = 'application/json';
+  slot.textContent = JSON.stringify(payload);
+  document.head.appendChild(slot);
+  resetRuntimeConfigForTests();
 };
 
 const renderOpenDrawer = (): void => {
@@ -60,7 +70,9 @@ afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
   document.getElementById('instance-config')?.remove();
+  document.getElementById('runtime-config')?.remove();
   resetInstanceConfigForTests();
+  resetRuntimeConfigForTests();
 });
 
 describe('MenuDrawer', () => {
@@ -106,6 +118,29 @@ describe('MenuDrawer', () => {
     expect(screen.getByRole('button', { name: 'New chat' })).toBeTruthy();
     expect(screen.queryByRole('button', { name: 'Chats' })).toBeNull();
     expect(screen.queryByText('Chats')).toBeNull();
+  });
+
+  it('renders the section links without New chat while chat is disabled', () => {
+    // Test: The menu drawer while chat is disabled.
+    // Situation: #runtime-config holds `enable_chat: false`, the theme
+    //   document declares two navigation tabs, and the menu drawer is open.
+    // Expectation: The "Sections" navigation renders both links, and New chat
+    //   is absent.
+    writeRuntimeConfigSlot({ enable_chat: false });
+    writeSlot({
+      navigation: [
+        { label: 'Explore', href: '#/agent' },
+        { label: 'Dashboards', href: '#/metrics' },
+      ],
+    });
+    renderOpenDrawer();
+    const nav = screen.getByRole('navigation', { name: 'Sections' });
+    expect(
+      within(nav)
+        .getAllByRole('link')
+        .map((link) => link.textContent),
+    ).toEqual(['Explore', 'Dashboards']);
+    expect(screen.queryByRole('button', { name: 'New chat' })).toBeNull();
   });
 
   it('clears the conversation and closes when New chat is clicked', async () => {

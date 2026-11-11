@@ -18,38 +18,14 @@
  * @fileoverview Renders the empty-state landing view: heading, prompt box, and suggestion chips.
  */
 
-import {
-  domAnimation,
-  LazyMotion,
-  m,
-  useReducedMotion,
-  type Variants,
-} from 'motion/react';
+import { domAnimation, LazyMotion, m, useReducedMotion } from 'motion/react';
 import { SuggestionChip } from '@/src/components/chip_suggestion';
 import { PromptInput } from '@/src/components/input_prompt';
 import { getInstanceConfig } from '@/src/config/instance_config';
-import { EASE_OUT } from '@/src/config/motion';
-
-// Intro cascade: each child fades up in turn; the chip row cascades its own
-// chips when its turn comes.
-/** Delay between successive children of the intro cascade, in seconds. */
-const CASCADE_STAGGER_S = 0.08;
-/** Distance each element rises from while fading in, in pixels. */
-const FADE_UP_OFFSET_PX = 12;
-/** Duration of each element's fade-up, in seconds. */
-const FADE_UP_DURATION_S = 0.4;
-
-const cascade: Variants = {
-  show: { transition: { staggerChildren: CASCADE_STAGGER_S } },
-};
-const fadeUp: Variants = {
-  hidden: { opacity: 0, y: FADE_UP_OFFSET_PX },
-  show: {
-    opacity: 1,
-    y: 0,
-    transition: { duration: FADE_UP_DURATION_S, ease: EASE_OUT },
-  },
-};
+import {
+  INTRO_CASCADE_VARIANTS,
+  INTRO_FADE_UP_VARIANTS,
+} from '@/src/config/motion';
 
 interface InitialViewProps {
   query: string;
@@ -68,25 +44,25 @@ export function InitialView({ query, setQuery, onSend }: InitialViewProps) {
   return (
     <LazyMotion features={domAnimation} strict>
       <m.div
-        variants={cascade}
+        variants={INTRO_CASCADE_VARIANTS}
         // Reduced motion: no initial/animate, so everything renders at rest.
         {...(!reduceMotion && { initial: 'hidden', animate: 'show' })}
         className="flex-1 flex flex-col items-center justify-start sm:justify-center w-full max-w-5xl mx-auto px-4 lg:px-12 pt-8 sm:pt-0 pb-8 sm:pb-24 relative"
       >
         <m.h1
-          variants={fadeUp}
+          variants={INTRO_FADE_UP_VARIANTS}
           className="text-display-small-gradient mb-1 tracking-tight text-center"
         >
           {headline}
         </m.h1>
         <m.p
-          variants={fadeUp}
+          variants={INTRO_FADE_UP_VARIANTS}
           className="text-label-large text-subtle mb-8 text-center"
         >
           {tagline}
         </m.p>
 
-        <m.div variants={fadeUp} className="w-full">
+        <m.div variants={INTRO_FADE_UP_VARIANTS} className="w-full">
           <PromptInput
             value={query}
             placeholder="Ask a question to explore relevant statistical data"
@@ -99,11 +75,11 @@ export function InitialView({ query, setQuery, onSend }: InitialViewProps) {
             clipped by the virtual keyboard, and dock them to the bottom of the
             hero container on wider screens. */}
         <m.div
-          variants={cascade}
+          variants={INTRO_CASCADE_VARIANTS}
           className="static sm:absolute sm:bottom-6 sm:left-0 sm:right-0 mt-8 sm:mt-0 w-full flex flex-wrap justify-center gap-3 sm:gap-4 px-2 sm:px-6"
         >
           {suggestions.map((text, index) => (
-            <m.div key={index} variants={fadeUp}>
+            <m.div key={index} variants={INTRO_FADE_UP_VARIANTS}>
               <SuggestionChip
                 text={text}
                 // Clicking a chip submits immediately — saves the user a second
