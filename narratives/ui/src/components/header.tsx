@@ -49,7 +49,7 @@ export function Header() {
     <header className="sticky top-0 z-[5] bg-surface w-full flex items-center justify-between gap-3 px-3 sm:px-6 lg:px-12 py-4 sm:py-5 shrink-0">
       <a
         href={logoHref}
-        className="flex items-center gap-2 select-none shrink-0"
+        className="flex items-center gap-2 select-none shrink-0 rounded-sm focus-visible:outline-offset-2"
       >
         <img
           src={logoUrl}
