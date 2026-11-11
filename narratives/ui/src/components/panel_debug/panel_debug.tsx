@@ -31,10 +31,7 @@ import { createPortal } from 'react-dom';
 import { BugReportIcon } from '@/src/components/icons';
 import { DebugPanelBody } from '@/src/components/panel_debug/body_debug';
 import { DEBUG_PANEL_COPY } from '@/src/components/panel_debug/copy_debug';
-import {
-  buildTurnDebugReport,
-  isDebugUrlEnabled,
-} from '@/src/components/panel_debug/report_debug';
+import { buildTurnDebugReport } from '@/src/components/panel_debug/report_debug';
 import { EASE_OUT } from '@/src/config/motion';
 import type { ChatTurn } from '@/src/hooks/use_sse_chat';
 
@@ -138,15 +135,6 @@ const trapDialogFocus = (
     first.focus();
   }
 };
-
-/**
- * Reports whether the debug panel is enabled, that is, whether the page URL
- * carries an enabling `?debug` parameter. Evaluated per render (not at module
- * load) so it reacts to client-side navigation and stays safe under SSR and
- * tests.
- */
-export const isDebugPanelEnabled = (): boolean =>
-  typeof window !== 'undefined' && isDebugUrlEnabled(window.location.search);
 
 interface DebugPanelProps {
   turn: ChatTurn;

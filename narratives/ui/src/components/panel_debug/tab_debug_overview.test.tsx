@@ -40,6 +40,7 @@ const makeReport = (
     stateSlots: null,
     compactedSummary: null,
   },
+  serverReport: null,
   ...overrides,
 });
 

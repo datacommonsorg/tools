@@ -30,9 +30,7 @@ import type {
   TurnStatus,
 } from '@/src/hooks/use_sse_chat';
 
-const DEBUG_QUERY_PARAM = 'debug';
-
-const ENABLED_DEBUG_VALUES: ReadonlySet<string> = new Set(['', 'true', '1']);
+export { isDebugUrlEnabled } from '@/src/hooks/use_debug_mode';
 
 const SETTLED_TURN_STATUSES: ReadonlySet<TurnStatus> = new Set([
   'done',
@@ -114,22 +112,8 @@ export interface TurnDebugReport {
   readonly trajectory: TurnDebugTrajectory;
   readonly response: TurnDebugResponse;
   readonly context: TurnDebugContext;
+  readonly serverReport: Readonly<Record<string, unknown>> | null;
 }
-
-/**
- * Reports whether the URL query string `search` enables debug mode (`?debug`,
- * `?debug=`, `?debug=true`, or `?debug=1`, case-insensitively after trimming).
- *
- * Rejects absent parameters and legacy or falsy values such as `'provenance'`,
- * `'false'`, or `'0'`.
- */
-export const isDebugUrlEnabled = (search: string): boolean => {
-  const rawValue = new URLSearchParams(search).get(DEBUG_QUERY_PARAM);
-  if (rawValue === null) {
-    return false;
-  }
-  return ENABLED_DEBUG_VALUES.has(rawValue.trim().toLowerCase());
-};
 
 /**
  * Reports whether `turn` has reached a settled state (`done`, `refused`,
@@ -201,4 +185,5 @@ export const buildTurnDebugReport = (turn: ChatTurn): TurnDebugReport => ({
     stateSlots: turn.stateSlots ?? null,
     compactedSummary: turn.compactedSummary ?? null,
   },
+  serverReport: turn.rawServerReport ?? null,
 });

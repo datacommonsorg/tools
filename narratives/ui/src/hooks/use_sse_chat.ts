@@ -19,6 +19,11 @@ import {
   recordStreamEventTiming,
   recordTimingMilestone,
 } from '@/src/hooks/turn_timings';
+import { isDebugUrlEnabled } from '@/src/hooks/use_debug_mode';
+import {
+  parseServerDebugReport,
+  type ServerDebugReport,
+} from '@/src/types/debug_report';
 
 export type { ClientTurnTimings };
 
@@ -49,12 +54,15 @@ export interface ToolCallEvent {
    * Untruncated by design, so it can be large.
    */
   result?: string;
+  round?: number;
+  duration_ms?: number;
 }
 
 /** A reasoning snippet emitted while the agent works, tagged by pipeline phase. */
 export interface ThoughtEvent {
   text: string;
   phase: 'discovery' | 'synthesis';
+  round?: number;
 }
 
 /**
@@ -376,6 +384,8 @@ export interface ChatTurn {
   terminalReason?: string;
   /** Client-observed submission timestamp and monotonic elapsed milestones for this turn. */
   clientTimings?: ClientTurnTimings;
+  serverReport?: ServerDebugReport;
+  rawServerReport?: Readonly<Record<string, unknown>>;
 }
 
 /** Identifies the terminal state of a turn as reported by its `terminal` event. */
@@ -450,16 +460,29 @@ export type ChatStreamEvent =
     }
   | {
       event: 'thought';
-      data: { thought: string; phase?: ThoughtEvent['phase'] };
+      data: {
+        thought: string;
+        phase?: ThoughtEvent['phase'];
+        round?: number;
+      };
     }
   | { event: 'content'; data: ContentPayload }
   | { event: 'terminal'; data: TerminalPayload }
   | { event: 'follow_ups'; data: { follow_up_questions: string[] } }
-  | { event: 'heartbeat'; data: Record<string, never> };
+  | { event: 'heartbeat'; data: Record<string, never> }
+  | { event: 'debug_report'; data: Record<string, unknown> };
 
 const CHAT_STREAM_EVENTS: ReadonlySet<string> = new Set<
   ChatStreamEvent['event']
->(['status', 'thought', 'content', 'terminal', 'follow_ups', 'heartbeat']);
+>([
+  'status',
+  'thought',
+  'content',
+  'terminal',
+  'follow_ups',
+  'heartbeat',
+  'debug_report',
+]);
 
 const newTurn = (
   userMessage: string,
@@ -841,6 +864,9 @@ export function useSseChat(props: UseSseChatProps): UseSseChatResult {
       // Tracks whether the HTTP response headers have arrived. Any network
       // error after this point is reported as an interrupted stream.
       let streamStarted = false;
+      const requestDebug =
+        typeof window !== 'undefined' &&
+        isDebugUrlEnabled(window.location.search);
       try {
         const resp = await fetch(endpoint, {
           method: 'POST',
@@ -849,6 +875,7 @@ export function useSseChat(props: UseSseChatProps): UseSseChatResult {
             message,
             ...transcript,
             idempotency_key: idempotencyKey,
+            ...(requestDebug ? { debug: true } : {}),
           }),
           signal: controller.signal,
         });
@@ -1106,14 +1133,23 @@ export function applyEvent(turn: ChatTurn, evt: ChatStreamEvent): ChatTurn {
         return { ...turn, status: evt.data.phase };
       }
       return turn;
-    case 'thought':
+    case 'thought': {
+      const round =
+        typeof evt.data.round === 'number' && Number.isFinite(evt.data.round)
+          ? evt.data.round
+          : undefined;
       return {
         ...turn,
         thoughts: [
           ...turn.thoughts,
-          { text: evt.data.thought, phase: evt.data.phase ?? 'synthesis' },
+          {
+            text: evt.data.thought,
+            phase: evt.data.phase ?? 'synthesis',
+            ...(round !== undefined ? { round } : {}),
+          },
         ],
       };
+    }
     case 'content':
       return applyContent(turn, evt.data);
     case 'terminal':
@@ -1124,5 +1160,17 @@ export function applyEvent(turn: ChatTurn, evt: ChatStreamEvent): ChatTurn {
         : turn;
     case 'heartbeat':
       return turn;
+    case 'debug_report': {
+      const parsed = parseServerDebugReport(evt.data);
+      if (parsed !== null) {
+        return {
+          ...turn,
+          serverReport: parsed,
+          rawServerReport: evt.data,
+        };
+      }
+      console.warn('Ignoring a malformed debug_report frame.');
+      return turn;
+    }
   }
 }

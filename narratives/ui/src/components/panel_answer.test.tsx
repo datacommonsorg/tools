@@ -25,6 +25,7 @@ import {
   fireEvent,
   render,
   screen,
+  waitFor,
 } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
@@ -33,8 +34,9 @@ import {
 } from '@/src/components/panel_answer';
 import { DEBUG_PANEL_COPY } from '@/src/components/panel_debug/copy_debug';
 import { EXIT_MS, VISIBLE_MS } from '@/src/components/toast';
-
+import { resetDebugModeCacheForTests } from '@/src/hooks/use_debug_mode';
 import type { ChartItem, ChatTurn } from '@/src/hooks/use_sse_chat';
+import { parseServerDebugReport } from '@/src/types/debug_report';
 import { calculateStreamDurationMs } from '@/src/utils/rehype_stream_words';
 
 vi.mock('@/src/utils/download_pdf', () => ({
@@ -117,12 +119,21 @@ let originalUrl = '';
 
 beforeEach(() => {
   originalUrl = window.location.href;
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async () => ({
+      ok: true,
+      status: 200,
+      json: async () => ({ status: 'ok', debug_report: 'off' }),
+    })),
+  );
 });
 
 afterEach(() => {
   cleanup();
   vi.useRealTimers();
   vi.unstubAllGlobals();
+  resetDebugModeCacheForTests();
   window.history.replaceState(null, '', originalUrl);
 });
 
@@ -632,5 +643,91 @@ describe('AnswerPanel', () => {
     expect(
       screen.getByLabelText(DEBUG_PANEL_COPY.openButtonLabel),
     ).toBeDefined();
+  });
+
+  it('renders DebugPanel without ?debug when /agent/health reports debug_report on', async () => {
+    // Test: Debug panel display gated on debug report mode on in AnswerPanel without ?debug.
+    // Situation: URL debug is absent, /agent/health reports debug_report: 'on', turn is revealed and settled.
+    // Expectation: DebugPanel trigger button renders in CardHeader.
+    window.history.replaceState(null, '', '/');
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string) => {
+        if (url.endsWith('/agent/health')) {
+          return {
+            ok: true,
+            status: 200,
+            json: async () => ({ status: 'ok', debug_report: 'on' }),
+          };
+        }
+        throw new Error(`Unexpected url: ${url}`);
+      }),
+    );
+
+    const turn = buildTurnWithBlocks([
+      { index: 0, type: 'text', markdown: 'France has about 68 million.' },
+    ]);
+    render(<AnswerPanel turn={turn} isStreaming={false} />);
+
+    await waitFor(() => {
+      expect(
+        screen.getByLabelText(DEBUG_PANEL_COPY.openButtonLabel),
+      ).toBeDefined();
+    });
+  });
+
+  it('renders DebugPanel without ?debug when turn.serverReport is present', () => {
+    // Test: Debug panel display when turn has serverReport attached.
+    // Situation: URL debug is absent, turn has serverReport.
+    // Expectation: DebugPanel trigger button renders in CardHeader.
+    window.history.replaceState(null, '', '/');
+    const serverReport = parseServerDebugReport({
+      turn_id: 't1',
+      terminal_state: 'complete',
+      terminal_reason: 'ok',
+      duration_ms: 50,
+      tokens: {},
+    });
+    expect(serverReport).not.toBeNull();
+    if (!serverReport) {
+      throw new Error('Expected serverReport to parse');
+    }
+
+    const turn = buildTurnWithBlocks(
+      [{ index: 0, type: 'text', markdown: 'France has about 68 million.' }],
+      { serverReport },
+    );
+    render(<AnswerPanel turn={turn} isStreaming={false} />);
+
+    expect(
+      screen.getByLabelText(DEBUG_PANEL_COPY.openButtonLabel),
+    ).toBeDefined();
+  });
+
+  it.each([
+    'flag',
+    'off',
+  ])('omits DebugPanel without ?debug when /agent/health returns %s', async (mode) => {
+    // Test: Debug panel suppressed when server mode is flag or off.
+    // Situation: URL debug is absent, /agent/health reports mode flag or off.
+    // Expectation: DebugPanel is not rendered.
+    window.history.replaceState(null, '', '/');
+    const fetchMock = vi.fn(async () => ({
+      ok: true,
+      status: 200,
+      json: async () => ({ status: 'ok', debug_report: mode }),
+    }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const turn = buildTurnWithBlocks([
+      { index: 0, type: 'text', markdown: 'France has about 68 million.' },
+    ]);
+    render(<AnswerPanel turn={turn} isStreaming={false} />);
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+
+    expect(
+      screen.queryByLabelText(DEBUG_PANEL_COPY.openButtonLabel),
+    ).toBeNull();
   });
 });
