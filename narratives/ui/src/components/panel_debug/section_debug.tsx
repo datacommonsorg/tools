@@ -16,7 +16,7 @@
 
 /**
  * @fileoverview Presentational pieces shared by the debug panel's sections:
- * the labeled section wrapper and the key/value detail.
+ * the labeled section wrapper, definition list fields, and key/value details.
  */
 
 import type { ReactNode } from 'react';
@@ -34,17 +34,40 @@ interface DebugSectionProps {
   children: ReactNode;
 }
 
-/** Section wrapper: a small uppercase label above its content. */
+/**
+ * Section wrapper: a small uppercase label above its content, with alternating
+ * surface banding across sibling sections.
+ */
 export const DebugSection = ({ label, children }: DebugSectionProps) => {
   return (
-    <section className="flex flex-col gap-1.5">
-      <h4 className="m-0 text-label-large uppercase tracking-wide text-on-surface-variant">
+    <section className="flex flex-col gap-1.5 p-3 rounded-lg [&:nth-of-type(even)]:bg-surface-narrative">
+      <h4 className="text-label-large uppercase tracking-wide text-on-surface-variant">
         {label}
       </h4>
       {children}
     </section>
   );
 };
+
+export interface DebugFieldProps {
+  label: string;
+  value: ReactNode;
+  spanTwo?: boolean;
+  valueClassName?: string;
+}
+
+/** One definition term/description pair for debug overview or response fields. */
+export const DebugField = ({
+  label,
+  value,
+  spanTwo,
+  valueClassName,
+}: DebugFieldProps) => (
+  <div className={spanTwo ? 'sm:col-span-2' : undefined}>
+    <dt className="text-label-small text-on-surface-variant">{label}</dt>
+    <dd className={valueClassName}>{value}</dd>
+  </div>
+);
 
 interface DebugDetailProps {
   label: string;
