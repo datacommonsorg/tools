@@ -74,17 +74,15 @@ process and PR expectations: [`CONTRIBUTING.md`](../CONTRIBUTING.md).
       specification and returns an `AnalysisDigest` or a
       `ProcessingDiagnostic` (`processing.py`), the best-effort request,
       before a specification runs, for the variable metadata of the fetched
-      tables it reads (`metadata_backfill.py`), the chart
-      grammar, resolver, and wire serializer (`charts.py`),
-      the default chart floor (`chart_defaults.py`),
-      the synthesis prompt builder (`synthesis.py`),
-      the streaming block splitter (`blocks.py`),
-      follow-up generation (`follow_up.py`),
-      user-visible messages (`messages.py`), the typed SSE frames the agent
-      loop sends (`sse_frames.py`), the turn's state slots
-      (`state_slots.py`), and signed transcripts (`transcript.py`). Of the
-      agent's subpackages, it may import `analytics/`, `mcp/`, and
-      `gemini/`.
+      tables it reads (`metadata_backfill.py`), the turn debug report builder
+      (`debug_report.py`), the chart grammar, resolver, and wire serializer
+      (`charts.py`), the default chart floor (`chart_defaults.py`), the
+      synthesis prompt builder (`synthesis.py`), the streaming block splitter
+      (`blocks.py`), follow-up generation (`follow_up.py`), user-visible
+      messages (`messages.py`), the typed SSE frames the agent loop sends
+      (`sse_frames.py`), the turn's state slots (`state_slots.py`), and
+      signed transcripts (`transcript.py`). Of the agent's subpackages, it
+      may import `analytics/`, `mcp/`, and `gemini/`.
     - `mcp/`: MCP transport and tool-result decoding (`client.py`), server
       capability discovery and the required-tool check (`capabilities.py`),
       schema helpers (`schema.py`), Pydantic wire models of MCP observation

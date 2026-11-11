@@ -83,9 +83,17 @@ class _Turn:
 
     def __init__(self) -> None:
         self.calls: list[Transcript] = []
+        self.request_debugs: list[bool] = []
 
-    async def __call__(self, transcript: Transcript, emit: Emit) -> None:
+    async def __call__(
+        self,
+        transcript: Transcript,
+        emit: Emit,
+        *,
+        request_debug: bool = False,
+    ) -> None:
         self.calls.append(transcript)
+        self.request_debugs.append(request_debug)
         for frame in _FRAMES:
             emit(frame)
 
@@ -387,7 +395,12 @@ def test_client_disconnect_cancels_the_turn_before_the_response_ends(
     canceled = asyncio.Event()
     cleaned_up = asyncio.Event()
 
-    async def blocked_turn(transcript: Transcript, emit: Emit) -> None:
+    async def blocked_turn(
+        transcript: Transcript,
+        emit: Emit,
+        *,
+        request_debug: bool = False,
+    ) -> None:
         emit(ThoughtFrame(thought="...", phase="discovery"))
         try:
             await asyncio.Event().wait()
@@ -476,7 +489,12 @@ def test_heartbeat_frames_are_sent_while_the_turn_is_idle(
         heartbeat_built.set()
         return original_heartbeat()
 
-    async def slow_turn(transcript: Transcript, emit: Emit) -> None:
+    async def slow_turn(
+        transcript: Transcript,
+        emit: Emit,
+        *,
+        request_debug: bool = False,
+    ) -> None:
         emit(_STATUS)
         async with asyncio.timeout(1):
             await heartbeat_built.wait()
@@ -495,3 +513,47 @@ def test_heartbeat_frames_are_sent_while_the_turn_is_idle(
         b"id: 1",
         b"id: 2",
     ]
+
+
+def test_debug_flag_is_forwarded_to_run_turn_when_present(
+    turn: _Turn, client: TestClient
+) -> None:
+    # Test: Forwarding of the debug flag to run_turn.
+    # Situation: A chat request specifies "debug": True.
+    # Expectation: run_turn receives request_debug=True, and signed turns
+    #   are verified as normal.
+    response = client.post(
+        "/agent/chat/stream",
+        json={"message": "Hello", "debug": True},
+    )
+
+    assert response.status_code == 200
+    assert turn.request_debugs == [True]
+
+
+def test_omitted_debug_flag_defaults_to_false_in_run_turn(
+    turn: _Turn, client: TestClient
+) -> None:
+    # Test: Default value of the debug flag when omitted.
+    # Situation: A chat request omits the "debug" field.
+    # Expectation: run_turn receives request_debug=False.
+    response = client.post("/agent/chat/stream", json={"message": "Hello"})
+
+    assert response.status_code == 200
+    assert turn.request_debugs == [False]
+
+
+def test_invalid_debug_flag_returns_422_before_running_turn(
+    turn: _Turn, client: TestClient
+) -> None:
+    # Test: Rejection of non-boolean debug flag values.
+    # Situation: A chat request specifies "debug": "not-a-bool".
+    # Expectation: FastAPI returns HTTP 422 Unprocessable Entity, and
+    #   run_turn does not run.
+    response = client.post(
+        "/agent/chat/stream",
+        json={"message": "Hello", "debug": "not-a-bool"},
+    )
+
+    assert response.status_code == 422
+    assert turn.calls == []
