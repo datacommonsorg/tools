@@ -102,8 +102,8 @@ describe('ResponseCard tables', () => {
     const { container } = renderMarkdown(TABLE);
     const firstRow = container.querySelectorAll('tbody tr')[0];
     const cells = firstRow.querySelectorAll('td');
-    expect(cells[0].style.textAlign).toBe('');
-    expect(cells[1].style.textAlign).toBe('right');
+    expect(cells[0].classList.contains('text-right')).toBe(false);
+    expect(cells[1].classList.contains('text-right')).toBe(true);
   });
 
   it("states the column's citation once, on its header", () => {
@@ -341,7 +341,7 @@ describe('ResponseCard streaming composite citations', () => {
     expect(container.querySelector('.stream-word')).not.toBeNull();
     expect(getAnchorHrefs(header)).toEqual(['#citation-0-1', '#citation-0-2']);
     for (const cell of valueCells) {
-      expect(cell.style.textAlign).toBe('right');
+      expect(cell.classList.contains('text-right')).toBe(true);
       expect(cell.classList.contains('tabular-nums')).toBe(true);
     }
     for (const cell of bodyCells) {
@@ -378,5 +378,57 @@ describe('ResponseCard streaming composite citations', () => {
 
     expect(getAnchorHrefs(container)).toEqual(['https://example.com']);
     expect(container.querySelector('a')?.textContent).toBe('see [1, 2]');
+  });
+});
+
+describe('ResponseCard headings', () => {
+  it('ranks markdown headings one level below the intro h1', () => {
+    // Test: Heading levels.
+    // Situation: Markdown headings from `#` to `####`.
+    // Expectation: They render as h2 to h5; the answer holds no h1.
+    const { container } = renderMarkdown('# A\n\n## B\n\n### C\n\n#### D');
+
+    expect(container.querySelector('h1')).toBeNull();
+    expect(
+      ['h2', 'h3', 'h4', 'h5'].map(
+        (tag) => container.querySelector(tag)?.textContent,
+      ),
+    ).toEqual(['A', 'B', 'C', 'D']);
+  });
+});
+
+describe('ResponseCard bold-only paragraphs', () => {
+  it('renders a paragraph of only bold text as a subheading', () => {
+    // Test: Bold-only paragraphs.
+    // Situation: One paragraph is all bold, streamed word by word; another
+    //   mixes bold with plain text.
+    // Expectation: The first becomes an h3, with no strong inside; the second
+    //   stays a paragraph with its strong.
+    const { container } = renderStreamingMarkdown(
+      '**Ten highest-income places:**\n\nThe **top** one leads.',
+    );
+    const heading = container.querySelector('h3');
+
+    expect(heading?.textContent).toBe('Ten highest-income places:');
+    expect(heading?.querySelector('strong')).toBeNull();
+    expect(container.querySelector('p strong')?.textContent).toBe('top');
+  });
+
+  it('keeps bold items of a loose list and a blockquote as emphasis', () => {
+    // Test: Nested bold-only paragraphs.
+    // Situation: A loose list, whose items are wrapped in paragraphs, and a
+    //   blockquote, each holding only bold text.
+    // Expectation: No subheading is made; the bold stays a strong in a
+    //   paragraph.
+    const { container } = renderMarkdown(
+      '- **Total**\n\n- **Average**\n\n> **Note**',
+    );
+
+    expect(container.querySelector('h3')).toBeNull();
+    expect(
+      Array.from(container.querySelectorAll('p > strong')).map(
+        (strong) => strong.textContent,
+      ),
+    ).toEqual(['Total', 'Average', 'Note']);
   });
 });

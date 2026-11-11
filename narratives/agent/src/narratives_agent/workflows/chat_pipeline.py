@@ -622,6 +622,7 @@ async def run_synthesis_phase(
                 thinking_level=role.thinking_level,
                 token_usage=ctx.telemetry.tokens,
                 include_thoughts=True,
+                token_phase=GeminiRole.SYNTHESIS.value,
             )
     except TimeoutError as error:
         logger.warning(

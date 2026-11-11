@@ -12,6 +12,7 @@ import {
   type Band,
   cardShrinkFactor,
   chartScaleFactor,
+  flattenForPrint,
   MAX_CARD_PAGE_FILL,
   pageBreak,
 } from '@/src/utils/download_pdf';
@@ -176,5 +177,61 @@ describe('the height cap and the page break together', () => {
     expect(card.top < boundary && card.bottom > boundary).toBe(true);
     // The cap would have brought that same card back under the boundary.
     expect(top + PAGE * MAX_CARD_PAGE_FILL).toBeLessThanOrEqual(PAGE);
+  });
+});
+
+describe('flattenForPrint', () => {
+  /** Mounts `html` in a fresh root, flattens it, and returns the root. */
+  function flatten(html: string): HTMLElement {
+    const root = document.createElement('div');
+    root.innerHTML = html;
+    document.body.appendChild(root);
+    flattenForPrint(root);
+    root.remove();
+    return root;
+  }
+
+  it('clears panel backgrounds but keeps chart and hidden text styling', () => {
+    // Test: Backgrounds in the PDF.
+    // Situation: A tinted panel, an inlined chart with a colored legend
+    //   swatch, and a screen-reader-only span.
+    // Expectation: Only the panel loses its background.
+    const root = flatten(`
+      <div id="panel" style="background-color: rgb(245, 250, 255)"></div>
+      <div data-chart-inner="true">
+        <i id="swatch" style="background-color: rgb(11, 87, 208)"></i>
+      </div>
+      <span id="hidden" class="sr-only" style="overflow: hidden"></span>
+    `);
+    const byId = (id: string) => root.querySelector<HTMLElement>(`#${id}`);
+
+    expect(byId('panel')?.style.backgroundColor).toBe('transparent');
+    expect(byId('panel')?.style.backgroundImage).toBe('none');
+    expect(byId('swatch')?.style.backgroundColor).toBe('rgb(11, 87, 208)');
+    expect(byId('hidden')?.style.overflow).toBe('hidden');
+  });
+
+  it('lets clipped text and wide tables show in full', () => {
+    // Test: Text clipping in the PDF.
+    // Situation: A scrolling table wrapper and a truncated line.
+    // Expectation: Neither clips; the table fits the page and its cells wrap.
+    const root = flatten(`
+      <div class="markdown-body">
+        <div id="frame" style="overflow-x: auto">
+          <table style="min-width: 100%"><tr><td>84.0412195122</td></tr></table>
+        </div>
+        <span id="line" style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap">long</span>
+      </div>
+    `);
+    const frame = root.querySelector<HTMLElement>('#frame');
+    const line = root.querySelector<HTMLElement>('#line');
+    const table = root.querySelector<HTMLElement>('table');
+    const cell = root.querySelector<HTMLElement>('td');
+
+    expect(frame?.style.overflow).toBe('visible');
+    expect(line?.style.overflow).toBe('visible');
+    expect(line?.style.whiteSpace).toBe('normal');
+    expect(table?.style.width).toBe('100%');
+    expect(cell?.style.overflowWrap).toBe('anywhere');
   });
 });

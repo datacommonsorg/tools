@@ -332,10 +332,18 @@ def _store_table(
     variable_dcid: str,
     scope: FacetScope,
     table: ObservationTable,
+    *,
+    source_selected_explicitly: bool,
 ) -> FetchResult:
     """Caches a fetched table, locks its facet, and summarizes it."""
     table_id = cache.get_next_table_id()
-    cache.store_fetched(CachedTable(table_id=table_id, table=table))
+    cache.store_fetched(
+        CachedTable(
+            table_id=table_id,
+            table=table,
+            source_selected_explicitly=source_selected_explicitly,
+        )
+    )
     if table.facet_id is not None:
         cache.lock_facet(variable_dcid, scope, table.facet_id)
     return FetchResult(table_id=table_id, summary=summarize_table(table))
@@ -607,7 +615,11 @@ async def fetch_observations(
             enrichment=cache.enrichment,
         )
     return _store_table(
-        cache, request.variable_dcid, _NAMED_PLACES_SCOPE, table
+        cache,
+        request.variable_dcid,
+        _NAMED_PLACES_SCOPE,
+        table,
+        source_selected_explicitly=request.source_override is not None,
     )
 
 
@@ -664,7 +676,13 @@ async def fetch_child_observations(
             date_range=dates.date_range,
             enrichment=cache.enrichment,
         )
-    return _store_table(cache, request.variable_dcid, scope, table)
+    return _store_table(
+        cache,
+        request.variable_dcid,
+        scope,
+        table,
+        source_selected_explicitly=request.source_override is not None,
+    )
 
 
 def _summarize_outline(
@@ -750,7 +768,13 @@ async def fetch_multi_entity_observations(
         )
     if not table.rows:
         return compact
-    return _store_table(cache, request.variable_dcid, scope, table)
+    return _store_table(
+        cache,
+        request.variable_dcid,
+        scope,
+        table,
+        source_selected_explicitly=request.source_override is not None,
+    )
 
 
 async def run_fetch(request: FetchRequest, cache: TurnCache) -> FetchOutcome:

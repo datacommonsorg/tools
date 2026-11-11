@@ -45,6 +45,10 @@ import {
 } from '@/src/config/motion';
 import type { ThoughtEvent, TurnStatus } from '@/src/hooks/use_sse_chat';
 import {
+  isBoldOnlyParagraph,
+  type MarkdownNode,
+} from '@/src/utils/markdown_table';
+import {
   calculateStreamDurationMs,
   rehypeStreamWords,
   STREAM_WORD_CLASS,
@@ -72,31 +76,6 @@ const ReasoningHeading = ({ children }: { children?: React.ReactNode }) => (
   <h3 className="font-semibold text-sm">{children}</h3>
 );
 
-/** Minimal shape of the hast node react-markdown hands each renderer. */
-interface HastNode {
-  type: string;
-  tagName?: string;
-  value?: string;
-  children?: HastNode[];
-}
-
-/**
- * Reports whether a paragraph node is really a standalone bold line the model
- * wrote as a heading — e.g. `**Plan**` arrives as `<p><strong>…</strong></p>`,
- * not a real heading. These are styled as headings, since models rarely emit
- * `##` here.
- */
-function isBoldOnlyParagraph(node?: HastNode): boolean {
-  const kids = (node?.children ?? []).filter(
-    (child) => !(child.type === 'text' && !(child.value ?? '').trim()),
-  );
-  return (
-    kids.length === 1 &&
-    kids[0].type === 'element' &&
-    kids[0].tagName === 'strong'
-  );
-}
-
 /**
  * Markdown overrides for the reasoning body. Module-level so their identity is
  * stable: rebuilt on each render, every thought would remount and replay its
@@ -112,7 +91,7 @@ const REASONING_COMPONENTS: Components = {
   // A lone-bold paragraph is really a section heading; everything else is a
   // body paragraph.
   p: ({ node, children }) =>
-    isBoldOnlyParagraph(node as unknown as HastNode) ? (
+    isBoldOnlyParagraph(node as MarkdownNode | undefined) ? (
       <ReasoningHeading>{children}</ReasoningHeading>
     ) : (
       <p className="text-on-surface-variant italic text-sm leading-5.5">

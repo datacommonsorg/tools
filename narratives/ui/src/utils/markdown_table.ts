@@ -75,6 +75,17 @@ function isTag(node: MarkdownNode, tagName: string): boolean {
   return node.type === 'element' && node.tagName === tagName;
 }
 
+/**
+ * Whether a paragraph's only content, whitespace aside, is one `strong`: a
+ * standalone bold line, which models write in place of a heading.
+ */
+export function isBoldOnlyParagraph(node: MarkdownNode | undefined): boolean {
+  const content = (node?.children ?? []).filter(
+    (child) => !(child.type === 'text' && !child.value?.trim()),
+  );
+  return content.length === 1 && isTag(content[0], 'strong');
+}
+
 /** The cells of every row in a table section, flattened past thead/tbody. */
 function rowsOf(
   node: MarkdownNode,
