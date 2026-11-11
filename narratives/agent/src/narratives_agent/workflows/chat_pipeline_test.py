@@ -299,6 +299,7 @@ class _Turn:
     synthesis_calls: int = 0
     synthesis_messages: list[list[JsonObject]] = field(default_factory=list)
     synthesis_instructions: list[str] = field(default_factory=list)
+    synthesis_phases: list[str] = field(default_factory=list)
     answer: str = _ANSWER
     follow_up_topics: list[FollowUpTopics] = field(default_factory=list)
     loop_classifications: list[QueryClassification | None] = field(
@@ -441,11 +442,13 @@ def turn(monkeypatch: pytest.MonkeyPatch) -> _Turn:
         *,
         messages: Sequence[JsonObject],
         system_instruction: str,
+        token_phase: str = "",
         **_: object,
     ) -> AsyncGenerator[StreamChunk]:
         stub.synthesis_calls += 1
         stub.synthesis_messages.append(list(messages))
         stub.synthesis_instructions.append(system_instruction)
+        stub.synthesis_phases.append(token_phase)
         return stream_answer()
 
     async def generate_follow_ups(
@@ -528,6 +531,7 @@ async def test_complete_turn_emits_the_answer_then_the_follow_ups(
     #   chart, and the turn is recorded as `complete`.
     await chat_pipeline.run_turn(_TRANSCRIPT, turn.emit)
 
+    assert turn.synthesis_phases == ["synthesis"]
     assert turn.list_blocks() == [
         {"index": 0, "type": "text", "markdown": _ANSWER},
         {"index": 1, "type": "chart", "chart": _DEFAULT_CHART},

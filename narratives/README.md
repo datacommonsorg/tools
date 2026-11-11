@@ -64,7 +64,14 @@ Run all commands from the `narratives/` directory.
    $EDITOR .env.local
    ```
 
-3. Start the backend server (port 5001) and frontend dev server (port 3000) in
+3. Build the UI once, so the local agent serves the `index.html` that
+   `pnpm dev:ui` reads chat availability from:
+
+   ```sh
+   pnpm build
+   ```
+
+4. Start the backend server (port 5001) and frontend dev server (port 3000) in
    separate terminals:
 
    ```sh
@@ -75,7 +82,7 @@ Run all commands from the `narratives/` directory.
    pnpm dev:ui
    ```
 
-4. Open `http://localhost:3000` in your browser.
+5. Open `http://localhost:3000` in your browser.
 
 ## Quickstart: Deploy to Google Cloud
 

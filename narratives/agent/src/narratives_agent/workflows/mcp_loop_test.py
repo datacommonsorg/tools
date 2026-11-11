@@ -17,6 +17,7 @@ import asyncio
 import json
 import logging
 from collections.abc import Callable, Iterator, Mapping, Sequence
+from typing import Any
 
 import pytest
 from google.genai import types
@@ -1899,3 +1900,154 @@ async def test_an_invalid_tool_schema_ends_the_loop_as_a_model_error(
     assert str(raised.value) == MCP_MODEL_ERROR
     assert raised.value.is_retryable is False
     assert telemetry.mcp_iterations == 0
+
+
+@pytest.mark.asyncio
+async def test_tool_call_records_carry_one_based_round_and_duration(
+    monkeypatch: pytest.MonkeyPatch,
+    calls: list[str],
+    telemetry: TurnTelemetry,
+) -> None:
+    # Test: Tool-call record metadata across rounds and tool varieties.
+    # Situation: In round 1, the model calls an MCP tool, a fetch function,
+    #   and an undeclared tool. In round 2, it calls two terminal functions
+    #   (one handled and one duplicate ignored).
+    # Expectation: Every tool record in `tool_calls` carries a 1-based `round`
+    #   matching its iteration, a non-negative `duration_ms`, and the
+    #   expected status.
+    _ = calls
+    cache = TurnCache()
+    cached_t1 = _make_table("t1", {"geoId/06": 39000000.0})
+
+    async def fake_run_fetch(
+        request: FetchRequest, fetch_cache: TurnCache
+    ) -> FetchResult:
+        _ = request
+        fetch_cache.store_fetched(cached_t1)
+        return FetchResult(
+            table_id="t1", summary=summarize_table(cached_t1.table)
+        )
+
+    monkeypatch.setattr(mcp_loop, "run_fetch", fake_run_fetch)
+
+    recorded_requests: list[dict[str, Any]] = []
+
+    async def handle_request(
+        *,
+        messages: Sequence[Message],
+        **kwargs: Any,
+    ) -> GeminiResponse:
+        _ = messages
+        recorded_requests.append(kwargs)
+        if len(recorded_requests) == 1:
+            return _make_calls_turn(
+                ("search_indicators", {"query": "population"}),
+                (
+                    "fetch_observations",
+                    {
+                        "variable_dcid": "Count_Person",
+                        "place_dcids": ["geoId/06"],
+                    },
+                ),
+                ("undeclared_tool", {"foo": "bar"}),
+            )
+        return _make_calls_turn(
+            ("report_unavailable", _UNAVAILABLE_ARGS),
+            ("submit_specification", {"steps": []}),
+        )
+
+    monkeypatch.setattr(
+        mcp_loop,
+        "async_gemini_request_with_thought_streaming",
+        handle_request,
+    )
+
+    result = await _run_loop(telemetry, cache=cache)
+
+    assert len(recorded_requests) == 2
+    assert recorded_requests[0]["token_round"] == 1
+    assert recorded_requests[0]["token_phase"] == "discovery"
+    assert recorded_requests[1]["token_round"] == 2
+    assert recorded_requests[1]["token_phase"] == "discovery"
+
+    assert len(result.tool_calls) == 5
+    mcp_rec = next(
+        r for r in result.tool_calls if r["name"] == "search_indicators"
+    )
+    fetch_rec = next(
+        r for r in result.tool_calls if r["name"] == "fetch_observations"
+    )
+    refusal_rec = next(
+        r for r in result.tool_calls if r["name"] == "undeclared_tool"
+    )
+    term_rec = next(
+        r for r in result.tool_calls if r["name"] == "report_unavailable"
+    )
+    dup_rec = next(
+        r for r in result.tool_calls if r["name"] == "submit_specification"
+    )
+
+    for record in (mcp_rec, fetch_rec, refusal_rec):
+        assert record["round"] == 1
+        assert isinstance(record["duration_ms"], float)
+        assert record["duration_ms"] >= 0.0
+
+    assert mcp_rec["status"] == "success"
+    assert fetch_rec["status"] == "success"
+    assert refusal_rec["status"] == "error"
+
+    for record in (term_rec, dup_rec):
+        assert record["round"] == 2
+        assert isinstance(record["duration_ms"], float)
+        assert record["duration_ms"] >= 0.0
+
+    assert term_rec["status"] == "success"
+    assert dup_rec["status"] == "error"
+
+
+@pytest.mark.asyncio
+async def test_give_up_emits_synthetic_record_with_round_and_zero_duration(
+    monkeypatch: pytest.MonkeyPatch,
+    telemetry: TurnTelemetry,
+) -> None:
+    # Test: Synthetic tool record on server give_up.
+    # Situation: The loop gives up after unproductive rounds.
+    # Expectation: The final tool-call record has name `report_unavailable`,
+    #   its `round` matches the round count, its `duration_ms` is 0.0, and
+    #   its result indicates it was filed by the server.
+    async def run_search(name: str, arguments: JsonObject) -> JsonObject:
+        _ = name, arguments
+        return {
+            "content": [
+                {
+                    "type": "text",
+                    "text": json.dumps({"indicators": [], "places": []}),
+                }
+            ]
+        }
+
+    monkeypatch.setattr(mcp_client, "async_call_tool", run_search)
+
+    search_turn = _make_calls_turn(
+        ("search_indicators", {"query": "income", "places": ["Tokyo"]})
+    )
+
+    async def handle_request(**_: Any) -> GeminiResponse:
+        return search_turn
+
+    monkeypatch.setattr(
+        mcp_loop,
+        "async_gemini_request_with_thought_streaming",
+        handle_request,
+    )
+
+    result = await _run_loop(telemetry)
+
+    assert result.unavailable is not None
+    assert len(result.tool_calls) > 0
+    filed = result.tool_calls[-1]
+    assert filed["name"] == "report_unavailable"
+    assert filed["status"] == "success"
+    assert filed["duration_ms"] == 0.0
+    assert filed["round"] == telemetry.mcp_iterations
+    assert json.loads(str(filed["result"]))["filed_by"] == "server"

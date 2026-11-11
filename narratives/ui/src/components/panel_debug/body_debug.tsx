@@ -15,44 +15,127 @@
  */
 
 /**
- * @fileoverview Debug panel body: inspects a turn once and composes its
- * sections, without any chrome.
+ * @fileoverview Tabbed debug panel body: coordinates the top-level tab bar and
+ * renders the selected debug section (Overview, Provenance, Trajectory,
+ * Response, or Timing).
  */
 
-import { ChartsSection } from '@/src/components/panel_debug/section_debug_charts';
-import { PlacesSection } from '@/src/components/panel_debug/section_debug_places';
-import { ProvenanceSection } from '@/src/components/panel_debug/section_debug_provenance';
-import { ToolCallsSection } from '@/src/components/panel_debug/section_debug_tool_calls';
-import { VariablesSection } from '@/src/components/panel_debug/section_debug_variables';
+import { useId, useMemo, useState } from 'react';
+import {
+  DEBUG_PANEL_COPY,
+  DEBUG_TAB_LABELS,
+  formatDurationMs,
+} from '@/src/components/panel_debug/copy_debug';
+import { buildTurnDebugReport } from '@/src/components/panel_debug/report_debug';
+import { OverviewTab } from '@/src/components/panel_debug/tab_debug_overview';
+import { ProvenanceTab } from '@/src/components/panel_debug/tab_debug_provenance';
+import { ResponseTab } from '@/src/components/panel_debug/tab_debug_response';
+import { TimingTab } from '@/src/components/panel_debug/tab_debug_timing';
+import { TrajectoryTab } from '@/src/components/panel_debug/tab_debug_trajectory';
+import {
+  type DebugTabItem,
+  DebugTabs,
+  getDebugTabElementId,
+  getDebugTabPanelElementId,
+} from '@/src/components/panel_debug/tabs_debug';
 import { type ChatTurn, getTurnCharts } from '@/src/hooks/use_sse_chat';
 import { inspectTurn } from '@/src/utils/inspect_turn';
 
-interface DebugPanelBodyProps {
+/** Identifiers for each tab in the turn debug panel. */
+export type DebugTabId =
+  | 'overview'
+  | 'provenance'
+  | 'trajectory'
+  | 'response'
+  | 'timing';
+
+/** Props for {@link DebugPanelBody}. */
+export interface DebugPanelBodyProps {
   turn: ChatTurn;
 }
 
 /**
- * Renders the turn's sections in order: provenances used, variables, places,
- * charts requested, and tool calls. Each section renders nothing when it has
- * nothing to list.
- *
- * "Which provenances were used" is the question this view exists to answer,
- * so that section leads.
+ * Renders the pinned debug tabs navigation and the active tab panel.
  */
 export const DebugPanelBody = ({ turn }: DebugPanelBodyProps) => {
-  const inspection = inspectTurn(
-    turn.toolCalls,
-    getTurnCharts(turn),
-    turn.provenance,
+  const idPrefix = useId();
+  const [activeTab, setActiveTab] = useState<DebugTabId>('overview');
+
+  const report = useMemo(() => buildTurnDebugReport(turn), [turn]);
+  const charts = useMemo(() => getTurnCharts(turn), [turn]);
+  const inspection = useMemo(
+    () => inspectTurn(turn.toolCalls, charts, turn.provenance),
+    [turn.toolCalls, charts, turn.provenance],
+  );
+
+  const tabs: readonly DebugTabItem<DebugTabId>[] = useMemo(
+    () => [
+      { id: 'overview', label: DEBUG_TAB_LABELS.overview },
+      {
+        id: 'provenance',
+        label: DEBUG_TAB_LABELS.provenance,
+        badge: inspection.facets.length,
+      },
+      {
+        id: 'trajectory',
+        label: DEBUG_TAB_LABELS.trajectory,
+        badge: turn.toolCalls.length,
+      },
+      {
+        id: 'response',
+        label: DEBUG_TAB_LABELS.response,
+        badge: turn.blocks.length,
+      },
+      {
+        id: 'timing',
+        label: DEBUG_TAB_LABELS.timing,
+        badge:
+          turn.clientTimings?.totalMs !== undefined
+            ? formatDurationMs(turn.clientTimings.totalMs)
+            : undefined,
+      },
+    ],
+    [
+      inspection.facets.length,
+      turn.toolCalls.length,
+      turn.blocks.length,
+      turn.clientTimings?.totalMs,
+    ],
   );
 
   return (
-    <div className="flex flex-col gap-5">
-      <ProvenanceSection facets={inspection.facets} />
-      <VariablesSection variables={inspection.variables} />
-      <PlacesSection places={inspection.places} />
-      <ChartsSection charts={inspection.charts} />
-      <ToolCallsSection toolCalls={turn.toolCalls} />
-    </div>
+    <>
+      <div className="shrink-0 px-4 pt-2">
+        <DebugTabs<DebugTabId>
+          idPrefix={idPrefix}
+          ariaLabel={DEBUG_PANEL_COPY.tablistAriaLabel}
+          tabs={tabs}
+          activeTabId={activeTab}
+          onSelectTab={setActiveTab}
+        />
+      </div>
+      <div
+        role="tabpanel"
+        id={getDebugTabPanelElementId(idPrefix, activeTab)}
+        aria-labelledby={getDebugTabElementId(idPrefix, activeTab)}
+        // biome-ignore lint/a11y/noNoninteractiveTabindex: Scrollable tabpanel container must be focusable per WAI-ARIA.
+        tabIndex={0}
+        className="flex-1 min-h-0 overflow-y-auto p-4"
+      >
+        {activeTab === 'overview' && <OverviewTab report={report} />}
+        {activeTab === 'provenance' && (
+          <ProvenanceTab inspection={inspection} />
+        )}
+        {activeTab === 'trajectory' && (
+          <TrajectoryTab thoughts={turn.thoughts} toolCalls={turn.toolCalls} />
+        )}
+        {activeTab === 'response' && (
+          <ResponseTab outcome={report.outcome} response={report.response} />
+        )}
+        {activeTab === 'timing' && (
+          <TimingTab clientTimings={turn.clientTimings ?? null} />
+        )}
+      </div>
+    </>
   );
 };

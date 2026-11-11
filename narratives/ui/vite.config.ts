@@ -4,10 +4,27 @@
 import path from 'node:path';
 import tailwindcss from '@tailwindcss/vite';
 import react from '@vitejs/plugin-react';
-import { defineConfig, loadEnv } from 'vite';
+import { defineConfig, loadEnv, type Plugin } from 'vite';
+import {
+  copyAgentRuntimeConfig,
+  resolveAgentShellUrl,
+} from './src/config/runtime_config_dev';
 
 // Dev-proxy default for a local agent.
 const DEFAULT_AGENT_URL = 'http://localhost:5001';
+
+/**
+ * Copies the agent's chat availability into `#runtime-config` each time the
+ * Vite dev server serves index.html, reading the shell the agent at
+ * `agentShellUrl` stamps, so the agent stays the only source of truth.
+ * `apply: 'serve'` keeps it out of `vite build`, so the built index.html
+ * keeps the empty slot for the agent to stamp.
+ */
+const createRuntimeConfigDevPlugin = (agentShellUrl: string): Plugin => ({
+  name: 'narratives-runtime-config',
+  apply: 'serve',
+  transformIndexHtml: (html) => copyAgentRuntimeConfig(html, agentShellUrl),
+});
 
 export default defineConfig(({ command, mode }) => {
   const envDir = path.resolve(__dirname, '..');
@@ -17,6 +34,9 @@ export default defineConfig(({ command, mode }) => {
   // or under any runtime `BASE_PATH`; `vite dev` keeps `/` for the `/agent` proxy.
   const base = command === 'build' ? './' : '/';
   const agentTarget = env.AGENT_URL || DEFAULT_AGENT_URL;
+  // `/agent/*` forwards to AGENT_URL's own path, and the agent's HTML shell
+  // lives at that same path.
+  const agentShellUrl = resolveAgentShellUrl(agentTarget);
   // By default, the agent serves its API under /agent (AGENT_API_PREFIX), so
   // /agent/* requests are forwarded verbatim to AGENT_URL, whether a local
   // agent or a deployed instance.
@@ -39,7 +59,11 @@ export default defineConfig(({ command, mode }) => {
       environment: 'happy-dom',
       globals: true,
     },
-    plugins: [react(), tailwindcss()],
+    plugins: [
+      react(),
+      tailwindcss(),
+      createRuntimeConfigDevPlugin(agentShellUrl),
+    ],
     // No GEMINI_API_KEY (or any secret) is injected into the client bundle.
     // All LLM calls go through the server-side agent proxy (/agent/*); the key
     // lives only in the agent container (Secret Manager). See dc-pr-standards §7.

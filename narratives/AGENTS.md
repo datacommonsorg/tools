@@ -40,8 +40,9 @@ process and PR expectations: [`CONTRIBUTING.md`](../CONTRIBUTING.md).
     components (does not use the layered `primitives / elements / scopes /
     foundations` structure from `dataweaver/`).
   - `src/hooks/` — hooks and React context providers.
-  - `src/config/`, `src/types/`, `src/utils/` — instance and navigation config,
-    user-facing chat copy (`copy_chat.ts`), shared types, and helpers.
+  - `src/config/`, `src/types/`, `src/utils/` — instance, runtime, and
+    navigation config, user-facing chat copy (`copy_chat.ts`), shared types,
+    and helpers.
   - `src/index.css` — Tailwind v4 theme and `--color-*` design tokens.
 - `agent/` — Python 3.14 server managed with [uv](https://docs.astral.sh/uv/):
   - `pyproject.toml`, `uv.lock` — dependencies and tool configuration (`ruff`,
@@ -243,7 +244,10 @@ backend, public Data Commons or a local MCP server as preferred.
   development, Vite's `server.proxy` (`ui/vite.config.ts`) forwards `/agent/*`
   to `AGENT_URL`; in production, the Python server in `agent/` serves the
   compiled SPA (`server/routes/spa.py`). Restart Vite after editing
-  `.env.local`.
+  `.env.local`. The Vite page copies `#runtime-config` from the agent at
+  `AGENT_URL` on every load, so chat availability (`ENABLE_CHAT`,
+  `UNAVAILABLE_MESSAGE`) is set on the agent; a local agent needs one
+  `pnpm build` before it serves `index.html`.
 - **Agent (`narratives/agent/`)** — run `uv sync`, configure `.env.local` (from
   `.env.local.example`) with `GEMINI_API_KEY`, `DC_API_KEY` (which is optional
   for some MCP servers), and optional `MCP_SERVER_URL`, and run `pnpm dev:agent`

@@ -20,22 +20,26 @@
 
 import { NewChatIcon } from '@/src/components/icons';
 import { Tooltip } from '@/src/components/tooltip';
+import { getRuntimeConfig } from '@/src/config/runtime_config';
 import { useChatSession } from '@/src/hooks/chat_session_context';
 import { useHashRoute } from '@/src/hooks/use_hash_route';
 
 /**
  * The left rail itself stays visible across all tabs (same width, same fill)
- * so the page layout doesn't jump as the user navigates. Only the "New chat"
- * pencil is tied to the Agent tab; on every other tab the rail renders empty.
+ * so the page layout doesn't jump as the user navigates. The "New chat"
+ * pencil renders only on the Agent tab while chat is enabled; otherwise the
+ * rail renders empty.
  */
 export function Sidebar() {
   const [route] = useHashRoute();
   const { newChat } = useChatSession();
+  const { isChatEnabled } = getRuntimeConfig();
   const isAgent = route === '' || route === 'agent';
+  const shouldShowNewChat = isAgent && isChatEnabled;
 
   return (
     <aside className="hidden lg:flex w-[72px] h-dvh bg-surface-blue flex-col items-center py-4 gap-4 shrink-0">
-      {isAgent && (
+      {shouldShowNewChat && (
         /* Clears the conversation on screen and starts an empty one. Chats
            are not saved, so there is nothing to come back to. */
         <Tooltip label="New chat" placement="right">

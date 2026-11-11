@@ -22,12 +22,14 @@ import {
   act,
   cleanup,
   fireEvent,
+  render,
   renderHook,
   screen,
 } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { Sidebar } from '@/src/components/sidebar';
+import { resetRuntimeConfigForTests } from '@/src/config/runtime_config';
 import {
   ChatSessionProvider,
   useChatSession,
@@ -58,9 +60,26 @@ const stubFetch = (): void => {
   );
 };
 
+/**
+ * Replaces `#runtime-config` with one holding `payload`, and clears the
+ * cached runtime configuration.
+ */
+const writeRuntimeConfigSlot = (payload: Record<string, unknown>): void => {
+  document.getElementById('runtime-config')?.remove();
+  const slot = document.createElement('script');
+  slot.id = 'runtime-config';
+  slot.type = 'application/json';
+  slot.textContent = JSON.stringify(payload);
+  document.head.appendChild(slot);
+  resetRuntimeConfigForTests();
+};
+
 afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
+  document.getElementById('runtime-config')?.remove();
+  resetRuntimeConfigForTests();
+  window.location.hash = '';
 });
 
 describe('Sidebar', () => {
@@ -82,5 +101,22 @@ describe('Sidebar', () => {
     expect(
       screen.queryByRole('button', { name: 'Toggle chats list' }),
     ).toBeNull();
+  });
+
+  it('keeps the rail and hides New chat while chat is disabled', () => {
+    // Test: The desktop rail on the Agent tab while chat is disabled.
+    // Situation: #runtime-config holds `enable_chat: false` and the route is
+    //   the Agent tab.
+    // Expectation: The rail still renders, so the layout width is unchanged,
+    //   and the New chat control is absent.
+    writeRuntimeConfigSlot({ enable_chat: false });
+    window.location.hash = '#/agent';
+    const { container } = render(
+      <ChatSessionProvider>
+        <Sidebar />
+      </ChatSessionProvider>,
+    );
+    expect(container.querySelector('aside')).not.toBeNull();
+    expect(screen.queryByRole('button', { name: 'New chat' })).toBeNull();
   });
 });

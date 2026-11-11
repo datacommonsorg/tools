@@ -15,27 +15,69 @@
  */
 
 /**
- * @fileoverview User-facing text of the debug panel: its chrome, section
- * headings, detail labels, and fallbacks.
+ * @fileoverview User-visible copy, section headings, and detail labels for the
+ * turn debug panel and its tabs.
  */
+
+import type { TurnDebugOutcome } from '@/src/components/panel_debug/report_debug';
 
 /** Text of the panel chrome: the open button, the dialog, and its close button. */
 export const DEBUG_PANEL_COPY = {
-  openButtonLabel: 'Inspect data sources for this answer',
-  openButtonTitle: 'Inspect data sources',
-  title: 'Provenance inspector',
-  closeButtonLabel: 'Close provenance inspector',
+  openButtonLabel: 'Inspect turn debug details',
+  openButtonTitle: 'Inspect turn debug details',
+  title: 'Turn debug',
+  closeButtonLabel: 'Close turn debug panel',
   closeButtonGlyph: '×',
+  copyJsonButtonLabel: 'Copy JSON',
+  copiedStatus: 'Copied',
+  copyFailedStatus: 'Copy failed',
+  tablistAriaLabel: 'Turn debug sections',
+  noneFallback: 'None',
+  notRecordedFallback: 'Not recorded',
+  unnamedSource: 'Unnamed source',
+} as const;
+
+/** User-facing labels for each tab in DebugTabs. */
+export const DEBUG_TAB_LABELS = {
+  overview: 'Overview',
+  provenance: 'Provenance',
+  trajectory: 'Trajectory',
+  response: 'Response',
+  timing: 'Timing',
 } as const;
 
 /** Headings of the panel's body sections. */
 export const DEBUG_SECTION_HEADINGS = {
+  userQuery: 'User query',
+  turnIdentifiers: 'Turn identifiers',
+  turnOutcome: 'Turn outcome',
+  summaryCounts: 'Summary counts',
+  conversationContext: 'Conversation context',
   provenances: 'Provenances used',
   variables: 'Variables',
   charts: 'Charts requested',
+  answerBlocks: 'Answer blocks',
+  citations: 'Citations',
+  followUps: 'Follow-up suggestions',
+  submissionTime: 'Submission time',
+  milestones: 'Milestones',
 } as const;
 
-/** Labels of the key/value pairs on a facet's detail lines. */
+/** Empty-state messages for debug tabs. */
+export const DEBUG_EMPTY_STATE_MESSAGES = {
+  provenance:
+    'No provenances, variables, places, or charts were recorded for this turn.',
+  trajectory: 'No thoughts or tool calls were recorded for this turn.',
+  answerBlocks: 'No answer blocks were recorded for this turn.',
+  citations: 'No citations were recorded for this turn.',
+  followUps: 'No follow-up suggestions were recorded for this turn.',
+  timing: 'No client timings were recorded for this turn.',
+} as const;
+
+/** Fallback provenance name for a facet without a title or label. */
+export const UNNAMED_SOURCE_LABEL = '(unnamed source)';
+
+/** Detail labels on a single facet. */
 export const DEBUG_FACET_DETAIL_LABELS = {
   coverage: 'coverage',
   observations: 'observations',
@@ -43,9 +85,6 @@ export const DEBUG_FACET_DETAIL_LABELS = {
   license: 'license',
   facet: 'facet',
 } as const;
-
-/** Name shown for a facet whose dataset name is unknown. */
-export const UNNAMED_SOURCE_LABEL = '(unnamed source)';
 
 /** Separator between a variable's DCID and its display name. */
 export const VARIABLE_NAME_SEPARATOR = ' — ';
@@ -77,3 +116,34 @@ export const formatRawResponseToggleLabel = (
   characterCount: number,
 ): string =>
   `${isOpen ? 'Hide' : 'Show'} raw response (${characterCount.toLocaleString()} chars)`;
+
+/** Formats an elapsed duration in milliseconds for display. */
+export const formatDurationMs = (durationMs: number): string =>
+  `${Math.round(durationMs).toLocaleString()} ms`;
+
+/** Formats thoughts section heading with count. */
+export const formatThoughtsHeading = (count: number): string =>
+  `Thoughts (${count})`;
+
+/** Formats answer block heading with index and type. */
+export const formatAnswerBlockHeading = (index: number, type: string): string =>
+  `Block ${index} (${type})`;
+
+/** Formats the advisory note message for an outcome in ResponseTab. */
+export const formatOutcomeResponseNote = (
+  outcome: TurnDebugOutcome,
+  hasBlocks: boolean,
+): string | null => {
+  switch (outcome.kind) {
+    case 'stopped':
+      return 'This turn was stopped per your request.';
+    case 'refused':
+      return `This turn was refused: ${outcome.message}`;
+    case 'error':
+      return `This turn terminated with an error: ${outcome.error}`;
+    case 'in_progress':
+      return `This turn is currently in progress (${outcome.phase}).`;
+    case 'done':
+      return hasBlocks ? null : 'This turn completed without answer blocks.';
+  }
+};

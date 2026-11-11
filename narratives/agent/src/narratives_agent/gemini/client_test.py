@@ -45,7 +45,11 @@ from narratives_agent.gemini.schemas import (
     FollowUpResponse,
     QueryClassification,
 )
-from narratives_agent.telemetry import TokenUsage
+from narratives_agent.telemetry import (
+    TokenCallRecord,
+    TokenCounts,
+    TokenUsage,
+)
 
 _MODEL = "gemini-3.8-flash"
 _MESSAGES = [{"role": "user", "parts": [{"text": "What is the population?"}]}]
@@ -1645,3 +1649,200 @@ async def test_an_async_stream_blocked_mid_stream_raises_blocked_error(
     assert received == [StreamChunk("thought", "Weighing sources.")]
     assert raised.value.block_reason == expected_reason
     assert usage == _EXPECTED_USAGE
+
+
+@pytest.mark.asyncio
+async def test_async_gemini_request_records_token_call_record(
+    gemini: _FakeGemini,
+) -> None:
+    # Test: Per-call token record on async_gemini_request.
+    # Situation: A request completes with usage metadata, passing token_phase
+    #   and token_round.
+    # Expectation: TokenUsage.calls carries a TokenCallRecord with the
+    #   specified phase, model, round, and TokenCounts.
+    gemini.respond(_answer(200, json=_response_json([{"text": "ok"}], _USAGE)))
+    usage = TokenUsage()
+
+    await client.async_gemini_request(
+        _MESSAGES,
+        "",
+        _MODEL,
+        token_usage=usage,
+        token_phase="classify",
+        token_round=1,
+    )
+
+    assert (
+        usage.prompt_token_count,
+        usage.candidates_token_count,
+        usage.thoughts_token_count,
+        usage.total_token_count,
+    ) == (11, 7, 5, 23)
+    assert usage.calls == [
+        TokenCallRecord(
+            phase="classify",
+            model=_MODEL,
+            round_number=1,
+            counts=TokenCounts(prompt=11, candidates=7, thoughts=5, total=23),
+        )
+    ]
+
+
+@pytest.mark.asyncio
+async def test_async_gemini_stream_records_token_call_record(
+    gemini: _FakeGemini,
+) -> None:
+    # Test: Per-call token record on completed async_gemini_stream.
+    # Situation: A stream completes with usage metadata on its final chunk,
+    #   passing token_phase="synthesis".
+    # Expectation: TokenUsage.calls carries a TokenCallRecord with the
+    #   specified phase, model, round_number=None, and TokenCounts.
+    gemini.respond(_answer(200, content=_STREAM_BODY))
+    usage = TokenUsage()
+
+    stream = await client.async_gemini_stream(
+        _MESSAGES,
+        "",
+        _MODEL,
+        token_usage=usage,
+        token_phase="synthesis",
+    )
+    _ = [item async for item in stream]
+
+    assert (
+        usage.prompt_token_count,
+        usage.candidates_token_count,
+        usage.thoughts_token_count,
+        usage.total_token_count,
+    ) == (11, 7, 5, 23)
+    assert usage.calls == [
+        TokenCallRecord(
+            phase="synthesis",
+            model=_MODEL,
+            round_number=None,
+            counts=TokenCounts(prompt=11, candidates=7, thoughts=5, total=23),
+        )
+    ]
+
+
+@pytest.mark.asyncio
+async def test_async_gemini_stream_early_close_records_token_call_record(
+    gemini: _FakeGemini,
+) -> None:
+    # Test: Per-call token record on stream closed early by consumer.
+    # Situation: A stream receives a first chunk carrying usage metadata, and
+    #   the consumer closes the stream after reading only that chunk.
+    # Expectation: The finally block in _async_iterate_stream records the
+    #   TokenCallRecord before closing the SDK stream.
+    first_chunk = _response_json([{"text": "Early chunk"}], _USAGE)
+    gemini.respond(_answer(200, content=_sse(first_chunk, first_chunk)))
+    usage = TokenUsage()
+
+    stream = await client.async_gemini_stream(
+        _MESSAGES,
+        "",
+        _MODEL,
+        token_usage=usage,
+        token_phase="synthesis",
+    )
+    async for _ in stream:
+        break
+    await stream.aclose()
+
+    assert (
+        usage.prompt_token_count,
+        usage.candidates_token_count,
+        usage.thoughts_token_count,
+        usage.total_token_count,
+    ) == (11, 7, 5, 23)
+    assert usage.calls == [
+        TokenCallRecord(
+            phase="synthesis",
+            model=_MODEL,
+            round_number=None,
+            counts=TokenCounts(prompt=11, candidates=7, thoughts=5, total=23),
+        )
+    ]
+
+
+@pytest.mark.asyncio
+async def test_stream_first_chunk_blocked_records_token_call_record(
+    gemini: _FakeGemini,
+) -> None:
+    # Test: Per-call token record on stream blocked on its first chunk.
+    # Situation: The first chunk carries a candidate safety block and usage
+    #   metadata.
+    # Expectation: GeminiBlockedError is raised and TokenUsage.calls carries
+    #   a TokenCallRecord with the specified phase and model.
+    blocked_chunk = {
+        "candidates": [
+            {
+                "content": {"parts": [], "role": "model"},
+                "finishReason": "SAFETY",
+            }
+        ],
+        "usageMetadata": _USAGE,
+    }
+    gemini.respond(_answer(200, content=_sse(blocked_chunk)))
+    usage = TokenUsage()
+
+    with pytest.raises(client.GeminiBlockedError):
+        await client.async_gemini_stream(
+            _MESSAGES,
+            "",
+            _MODEL,
+            token_usage=usage,
+            token_phase="synthesis",
+        )
+
+    assert (
+        usage.prompt_token_count,
+        usage.candidates_token_count,
+        usage.thoughts_token_count,
+        usage.total_token_count,
+    ) == (11, 7, 5, 23)
+    assert usage.calls == [
+        TokenCallRecord(
+            phase="synthesis",
+            model=_MODEL,
+            round_number=None,
+            counts=TokenCounts(prompt=11, candidates=7, thoughts=5, total=23),
+        )
+    ]
+
+
+@pytest.mark.asyncio
+async def test_async_gemini_thought_streaming_records_token_call_record(
+    gemini: _FakeGemini,
+) -> None:
+    # Test: Per-call token record on thought-streaming request.
+    # Situation: A thought-streaming request completes with usage metadata,
+    #   passing token_phase="discovery" and token_round=2.
+    # Expectation: TokenUsage.calls carries a TokenCallRecord with phase, model,
+    #   round, and TokenCounts.
+    gemini.respond(_answer(200, content=_STREAM_BODY))
+    usage = TokenUsage()
+
+    await client.async_gemini_request_with_thought_streaming(
+        _MESSAGES,
+        "",
+        _MODEL,
+        token_usage=usage,
+        token_phase="discovery",
+        token_round=2,
+    )
+
+    assert (
+        usage.prompt_token_count,
+        usage.candidates_token_count,
+        usage.thoughts_token_count,
+        usage.total_token_count,
+    ) == (11, 7, 5, 23)
+    assert usage.calls == [
+        TokenCallRecord(
+            phase="discovery",
+            model=_MODEL,
+            round_number=2,
+            counts=TokenCounts(prompt=11, candidates=7, thoughts=5, total=23),
+        )
+    ]

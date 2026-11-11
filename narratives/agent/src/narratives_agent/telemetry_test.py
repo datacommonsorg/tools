@@ -652,3 +652,84 @@ def test_configure_telemetry_installs_once(
         telemetry._turn_logger.setLevel(level_before)
         for provider in providers:
             provider.shutdown()
+
+
+def test_token_usage_add_records_call_records_and_accumulates_totals() -> None:
+    # Test: Token usage accumulation and per-call attribution.
+    # Situation: Multiple Gemini calls report usage metadata: some with phase,
+    #   model, and round, some without phase or model, and one with None counts.
+    # Expectation: Totals accumulate all non-None counts, only calls with
+    #   non-empty phase and model append TokenCallRecord instances to calls,
+    #   and None counts are ignored without appending to calls.
+    usage = telemetry.TokenUsage()
+    counts1 = telemetry.TokenCounts(
+        prompt=10, candidates=5, thoughts=2, total=17
+    )
+    counts2 = telemetry.TokenCounts(prompt=3, candidates=4, thoughts=0, total=7)
+    counts3 = telemetry.TokenCounts(prompt=2, candidates=1, thoughts=1, total=4)
+
+    usage.add(
+        counts1,
+        phase="discovery",
+        model="gemini-3.8-flash",
+        round_number=1,
+    )
+    usage.add(counts2)
+    usage.add(None, phase="discovery", model="gemini-3.8-flash", round_number=2)
+    usage.add(
+        counts3,
+        phase="synthesis",
+        model="gemini-3.8-flash",
+    )
+
+    assert usage.prompt_token_count == 15
+    assert usage.candidates_token_count == 10
+    assert usage.thoughts_token_count == 3
+    assert usage.total_token_count == 28
+    assert usage.calls == [
+        telemetry.TokenCallRecord(
+            phase="discovery",
+            model="gemini-3.8-flash",
+            round_number=1,
+            counts=counts1,
+        ),
+        telemetry.TokenCallRecord(
+            phase="synthesis",
+            model="gemini-3.8-flash",
+            round_number=None,
+            counts=counts3,
+        ),
+    ]
+
+
+def test_turn_telemetry_finish_stdout_is_unchanged_with_call_records(
+    turn_records: list[str],
+) -> None:
+    # Test: Turn summary serialization ignores per-call records.
+    # Situation: A turn records attributed calls into its tokens and finishes.
+    # Expectation: The chat_turn log line on stdout contains the standard
+    #   tokens dictionary with prompt, candidates, thoughts, and total, and
+    #   does not include the per-call records list.
+    turn = telemetry.TurnTelemetry()
+    counts = telemetry.TokenCounts(
+        prompt=10, candidates=5, thoughts=2, total=17
+    )
+    turn.tokens.add(
+        counts,
+        phase="discovery",
+        model="gemini-3.8-flash",
+        round_number=1,
+    )
+
+    turn.finish(telemetry.TerminalState.COMPLETE)
+
+    (message,) = turn_records
+    record = json.loads(message)
+    assert record["tokens"] == {
+        "prompt_token_count": 10,
+        "candidates_token_count": 5,
+        "thoughts_token_count": 2,
+        "total_token_count": 17,
+    }
+    assert "calls" not in record["tokens"]
+    assert "calls" not in record

@@ -26,12 +26,14 @@ import {
   render,
   screen,
 } from '@testing-library/react';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   ANSWER_SETTLE_MAX_MS,
   AnswerPanel,
 } from '@/src/components/panel_answer';
+import { DEBUG_PANEL_COPY } from '@/src/components/panel_debug/copy_debug';
 import { EXIT_MS, VISIBLE_MS } from '@/src/components/toast';
+
 import type { ChartItem, ChatTurn } from '@/src/hooks/use_sse_chat';
 import { calculateStreamDurationMs } from '@/src/utils/rehype_stream_words';
 
@@ -111,10 +113,17 @@ const getBody = (container: HTMLElement): HTMLElement => {
   return body;
 };
 
+let originalUrl = '';
+
+beforeEach(() => {
+  originalUrl = window.location.href;
+});
+
 afterEach(() => {
   cleanup();
   vi.useRealTimers();
   vi.unstubAllGlobals();
+  window.history.replaceState(null, '', originalUrl);
 });
 
 describe('AnswerPanel', () => {
@@ -551,5 +560,62 @@ describe('AnswerPanel', () => {
       'text:Incomes rose too.',
       'chart:Median household income, France',
     ]);
+  });
+
+  it('renders DebugPanel on a settled error turn with answer text under ?debug', () => {
+    // Test: Debug panel rendering on settled error turn with partial answer.
+    // Situation: ?debug=1 is enabled and an error turn has partial text and mounts revealed.
+    // Expectation: DebugPanel renders in CardHeader while Export PDF is omitted.
+    window.history.replaceState(null, '', '/?debug=1');
+    const turn = buildTurnWithBlocks(
+      [{ index: 0, type: 'text', markdown: 'Partial answer before error.' }],
+      { status: 'error', error: 'Stream disconnected' },
+    );
+    render(<AnswerPanel turn={turn} isStreaming={false} />);
+
+    expect(
+      screen.getByLabelText(DEBUG_PANEL_COPY.openButtonLabel),
+    ).toBeDefined();
+    expect(screen.queryByRole('button', { name: 'Export PDF' })).toBeNull();
+  });
+
+  it('omits DebugPanel when ?debug is not enabled', () => {
+    // Test: Debug panel gating on ?debug query flag.
+    // Situation: Page URL has no ?debug parameter.
+    // Expectation: DebugPanel trigger button is not rendered.
+    window.history.replaceState(null, '', '/');
+    const turn = buildTurnWithBlocks([
+      { index: 0, type: 'text', markdown: 'France has about 68 million.' },
+    ]);
+    render(<AnswerPanel turn={turn} isStreaming={false} />);
+
+    expect(
+      screen.queryByLabelText(DEBUG_PANEL_COPY.openButtonLabel),
+    ).toBeNull();
+  });
+
+  it('omits DebugPanel while answer text is still revealing and renders it once revealed', () => {
+    // Test: Debug panel visibility during progressive reveal.
+    // Situation: An active stream (isStreaming={true}) under ?debug=1.
+    // Expectation: DebugPanel is omitted before the reveal timer settles, and appears once revealed.
+    vi.useFakeTimers();
+    window.history.replaceState(null, '', '/?debug=1');
+    const turn = buildTurnWithBlocks(
+      [{ index: 0, type: 'text', markdown: 'Progressive reveal in motion.' }],
+      { status: 'done' },
+    );
+    render(<AnswerPanel turn={turn} isStreaming />);
+
+    expect(
+      screen.queryByLabelText(DEBUG_PANEL_COPY.openButtonLabel),
+    ).toBeNull();
+
+    act(() => {
+      vi.advanceTimersByTime(calculateStreamDurationMs(turn.text) + 10);
+    });
+
+    expect(
+      screen.getByLabelText(DEBUG_PANEL_COPY.openButtonLabel),
+    ).toBeDefined();
   });
 });

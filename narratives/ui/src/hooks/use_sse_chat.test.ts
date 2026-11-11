@@ -214,6 +214,37 @@ describe('transcriptRequestFields', () => {
       compacted_summary: null,
     });
   });
+
+  it('omits clientTimings and terminalReason from WireTurn while preserving them in applySignedWindow', () => {
+    // Test: Client-only diagnostics stay off the wire and survive window signing.
+    // Situation: An in-flight turn carrying `clientTimings` and `terminalReason`
+    //   is signed by `applySignedWindow` and serialized by `transcriptRequestFields`.
+    // Expectation: The signed `ChatTurn` keeps `clientTimings` and `terminalReason`,
+    //   and the `WireTurn` payload omits both properties.
+    const timed = {
+      ...blankTurn(),
+      status: 'done' as const,
+      text: 'About 68 million.',
+      idempotencyKey: 'key-0',
+      terminalReason: 'ok',
+      clientTimings: { submittedAt: '2026-04-11T15:30:00.000Z', totalMs: 240 },
+    };
+    const [signed] = applySignedWindow([timed], 'key-0', {
+      state: 'complete',
+      idempotency_key: 'key-0',
+      turn_index: 0,
+      hmac: sig('0'),
+      state_slots: SLOTS,
+      compacted_summary: null,
+      window: [{ turn_index: 0, idempotency_key: 'key-0', hmac: sig('0') }],
+    });
+
+    expect(signed.terminalReason).toBe('ok');
+    expect(signed.clientTimings).toEqual(timed.clientTimings);
+    const [wireTurn] = transcriptRequestFields([signed]).turns;
+    expect(wireTurn).not.toHaveProperty('clientTimings');
+    expect(wireTurn).not.toHaveProperty('terminalReason');
+  });
 });
 
 describe('applySignedWindow', () => {
@@ -864,6 +895,35 @@ describe('applyEvent', () => {
     });
     expect(turn.status).toBe('classify');
   });
+
+  it('preserves non-empty terminal.reason across terminal states and omits empty reasons', () => {
+    // Test: `terminalReason` preservation in `applyTerminal`.
+    // Situation: `terminal` frames arrive across `complete`, `refused`, `error`,
+    //   and `canceled` with non-empty, empty, or omitted `reason` strings.
+    // Expectation: Non-empty `reason` values are stored on `turn.terminalReason`,
+    //   while omitted or empty `""` reasons leave `terminalReason` undefined.
+    const states = [
+      ['complete', 'ok'],
+      ['refused', 'off_domain'],
+      ['error', 'mcp_timeout'],
+      ['canceled', 'client_disconnect'],
+    ] as const;
+    for (const [state, reason] of states) {
+      const turn = applyEvent(blankTurn(), {
+        event: 'terminal',
+        data: { state, reason, ...TERMINAL_FIELDS },
+      });
+      expect(turn.terminalReason).toBe(reason);
+    }
+
+    for (const reason of [undefined, '']) {
+      const turn = applyEvent(blankTurn(), {
+        event: 'terminal',
+        data: { state: 'complete', reason, ...TERMINAL_FIELDS },
+      });
+      expect(turn.terminalReason).toBeUndefined();
+    }
+  });
 });
 
 describe('useSseChat', () => {
@@ -1461,6 +1521,150 @@ describe('useSseChat', () => {
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(fetchMock.mock.calls[0][0]).toBe('/labs/discover/agent/chat/stream');
+  });
+
+  it('records clientTimings milestones and terminalReason across a complete streamed turn', async () => {
+    // Test: End-to-end hook wiring for `clientTimings` and `terminalReason`.
+    // Situation: `send()` streams `thought`, `content`, `terminal` (with
+    //   `reason: "ok"`), and `follow_ups` while `performance.now()` advances at
+    //   response headers, each frame read, and stream close.
+    // Expectation: `turn.clientTimings` captures `submittedAt` and every
+    //   monotonic milestone in order, and `turn.terminalReason` stores `"ok"`.
+    let nowPerfMs = 1000;
+    vi.spyOn(performance, 'now').mockImplementation(() => nowPerfMs);
+    const timedChunks: [number, string][] = [
+      [1050, frame('thought', { thought: 'Searching', phase: 'discovery' }, 1)],
+      [1095, frame('content', buildTextBlock('About 68 million.'), 2)],
+      [
+        1140,
+        frame(
+          'terminal',
+          { state: 'complete', reason: 'ok', ...TERMINAL_FIELDS },
+          3,
+        ),
+      ],
+      [1175, frame('follow_ups', { follow_up_questions: ['And Spain?'] }, 4)],
+    ];
+    let nextChunk = 0;
+    const encoder = new TextEncoder();
+    const timedBody = new ReadableStream<Uint8Array>(
+      {
+        pull(controller) {
+          if (nextChunk < timedChunks.length) {
+            const [perfMs, chunk] = timedChunks[nextChunk++];
+            nowPerfMs = perfMs;
+            controller.enqueue(encoder.encode(chunk));
+          } else {
+            nowPerfMs = 1185;
+            controller.close();
+          }
+        },
+      },
+      { highWaterMark: 0 },
+    );
+    const { result, fetchMock } = renderChat([]);
+    fetchMock.mockImplementationOnce(async () => {
+      nowPerfMs = 1025;
+      return { ok: true, status: 200, statusText: 'OK', body: timedBody };
+    });
+
+    await act(() =>
+      result.current.chat.send('What is the population of France?'),
+    );
+
+    const [turn] = result.current.turns;
+    expect(turn.terminalReason).toBe('ok');
+    expect(turn.clientTimings?.submittedAt).toMatch(/^\d{4}-\d{2}-\d{2}T/);
+    expect(turn.clientTimings).toEqual({
+      submittedAt: turn.clientTimings?.submittedAt,
+      headersReceivedMs: 25,
+      firstThoughtMs: 50,
+      firstBlockMs: 95,
+      terminalMs: 140,
+      followUpsMs: 175,
+      totalMs: 185,
+    });
+  });
+
+  it('records totalMs across pre-header fetch rejection and HTTP error exits', async () => {
+    // Test: `totalMs` recording on non-streaming failure exits in `send()`.
+    // Situation: One request rejects before headers arrive, and a second fails
+    //   with HTTP 400 `transcript_invalid` after headers arrive.
+    // Expectation: The pre-header failure sets `totalMs` while leaving
+    //   `headersReceivedMs` undefined; the HTTP 400 rejection sets both
+    //   `headersReceivedMs` and `totalMs`.
+    let nowPerfMs = 2000;
+    vi.spyOn(performance, 'now').mockImplementation(() => nowPerfMs);
+    const { result, fetchMock } = renderChat([], [signedTurn(0)]);
+    fetchMock
+      .mockImplementationOnce(async () => {
+        nowPerfMs = 2030;
+        throw new TypeError('Failed to fetch');
+      })
+      .mockImplementationOnce(async () => {
+        nowPerfMs = 3015;
+        return {
+          ok: false,
+          status: 400,
+          statusText: 'Bad Request',
+          body: null,
+          json: async () => {
+            nowPerfMs = 3040;
+            return { detail: { reason: 'transcript_invalid' } };
+          },
+        };
+      });
+
+    await act(() => result.current.chat.send('First attempt'));
+    nowPerfMs = 3000;
+    await act(() => result.current.chat.send('Second attempt'));
+
+    expect(result.current.turns[1].clientTimings).toEqual({
+      submittedAt: result.current.turns[1].clientTimings?.submittedAt,
+      totalMs: 30,
+    });
+    expect(result.current.turns[2].clientTimings).toEqual({
+      submittedAt: result.current.turns[2].clientTimings?.submittedAt,
+      headersReceivedMs: 15,
+      totalMs: 40,
+    });
+  });
+
+  it('records totalMs when Stop aborts an in-flight turn and preserves it on late close', async () => {
+    // Test: `totalMs` capture on `stop()` without `finally` overwrite.
+    // Situation: `send()` receives headers at +20ms, the user calls `stop()` at
+    //   +65ms, and the underlying response stream closes later at +200ms.
+    // Expectation: `totalMs` is recorded as `65` on `stop()` and stays `65`.
+    let nowPerfMs = 5000;
+    vi.spyOn(performance, 'now').mockImplementation(() => nowPerfMs);
+    const stream = controlledStream();
+    const { result, fetchMock } = renderChat([]);
+    fetchMock.mockImplementationOnce(async () => {
+      nowPerfMs = 5020;
+      return { ok: true, status: 200, statusText: 'OK', body: stream.body };
+    });
+
+    let sent!: Promise<void>;
+    await act(async () => {
+      sent = result.current.chat.send('What is the population of France?');
+    });
+
+    nowPerfMs = 5065;
+    act(() => {
+      result.current.chat.stop();
+    });
+    expect(result.current.turns[0].clientTimings).toEqual({
+      submittedAt: result.current.turns[0].clientTimings?.submittedAt,
+      headersReceivedMs: 20,
+      totalMs: 65,
+    });
+
+    nowPerfMs = 5200;
+    await act(async () => {
+      stream.end();
+      await sent;
+    });
+    expect(result.current.turns[0].clientTimings?.totalMs).toBe(65);
   });
 });
 

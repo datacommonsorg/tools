@@ -22,6 +22,7 @@ submitted specifications through `workflows/processing.py`, and returns a
 import asyncio
 import json
 import logging
+import time
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import Literal
@@ -49,7 +50,11 @@ from narratives_agent.mcp.capabilities import (
     from_tools,
 )
 from narratives_agent.mcp.schema import transform_schema_for_gemini
-from narratives_agent.telemetry import ErrorType, TurnTelemetry
+from narratives_agent.telemetry import (
+    ErrorType,
+    TurnTelemetry,
+    compute_elapsed_ms,
+)
 from narratives_agent.workflows.fetch import (
     build_fetch_declarations,
     run_fetch,
@@ -433,7 +438,13 @@ def _build_server_report(
 
 
 def _build_tool_record(
-    name: str, arguments: JsonObject, result_text: str, failed: bool
+    name: str,
+    arguments: JsonObject,
+    result_text: str,
+    failed: bool,
+    *,
+    round_number: int,
+    duration_ms: float,
 ) -> JsonObject:
     """Builds the tool-call record streamed to the UI.
 
@@ -443,15 +454,20 @@ def _build_tool_record(
             the server).
         result_text: The serialized result or error string.
         failed: Whether the call failed (`"error"` vs. `"success"`).
+        round_number: 1-based discovery round number.
+        duration_ms: Monotonic execution duration in milliseconds.
 
     Returns:
-        A JSON object with `name`, `arguments`, `result`, and `status`.
+        A JSON object with `name`, `arguments`, `result`, `status`, `round`, and
+        `duration_ms`.
     """
     return {
         "name": name,
         "arguments": arguments,
         "result": result_text,
         "status": "error" if failed else "success",
+        "round": round_number,
+        "duration_ms": duration_ms,
     }
 
 
@@ -504,6 +520,8 @@ async def _run_tool(
     fetch_lock: asyncio.Lock,
     telemetry: TurnTelemetry,
     cache: TurnCache,
+    *,
+    round_number: int,
 ) -> JsonObject:
     """Runs one model function call: an MCP tool or a fetch function.
 
@@ -521,19 +539,22 @@ async def _run_tool(
         telemetry: The turn's telemetry, which receives the tool name.
         cache: The turn's cache, which receives fetched tables and
             metadata payloads.
+        round_number: 1-based discovery round number.
 
     Returns:
         The tool-call record streamed to the UI: `name`, `arguments`, the
-        full `result` text, and `status`.
+        full `result` text, `status`, `round`, and `duration_ms`.
 
     Raises:
         McpLoopError: If the MCP request fails below the tool layer.
     """
+    start = time.monotonic()
     name = function_call.name
     arguments: JsonObject = function_call.args
     if name not in declared:
         logger.info("Refusing a call to the undeclared tool %r", name)
         telemetry.record_tool_call(_UNDECLARED_TOOL)
+        duration_ms = compute_elapsed_ms(start)
         return _build_tool_record(
             name,
             arguments,
@@ -546,6 +567,8 @@ async def _run_tool(
                 }
             ),
             True,
+            round_number=round_number,
+            duration_ms=duration_ms,
         )
     logger.info("Executing discovery tool: %s", name)
     try:
@@ -554,11 +577,13 @@ async def _run_tool(
             # The lock is taken before the semaphore, so a fetch waiting for
             # another fetch does not hold a slot a search could use.
             async with fetch_lock, limit:
+                start = time.monotonic()
                 outcome = await run_fetch(request, cache)
             result_text = json.dumps(serialize_fetch_result(outcome))
             failed = False
         else:
             async with limit:
+                start = time.monotonic()
                 result = await mcp_client.async_call_tool(name, arguments)
             result_text = _format_result_text(result)
             failed = False
@@ -575,7 +600,15 @@ async def _run_tool(
             ErrorType.MCP_TRANSPORT_ERROR, MCP_UNAVAILABLE, is_retryable=True
         ) from error
     telemetry.record_tool_call(name)
-    return _build_tool_record(name, arguments, result_text, failed)
+    duration_ms = compute_elapsed_ms(start)
+    return _build_tool_record(
+        name,
+        arguments,
+        result_text,
+        failed,
+        round_number=round_number,
+        duration_ms=duration_ms,
+    )
 
 
 async def _run_tools(
@@ -584,6 +617,8 @@ async def _run_tools(
     limit: asyncio.Semaphore,
     telemetry: TurnTelemetry,
     cache: TurnCache,
+    *,
+    round_number: int,
 ) -> list[JsonObject]:
     """Runs the calls of one model turn in a task group.
 
@@ -603,6 +638,7 @@ async def _run_tools(
         limit: Semaphore bounding concurrent tool calls.
         telemetry: The turn's telemetry collector.
         cache: The turn's table and metadata cache.
+        round_number: 1-based discovery round number.
 
     Returns:
         The tool-call records, in the order of `function_calls`.
@@ -619,7 +655,13 @@ async def _run_tools(
             tasks = [
                 group.create_task(
                     _run_tool(
-                        call, declared, limit, fetch_lock, telemetry, cache
+                        call,
+                        declared,
+                        limit,
+                        fetch_lock,
+                        telemetry,
+                        cache,
+                        round_number=round_number,
                     )
                 )
                 for call in function_calls
@@ -825,6 +867,8 @@ class _Loop:
                 report.model_dump(mode="json"),
                 json.dumps({"status": "recorded", "filed_by": "server"}),
                 False,
+                round_number=rounds,
+                duration_ms=0.0,
             )
         )
 
@@ -833,6 +877,8 @@ class _Loop:
         function_calls: Sequence[FunctionCall],
         declared: frozenset[str],
         limit: asyncio.Semaphore,
+        *,
+        round_number: int,
     ) -> tuple[list[JsonObject], bool]:
         """Executes the non-terminal and terminal calls of one model turn.
 
@@ -845,6 +891,7 @@ class _Loop:
             function_calls: All function calls returned by the model turn.
             declared: Names of the tools and functions declared to the model.
             limit: Semaphore bounding concurrent non-terminal calls.
+            round_number: 1-based discovery round number.
 
         Returns:
             `(records, finished)`, where `records` are the tool-call records
@@ -862,12 +909,18 @@ class _Loop:
             if call.name not in _TERMINAL_FUNCTION_NAMES
         ]
         records = await _run_tools(
-            others, declared, limit, self.telemetry, self.cache
+            others,
+            declared,
+            limit,
+            self.telemetry,
+            self.cache,
+            round_number=round_number,
         )
         self.result.tool_calls.extend(records)
         finished = False
         # Handle only the first terminal call if the model submits more than 1.
         for index, call in enumerate(terminal):
+            start = time.monotonic()
             name = call.name
             arguments: JsonObject = call.args
             self.telemetry.record_tool_call(name)
@@ -880,7 +933,15 @@ class _Loop:
             else:
                 text, finished = self.report_unavailable(arguments)
                 failed = self.result.unavailable is None
-            record = _build_tool_record(name, arguments, text, failed)
+            duration_ms = compute_elapsed_ms(start)
+            record = _build_tool_record(
+                name,
+                arguments,
+                text,
+                failed,
+                round_number=round_number,
+                duration_ms=duration_ms,
+            )
             self.result.tool_calls.append(record)
             records.append(record)
         return records, finished
@@ -893,6 +954,8 @@ async def _request_discovery_turn(
     gemini_tools: Sequence[types.FunctionDeclaration],
     telemetry: TurnTelemetry,
     thought_callback: Callable[[str], None] | None,
+    *,
+    round_number: int,
 ) -> GeminiResponse:
     """Requests one discovery turn from Gemini and checks for content.
 
@@ -903,6 +966,7 @@ async def _request_discovery_turn(
         gemini_tools: Tool and server-function declarations for the loop.
         telemetry: The turn's telemetry collector.
         thought_callback: Optional callback invoked with streamed thoughts.
+        round_number: 1-based discovery round number.
 
     Returns:
         The model's `GeminiResponse`, guaranteed to carry either function
@@ -923,6 +987,8 @@ async def _request_discovery_turn(
             thinking_level=role.thinking_level,
             token_usage=telemetry.tokens,
             thought_callback=thought_callback,
+            token_phase=GeminiRole.DISCOVERY.value,
+            token_round=round_number,
         )
     except GeminiBlockedError:
         raise
@@ -1030,6 +1096,7 @@ async def _iterate(
             gemini_tools,
             loop.telemetry,
             thought_callback,
+            round_number=iteration + 1,
         )
         if not response.function_calls:
             # Remind the model to finish through a tool call up to the cap.
@@ -1052,7 +1119,10 @@ async def _iterate(
 
         contents.append(response)
         records, finished = await loop.execute_turn_calls(
-            response.function_calls, declared, limit
+            response.function_calls,
+            declared,
+            limit,
+            round_number=iteration + 1,
         )
         contents.append(
             {
