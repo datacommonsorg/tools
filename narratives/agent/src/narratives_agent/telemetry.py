@@ -473,6 +473,7 @@ class TurnTelemetry:
     processing_retries: int = 0
     charts_emitted: int = 0
     charts_rejected: int = 0
+    _duration_ms: float | None = field(default=None, init=False, repr=False)
     _start: float = field(default_factory=time.monotonic)
     _span: trace.Span = field(
         default_factory=lambda: _tracer.start_span("narratives.turn")
@@ -515,6 +516,17 @@ class TurnTelemetry:
         """
         self.tool_calls[name] += 1
 
+    def elapsed_ms(self) -> float:
+        """Returns elapsed turn milliseconds, matching duration_ms after finish.
+
+        Returns:
+            The finished turn duration if finish() has recorded it, or the
+            elapsed time since turn start otherwise.
+        """
+        if self._duration_ms is not None:
+            return self._duration_ms
+        return compute_elapsed_ms(self._start)
+
     def finish(
         self, state: TerminalState, error_type: str | None = None
     ) -> None:
@@ -534,6 +546,7 @@ class TurnTelemetry:
             return
         self._finished = True
         duration_ms = compute_elapsed_ms(self._start)
+        self._duration_ms = duration_ms
         tool_call_count = sum(self.tool_calls.values())
         tokens: dict[str, int] = {
             "prompt_token_count": self.tokens.prompt_token_count,
