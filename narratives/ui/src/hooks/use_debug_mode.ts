@@ -95,8 +95,8 @@ export const useDebugMode = (enabled = true): boolean => {
   const isUrlEnabled =
     typeof window !== 'undefined' && isDebugUrlEnabled(window.location.search);
 
-  const [serverDebugOn, setServerDebugOn] = useState<boolean>(() =>
-    isUrlEnabled ? true : (cachedServerDebugOn ?? false),
+  const [serverDebugOn, setServerDebugOn] = useState<boolean>(
+    () => cachedServerDebugOn ?? false,
   );
 
   useEffect(() => {

@@ -73,6 +73,32 @@ describe('useDebugMode', () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
+  it('falls back to the server mode when ?debug is removed after mount', async () => {
+    // Test: URL debug does not leak into the server debug state.
+    // Situation: The hook mounts with ?debug, the URL then loses ?debug, and
+    //   /agent/health returns { debug_report: 'off' }.
+    // Expectation: The hook returns true with ?debug, then false once the
+    //   server mode is fetched.
+    window.history.replaceState(null, '', '/?debug');
+    const fetchMock = vi.fn(async () => ({
+      ok: true,
+      status: 200,
+      json: async () => ({ status: 'ok', debug_report: 'off' }),
+    }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const { result, rerender } = renderHook(() => useDebugMode(true));
+    expect(result.current).toBe(true);
+
+    window.history.replaceState(null, '', '/');
+    rerender();
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    });
+    expect(result.current).toBe(false);
+  });
+
   it('does not fetch /agent/health while enabled is false', () => {
     // Test: Gating on the enabled parameter.
     // Situation: URL debug is absent and enabled is passed as false.
