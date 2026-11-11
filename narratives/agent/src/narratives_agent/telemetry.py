@@ -348,13 +348,14 @@ class TokenCallRecord:
     Attributes:
         phase: Pipeline phase or Gemini role name (for example, "discovery").
         model: The model name that answered the call.
-        round: 1-based discovery round number, or None for non-round calls.
+        round_number: 1-based discovery round number, or None for non-round
+            calls.
         counts: The token counts reported for the call.
     """
 
     phase: str
     model: str
-    round: int | None
+    round_number: int | None
     counts: TokenCounts
 
 
@@ -382,7 +383,7 @@ class TokenUsage:
         *,
         phase: str = "",
         model: str = "",
-        round: int | None = None,
+        round_number: int | None = None,
     ) -> None:
         """Adds one call's token counts to the totals; `None` adds nothing.
 
@@ -394,7 +395,7 @@ class TokenUsage:
                 call reported no usage metadata.
             phase: Optional phase or role name attributing the call.
             model: Optional model name answering the call.
-            round: Optional 1-based discovery round number.
+            round_number: Optional 1-based discovery round number.
         """
         if counts is None:
             return
@@ -407,7 +408,7 @@ class TokenUsage:
                 TokenCallRecord(
                     phase=phase,
                     model=model,
-                    round=round,
+                    round_number=round_number,
                     counts=counts,
                 )
             )

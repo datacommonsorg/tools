@@ -1682,7 +1682,7 @@ async def test_async_gemini_request_records_token_call_record(
         TokenCallRecord(
             phase="classify",
             model=_MODEL,
-            round=1,
+            round_number=1,
             counts=TokenCounts(prompt=11, candidates=7, thoughts=5, total=23),
         )
     ]
@@ -1696,7 +1696,7 @@ async def test_async_gemini_stream_records_token_call_record(
     # Situation: A stream completes with usage metadata on its final chunk,
     #   passing token_phase="synthesis".
     # Expectation: TokenUsage.calls carries a TokenCallRecord with the
-    #   specified phase, model, round=None, and TokenCounts.
+    #   specified phase, model, round_number=None, and TokenCounts.
     gemini.respond(_answer(200, content=_STREAM_BODY))
     usage = TokenUsage()
 
@@ -1719,7 +1719,7 @@ async def test_async_gemini_stream_records_token_call_record(
         TokenCallRecord(
             phase="synthesis",
             model=_MODEL,
-            round=None,
+            round_number=None,
             counts=TokenCounts(prompt=11, candidates=7, thoughts=5, total=23),
         )
     ]
@@ -1759,7 +1759,7 @@ async def test_async_gemini_stream_early_close_records_token_call_record(
         TokenCallRecord(
             phase="synthesis",
             model=_MODEL,
-            round=None,
+            round_number=None,
             counts=TokenCounts(prompt=11, candidates=7, thoughts=5, total=23),
         )
     ]
@@ -1805,7 +1805,7 @@ async def test_stream_first_chunk_blocked_records_token_call_record(
         TokenCallRecord(
             phase="synthesis",
             model=_MODEL,
-            round=None,
+            round_number=None,
             counts=TokenCounts(prompt=11, candidates=7, thoughts=5, total=23),
         )
     ]
@@ -1842,7 +1842,7 @@ async def test_async_gemini_thought_streaming_records_token_call_record(
         TokenCallRecord(
             phase="discovery",
             model=_MODEL,
-            round=2,
+            round_number=2,
             counts=TokenCounts(prompt=11, candidates=7, thoughts=5, total=23),
         )
     ]

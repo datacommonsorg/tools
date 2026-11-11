@@ -672,10 +672,10 @@ def test_token_usage_add_records_call_records_and_accumulates_totals() -> None:
         counts1,
         phase="discovery",
         model="gemini-3.8-flash",
-        round=1,
+        round_number=1,
     )
     usage.add(counts2)
-    usage.add(None, phase="discovery", model="gemini-3.8-flash", round=2)
+    usage.add(None, phase="discovery", model="gemini-3.8-flash", round_number=2)
     usage.add(
         counts3,
         phase="synthesis",
@@ -690,13 +690,13 @@ def test_token_usage_add_records_call_records_and_accumulates_totals() -> None:
         telemetry.TokenCallRecord(
             phase="discovery",
             model="gemini-3.8-flash",
-            round=1,
+            round_number=1,
             counts=counts1,
         ),
         telemetry.TokenCallRecord(
             phase="synthesis",
             model="gemini-3.8-flash",
-            round=None,
+            round_number=None,
             counts=counts3,
         ),
     ]
@@ -718,7 +718,7 @@ def test_turn_telemetry_finish_stdout_is_unchanged_with_call_records(
         counts,
         phase="discovery",
         model="gemini-3.8-flash",
-        round=1,
+        round_number=1,
     )
 
     turn.finish(telemetry.TerminalState.COMPLETE)

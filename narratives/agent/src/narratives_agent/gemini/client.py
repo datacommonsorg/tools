@@ -669,11 +669,13 @@ def _record_usage(
     *,
     phase: str = "",
     model: str = "",
-    round: int | None = None,
+    round_number: int | None = None,
 ) -> None:
     """Adds one call's token counts to the turn's totals, if tracked."""
     if token_usage is not None:
-        token_usage.add(counts, phase=phase, model=model, round=round)
+        token_usage.add(
+            counts, phase=phase, model=model, round_number=round_number
+        )
 
 
 @dataclass
@@ -822,7 +824,7 @@ async def _async_iterate_stream(
             stream.usage,
             phase=token_phase,
             model=model,
-            round=token_round,
+            round_number=token_round,
         )
         await _close_chunks(chunks)
 
@@ -890,7 +892,7 @@ async def async_gemini_request(
         _token_counts(response.usage_metadata),
         phase=token_phase,
         model=model,
-        round=token_round,
+        round_number=token_round,
     )
     block_reason = _block_reason(response) or _candidate_block_reason(response)
     if block_reason is not None:
@@ -984,7 +986,7 @@ async def async_gemini_stream(
                 _token_counts(first.usage_metadata),
                 phase=token_phase,
                 model=model,
-                round=token_round,
+                round_number=token_round,
             )
             await _close_chunks(chunks)
             raise _report_blocked(block_reason, model)
@@ -1080,7 +1082,7 @@ async def async_gemini_request_with_thought_streaming(
             collector.usage,
             phase=token_phase,
             model=model,
-            round=token_round,
+            round_number=token_round,
         )
         await _close_chunks(chunks)
     if collector.block_reason is not None:
