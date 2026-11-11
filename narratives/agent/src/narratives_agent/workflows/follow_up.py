@@ -126,6 +126,7 @@ Generate the self-contained follow-up questions now."""
             thinking_level=role.thinking_level,
             response_schema=FOLLOW_UP_SCHEMA,
             token_usage=token_usage,
+            token_phase=GeminiRole.FOLLOW_UP.value,
         )
         questions: list[Any] = []
         if response.text.strip():
