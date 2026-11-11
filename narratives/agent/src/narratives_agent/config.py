@@ -21,7 +21,8 @@
 `CONFIG_URL` once at startup, from `agent_root/config.json` in local
 development (reloaded when the file's modification time changes), or from the
 `defaults/` directory shipped with the image. `get_chat_config` applies the
-chat availability environment overrides to the loaded `chat` section.
+chat availability environment overrides to the loaded `chat` section, and
+`get_debug_report_mode` applies `DEBUG_REPORT` to the loaded `debug` section.
 
 On every path the default prompt bodies in `defaults/prompts/` are read first,
 and the configured prompts (`prompts/<slot>.md` beside `CONFIG_URL`, then
@@ -52,11 +53,13 @@ from narratives_agent.config_model import (
     PROMPT_SLOTS,
     AgentConfig,
     ChatConfig,
+    DebugConfig,
     parse_agent_config,
 )
 from narratives_agent.secret_manager import fetch_secret_with_ttl
 from narratives_agent.settings import (
     GEMINI_API_KEY_SECRET_ENV,
+    DebugReportMode,
     get_settings,
 )
 
@@ -484,6 +487,22 @@ def get_chat_config() -> ChatConfig:
     # `Settings` strips values and treats a blank variable as unset (`""`).
     message = settings.unavailable_message or base.unavailable_message
     return ChatConfig(enabled=enabled, unavailable_message=message)
+
+
+def get_debug_report_mode() -> DebugReportMode:
+    """Returns the effective turn debug report mode.
+
+    `DEBUG_REPORT` overrides `debug.report` in either direction when set;
+    when no configuration is loaded, the override applies to `DebugConfig()`,
+    whose mode is `"off"`. Every reader of the mode resolves it here, so
+    `/agent/health` and the agent loop apply the same policy.
+    """
+    settings = get_settings()
+    config = load_config()
+    base = config.debug if config is not None else DebugConfig()
+    if settings.debug_report is None:
+        return base.report
+    return settings.debug_report
 
 
 def get_current_datetime() -> str:

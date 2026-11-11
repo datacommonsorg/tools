@@ -28,12 +28,15 @@ Covers the per-field rules the parser applies to a configuration document:
 7. The `chat` section fails closed: a section that is not an object, or a
    `chat.enabled` that is not a boolean, disables chat with one error, and
    an unusable `chat.unavailable_message` gives the default with a warning.
+8. The `debug` section fails closed: a section that is not an object, or a
+   `debug.report` that is not `off`, `on`, or `flag` after stripping and
+   lowercasing, turns the debug report off with one error.
 
 And the resolution of each `GeminiRole` to its model, temperature, and
 thinking level, with and without configured values, including the clamp that
 raises a level the role's model does not accept. The loading paths that
-produce the document, and the environment overrides of the `chat` section,
-are tested in `config_test.py`.
+produce the document, and the environment overrides of the `chat` and
+`debug` sections, are tested in `config_test.py`.
 """
 
 import logging
@@ -49,6 +52,7 @@ from narratives_agent.config_model import (
     DEFAULT_UNAVAILABLE_MESSAGE,
     AgentConfig,
     ChatConfig,
+    DebugConfig,
     GeminiConfig,
     GeminiRole,
     McpConfig,
@@ -57,6 +61,7 @@ from narratives_agent.config_model import (
     ThinkingLevels,
     parse_agent_config,
 )
+from narratives_agent.settings import DebugReportMode
 
 _ABSENT = object()
 
@@ -759,4 +764,75 @@ def test_an_unusable_unavailable_message_gives_the_default(
     )
     assert [
         "'chat.unavailable_message'" in message for message in _warnings(caplog)
+    ] == [True]
+
+
+@pytest.mark.parametrize(
+    ("document", "expected"),
+    [
+        pytest.param({}, "off", id="section absent"),
+        pytest.param({"debug": {}}, "off", id="report absent"),
+        pytest.param({"debug": {"report": "off"}}, "off", id="off"),
+        pytest.param({"debug": {"report": "on"}}, "on", id="on"),
+        pytest.param(
+            {"debug": {"report": " FLAG\n"}}, "flag", id="padded flag"
+        ),
+    ],
+)
+def test_a_valid_debug_report_is_carried_through(
+    caplog: pytest.LogCaptureFixture,
+    document: dict[str, Any],
+    expected: DebugReportMode,
+) -> None:
+    # Test: Parsing of a valid or absent `debug.report`.
+    # Situation: The `debug` section or its `report` is absent, or `report`
+    #   is one of the accepted modes, in any case and with padding.
+    # Expectation: The mode is carried through after stripping and
+    #   lowercasing, an absent value gives `"off"`, and nothing is logged.
+    with caplog.at_level(logging.WARNING):
+        parsed = parse_agent_config(document)
+
+    assert parsed.debug == DebugConfig(report=expected)
+    assert _warnings(caplog) == []
+    assert _list_errors(caplog) == []
+
+
+@pytest.mark.parametrize(
+    "value",
+    ["on", None, ["on"]],
+    ids=["str", "null", "list"],
+)
+def test_a_debug_section_of_the_wrong_type_turns_the_report_off(
+    caplog: pytest.LogCaptureFixture, value: object
+) -> None:
+    # Test: Fail-closed handling of a `debug` section that is not an object.
+    # Situation: `debug` is a string, null, or a list.
+    # Expectation: The mode is `"off"`, and exactly one error names the
+    #   `debug` key.
+    with caplog.at_level(logging.WARNING):
+        parsed = parse_agent_config({"debug": value})
+
+    assert parsed.debug == DebugConfig(report="off")
+    assert ["'debug'" in message for message in _list_errors(caplog)] == [True]
+
+
+@pytest.mark.parametrize(
+    "value",
+    ["verbose", "", "true", True, 1, None],
+    ids=["unknown", "empty", "str true", "bool", "int", "null"],
+)
+def test_an_unusable_debug_report_turns_the_report_off(
+    caplog: pytest.LogCaptureFixture, value: object
+) -> None:
+    # Test: Fail-closed handling of an unusable `debug.report`.
+    # Situation: `debug.report` is an unknown or empty string, or a value
+    #   that is not a string.
+    # Expectation: The mode is `"off"`, and exactly one error names
+    #   `debug.report`.
+    with caplog.at_level(logging.WARNING):
+        parsed = parse_agent_config({"debug": {"report": value}})
+
+    assert parsed.debug == DebugConfig(report="off")
+    assert [
+        "'debug.report'" in message for message in _list_errors(caplog)
     ] == [True]

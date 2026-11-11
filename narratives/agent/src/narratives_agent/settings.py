@@ -20,7 +20,7 @@ in one place and normalized the same way for every caller.
 
 import functools
 from pathlib import Path
-from typing import Annotated, Any
+from typing import Annotated, Any, Literal
 
 from pydantic import (
     AfterValidator,
@@ -52,6 +52,9 @@ TRANSCRIPT_HMAC_SECRET_NAME_ENV = "TRANSCRIPT_HMAC_SECRET_NAME"
 # Environment variable names of the chat availability overrides.
 ENABLE_CHAT_ENV = "ENABLE_CHAT"
 UNAVAILABLE_MESSAGE_ENV = "UNAVAILABLE_MESSAGE"
+
+# Environment variable name of the debug report mode override.
+DEBUG_REPORT_ENV = "DEBUG_REPORT"
 
 
 def validate_hmac_secret(
@@ -126,12 +129,24 @@ def _default_defaults_dir(data: dict[str, Any]) -> Path:
     return agent_root.parent / "defaults"
 
 
+# Mode controlling turn debug report emission and debug panel display.
+type DebugReportMode = Literal["off", "on", "flag"]
+
+
+def _normalize_debug_report_mode(value: object) -> object:
+    """Normalizes string debug report mode values to lower case."""
+    return value.strip().lower() if isinstance(value, str) else value
+
+
 # URL path prefixes are normalized to start with a single "/" and have no
 # trailing slashes, so they join with "/<path>" without doubling the separator.
 _UrlPathPrefixStr = Annotated[str, AfterValidator(_normalize_url_path_prefix)]
 _EnvBool = Annotated[bool, BeforeValidator(_is_truthy_env_value)]
 _OptionalEnvBool = Annotated[
     bool | None, BeforeValidator(_parse_optional_env_bool)
+]
+_DebugReportMode = Annotated[
+    DebugReportMode, BeforeValidator(_normalize_debug_report_mode)
 ]
 
 
@@ -248,6 +263,14 @@ class Settings(BaseSettings):
     # When set, overrides `chat.unavailable_message` in agent-config.json,
     # the message of a turn while chat is disabled.
     unavailable_message: str = ""
+
+    # When set, overrides `debug.report` in agent-config.json in either
+    # direction; unset leaves `debug.report` in effect. The mode controls
+    # emission of the turn debug report frame:
+    # - "off": never emit the report.
+    # - "flag": emit the report when requested by the client (?debug).
+    # - "on": always emit the report and show the debug entry without ?debug.
+    debug_report: _DebugReportMode | None = None
 
     # This Secret Manager secret, named in full or by a short secret ID, holds
     # the Gemini API key. When it is unset or yields no key, `gemini.api_key`
