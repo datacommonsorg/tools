@@ -5,7 +5,10 @@
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { App } from '@/src/app';
+import { registerViewTransitionFilter } from '@/src/config/view_transition';
 import '@/src/index.css';
+
+registerViewTransitionFilter();
 
 const root = document.getElementById('root');
 if (!root) throw new Error('index.html has no #root element.');

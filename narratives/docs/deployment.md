@@ -247,10 +247,14 @@ You only need to include the keys you want to override in
 
 | Category | Configurable keys |
 | :--- | :--- |
-| **Identity** | `instance_name`, `headline`, `tagline`, `logo`, `logo_text`, `logo_height`, `logo_alt`, `favicon` |
+| **Identity** | `instance_name`, `headline`, `tagline`, `logo`, `logo_text`, `logo_height`, `logo_alt`, `logo_href`, `favicon` |
 | **Theme** | `colors` (`primary`, text, surfaces, borders, `gradient_border_stop_1`–`_4` for the prompt glow ring), `radius` (`card`, `input`, `chip`), `fonts` |
 | **Content** | `suggestions` (landing page starter prompts), `footer` (text and links) |
 | **Structure** | `navigation` (header links), `metrics.tabs` (Key Metrics dashboard tiles), `analytics.ga_tag_id` |
+
+`logo_href` sets where the header logo links, `/` by default. Set it on an
+instance served at the site root, where `/` would reload the app and clear the
+current chat.
 
 Starter templates are available in `schemas/`:
 

@@ -16,8 +16,9 @@
     <script src="https://datacommons.org/datacommons.js" defer></script>
     <!-- Cross-document view transition (browser cross-fade), only for
          navigations to/from same-origin Data Commons pages outside this app's
-         base path. Must be inline and parser-blocking so `pagereveal` is
-         registered before first render. DC's base.html has the mirror opt-in. -->
+         base path. This app filters its outgoing navigations in
+         `src/config/view_transition.ts`; DC's base.html has the mirror opt-in
+         and filters its own. -->
     <style>
       @media (prefers-reduced-motion: no-preference) {
         @view-transition { navigation: auto; }
@@ -26,29 +27,6 @@
       ::view-transition-old(root),
       ::view-transition-new(root) { animation-duration: 1s; }
     </style>
-    <script>
-      (function () {
-        var base = '%BASE_URL%'.replace(/\/+$/, '');
-        function isDataCommons(entry) {
-          if (!base || !entry || !entry.url) return false;
-          var path = new URL(entry.url).pathname;
-          return path !== base && path.indexOf(base + '/') !== 0;
-        }
-        // Leaving: only animate when heading to a DC page.
-        addEventListener('pageswap', function (e) {
-          if (e.viewTransition && !isDataCommons(e.activation && e.activation.entry)) {
-            e.viewTransition.skipTransition();
-          }
-        });
-        // Arriving: only animate when coming from a DC page.
-        addEventListener('pagereveal', function (e) {
-          var activation = window.navigation && navigation.activation;
-          if (e.viewTransition && !isDataCommons(activation && activation.from)) {
-            e.viewTransition.skipTransition();
-          }
-        });
-      })();
-    </script>
   </head>
   <body>
     <div id="root"></div>

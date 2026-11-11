@@ -29,15 +29,15 @@ export const trimTrailingSlashes = (value: string): string =>
   value.trim().replace(TRAILING_SLASHES_PATTERN, '');
 
 /**
- * Resolves an application-relative path against `window.location.pathname` so
- * the same compiled UI bundle resolves assets and `/agent/*` endpoints whether
- * mounted at `/` or under a runtime `BASE_PATH` subpath (such as
- * `/labs/discover/`), with or without a trailing slash.
+ * Returns the path the app is mounted at, read from `window.location.pathname`
+ * so one compiled bundle works at `/` or under a runtime `BASE_PATH` subpath
+ * (such as `/labs/discover/`). The result has one leading slash and no
+ * trailing slash (`/labs/discover`), or is empty when mounted at the root or
+ * outside a browser.
  */
-export const withBaseUrl = (path: string): string => {
-  const cleanPath = path.trim().replace(LEADING_SLASHES_PATTERN, '');
+export const getBasePath = (): string => {
   if (typeof window === 'undefined') {
-    return `/${cleanPath}`;
+    return '';
   }
   const rawPathname = window.location.pathname.replace(
     SHELL_FILENAME_SUFFIX,
@@ -47,5 +47,15 @@ export const withBaseUrl = (path: string): string => {
     LEADING_SLASHES_PATTERN,
     '',
   );
-  return basePrefix ? `/${basePrefix}/${cleanPath}` : `/${cleanPath}`;
+  return basePrefix ? `/${basePrefix}` : '';
+};
+
+/**
+ * Resolves an application-relative path against `getBasePath()` so assets and
+ * `/agent/*` endpoints resolve under the app's mount path, with or without a
+ * trailing slash.
+ */
+export const withBaseUrl = (path: string): string => {
+  const cleanPath = path.trim().replace(LEADING_SLASHES_PATTERN, '');
+  return `${getBasePath()}/${cleanPath}`;
 };

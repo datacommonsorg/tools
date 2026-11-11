@@ -15,8 +15,8 @@
  */
 
 /**
- * @fileoverview Tests for Header navigation, wordmark, logo alt text, and the
- * menu button.
+ * @fileoverview Tests for Header navigation, wordmark, logo alt text and link,
+ * and the menu button.
  */
 
 import { cleanup, render, screen, within } from '@testing-library/react';
@@ -97,6 +97,25 @@ describe('Header', () => {
     ]);
     expect(links[0].getAttribute('aria-current')).toBe('page');
     expect(links[1].getAttribute('aria-current')).toBeNull();
+  });
+
+  it.each([
+    ['links to the site root by default', {}, '/'],
+    [
+      'links to the configured logo_href',
+      { logo_href: 'https://acme.example/' },
+      'https://acme.example/',
+    ],
+  ])('%s', (_, themeDocument, expectedHref) => {
+    // Test: Header logo link target.
+    // Situation: The theme document omits `logo_href` or sets it to an
+    //            http(s) URL.
+    // Expectation: The logo and wordmark link to the site root or to the
+    //              configured URL.
+    writeSlot(themeDocument);
+    renderHeader();
+    const logoLink = screen.getByRole('link', { name: 'Data Commons' });
+    expect(logoLink.getAttribute('href')).toBe(expectedHref);
   });
 
   it('hides the wordmark when the theme document omits logo_text', () => {

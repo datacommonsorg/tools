@@ -98,6 +98,7 @@ describe('getInstanceConfig', () => {
         logo: '/theme/logo-1a2b3c4d.svg',
         logo_text: 'Acme DC',
         logo_alt: 'Acme Data Commons logo',
+        logo_href: 'https://acme.example/',
         splash_assets: {
           thinking_indicator: '/theme/thinking-9f8e7d6c.svg',
           done_indicator: 'https://cdn.example/done.svg',
@@ -122,6 +123,7 @@ describe('getInstanceConfig', () => {
       logoUrl: '/theme/logo-1a2b3c4d.svg',
       logoText: 'Acme DC',
       logoAlt: 'Acme Data Commons logo',
+      logoHref: 'https://acme.example/',
       thinkingIndicatorUrl: '/theme/thinking-9f8e7d6c.svg',
       doneIndicatorUrl: 'https://cdn.example/done.svg',
       headline: 'Explore Acme',
@@ -214,13 +216,16 @@ describe('getInstanceConfig', () => {
 
   it('refuses unsafe asset URLs and navigation hrefs', () => {
     // Test: Unsafe URLs in assets and navigation.
-    // Situation: Each asset field and a navigation href contain a disallowed URL.
-    // Expectation: Every asset falls back to its built-in default, `navigation`
-    //              falls back to its default, and a warning is logged for each.
+    // Situation: Each asset field, the logo link, and a navigation href contain
+    //            a disallowed URL.
+    // Expectation: Every asset falls back to its built-in default, `logoHref`
+    //              and `navigation` fall back to their defaults, and a warning
+    //              is logged for each.
     const warn = spyOnWarn();
     writeSlot(
       JSON.stringify({
         logo: 'javascript:alert(1)',
+        logo_href: 'javascript:alert(1)',
         splash_assets: {
           thinking_indicator: 'data:image/svg+xml,<svg/>',
           done_indicator: '//evil.example/x.svg',
@@ -236,8 +241,9 @@ describe('getInstanceConfig', () => {
     expect(config.doneIndicatorUrl).toBe(
       DEFAULT_INSTANCE_CONFIG.doneIndicatorUrl,
     );
+    expect(config.logoHref).toBe(DEFAULT_INSTANCE_CONFIG.logoHref);
     expect(config.navigation).toEqual(DEFAULT_INSTANCE_CONFIG.navigation);
-    expect(warn).toHaveBeenCalledTimes(4);
+    expect(warn).toHaveBeenCalledTimes(5);
   });
 
   it('accepts hash-route, same-origin and http(s) navigation hrefs', () => {

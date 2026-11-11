@@ -30,7 +30,7 @@ import { useHashRoute } from '@/src/hooks/use_hash_route';
 /** Renders the instance logo, wordmark, and primary navigation links. */
 export function Header() {
   const [route] = useHashRoute();
-  const { logoUrl, logoAlt, logoText, instanceName, navigation } =
+  const { logoUrl, logoAlt, logoHref, logoText, instanceName, navigation } =
     getInstanceConfig();
   const navItems = resolveNavItems(navigation);
   const activeId = route || 'agent';
@@ -47,7 +47,10 @@ export function Header() {
 
   return (
     <header className="sticky top-0 z-[5] bg-surface w-full flex items-center justify-between gap-3 px-3 sm:px-6 lg:px-12 py-4 sm:py-5 shrink-0">
-      <a href="/" className="flex items-center gap-2 select-none shrink-0">
+      <a
+        href={logoHref}
+        className="flex items-center gap-2 select-none shrink-0"
+      >
         <img
           src={logoUrl}
           alt={logoAltText}

@@ -8,6 +8,7 @@
 
   "logo": "/dc-logo.svg",
   "logo_alt": "Example Data Commons",
+  "logo_href": "/",
   "favicon": "/dc-logo.svg",
 
   "colors": {
