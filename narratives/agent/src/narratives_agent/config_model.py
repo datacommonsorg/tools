@@ -41,6 +41,8 @@ from typing import Any
 
 from google.genai import types
 
+from narratives_agent.settings import DebugReportMode
+
 logger = logging.getLogger(__name__)
 
 # Default models used when agent-config.json omits a model name or leaves it
@@ -115,6 +117,15 @@ _CONFIGURABLE_THINKING_LEVELS: Mapping[str, types.ThinkingLevel] = {
     "low": types.ThinkingLevel.LOW,
     "medium": types.ThinkingLevel.MEDIUM,
     "high": types.ThinkingLevel.HIGH,
+}
+
+# The modes that `debug.report` accepts, keyed by their configuration string.
+# They match the `enum` that `schemas/agent-config.schema.json` declares for
+# the key.
+_DEBUG_REPORT_MODES: Mapping[str, DebugReportMode] = {
+    "off": "off",
+    "on": "on",
+    "flag": "flag",
 }
 
 # Name prefixes of the models that the Gemini model documentation lists as
@@ -212,6 +223,18 @@ class ChatConfig:
 
 
 @dataclass(frozen=True)
+class DebugConfig:
+    """Holds the `debug` section: the turn debug report mode.
+
+    `report` selects when the agent emits the turn debug report frame.
+    `get_debug_report_mode` in `config.py` applies the `DEBUG_REPORT`
+    override to this value.
+    """
+
+    report: DebugReportMode = "off"
+
+
+@dataclass(frozen=True)
 class ThinkingLevels:
     """Holds the `thinking` section: the configurable thinking levels.
 
@@ -259,6 +282,7 @@ class AgentConfig:
     gemini: GeminiConfig = field(default_factory=GeminiConfig)
     mcp: McpConfig = field(default_factory=McpConfig)
     chat: ChatConfig = field(default_factory=ChatConfig)
+    debug: DebugConfig = field(default_factory=DebugConfig)
     thinking: ThinkingLevels = field(default_factory=ThinkingLevels)
     prompts: Prompts = field(default_factory=Prompts)
     template_vars: Mapping[str, str] = field(default_factory=dict)
@@ -435,6 +459,40 @@ def _read_chat_config(document: Mapping[str, Any]) -> ChatConfig:
     )
 
 
+def _read_debug_config(document: Mapping[str, Any]) -> DebugConfig:
+    """Returns the `debug` section, failing closed on a malformed value.
+
+    An absent section or `report` gives `DebugConfig()`. A section that is
+    not an object, or a `report` that is not one of `_DEBUG_REPORT_MODES`
+    after stripping and lowercasing, is reported at error and resolves to
+    `"off"`, because `"on"` sends prompts and configuration details to every
+    browser.
+    """
+    if "debug" not in document:
+        return DebugConfig()
+    debug = document["debug"]
+    if not isinstance(debug, Mapping):
+        logger.error(
+            "Agent configuration key 'debug' is not an object; turning the "
+            "debug report off"
+        )
+        return DebugConfig()
+    if "report" not in debug:
+        return DebugConfig()
+    value = debug["report"]
+    if isinstance(value, str):
+        mode = _DEBUG_REPORT_MODES.get(value.strip().lower())
+        if mode is not None:
+            return DebugConfig(report=mode)
+    logger.error(
+        "Agent configuration key %r is not one of %s; turning the debug "
+        "report off",
+        "debug.report",
+        list(_DEBUG_REPORT_MODES),
+    )
+    return DebugConfig()
+
+
 def _read_thinking_level(
     section: Mapping[str, Any], key: str, default: types.ThinkingLevel
 ) -> types.ThinkingLevel:
@@ -492,10 +550,12 @@ def parse_agent_config(document: Mapping[str, Any]) -> AgentConfig:
     Each field is parsed on its own: a section that is not a JSON object, or
     a value that is absent or not of the expected type, takes the field's
     default, and a value that is present but unusable is logged once at
-    warning with its key. The exception is `chat`, which fails closed: a
-    `chat` section that is not an object, or a `chat.enabled` that is not a
-    boolean, is logged at error and disables chat. The document as a whole
-    is never rejected, so one bad value cannot stop every turn with
+    warning with its key. The exceptions are `chat` and `debug`, which fail
+    closed: a `chat` section that is not an object, or a `chat.enabled` that
+    is not a boolean, is logged at error and disables chat, and a `debug`
+    section that is not an object, or a `debug.report` that is not a known
+    mode, is logged at error and turns the debug report off. The document as
+    a whole is never rejected, so one bad value cannot stop every turn with
     `config_missing`. Keys that the agent does not read are ignored.
 
     Args:
@@ -537,6 +597,7 @@ def parse_agent_config(document: Mapping[str, Any]) -> AgentConfig:
             enabled=_read_bool(mcp, "mcp", "enabled", McpConfig.enabled),
         ),
         chat=_read_chat_config(document),
+        debug=_read_debug_config(document),
         thinking=ThinkingLevels(
             discovery_level=_read_thinking_level(
                 thinking, "discovery_level", ThinkingLevels.discovery_level

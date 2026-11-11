@@ -28,6 +28,9 @@ Verifies that `Settings`:
 8. Rejects a port that is not a number.
 9. Reads `transcript_hmac_secret` without revealing it in `repr()` output, and
    rejects a value shorter than `MIN_SECRET_BYTES`.
+10. Leaves `debug_report` `None` when its variable is unset, normalizes
+    "off", "on", and "flag" case-insensitively, and rejects unrecognized
+    modes.
 """
 
 from pathlib import Path
@@ -37,6 +40,7 @@ from pydantic import ValidationError
 
 from narratives_agent.settings import (
     DC_API_KEY_SECRET_ENV,
+    DEBUG_REPORT_ENV,
     ENABLE_CHAT_ENV,
     MIN_SECRET_BYTES,
     TRANSCRIPT_HMAC_SECRET_ENV,
@@ -336,6 +340,53 @@ def test_unavailable_message_is_read_and_stripped(
     env = {} if raw is None else {UNAVAILABLE_MESSAGE_ENV: raw}
     settings = _read_settings(monkeypatch, env)
     assert settings.unavailable_message == expected
+
+
+@pytest.mark.parametrize(
+    ("raw", "expected"),
+    [
+        pytest.param(None, None, id="unset"),
+        pytest.param("off", "off", id="off"),
+        pytest.param(" OFF ", "off", id="padded-off"),
+        pytest.param("on", "on", id="on"),
+        pytest.param(" ON\n", "on", id="padded-on"),
+        pytest.param("flag", "flag", id="flag"),
+        pytest.param("\tFLAG ", "flag", id="padded-flag"),
+    ],
+)
+def test_debug_report_is_none_when_unset_and_parses_modes(
+    monkeypatch: pytest.MonkeyPatch, raw: str | None, expected: str | None
+) -> None:
+    # Test: Default and mode parsing for `DEBUG_REPORT`.
+    # Situation: `DEBUG_REPORT` is unset, or set to "off", "on", or "flag"
+    #   in varying cases with surrounding whitespace.
+    # Expectation: Unset gives `None`, which leaves `debug.report` in
+    #   effect; valid strings are parsed case-insensitively with whitespace
+    #   stripped.
+    env = {} if raw is None else {DEBUG_REPORT_ENV: raw}
+    settings = _read_settings(monkeypatch, env)
+    assert settings.debug_report == expected
+
+
+@pytest.mark.parametrize(
+    "raw",
+    [
+        pytest.param("true", id="boolean-true"),
+        pytest.param("1", id="numeric-one"),
+        pytest.param("verbose", id="verbose"),
+        pytest.param("invalid", id="invalid"),
+    ],
+)
+def test_invalid_debug_report_is_rejected(
+    monkeypatch: pytest.MonkeyPatch, raw: str
+) -> None:
+    # Test: Validation of invalid `DEBUG_REPORT` modes.
+    # Situation: `DEBUG_REPORT` is exported with an unrecognized value.
+    # Expectation: Reading the settings raises `ValidationError` naming the
+    #   field.
+    monkeypatch.setenv(DEBUG_REPORT_ENV, raw)
+    with pytest.raises(ValidationError, match="debug_report"):
+        Settings()
 
 
 @pytest.mark.parametrize("name", ["AGENT_PORT", "MCP_PORT"])

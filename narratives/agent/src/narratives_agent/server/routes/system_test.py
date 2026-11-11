@@ -14,24 +14,30 @@
 """Tests for the health route in `system`.
 
 Verifies that `/health` reports the service status, the resolved MCP
-endpoint, and the cached tool surface, and that it answers HEAD.
+endpoint, the cached tool surface, and the debug report mode, and that it
+answers HEAD.
 """
 
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
+from narratives_agent import config
+from narratives_agent.config_model import AgentConfig, DebugConfig
 from narratives_agent.mcp.capabilities import Capabilities
 from narratives_agent.server.routes import system
+from narratives_agent.settings import DEBUG_REPORT_ENV
 
 
 @pytest.fixture
 def client(monkeypatch: pytest.MonkeyPatch) -> TestClient:
     """Returns a test client for an app that serves only `system.router`.
 
-    The MCP endpoint and the cached tool list are stubbed, so no request
-    reads config.json or reaches an MCP server.
+    The MCP endpoint, the cached tool list, and the loaded configuration
+    (none) are stubbed, so no request reads config.json or reaches an MCP
+    server.
     """
+    monkeypatch.setattr(config, "load_config", lambda: None)
     monkeypatch.setattr(system, "mcp_url", lambda: "http://mcp.test/mcp")
     monkeypatch.setattr(
         system,
@@ -67,8 +73,42 @@ def test_health_reports_status_mcp_endpoint_and_tool_surface(
         b'"get_multi_entity_observations",'
         b'"search_child_indicators",'
         b'"search_indicators"'
-        b"]}}"
+        b']},"debug_report":"off"}'
     )
+
+
+@pytest.mark.parametrize("mode", ["on", "flag"])
+def test_health_reports_configured_debug_report_mode(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch, mode: str
+) -> None:
+    # Test: `debug_report` field of `GET /agent/health`.
+    # Situation: `DEBUG_REPORT` is configured in the environment.
+    # Expectation: The health payload reflects the configured mode.
+    monkeypatch.setenv(DEBUG_REPORT_ENV, mode)
+
+    response = client.get("/agent/health")
+
+    assert response.status_code == 200
+    assert response.json()["debug_report"] == mode
+
+
+def test_health_reports_the_debug_report_mode_from_the_config(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Test: `debug_report` field of `GET /agent/health` without the variable.
+    # Situation: `DEBUG_REPORT` is unset, and the loaded configuration sets
+    #   `debug.report` to `"on"`.
+    # Expectation: The health payload reports `"on"`, the resolved mode.
+    monkeypatch.setattr(
+        config,
+        "load_config",
+        lambda: AgentConfig(debug=DebugConfig(report="on")),
+    )
+
+    response = client.get("/agent/health")
+
+    assert response.status_code == 200
+    assert response.json()["debug_report"] == "on"
 
 
 def test_health_answers_head_with_an_empty_body(client: TestClient) -> None:

@@ -22,6 +22,10 @@
     "unavailable_message": "Due to high traffic, the application is currently unavailable."
   },
 
+  "debug": {
+    "report": "off"
+  },
+
   "thinking": {
     "discovery_level": "medium",
     "synthesis_level": "low"

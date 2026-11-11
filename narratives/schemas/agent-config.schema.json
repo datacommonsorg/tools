@@ -91,6 +91,26 @@
         }
       }
     },
+    "debug": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "report": {
+          "description": "When the agent emits the turn debug report, which carries prompts and configuration details: off never emits it, flag emits it when the browser requests it with ?debug, and on always emits it and shows the debug entry without ?debug. A value that is not one of these turns the report off. The DEBUG_REPORT environment variable overrides this value when set.",
+          "type": "string",
+          "enum": [
+            "off",
+            "on",
+            "flag"
+          ],
+          "default": "off"
+        },
+        "_comment": {
+          "type": "string",
+          "description": "Free-text annotation for maintainers. Ignored by the agent."
+        }
+      }
+    },
     "thinking": {
       "type": "object",
       "additionalProperties": false,
