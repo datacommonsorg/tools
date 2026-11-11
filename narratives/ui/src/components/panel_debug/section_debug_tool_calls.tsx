@@ -32,10 +32,10 @@ import {
 import type { ToolCallEvent } from '@/src/hooks/use_sse_chat';
 
 /** Classes shared by the argument and raw response blocks. */
-const CODE_BLOCK_CLASSES = `m-0 p-2 rounded ${DEBUG_MONO_TEXT_CLASSES} bg-surface-soft whitespace-pre-wrap wrap-anywhere`;
+const CODE_BLOCK_CLASSES = `p-2 rounded ${DEBUG_MONO_TEXT_CLASSES} bg-surface border border-outline whitespace-pre-wrap wrap-anywhere`;
 
 interface ToolCallsSectionProps {
-  toolCalls: ToolCallEvent[];
+  toolCalls: readonly ToolCallEvent[];
 }
 
 /**
@@ -59,7 +59,7 @@ export const ToolCallsSection = ({ toolCalls }: ToolCallsSectionProps) => {
 
   return (
     <DebugSection label={formatToolCallsHeading(toolCalls.length)}>
-      <ol className="m-0 pl-5 flex flex-col gap-3">
+      <ol className="pl-5 flex flex-col gap-3">
         {toolCalls.map((call, index) => {
           const isResultOpen = openResultIndex === index;
           return (

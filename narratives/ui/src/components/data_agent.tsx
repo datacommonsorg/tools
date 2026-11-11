@@ -32,6 +32,11 @@ import { SkeletonCard } from '@/src/components/card_skeleton';
 import { PromptInput } from '@/src/components/input_prompt';
 import { ErrorNotice } from '@/src/components/notice_error';
 import { AnswerPanel } from '@/src/components/panel_answer';
+import {
+  DebugPanel,
+  isDebugPanelEnabled,
+} from '@/src/components/panel_debug/panel_debug';
+import { isTurnSettled } from '@/src/components/panel_debug/report_debug';
 import { InitialView } from '@/src/components/view_initial';
 import {
   REASONING_COLLAPSE_MS,
@@ -470,6 +475,12 @@ export function TurnView({
 
       {turn.status === 'error' && turn.error && (
         <ErrorNotice message={turn.error} onRetry={retry} />
+      )}
+
+      {!showAnswer && isTurnSettled(turn) && isDebugPanelEnabled() && (
+        <div data-non-print="true" className="self-start">
+          <DebugPanel turn={turn} />
+        </div>
       )}
     </div>
   );

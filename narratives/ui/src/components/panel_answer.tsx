@@ -37,6 +37,7 @@ import {
   DebugPanel,
   isDebugPanelEnabled,
 } from '@/src/components/panel_debug/panel_debug';
+import { isTurnSettled } from '@/src/components/panel_debug/report_debug';
 import { FollowUpQuestions } from '@/src/components/questions_follow_up';
 import { ChartTile } from '@/src/components/tile_chart';
 import { Toast } from '@/src/components/toast';
@@ -248,13 +249,11 @@ export function AnswerPanel({
           settle, since the reveal can end before a slow chart draws. This
           matches the filled "Export PDF" button below. */}
         <CardHeader title={turn.userMessage}>
+          {isRevealed && isTurnSettled(turn) && isDebugPanelEnabled() && (
+            <DebugPanel turn={turn} />
+          )}
           {turn.status === 'done' && isRevealed && areChartsSettled && (
-            <>
-              {/* Opens the provenance slide-over. Only under ?debug=provenance,
-                so end users never see it. */}
-              {isDebugPanelEnabled() && <DebugPanel turn={turn} />}
-              <ToolbarExportPdfPill onExport={onExport} busy={exporting} />
-            </>
+            <ToolbarExportPdfPill onExport={onExport} busy={exporting} />
           )}
         </CardHeader>
 
