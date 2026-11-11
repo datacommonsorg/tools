@@ -99,19 +99,28 @@ class ThoughtFrame:
         thought: The model thought text chunk.
         phase: The phase that produced the thought (`"discovery"` or
             `"synthesis"`).
+        round_number: The 1-based discovery round in which the thought was
+            produced, or `None` for synthesis thoughts.
     """
 
     event: ClassVar[EventName] = "thought"
     thought: str
     phase: ThoughtPhase
+    round_number: int | None = None
 
     def payload(self) -> JsonObject:
         """Returns the `data` payload of the frame.
 
         Returns:
-            A JSON object with `thought` and `phase`.
+            A JSON object with `thought` and `phase`, and optionally `round`.
         """
-        return {"thought": self.thought, "phase": self.phase}
+        if self.round_number is None:
+            return {"thought": self.thought, "phase": self.phase}
+        return {
+            "thought": self.thought,
+            "phase": self.phase,
+            "round": self.round_number,
+        }
 
 
 @dataclass(frozen=True, kw_only=True)

@@ -18,17 +18,36 @@ operational turn telemetry and cached observation tables without exposing
 untyped internal maps or sensitive conversation content.
 """
 
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from collections.abc import Set as AbstractSet
 from dataclasses import dataclass
 from typing import Literal
 
+from narratives_agent.analytics.digest import (
+    AnalysisDigest,
+    RefusalReason,
+)
+from narratives_agent.analytics.metrics import ScriptName
 from narratives_agent.analytics.summarize import SUMMARY_PLACE_LIST_CAP
 from narratives_agent.analytics.tables import ObservationTable
 from narratives_agent.gemini.schemas import QueryPattern
-from narratives_agent.json_value import JsonObject
+from narratives_agent.json_value import JsonObject, JsonValue, json_safe
 from narratives_agent.settings import DebugReportMode
 from narratives_agent.telemetry import TurnTelemetry
+from narratives_agent.workflows.mcp_loop import (
+    RejectedSubmission,
+    RejectionReason,
+)
+from narratives_agent.workflows.processing import (
+    ProcessingDiagnostic,
+    StepRefusalDiagnostic,
+    TimeoutDiagnostic,
+)
+from narratives_agent.workflows.specification import (
+    AnalysisSpecification,
+    UnavailableReport,
+)
+from narratives_agent.workflows.sse_frames import ThoughtPhase
 from narratives_agent.workflows.turn_cache import (
     DERIVED_TABLE_PREFIX,
     CachedTable,
@@ -36,20 +55,29 @@ from narratives_agent.workflows.turn_cache import (
 )
 
 __all__ = [
+    "DebugCoverageSummary",
+    "DebugDiagnostic",
     "DebugPlaceRef",
+    "DebugRejectedSpecification",
     "DebugReport",
     "DebugSourceRecord",
+    "DebugStepRefusalDiagnostic",
     "DebugTableRecord",
     "DebugTerminalState",
+    "DebugThought",
+    "DebugTimeoutDiagnostic",
     "DebugTokenCall",
     "DebugTokenUsage",
     "SourceSelection",
+    "SpecificationOrigin",
+    "build_debug_diagnostic",
     "build_debug_report",
     "should_emit_debug_report",
 ]
 
 type DebugTerminalState = Literal["complete", "refused", "error"]
 type SourceSelection = Literal["chosen", "server_default", "derived"]
+type SpecificationOrigin = Literal["model", "default"]
 
 
 def should_emit_debug_report(
@@ -141,6 +169,154 @@ class DebugTableRecord:
 
 
 @dataclass(frozen=True, kw_only=True)
+class DebugThought:
+    """Model reasoning thought emitted during discovery or synthesis.
+
+    Attributes:
+        phase: The pipeline phase that produced the thought.
+        text: The thought text chunk.
+        round_number: 1-based discovery round, or None for synthesis thoughts.
+    """
+
+    phase: ThoughtPhase
+    text: str
+    round_number: int | None = None
+
+
+@dataclass(frozen=True, kw_only=True)
+class DebugRejectedSpecification:
+    """A specification rejected by validation or analytical processing.
+
+    Attributes:
+        round_number: 1-based discovery round in which submit_specification ran.
+        reason: Category of the rejection.
+        errors: Sanitized validation errors or diagnostic failure message.
+        specification: The parsed specification when available, or None.
+    """
+
+    round_number: int
+    reason: RejectionReason
+    errors: tuple[str, ...]
+    specification: AnalysisSpecification | None = None
+
+
+@dataclass(frozen=True, kw_only=True)
+class DebugCoverageSummary:
+    """Summarizes target place coverage for a refused step.
+
+    Attributes:
+        contributing_places: Number of target places with valid data.
+        requested_places: Total number of target places requested.
+        coverage_ratio: Ratio of contributing to requested places.
+        reference_date: Reference date to which observations were aligned.
+        missing_places: Target place DCIDs missing data on reference date.
+        mixed_vintages: Whether unaligned places had differing observation
+            dates.
+    """
+
+    contributing_places: int
+    requested_places: int
+    coverage_ratio: float
+    reference_date: str | None
+    missing_places: tuple[str, ...]
+    mixed_vintages: bool
+
+
+@dataclass(frozen=True, kw_only=True)
+class DebugStepRefusalDiagnostic:
+    """Diagnostic detail for a step refused by an analytical script.
+
+    Attributes:
+        kind: Discriminator literal ("step_refusal").
+        round_number: 1-based discovery round, or None for the default
+            specification.
+        step_id: Identifier of the refused step.
+        script: Name of the analytical script.
+        refusal_reason: Script-level refusal reason.
+        message: Diagnostic explanation and caveats.
+        input_table_ids: Table IDs read by the step.
+        coverage: Optional coverage summary.
+        alternative_source_count: Count of alternative sources available.
+    """
+
+    kind: Literal["step_refusal"] = "step_refusal"
+    round_number: int | None
+    step_id: str
+    script: ScriptName
+    refusal_reason: RefusalReason
+    message: str
+    input_table_ids: tuple[str, ...]
+    coverage: DebugCoverageSummary | None
+    alternative_source_count: int
+
+
+@dataclass(frozen=True, kw_only=True)
+class DebugTimeoutDiagnostic:
+    """Diagnostic detail for a specification execution timeout.
+
+    Attributes:
+        kind: Discriminator literal ("timeout").
+        round_number: 1-based discovery round, or None for the default
+            specification.
+        timeout_seconds: The budget exceeded in seconds.
+        message: Explanation of the timeout.
+    """
+
+    kind: Literal["timeout"] = "timeout"
+    round_number: int | None
+    timeout_seconds: float
+    message: str
+
+
+type DebugDiagnostic = DebugStepRefusalDiagnostic | DebugTimeoutDiagnostic
+
+
+def build_debug_diagnostic(
+    diagnostic: ProcessingDiagnostic, *, round_number: int | None = None
+) -> DebugDiagnostic:
+    """Constructs a typed DebugDiagnostic from a ProcessingDiagnostic.
+
+    Args:
+        diagnostic: The runtime processing diagnostic to convert.
+        round_number: Optional 1-based discovery round in which the diagnostic
+            occurred, or None for runs outside the discovery loop.
+
+    Returns:
+        A DebugStepRefusalDiagnostic or DebugTimeoutDiagnostic.
+    """
+    match diagnostic:
+        case StepRefusalDiagnostic():
+            coverage = (
+                DebugCoverageSummary(
+                    contributing_places=diagnostic.coverage.contributing_places,
+                    requested_places=diagnostic.coverage.requested_places,
+                    coverage_ratio=diagnostic.coverage.coverage_ratio,
+                    reference_date=diagnostic.coverage.reference_date,
+                    missing_places=diagnostic.coverage.missing_places,
+                    mixed_vintages=diagnostic.coverage.mixed_vintages,
+                )
+                if diagnostic.coverage is not None
+                else None
+            )
+            return DebugStepRefusalDiagnostic(
+                round_number=round_number,
+                step_id=diagnostic.step_id,
+                script=diagnostic.script,
+                refusal_reason=diagnostic.refusal_reason,
+                message=diagnostic.message,
+                input_table_ids=diagnostic.input_table_ids,
+                coverage=coverage,
+                alternative_source_count=len(diagnostic.alternative_sources),
+            )
+        case TimeoutDiagnostic():
+            return DebugTimeoutDiagnostic(
+                round_number=round_number,
+                timeout_seconds=diagnostic.timeout_seconds,
+                message=diagnostic.message,
+            )
+
+
+@dataclass(frozen=True, kw_only=True)
 class DebugReport:
     """Structured operational and analytical debug report for a turn."""
 
@@ -159,6 +335,14 @@ class DebugReport:
     charts_rejected: int
     tokens: DebugTokenUsage
     tables: tuple[DebugTableRecord, ...]
+    thoughts: tuple[DebugThought, ...] = ()
+    tool_calls: tuple[JsonObject, ...] = ()
+    rejected_specifications: tuple[DebugRejectedSpecification, ...] = ()
+    diagnostics: tuple[DebugDiagnostic, ...] = ()
+    specification: AnalysisSpecification | None = None
+    specification_origin: SpecificationOrigin | None = None
+    unavailable: UnavailableReport | None = None
+    digest: AnalysisDigest | None = None
 
     def to_dict(self) -> JsonObject:
         """Serializes the report to a finite snake_case JSON object."""
@@ -234,6 +418,80 @@ class DebugReport:
                 }
                 for table in self.tables
             ],
+            "thoughts": [
+                {"phase": t.phase, "text": t.text, "round": t.round_number}
+                for t in self.thoughts
+            ],
+            "tool_calls": [dict(call) for call in self.tool_calls],
+            "rejected_specifications": [
+                {
+                    "round": item.round_number,
+                    "reason": item.reason,
+                    "errors": list(item.errors),
+                    "specification": (
+                        json_safe(item.specification.model_dump(mode="json"))
+                        if item.specification is not None
+                        else None
+                    ),
+                }
+                for item in self.rejected_specifications
+            ],
+            "diagnostics": [
+                (
+                    {
+                        "kind": "step_refusal",
+                        "round": diag.round_number,
+                        "step_id": diag.step_id,
+                        "script": diag.script,
+                        "refusal_reason": diag.refusal_reason,
+                        "message": diag.message,
+                        "input_table_ids": list(diag.input_table_ids),
+                        "coverage": (
+                            {
+                                "contributing_places": (
+                                    diag.coverage.contributing_places
+                                ),
+                                "requested_places": (
+                                    diag.coverage.requested_places
+                                ),
+                                "coverage_ratio": diag.coverage.coverage_ratio,
+                                "reference_date": diag.coverage.reference_date,
+                                "missing_places": list(
+                                    diag.coverage.missing_places
+                                ),
+                                "mixed_vintages": diag.coverage.mixed_vintages,
+                            }
+                            if diag.coverage is not None
+                            else None
+                        ),
+                        "alternative_source_count": (
+                            diag.alternative_source_count
+                        ),
+                    }
+                    if isinstance(diag, DebugStepRefusalDiagnostic)
+                    else {
+                        "kind": "timeout",
+                        "round": diag.round_number,
+                        "timeout_seconds": diag.timeout_seconds,
+                        "message": diag.message,
+                    }
+                )
+                for diag in self.diagnostics
+            ],
+            "specification": (
+                json_safe(self.specification.model_dump(mode="json"))
+                if self.specification is not None
+                else None
+            ),
+            "specification_origin": self.specification_origin,
+            "unavailable": (
+                json_safe(self.unavailable.model_dump(mode="json"))
+                if self.unavailable is not None
+                else None
+            ),
+            "digest": (
+                self.digest.to_dict() if self.digest is not None else None
+            ),
         }
 
 
@@ -328,6 +586,14 @@ def build_debug_report(
     is_clarification: bool = False,
     cache: TurnCache | None = None,
     used_table_ids: AbstractSet[str] = frozenset(),
+    thoughts: Sequence[DebugThought] = (),
+    tool_calls: Sequence[Mapping[str, JsonValue]] = (),
+    rejected_submissions: Sequence[RejectedSubmission] = (),
+    diagnostics: Sequence[tuple[int | None, ProcessingDiagnostic]] = (),
+    specification: AnalysisSpecification | None = None,
+    specification_origin: SpecificationOrigin | None = None,
+    unavailable: UnavailableReport | None = None,
+    digest: AnalysisDigest | None = None,
 ) -> DebugReport:
     """Builds a structured TurnDebugReport from telemetry and cache state.
 
@@ -338,6 +604,16 @@ def build_debug_report(
         is_clarification: Whether the turn was answered with a clarification.
         cache: Optional turn cache holding fetched and derived tables.
         used_table_ids: Table IDs incorporated into the synthesis response.
+        thoughts: Model reasoning thoughts emitted during the turn.
+        tool_calls: Tool and server-function records emitted during discovery.
+        rejected_submissions: Specifications rejected during the turn.
+        diagnostics: Processing diagnostics and their optional discovery
+            rounds.
+        specification: The final analysis specification executed, if any.
+        specification_origin: Origin of the specification ('model' or
+            'default').
+        unavailable: The no-data report filed for the turn, if any.
+        digest: Analytical digest produced by the processed specification.
 
     Returns:
         The validated DebugReport dataclass.
@@ -382,6 +658,29 @@ def build_debug_report(
                     )
                 )
 
+    resolved_specification_origin: SpecificationOrigin | None
+    if specification is None:
+        resolved_specification_origin = None
+    elif specification_origin is not None:
+        resolved_specification_origin = specification_origin
+    else:
+        resolved_specification_origin = "model"
+
+    rejected_specs = tuple(
+        DebugRejectedSpecification(
+            round_number=sub.round_number,
+            reason=sub.reason,
+            errors=sub.errors,
+            specification=sub.specification,
+        )
+        for sub in rejected_submissions
+    )
+
+    debug_diagnostics = tuple(
+        build_debug_diagnostic(diag, round_number=round_num)
+        for round_num, diag in diagnostics
+    )
+
     return DebugReport(
         turn_id=telemetry.turn_id,
         terminal_state=terminal_state,
@@ -398,4 +697,12 @@ def build_debug_report(
         charts_rejected=telemetry.charts_rejected,
         tokens=tokens,
         tables=tuple(tables),
+        thoughts=tuple(thoughts),
+        tool_calls=tuple(dict(call) for call in tool_calls),
+        rejected_specifications=rejected_specs,
+        diagnostics=debug_diagnostics,
+        specification=specification,
+        specification_origin=resolved_specification_origin,
+        unavailable=unavailable,
+        digest=digest,
     )

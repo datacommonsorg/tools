@@ -30,10 +30,12 @@ import json
 
 import pytest
 
+from narratives_agent.analytics.digest import AnalysisDigest, CoverageReport
 from narratives_agent.analytics.provenance import Provenance, Source
 from narratives_agent.analytics.summarize import SUMMARY_PLACE_LIST_CAP
 from narratives_agent.analytics.tables import ObservationRow, ObservationTable
 from narratives_agent.gemini.schemas import QueryPattern
+from narratives_agent.json_value import JsonObject
 from narratives_agent.settings import DebugReportMode
 from narratives_agent.telemetry import (
     TerminalState,
@@ -41,8 +43,23 @@ from narratives_agent.telemetry import (
     TurnTelemetry,
 )
 from narratives_agent.workflows.debug_report import (
+    DebugStepRefusalDiagnostic,
+    DebugThought,
+    DebugTimeoutDiagnostic,
     build_debug_report,
     should_emit_debug_report,
+)
+from narratives_agent.workflows.mcp_loop import RejectedSubmission
+from narratives_agent.workflows.processing import (
+    ProcessingDiagnostic,
+    StepRefusalDiagnostic,
+    TimeoutDiagnostic,
+)
+from narratives_agent.workflows.specification import (
+    AnalysisSpecification,
+    AnalyzeTimeseriesStep,
+    RankCohortStep,
+    UnavailableReport,
 )
 from narratives_agent.workflows.turn_cache import CachedTable, TurnCache
 
@@ -464,3 +481,305 @@ def test_build_debug_report_cohort_place_cap_and_name_resolution() -> None:
 
     assert t1_rec.places[3].dcid == "geoId/04"
     assert t1_rec.places[3].name == "geoId/04"
+
+
+def test_debug_report_serializes_trajectory_and_analysis_context() -> None:
+    # Test: Serialization of thoughts, tool calls, rejected specs, diagnostics,
+    #   specification, unavailable report, and digest.
+    # Situation: A turn produces discovery and synthesis thoughts, a tool call,
+    #   three rejected submissions covering each rejection reason, three
+    #   diagnostics covering StepRefusalDiagnostic with and without coverage
+    #   plus TimeoutDiagnostic, a valid specification, an unavailable report,
+    #   and an analytical digest.
+    # Expectation: build_debug_report populates typed dataclass records on
+    #   DebugReport, and to_dict serializes every field matching the wire
+    #   specification without leaking untyped internals.
+    telemetry = _make_telemetry()
+    thoughts = [
+        DebugThought(
+            phase="discovery", text="Looking up France.", round_number=1
+        ),
+        DebugThought(
+            phase="synthesis", text="Writing response.", round_number=None
+        ),
+    ]
+    tool_calls: list[JsonObject] = [
+        {
+            "name": "fetch_observations",
+            "arguments": {"variable_dcid": "Count_Person"},
+            "result": '{"table_id": "t1"}',
+            "status": "success",
+            "round": 1,
+            "duration_ms": 12.3,
+        }
+    ]
+
+    spec1 = AnalysisSpecification(
+        steps=[
+            AnalyzeTimeseriesStep(
+                script="analyze_timeseries", step_id="s1", table="t99"
+            )
+        ]
+    )
+    spec2 = AnalysisSpecification(
+        steps=[RankCohortStep(script="rank_cohort", step_id="s1", table="t1")]
+    )
+    final_spec = AnalysisSpecification(
+        steps=[
+            AnalyzeTimeseriesStep(
+                script="analyze_timeseries", step_id="s1", table="t1"
+            )
+        ]
+    )
+
+    rejected_submissions = [
+        RejectedSubmission(
+            round_number=1,
+            reason="schema_invalid",
+            errors=("- specification: Invalid 'script' tag",),
+            specification=None,
+        ),
+        RejectedSubmission(
+            round_number=2,
+            reason="reference_invalid",
+            errors=("Table t99 does not exist",),
+            specification=spec1,
+        ),
+        RejectedSubmission(
+            round_number=3,
+            reason="processing_failed",
+            errors=("Insufficient coverage",),
+            specification=spec2,
+        ),
+    ]
+
+    diag_with_cov = StepRefusalDiagnostic(
+        refusal_reason="insufficient_coverage",
+        message="Only 1 place has data",
+        step_id="s1",
+        script="rank_cohort",
+        input_table_ids=("t1",),
+        coverage=CoverageReport(
+            contributing_places=1,
+            requested_places=4,
+            coverage_ratio=0.25,
+            reference_date="2022",
+            missing_places=("b", "c", "d"),
+            mixed_vintages=False,
+        ),
+        alternative_sources=(),
+        completed_results=(),
+    )
+    diag_no_cov = StepRefusalDiagnostic(
+        refusal_reason="no_observations",
+        message="No observations found",
+        step_id="s2",
+        script="analyze_timeseries",
+        input_table_ids=("t2",),
+        coverage=None,
+        alternative_sources=(),
+        completed_results=(),
+    )
+    diag_timeout = TimeoutDiagnostic(
+        timeout_seconds=5.0,
+        message="Specification exceeded timeout",
+    )
+
+    diagnostics: list[tuple[int | None, ProcessingDiagnostic]] = [
+        (1, diag_with_cov),
+        (2, diag_no_cov),
+        (None, diag_timeout),
+    ]
+
+    unavailable = UnavailableReport(
+        searched_indicators=["Count_Person"],
+        searched_places=["country/FRA"],
+        reason="No data published",
+        related_available=[],
+    )
+
+    digest = AnalysisDigest(results=(), sources=())
+
+    report = build_debug_report(
+        telemetry=telemetry,
+        terminal_state="complete",
+        thoughts=thoughts,
+        tool_calls=tool_calls,
+        rejected_submissions=rejected_submissions,
+        diagnostics=diagnostics,
+        specification=final_spec,
+        specification_origin="model",
+        unavailable=unavailable,
+        digest=digest,
+    )
+
+    assert len(report.thoughts) == 2
+    assert report.thoughts[0].phase == "discovery"
+    assert report.thoughts[0].round_number == 1
+    assert report.thoughts[1].phase == "synthesis"
+    assert report.thoughts[1].round_number is None
+
+    assert len(report.tool_calls) == 1
+    assert report.tool_calls[0]["name"] == "fetch_observations"
+
+    assert len(report.rejected_specifications) == 3
+    assert report.rejected_specifications[0].reason == "schema_invalid"
+    assert report.rejected_specifications[0].specification is None
+    assert report.rejected_specifications[1].reason == "reference_invalid"
+    assert report.rejected_specifications[1].specification == spec1
+    assert report.rejected_specifications[2].reason == "processing_failed"
+    assert report.rejected_specifications[2].specification == spec2
+
+    assert len(report.diagnostics) == 3
+    assert isinstance(report.diagnostics[0], DebugStepRefusalDiagnostic)
+    assert report.diagnostics[0].kind == "step_refusal"
+    assert report.diagnostics[0].round_number == 1
+    assert report.diagnostics[0].coverage is not None
+    assert report.diagnostics[0].coverage.contributing_places == 1
+    assert report.diagnostics[0].coverage.missing_places == ("b", "c", "d")
+
+    assert isinstance(report.diagnostics[1], DebugStepRefusalDiagnostic)
+    assert report.diagnostics[1].round_number == 2
+    assert report.diagnostics[1].coverage is None
+
+    assert isinstance(report.diagnostics[2], DebugTimeoutDiagnostic)
+    assert report.diagnostics[2].kind == "timeout"
+    assert report.diagnostics[2].round_number is None
+    assert report.diagnostics[2].timeout_seconds == 5.0
+
+    assert report.specification == final_spec
+    assert report.specification_origin == "model"
+    assert report.unavailable == unavailable
+    assert report.digest == digest
+
+    # Verify serialization via to_dict()
+    data = report.to_dict()
+
+    assert data["thoughts"] == [
+        {"phase": "discovery", "text": "Looking up France.", "round": 1},
+        {"phase": "synthesis", "text": "Writing response.", "round": None},
+    ]
+
+    assert data["tool_calls"] == [
+        {
+            "name": "fetch_observations",
+            "arguments": {"variable_dcid": "Count_Person"},
+            "result": '{"table_id": "t1"}',
+            "status": "success",
+            "round": 1,
+            "duration_ms": 12.3,
+        }
+    ]
+
+    assert data["rejected_specifications"] == [
+        {
+            "round": 1,
+            "reason": "schema_invalid",
+            "errors": ["- specification: Invalid 'script' tag"],
+            "specification": None,
+        },
+        {
+            "round": 2,
+            "reason": "reference_invalid",
+            "errors": ["Table t99 does not exist"],
+            "specification": spec1.model_dump(mode="json"),
+        },
+        {
+            "round": 3,
+            "reason": "processing_failed",
+            "errors": ["Insufficient coverage"],
+            "specification": spec2.model_dump(mode="json"),
+        },
+    ]
+
+    assert data["diagnostics"] == [
+        {
+            "kind": "step_refusal",
+            "round": 1,
+            "step_id": "s1",
+            "script": "rank_cohort",
+            "refusal_reason": "insufficient_coverage",
+            "message": "Only 1 place has data",
+            "input_table_ids": ["t1"],
+            "coverage": {
+                "contributing_places": 1,
+                "requested_places": 4,
+                "coverage_ratio": 0.25,
+                "reference_date": "2022",
+                "missing_places": ["b", "c", "d"],
+                "mixed_vintages": False,
+            },
+            "alternative_source_count": 0,
+        },
+        {
+            "kind": "step_refusal",
+            "round": 2,
+            "step_id": "s2",
+            "script": "analyze_timeseries",
+            "refusal_reason": "no_observations",
+            "message": "No observations found",
+            "input_table_ids": ["t2"],
+            "coverage": None,
+            "alternative_source_count": 0,
+        },
+        {
+            "kind": "timeout",
+            "round": None,
+            "timeout_seconds": 5.0,
+            "message": "Specification exceeded timeout",
+        },
+    ]
+
+    assert data["specification"] == final_spec.model_dump(mode="json")
+    assert data["specification_origin"] == "model"
+    assert data["unavailable"] == unavailable.model_dump(mode="json")
+    assert data["digest"] == digest.to_dict()
+
+
+def test_specification_origin_resolution() -> None:
+    # Test: Specification origin resolution.
+    # Situation: build_debug_report is called with:
+    #   1. specification=None (with or without origin provided).
+    #   2. specification is set with origin=None (defaults to "model").
+    #   3. specification is set with explicit origin="default".
+    # Expectation: specification_origin resolves to None when specification is
+    #   None, defaults to "model" when specification is present, and honors
+    #   explicit origin settings.
+    telemetry = _make_telemetry()
+    spec = AnalysisSpecification(
+        steps=[
+            AnalyzeTimeseriesStep(
+                script="analyze_timeseries", step_id="s1", table="t1"
+            )
+        ]
+    )
+
+    # 1. specification is None
+    report_none = build_debug_report(
+        telemetry=telemetry,
+        terminal_state="complete",
+        specification=None,
+        specification_origin="model",
+    )
+    assert report_none.specification_origin is None
+    assert report_none.to_dict()["specification_origin"] is None
+
+    # 2. specification is set, origin is omitted/None
+    report_default = build_debug_report(
+        telemetry=telemetry,
+        terminal_state="complete",
+        specification=spec,
+        specification_origin=None,
+    )
+    assert report_default.specification_origin == "model"
+    assert report_default.to_dict()["specification_origin"] == "model"
+
+    # 3. specification is set, origin is explicitly "default"
+    report_fallback = build_debug_report(
+        telemetry=telemetry,
+        terminal_state="complete",
+        specification=spec,
+        specification_origin="default",
+    )
+    assert report_fallback.specification_origin == "default"
+    assert report_fallback.to_dict()["specification_origin"] == "default"

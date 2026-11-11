@@ -62,7 +62,7 @@ import asyncio
 import json
 import logging
 import re
-from collections.abc import AsyncGenerator, Callable, Iterator, Sequence
+from collections.abc import AsyncGenerator, Iterator, Sequence
 from dataclasses import dataclass, field, replace
 
 import pytest
@@ -113,6 +113,7 @@ from narratives_agent.workflows.mcp_loop import (
     DiscoveryResult,
     McpLoopError,
     StatusCallback,
+    ThoughtCallback,
 )
 from narratives_agent.workflows.messages import (
     CLASSIFY_STATUS,
@@ -591,11 +592,11 @@ async def test_the_discovery_phase_streams_its_results(
         telemetry: TurnTelemetry,
         cache: TurnCache,
         *,
-        thought_callback: Callable[[str], None],
+        thought_callback: ThoughtCallback,
         status_callback: StatusCallback,
         **_: object,
     ) -> DiscoveryResult:
-        thought_callback("Looking up France.")
+        thought_callback("Looking up France.", 1)
         status_callback("processing", "Analyzing data...")
         return await _run_accepted_loop(cache)
 
@@ -614,7 +615,7 @@ async def test_the_discovery_phase_streams_its_results(
     }
     assert (
         "thought",
-        {"thought": "Looking up France.", "phase": "discovery"},
+        {"thought": "Looking up France.", "phase": "discovery", "round": 1},
     ) in turn.events
     assert turn.list_content_payloads("tool_call") == [_TOOL_CALL]
     assert turn.list_content_payloads("data_status") == [
@@ -2482,7 +2483,10 @@ _WIRE_FRAMES: list[tuple[EventName, str]] = [
         '{"phase": "classify", "message": "Understanding the question..."}',
     ),
     ("status", '{"phase": "discovery", "message": "Querying data tools..."}'),
-    ("thought", '{"thought": "Looking up France.", "phase": "discovery"}'),
+    (
+        "thought",
+        '{"thought": "Looking up France.", "phase": "discovery", "round": 1}',
+    ),
     (
         "content",
         '{"tool_call": {"name": "fetch_observations", "arguments": '
@@ -2546,10 +2550,10 @@ async def test_a_complete_turn_serializes_to_the_recorded_frames(
         telemetry: TurnTelemetry,
         cache: TurnCache,
         *,
-        thought_callback: Callable[[str], None],
+        thought_callback: ThoughtCallback,
         **_: object,
     ) -> DiscoveryResult:
-        thought_callback("Looking up France.")
+        thought_callback("Looking up France.", 1)
         return await _run_accepted_loop(cache)
 
     async def stream_answer() -> AsyncGenerator[StreamChunk]:

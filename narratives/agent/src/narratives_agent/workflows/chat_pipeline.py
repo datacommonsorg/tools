@@ -507,8 +507,10 @@ async def run_discovery_phase(ctx: TurnContext) -> DiscoveryPhaseResult:
             tools,
             ctx.telemetry,
             ctx.cache,
-            thought_callback=lambda text: ctx.emit(
-                ThoughtFrame(thought=text, phase="discovery")
+            thought_callback=lambda text, round_number: ctx.emit(
+                ThoughtFrame(
+                    thought=text, phase="discovery", round_number=round_number
+                )
             ),
             status_callback=lambda phase, message: ctx.emit(
                 StatusFrame(phase=phase, message=message)

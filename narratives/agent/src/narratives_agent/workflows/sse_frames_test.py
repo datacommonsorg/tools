@@ -137,6 +137,19 @@ _WINDOW_FIELD = (
             id="thought",
         ),
         pytest.param(
+            ThoughtFrame(
+                thought="Looking up France.",
+                phase="discovery",
+                round_number=1,
+            ),
+            (
+                "thought",
+                '{"thought": "Looking up France.", '
+                '"phase": "discovery", "round": 1}',
+            ),
+            id="thought_discovery",
+        ),
+        pytest.param(
             BlockContentFrame(
                 block=TextBlock(index=0, markdown="About 68 million.")
             ),
