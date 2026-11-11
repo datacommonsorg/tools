@@ -47,7 +47,7 @@ export function Header() {
 
   return (
     <header className="sticky top-0 z-[5] bg-surface w-full flex items-center justify-between gap-3 px-3 sm:px-6 lg:px-12 py-4 sm:py-5 shrink-0">
-      <div className="flex items-center gap-2 select-none shrink-0">
+      <a href="/" className="flex items-center gap-2 select-none shrink-0">
         <img
           src={logoUrl}
           alt={logoAltText}
@@ -59,7 +59,7 @@ export function Header() {
             {logoText}
           </span>
         )}
-      </div>
+      </a>
 
       {navItems.length > 0 && (
         <nav
