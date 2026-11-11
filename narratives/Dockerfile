@@ -82,6 +82,11 @@ RUN uv sync --frozen --no-dev
 COPY --from=ui-builder /build/ui/dist ./static/
 COPY defaults/ ./defaults/
 
+# Optional commit SHA surfaced in turn debug reports; placed after the
+# dependency and asset layers so changing BUILD_SHA keeps them cached.
+ARG BUILD_SHA=""
+ENV BUILD_SHA=${BUILD_SHA}
+
 USER appuser
 
 # 8080 when this container is the Cloud Run ingress (the split deployment);

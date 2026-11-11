@@ -18,9 +18,11 @@ operational turn telemetry and cached observation tables without exposing
 untyped internal maps or sensitive conversation content.
 """
 
+import hashlib
 from collections.abc import Mapping, Sequence
 from collections.abc import Set as AbstractSet
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from types import MappingProxyType
 from typing import Literal
 
 from narratives_agent.analytics.digest import (
@@ -30,6 +32,7 @@ from narratives_agent.analytics.digest import (
 from narratives_agent.analytics.metrics import ScriptName
 from narratives_agent.analytics.summarize import SUMMARY_PLACE_LIST_CAP
 from narratives_agent.analytics.tables import ObservationTable
+from narratives_agent.config_model import PROMPT_SLOTS, AgentConfig, GeminiRole
 from narratives_agent.gemini.schemas import QueryPattern
 from narratives_agent.json_value import JsonObject, JsonValue, json_safe
 from narratives_agent.settings import DebugReportMode
@@ -43,6 +46,7 @@ from narratives_agent.workflows.processing import (
     StepRefusalDiagnostic,
     TimeoutDiagnostic,
 )
+from narratives_agent.workflows.prompt_contracts import load_prompt_contract
 from narratives_agent.workflows.specification import (
     AnalysisSpecification,
     UnavailableReport,
@@ -55,11 +59,14 @@ from narratives_agent.workflows.turn_cache import (
 )
 
 __all__ = [
+    "MAX_DEBUG_TEXT_CHARS",
+    "DebugCappedText",
     "DebugCoverageSummary",
     "DebugDiagnostic",
     "DebugPlaceRef",
     "DebugRejectedSpecification",
     "DebugReport",
+    "DebugRoleConfig",
     "DebugSourceRecord",
     "DebugStepRefusalDiagnostic",
     "DebugTableRecord",
@@ -73,11 +80,62 @@ __all__ = [
     "build_debug_diagnostic",
     "build_debug_report",
     "should_emit_debug_report",
+    "truncate_debug_text",
 ]
+
+# Maximum character count preserved for debug prompt and raw output text.
+MAX_DEBUG_TEXT_CHARS = 32_000
 
 type DebugTerminalState = Literal["complete", "refused", "error"]
 type SourceSelection = Literal["chosen", "server_default", "derived"]
 type SpecificationOrigin = Literal["model", "default"]
+
+
+@dataclass(frozen=True, kw_only=True)
+class DebugCappedText:
+    """Holds debug text with truncation status and original character count."""
+
+    text: str
+    truncated: bool
+    total_chars: int
+
+    def to_dict(self) -> JsonObject:
+        """Serializes the capped text to a finite snake_case JSON object."""
+        return {
+            "text": self.text,
+            "truncated": self.truncated,
+            "total_chars": self.total_chars,
+        }
+
+
+def truncate_debug_text(
+    value: str, *, max_chars: int = MAX_DEBUG_TEXT_CHARS
+) -> DebugCappedText:
+    """Caps text at max_chars characters if longer, preserving total count.
+
+    Args:
+        value: The string to cap.
+        max_chars: Maximum characters to retain before truncation.
+
+    Returns:
+        A DebugCappedText instance with truncation metadata.
+    """
+    total = len(value)
+    if total <= max_chars:
+        return DebugCappedText(text=value, truncated=False, total_chars=total)
+    return DebugCappedText(
+        text=value[:max_chars], truncated=True, total_chars=total
+    )
+
+
+@dataclass(frozen=True, kw_only=True)
+class DebugRoleConfig:
+    """Snapshot of model settings for one Gemini role in the agent loop."""
+
+    role: str
+    model: str
+    temperature: float
+    thinking_level: str
 
 
 def should_emit_debug_report(
@@ -343,6 +401,13 @@ class DebugReport:
     specification_origin: SpecificationOrigin | None = None
     unavailable: UnavailableReport | None = None
     digest: AnalysisDigest | None = None
+    synthesis_prompt: DebugCappedText | None = None
+    synthesis_raw_output: DebugCappedText | None = None
+    role_configs: tuple[DebugRoleConfig, ...] = ()
+    prompt_hashes: Mapping[str, str] = field(
+        default_factory=lambda: MappingProxyType({})
+    )
+    build_sha: str | None = None
 
     def to_dict(self) -> JsonObject:
         """Serializes the report to a finite snake_case JSON object."""
@@ -492,6 +557,27 @@ class DebugReport:
             "digest": (
                 self.digest.to_dict() if self.digest is not None else None
             ),
+            "synthesis_prompt": (
+                self.synthesis_prompt.to_dict()
+                if self.synthesis_prompt is not None
+                else None
+            ),
+            "synthesis_raw_output": (
+                self.synthesis_raw_output.to_dict()
+                if self.synthesis_raw_output is not None
+                else None
+            ),
+            "role_configs": [
+                {
+                    "role": r.role,
+                    "model": r.model,
+                    "temperature": r.temperature,
+                    "thinking_level": r.thinking_level,
+                }
+                for r in self.role_configs
+            ],
+            "prompt_hashes": dict(self.prompt_hashes),
+            "build_sha": self.build_sha,
         }
 
 
@@ -578,6 +664,40 @@ def _build_debug_table_record(
     )
 
 
+def _build_role_configs(config: AgentConfig) -> tuple[DebugRoleConfig, ...]:
+    """Extracts model settings for each Gemini role in the agent loop.
+
+    Never reads config.gemini.api_key to prevent secret leakage.
+    """
+    configs: list[DebugRoleConfig] = []
+    for role in GeminiRole:
+        resolved = config.resolve_role_config(role)
+        configs.append(
+            DebugRoleConfig(
+                role=role.value,
+                model=resolved.model,
+                temperature=resolved.temperature,
+                thinking_level=resolved.thinking_level.value.lower(),
+            )
+        )
+    return tuple(configs)
+
+
+def _build_prompt_hashes(config: AgentConfig) -> Mapping[str, str]:
+    """Computes SHA-256 digests for configured prompt slots and contracts."""
+    hashes: dict[str, str] = {}
+    for slot in PROMPT_SLOTS:
+        text = getattr(config.prompts, slot)
+        hashes[slot] = hashlib.sha256(text.encode("utf-8")).hexdigest()
+    hashes["discovery_contract"] = hashlib.sha256(
+        load_prompt_contract("discovery").encode("utf-8")
+    ).hexdigest()
+    hashes["synthesis_contract"] = hashlib.sha256(
+        load_prompt_contract("synthesis").encode("utf-8")
+    ).hexdigest()
+    return MappingProxyType(hashes)
+
+
 def build_debug_report(
     *,
     telemetry: TurnTelemetry,
@@ -594,6 +714,10 @@ def build_debug_report(
     specification_origin: SpecificationOrigin | None = None,
     unavailable: UnavailableReport | None = None,
     digest: AnalysisDigest | None = None,
+    synthesis_prompt: str | None = None,
+    synthesis_raw_output: str | None = None,
+    config: AgentConfig | None = None,
+    build_sha: str | None = None,
 ) -> DebugReport:
     """Builds a structured TurnDebugReport from telemetry and cache state.
 
@@ -614,6 +738,10 @@ def build_debug_report(
             'default').
         unavailable: The no-data report filed for the turn, if any.
         digest: Analytical digest produced by the processed specification.
+        synthesis_prompt: Rendered prompt supplied to the synthesis model.
+        synthesis_raw_output: Raw text returned by the synthesis model.
+        config: Loaded agent configuration used to snapshot roles and prompts.
+        build_sha: Build or commit SHA identifying the running image.
 
     Returns:
         The validated DebugReport dataclass.
@@ -681,6 +809,23 @@ def build_debug_report(
         for round_num, diag in diagnostics
     )
 
+    capped_synthesis_prompt = (
+        truncate_debug_text(synthesis_prompt)
+        if synthesis_prompt is not None
+        else None
+    )
+    capped_synthesis_raw_output = (
+        truncate_debug_text(synthesis_raw_output)
+        if synthesis_raw_output is not None
+        else None
+    )
+    role_configs = _build_role_configs(config) if config is not None else ()
+    prompt_hashes = (
+        _build_prompt_hashes(config)
+        if config is not None
+        else MappingProxyType({})
+    )
+
     return DebugReport(
         turn_id=telemetry.turn_id,
         terminal_state=terminal_state,
@@ -705,4 +850,9 @@ def build_debug_report(
         specification_origin=resolved_specification_origin,
         unavailable=unavailable,
         digest=digest,
+        synthesis_prompt=capped_synthesis_prompt,
+        synthesis_raw_output=capped_synthesis_raw_output,
+        role_configs=role_configs,
+        prompt_hashes=prompt_hashes,
+        build_sha=build_sha,
     )

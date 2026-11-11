@@ -31,6 +31,8 @@ Verifies that `Settings`:
 10. Leaves `debug_report` `None` when its variable is unset, normalizes
     "off", "on", and "flag" case-insensitively, and rejects unrecognized
     modes.
+11. Defaults `build_sha` to None, treating blank values as unset and
+    stripping surrounding whitespace.
 """
 
 from pathlib import Path
@@ -467,3 +469,18 @@ def test_validate_hmac_secret_enforces_length() -> None:
 
     with pytest.raises(ValueError, match="TEST_HMAC_SECRET"):
         validate_hmac_secret("s" * (MIN_SECRET_BYTES - 1), "TEST_HMAC_SECRET")
+
+
+def test_build_sha_defaults_to_none_and_strips_whitespace(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Test: Default and whitespace stripping for `BUILD_SHA`.
+    # Situation: `BUILD_SHA` is unset, blank, or set with surrounding
+    #   whitespace.
+    # Expectation: Unset and blank count as None; a non-blank string is
+    #   stripped.
+    assert Settings().build_sha is None
+    settings_blank = _read_settings(monkeypatch, {"BUILD_SHA": "   \n\t "})
+    assert settings_blank.build_sha is None
+    settings_set = _read_settings(monkeypatch, {"BUILD_SHA": " 3b34f1c\n"})
+    assert settings_set.build_sha == "3b34f1c"
