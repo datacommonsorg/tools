@@ -224,6 +224,7 @@ async def test_compaction_extends_the_previous_summary(
     assert call["thinking_level"] is types.ThinkingLevel.LOW
     assert call["temperature"] <= 0.2
     assert call["token_usage"] is tokens
+    assert call["token_phase"] == "compaction"
 
 
 @pytest.mark.asyncio

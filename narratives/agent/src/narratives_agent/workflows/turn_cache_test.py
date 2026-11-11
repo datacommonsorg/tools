@@ -405,3 +405,60 @@ def test_a_metadata_request_is_recorded_per_variable_and_facet() -> None:
     assert cache.has_requested_metadata("Count_Person", "f1")
     assert not cache.has_requested_metadata("Count_Person", "f2")
     assert not cache.has_requested_metadata("Count_Household", "f1")
+
+
+def test_source_selected_explicitly_flag_and_backfill_preservation() -> None:
+    # Test: `source_selected_explicitly` defaults and preservation.
+    # Situation: A fetched table is stored with
+    #   `source_selected_explicitly=True`, another with `False`, and a derived
+    #   table is stored under its step id. Then variable metadata is recorded to
+    #   backfill the tables.
+    # Expectation: `source_selected_explicitly` defaults to `False` on
+    #   `CachedTable`, derived tables have `source_selected_explicitly=False`,
+    #   and `record_variable_metadata` preserves the explicit-selection flag on
+    #   each fetched table across backfill.
+    cache = TurnCache()
+    table1 = parse_observation_table(
+        _build_observation_payload(),
+        variable_dcid="Count_Person",
+        requested_places=("country/FRA",),
+        enrichment=cache.enrichment,
+    )
+    table2 = parse_observation_table(
+        _build_observation_payload(),
+        variable_dcid="Count_Person",
+        requested_places=("country/FRA",),
+        enrichment=cache.enrichment,
+    )
+    cache.store_fetched(
+        CachedTable(
+            table_id="t1", table=table1, source_selected_explicitly=True
+        )
+    )
+    cache.store_fetched(
+        CachedTable(
+            table_id="t2", table=table2, source_selected_explicitly=False
+        )
+    )
+    derived = _build_cached_table("s1")
+    cache.store_derived(derived)
+
+    assert derived.source_selected_explicitly is False
+    cached_t1_before = cache.get("t1")
+    assert cached_t1_before is not None
+    assert cached_t1_before.source_selected_explicitly is True
+    cached_t2_before = cache.get("t2")
+    assert cached_t2_before is not None
+    assert cached_t2_before.source_selected_explicitly is False
+
+    cache.record_variable_metadata(_build_metadata_payload())
+
+    cached_t1_after = cache.get("t1")
+    assert cached_t1_after is not None
+    assert cached_t1_after.source_selected_explicitly is True
+    cached_t2_after = cache.get("t2")
+    assert cached_t2_after is not None
+    assert cached_t2_after.source_selected_explicitly is False
+    cached_s1_after = cache.get("s1")
+    assert cached_s1_after is not None
+    assert cached_s1_after.source_selected_explicitly is False

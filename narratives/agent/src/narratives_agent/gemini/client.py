@@ -664,11 +664,18 @@ def _normalize_response(
 
 
 def _record_usage(
-    token_usage: TokenUsage | None, counts: TokenCounts | None
+    token_usage: TokenUsage | None,
+    counts: TokenCounts | None,
+    *,
+    phase: str = "",
+    model: str = "",
+    round_number: int | None = None,
 ) -> None:
     """Adds one call's token counts to the turn's totals, if tracked."""
     if token_usage is not None:
-        token_usage.add(counts)
+        token_usage.add(
+            counts, phase=phase, model=model, round_number=round_number
+        )
 
 
 @dataclass
@@ -766,6 +773,9 @@ async def _async_iterate_stream(
     stream: _TextStream,
     model: str,
     token_usage: TokenUsage | None,
+    *,
+    token_phase: str = "",
+    token_round: int | None = None,
 ) -> AsyncGenerator[StreamChunk]:
     """Yields items from a stream whose first chunk was already fetched.
 
@@ -773,6 +783,15 @@ async def _async_iterate_stream(
     fails, or is closed early by the consumer, so a canceled turn still
     accounts for the tokens it spent. The SDK's chunk iterator is closed at
     the same point.
+
+    Args:
+        first: The already-fetched first response chunk, or `None`.
+        chunks: Async iterator over subsequent response chunks.
+        stream: Stream processor extracting text and tracking usage.
+        model: Model name for error reporting and token attribution.
+        token_usage: Optional `TokenUsage` accumulating turn token counts.
+        token_phase: Optional phase or role name attributing the call.
+        token_round: Optional 1-based discovery round number.
     """
     try:
         if first is not None:
@@ -800,7 +819,13 @@ async def _async_iterate_stream(
             is_retryable=_is_retryable_error(error),
         ) from error
     finally:
-        _record_usage(token_usage, stream.usage)
+        _record_usage(
+            token_usage,
+            stream.usage,
+            phase=token_phase,
+            model=model,
+            round_number=token_round,
+        )
         await _close_chunks(chunks)
 
 
@@ -813,6 +838,9 @@ async def async_gemini_request(
     thinking_level: types.ThinkingLevel | None = None,
     response_schema: ResponseSchema | None = None,
     token_usage: TokenUsage | None = None,
+    *,
+    token_phase: str = "",
+    token_round: int | None = None,
 ) -> GeminiResponse:
     """Sends a request to Gemini without blocking the event loop.
 
@@ -828,6 +856,8 @@ async def async_gemini_request(
             structured output.
         token_usage: Optional turn totals to which this call's token counts
             are added.
+        token_phase: Optional pipeline phase or role name attributing the call.
+        token_round: Optional 1-based discovery round number.
 
     Returns:
         The first candidate as a `GeminiResponse`; an empty reply when the
@@ -857,7 +887,13 @@ async def async_gemini_request(
             _report_failure(_describe_error(error), model),
             is_retryable=_is_retryable_error(error),
         ) from error
-    _record_usage(token_usage, _token_counts(response.usage_metadata))
+    _record_usage(
+        token_usage,
+        _token_counts(response.usage_metadata),
+        phase=token_phase,
+        model=model,
+        round_number=token_round,
+    )
     block_reason = _block_reason(response) or _candidate_block_reason(response)
     if block_reason is not None:
         raise _report_blocked(block_reason, model)
@@ -877,6 +913,9 @@ async def async_gemini_stream(
     response_schema: ResponseSchema | None = None,
     token_usage: TokenUsage | None = None,
     include_thoughts: bool = False,
+    *,
+    token_phase: str = "",
+    token_round: int | None = None,
 ) -> AsyncGenerator[StreamChunk]:
     """Starts a streamed request to Gemini without blocking the event loop.
 
@@ -897,6 +936,8 @@ async def async_gemini_stream(
         token_usage: Optional turn totals to which this call's token counts
             are added when the stream ends.
         include_thoughts: Whether to yield thought summaries as well as text.
+        token_phase: Optional pipeline phase or role name attributing the call.
+        token_round: Optional 1-based discovery round number.
 
     Returns:
         An async generator yielding `StreamChunk` values: answer text with
@@ -940,7 +981,13 @@ async def async_gemini_stream(
     if first is not None:
         block_reason = _block_reason(first) or _candidate_block_reason(first)
         if block_reason is not None:
-            _record_usage(token_usage, _token_counts(first.usage_metadata))
+            _record_usage(
+                token_usage,
+                _token_counts(first.usage_metadata),
+                phase=token_phase,
+                model=model,
+                round_number=token_round,
+            )
             await _close_chunks(chunks)
             raise _report_blocked(block_reason, model)
         withheld = _withheld_reason(first)
@@ -952,6 +999,8 @@ async def async_gemini_stream(
         _TextStream(include_thoughts=include_thoughts),
         model,
         token_usage,
+        token_phase=token_phase,
+        token_round=token_round,
     )
 
 
@@ -965,6 +1014,9 @@ async def async_gemini_request_with_thought_streaming(
     response_schema: ResponseSchema | None = None,
     token_usage: TokenUsage | None = None,
     thought_callback: Callable[[str], None] | None = None,
+    *,
+    token_phase: str = "",
+    token_round: int | None = None,
 ) -> GeminiResponse:
     """Streams a request without blocking, forwarding thoughts as they arrive.
 
@@ -985,6 +1037,8 @@ async def async_gemini_request_with_thought_streaming(
         token_usage: Optional turn totals to which this call's token counts
             are added.
         thought_callback: Optional callable invoked with each thought chunk.
+        token_phase: Optional pipeline phase or role name attributing the call.
+        token_round: Optional 1-based discovery round number.
 
     Returns:
         The complete response as a `GeminiResponse`, holding every function
@@ -1023,7 +1077,13 @@ async def async_gemini_request_with_thought_streaming(
             is_retryable=_is_retryable_error(error),
         ) from error
     finally:
-        _record_usage(token_usage, collector.usage)
+        _record_usage(
+            token_usage,
+            collector.usage,
+            phase=token_phase,
+            model=model,
+            round_number=token_round,
+        )
         await _close_chunks(chunks)
     if collector.block_reason is not None:
         # Text or function calls that arrived before the block were stopped

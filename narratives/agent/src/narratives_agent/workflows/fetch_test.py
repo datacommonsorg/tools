@@ -1524,3 +1524,128 @@ async def test_an_empty_multi_entity_response_is_summarized_as_empty(
         "The response has no observations in the requested dates, so it was "
         "not cached as a table and has no table_id."
     )
+
+
+@pytest.mark.asyncio
+async def test_explicit_source_selection_flag_across_fetches(
+    mcp: _FakeMcp,
+) -> None:
+    # Test: `source_selected_explicitly` flag on fetched observation tables.
+    # Situation: Several fetches run:
+    #   1. Named places with explicit `source_override="f1"`.
+    #   2. Named places with no `source_override`, reusing the locked facet.
+    #   3. Child places with explicit `source_override="f2"`.
+    #   4. Child places with no `source_override`.
+    #   5. Multi-entity with explicit `source_override="f3"`.
+    #   6. Multi-entity with no `source_override`.
+    # Expectation: Only fetches that passed an explicit `source_override` in
+    #   the request have `source_selected_explicitly=True`. Reusing a locked
+    #   facet without an override leaves the flag `False`.
+    cache = TurnCache()
+    mcp.answers["country/FRA"] = _build_payload(
+        [["country/FRA", "2023", 1.0]], facet="f1"
+    )
+    mcp.answers["country/DEU"] = _build_payload(
+        [["country/DEU", "2023", 2.0]], facet="f1"
+    )
+
+    # 1. Named places with explicit source override
+    await _execute_fetch(
+        "fetch_observations",
+        {
+            "variable_dcid": "Count_Person",
+            "place_dcids": ["country/FRA"],
+            "source_override": "f1",
+        },
+        cache,
+    )
+    cached_t1 = cache.get("t1")
+    assert cached_t1 is not None
+    assert cached_t1.source_selected_explicitly is True
+
+    # 2. Named places without source override (reuses locked facet f1)
+    await _execute_fetch(
+        "fetch_observations",
+        {
+            "variable_dcid": "Count_Person",
+            "place_dcids": ["country/DEU"],
+        },
+        cache,
+    )
+    cached_t2 = cache.get("t2")
+    assert cached_t2 is not None
+    assert cached_t2.source_selected_explicitly is False
+
+    # 3. Child places with explicit source override
+    mcp.answers["geoId/06"] = _build_payload(
+        [["geoId/06001", "2023", 10.0]], facet="f2"
+    )
+    await _execute_fetch(
+        "fetch_child_observations",
+        {
+            "variable_dcid": "Count_Person",
+            "parent_place_dcid": "geoId/06",
+            "child_place_type": "County",
+            "source_override": "f2",
+        },
+        cache,
+    )
+    cached_t3 = cache.get("t3")
+    assert cached_t3 is not None
+    assert cached_t3.source_selected_explicitly is True
+
+    # 4. Child places without source override
+    mcp.answers["europe"] = _build_payload(
+        [["country/FRA", "2023", 10.0]],
+        facet="f4",
+        variable={"dcid": "Count_Household"},
+    )
+    await _execute_fetch(
+        "fetch_child_observations",
+        {
+            "variable_dcid": "Count_Household",
+            "parent_place_dcid": "europe",
+            "child_place_type": "Country",
+        },
+        cache,
+    )
+    cached_t4 = cache.get("t4")
+    assert cached_t4 is not None
+    assert cached_t4.source_selected_explicitly is False
+
+    # 5. Multi-entity with explicit source override
+    mcp.answers["get_multi_entity_observations"] = _build_payload(
+        [["country/FRA", "2023", 100.0]],
+        facet="f3",
+        variable={"dcid": "Trade"},
+    )
+    await _execute_fetch(
+        "fetch_multi_entity_observations",
+        {
+            "variable_dcid": "Trade",
+            "entities": {"reporter": ["country/FRA"]},
+            "source_override": "f3",
+        },
+        cache,
+    )
+    cached_t5 = cache.get("t5")
+    assert cached_t5 is not None
+    assert cached_t5.source_selected_explicitly is True
+
+    # 6. Multi-entity without source override
+    mcp.answers["get_multi_entity_observations"] = _build_payload(
+        [["country/DEU", "2023", 200.0]],
+        facet="f5",
+        variable={"dcid": "Trade_Other"},
+    )
+    await _execute_fetch(
+        "fetch_multi_entity_observations",
+        {
+            "variable_dcid": "Trade_Other",
+            "entities": {"reporter": ["country/DEU"]},
+        },
+        cache,
+    )
+    cached_t6 = cache.get("t6")
+    assert cached_t6 is not None
+    assert cached_t6.source_selected_explicitly is False
