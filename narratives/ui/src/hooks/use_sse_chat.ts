@@ -13,6 +13,14 @@ import {
   INTERRUPTED_TURN_ERROR,
   TRANSCRIPT_REJECTED_ERROR,
 } from '@/src/config/copy_chat';
+import {
+  type ClientTurnTimings,
+  computeElapsedMs,
+  recordStreamEventTiming,
+  recordTimingMilestone,
+} from '@/src/hooks/turn_timings';
+
+export type { ClientTurnTimings };
 
 /** SSE framing: events are separated by a blank line (after line-ending normalization). */
 const SSE_EVENT_SEPARATOR = '\n\n';
@@ -364,6 +372,10 @@ export interface ChatTurn {
    * the latest signed turn keeps it, since it covers the whole window.
    */
   compactedSummary?: string | null;
+  /** Holds the non-empty machine-readable reason reported by the `terminal` event. */
+  terminalReason?: string;
+  /** Client-observed submission timestamp and monotonic elapsed milestones for this turn. */
+  clientTimings?: ClientTurnTimings;
 }
 
 /** Identifies the terminal state of a turn as reported by its `terminal` event. */
@@ -449,7 +461,11 @@ const CHAT_STREAM_EVENTS: ReadonlySet<string> = new Set<
   ChatStreamEvent['event']
 >(['status', 'thought', 'content', 'terminal', 'follow_ups', 'heartbeat']);
 
-const newTurn = (userMessage: string, idempotencyKey: string): ChatTurn => ({
+const newTurn = (
+  userMessage: string,
+  idempotencyKey: string,
+  submittedAt: string,
+): ChatTurn => ({
   userMessage,
   status: 'idle',
   toolCalls: [],
@@ -458,6 +474,7 @@ const newTurn = (userMessage: string, idempotencyKey: string): ChatTurn => ({
   blocks: [],
   provenance: [],
   idempotencyKey,
+  clientTimings: { submittedAt },
 });
 
 /** The separator between text blocks in the signed answer text. */
@@ -723,10 +740,11 @@ export async function* parseSseStream(
   }
 }
 
-/** Identifies the open request: its abort handle and its turn's key. */
+/** Identifies the open request: its abort handle, its turn's key, and its start timestamp. */
 interface InFlightRequest {
   controller: AbortController;
   idempotencyKey: string;
+  submittedPerfMs: number;
 }
 
 /** Public surface of {@link useSseChat}. */
@@ -769,14 +787,16 @@ export function useSseChat(props: UseSseChatProps): UseSseChatResult {
     setIsStreaming(false);
     setError(null);
     if (!inFlight) return;
+    const totalMs = computeElapsedMs(inFlight.submittedPerfMs);
     inFlight.controller.abort();
     setTurns((prev) =>
-      prev.map((turn) =>
-        turn.idempotencyKey === inFlight.idempotencyKey &&
-        !SETTLED_STATUSES.has(turn.status)
-          ? { ...turn, status: 'done', stopped: true }
-          : turn,
-      ),
+      prev.map((turn) => {
+        if (turn.idempotencyKey !== inFlight.idempotencyKey) return turn;
+        const settled: ChatTurn = SETTLED_STATUSES.has(turn.status)
+          ? turn
+          : { ...turn, status: 'done', stopped: true };
+        return recordTimingMilestone(settled, 'totalMs', totalMs);
+      }),
     );
   }, [setTurns]);
 
@@ -789,7 +809,12 @@ export function useSseChat(props: UseSseChatProps): UseSseChatResult {
       // re-validate the message text here.
       if (isStreaming || inFlightRef.current) return;
       const idempotencyKey = newIdempotencyKey();
-      setTurns((prev) => [...prev, newTurn(message, idempotencyKey)]);
+      const submittedAt = new Date().toISOString();
+      const submittedPerfMs = performance.now();
+      setTurns((prev) => [
+        ...prev,
+        newTurn(message, idempotencyKey, submittedAt),
+      ]);
       setIsStreaming(true);
       setError(null);
 
@@ -799,7 +824,7 @@ export function useSseChat(props: UseSseChatProps): UseSseChatResult {
       const transcript = transcriptRequestFields(turns);
 
       const controller = new AbortController();
-      inFlightRef.current = { controller, idempotencyKey };
+      inFlightRef.current = { controller, idempotencyKey, submittedPerfMs };
 
       // Applies a mutation to this request's turn, found by its key.
       const patch = (mutate: (turn: ChatTurn) => ChatTurn) =>
@@ -827,6 +852,11 @@ export function useSseChat(props: UseSseChatProps): UseSseChatResult {
           }),
           signal: controller.signal,
         });
+        if (controller.signal.aborted) return;
+        const headersReceivedMs = computeElapsedMs(submittedPerfMs);
+        patch((turn) =>
+          recordTimingMilestone(turn, 'headersReceivedMs', headersReceivedMs),
+        );
         const rejected = await isTranscriptRejection(resp);
         if (controller.signal.aborted) return;
         if (rejected) {
@@ -877,7 +907,15 @@ export function useSseChat(props: UseSseChatProps): UseSseChatResult {
           // Heartbeat frames carry no state changes, so skipping them avoids
           // an unnecessary re-render.
           if (evt.event === 'heartbeat') continue;
-          patch((turn) => applyEvent(turn, evt));
+          const eventElapsedMs = computeElapsedMs(submittedPerfMs);
+          patch((turn) =>
+            recordStreamEventTiming(
+              turn,
+              applyEvent(turn, evt),
+              evt,
+              eventElapsedMs,
+            ),
+          );
           if (evt.event === 'terminal') {
             const payload = evt.data;
             terminal = payload;
@@ -921,6 +959,8 @@ export function useSseChat(props: UseSseChatProps): UseSseChatResult {
         setError(msg);
       } finally {
         if (!controller.signal.aborted) {
+          const totalMs = computeElapsedMs(submittedPerfMs);
+          patch((turn) => recordTimingMilestone(turn, 'totalMs', totalMs));
           inFlightRef.current = null;
           setIsStreaming(false);
         }
@@ -947,18 +987,23 @@ function terminalError(terminal: TerminalPayload): string {
  * terminal outcome rather than a request failure.
  */
 function applyTerminal(turn: ChatTurn, terminal: TerminalPayload): ChatTurn {
+  const reasonPatch = terminal.reason
+    ? { terminalReason: terminal.reason }
+    : {};
   if (terminal.state === 'complete') {
-    return { ...turn, status: 'done' };
+    return { ...turn, ...reasonPatch, status: 'done' };
   }
   if (terminal.state === 'refused') {
     return {
       ...turn,
+      ...reasonPatch,
       status: 'refused',
       refusalMessage: terminal.message || DEFAULT_REFUSAL_MESSAGE,
     };
   }
   return {
     ...turn,
+    ...reasonPatch,
     status: 'error',
     error: terminalError(terminal),
     isRetryable:
