@@ -38,7 +38,8 @@ import {
  * disagree.
  */
 
-const COLOR = 'var(--color-theme-primary)';
+/** Type for a citation chip, linked or not, so the two read the same. */
+const CHIP_TEXT_CLASS = 'text-label-medium-emphasized';
 
 /** Joins a source's name and its cited variable in a chip's label. */
 const SOURCE_VARIABLE_SEPARATOR = ', ';
@@ -137,33 +138,38 @@ export function CitationChip({
   const { numbers, turnIndex } = useCitationNumbering();
 
   if (!isCitable(n, sources)) {
-    return <>[{n}]</>;
+    return <sup className={CHIP_TEXT_CLASS}>[{n}]</sup>;
   }
 
   const shown = displayCitationNumber(n, numbers);
   const anchor = citationAnchorId(turnIndex, shown);
   const label = sourceLabel(n, sources);
+  // CHIP_TEXT_CLASS sets a fixed 12px size; Preflight's `sup` raises it with
+  // relative positioning, so the chip does not open up the line it sits in.
   return (
-    <Tooltip label={label}>
-      <a
-        href={`#${anchor}`}
-        onClick={(e) => {
-          // Smooth scroll instead of jumping abruptly
-          const target = document.getElementById(anchor);
-          if (target) {
-            e.preventDefault();
-            target.scrollIntoView({ behavior: 'smooth', block: 'center' });
-          }
-        }}
-        className="font-medium no-underline hover:underline"
-        style={{ color: COLOR, fontWeight: 500 }}
-        // The number alone tells a screen-reader user nothing about where the
-        // claim came from; the visible tooltip's text belongs here too.
-        aria-label={citationAriaLabel(n, shown, sources)}
-      >
-        [{shown}]
-      </a>
-    </Tooltip>
+    <sup className={CHIP_TEXT_CLASS}>
+      <Tooltip label={label}>
+        <a
+          href={`#${anchor}`}
+          onClick={(e) => {
+            // Smooth scroll instead of jumping abruptly
+            const target = document.getElementById(anchor);
+            if (target) {
+              e.preventDefault();
+              target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            }
+          }}
+          // Vertical padding on an inline box grows the hit area without moving
+          // the text; the negative margin cancels the horizontal padding.
+          className="px-0.5 -mx-0.5 py-1.5 text-theme-primary no-underline hover:underline"
+          // The number alone tells a screen-reader user nothing about where the
+          // claim came from; the visible tooltip's text belongs here too.
+          aria-label={citationAriaLabel(n, shown, sources)}
+        >
+          [{shown}]
+        </a>
+      </Tooltip>
+    </sup>
   );
 }
 

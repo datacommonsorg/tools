@@ -40,6 +40,7 @@ import type { ProvenanceItem } from '@/src/hooks/use_sse_chat';
 import {
   analyzeMarkdownTable,
   citationsIn,
+  isBoldOnlyParagraph,
   type MarkdownNode,
   type TableAnalysis,
   textOf,
@@ -68,7 +69,17 @@ interface ResponseCardProps {
   revealing?: boolean;
 }
 
-const LINK_COLOR = 'var(--color-theme-primary)';
+/**
+ * Markdown heading styles. The rendered element sits one level down (`#` is
+ * an h2), since the answer panel's intro block owns the h1. `##` and `###`
+ * share a style. A bold-only paragraph renders as an h3, ranked as a `##`,
+ * with the `####` style.
+ */
+const HEADING_1_CLASS = 'font-display text-xl font-medium mt-4 first:mt-0 mb-2';
+const HEADING_2_CLASS = 'font-display text-lg font-medium mt-4 first:mt-0 mb-2';
+const HEADING_3_CLASS =
+  'font-display text-base font-medium mt-3 first:mt-0 mb-2';
+const HEADING_4_CLASS = 'font-display text-sm font-medium mt-3 first:mt-0 mb-2';
 
 /** Renders the agent's answer text as markdown, with citation chips. */
 export function ResponseCard({
@@ -82,7 +93,7 @@ export function ResponseCard({
 }: ResponseCardProps) {
   const markdown = (
     <div
-      className={`${bare ? '' : 'px-[56px] py-6 text-on-surface '}markdown-body${
+      className={`${bare ? '' : 'text-on-surface '}markdown-body wrap-break-word${
         revealing ? ' markdown-stream' : ''
       }`}
     >
@@ -135,30 +146,40 @@ function ReactMarkdownInner({
           {children}
         </StreamSpan>
       ),
-      p: ({ children }) => (
-        <p className="text-body-large mb-3 last:mb-0">
-          {renderWithCitations(children, sources)}
-        </p>
+      p: ({ children, node }) => (
+        <MarkdownParagraph node={node} sources={sources}>
+          {children}
+        </MarkdownParagraph>
       ),
       h1: ({ children }) => (
-        <h1 className="text-2xl font-medium mt-4 mb-2">
-          {renderWithCitations(children, sources)}
-        </h1>
-      ),
-      h2: ({ children }) => (
-        <h2 className="text-xl font-medium mt-4 mb-2">
+        <h2 className={HEADING_1_CLASS}>
           {renderWithCitations(children, sources)}
         </h2>
       ),
-      h3: ({ children }) => (
-        <h3 className="text-lg font-medium mt-3 mb-2">
+      h2: ({ children }) => (
+        <h3 className={HEADING_2_CLASS}>
           {renderWithCitations(children, sources)}
         </h3>
       ),
-      h4: ({ children }) => (
-        <h4 className="text-base font-medium mt-3 mb-2">
+      h3: ({ children }) => (
+        <h4 className={HEADING_2_CLASS}>
           {renderWithCitations(children, sources)}
         </h4>
+      ),
+      h4: ({ children }) => (
+        <h5 className={HEADING_3_CLASS}>
+          {renderWithCitations(children, sources)}
+        </h5>
+      ),
+      h5: ({ children }) => (
+        <h6 className={HEADING_4_CLASS}>
+          {renderWithCitations(children, sources)}
+        </h6>
+      ),
+      h6: ({ children }) => (
+        <h6 className={HEADING_4_CLASS}>
+          {renderWithCitations(children, sources)}
+        </h6>
       ),
       em: ({ children }) => (
         <em className="italic">{renderWithCitations(children, sources)}</em>
@@ -173,7 +194,9 @@ function ReactMarkdownInner({
       // delay, so a bullet or a rule waits for the text it belongs to.
       li: ({ children, style }) => (
         <li className="leading-relaxed" style={style}>
-          {renderWithCitations(children, sources)}
+          <NestedBlockContext.Provider value={true}>
+            {renderWithCitations(children, sources)}
+          </NestedBlockContext.Provider>
         </li>
       ),
       a: ({ children, href }) => (
@@ -181,8 +204,7 @@ function ReactMarkdownInner({
           href={href}
           target="_blank"
           rel="noopener noreferrer"
-          className="hover:underline"
-          style={{ color: LINK_COLOR }}
+          className="text-theme-primary hover:underline"
         >
           <PlainTextContext.Provider value={true}>
             {children}
@@ -219,7 +241,9 @@ function ReactMarkdownInner({
           className="border-l-4 border-outline pl-4 italic text-on-surface-variant mb-3"
           style={style}
         >
-          {renderWithCitations(children, sources)}
+          <NestedBlockContext.Provider value={true}>
+            {renderWithCitations(children, sources)}
+          </NestedBlockContext.Provider>
         </blockquote>
       ),
       table: (props) => <MarkdownTable {...props} />,
@@ -251,6 +275,45 @@ function ReactMarkdownInner({
     >
       {body}
     </ReactMarkdown>
+  );
+}
+
+/**
+ * True inside a list item or blockquote. A loose list wraps each item's text
+ * in a paragraph, so a bold item there is emphasis, not a subheading.
+ */
+const NestedBlockContext = createContext(false);
+
+interface MarkdownParagraphProps {
+  children?: ReactNode;
+  node?: unknown;
+  sources?: ProvenanceItem[];
+}
+
+/**
+ * A paragraph, or a subheading when it is a top-level paragraph of nothing but
+ * bold text: the model's way of writing one.
+ */
+function MarkdownParagraph({
+  children,
+  node,
+  sources,
+}: MarkdownParagraphProps) {
+  const isNested = useContext(NestedBlockContext);
+  if (!isNested && isBoldOnlyParagraph(node as MarkdownNode | undefined)) {
+    const strong = Children.toArray(children).find(
+      isValidElement<{ children?: ReactNode }>,
+    );
+    return (
+      <h3 className={HEADING_3_CLASS}>
+        {renderWithCitations(strong?.props.children, sources)}
+      </h3>
+    );
+  }
+  return (
+    <p className="text-body-large mb-3 last:mb-0">
+      {renderWithCitations(children, sources)}
+    </p>
   );
 }
 
@@ -305,8 +368,13 @@ function MarkdownTable({ children, node, style }: MarkdownCellProps) {
   );
   return (
     <TableAnalysisContext.Provider value={analysis}>
-      <div className="overflow-x-auto mb-3">
-        <table className="min-w-full text-sm border-collapse" style={style}>
+      {/* Same frame as a chart tile. The cells' outer borders are dropped so
+          they do not double up with the frame's. */}
+      <div className="overflow-x-auto mb-3 border border-border rounded-chart bg-surface">
+        <table
+          className="min-w-full text-sm border-collapse [&_tr>*:first-child]:border-l-0 [&_tr>*:last-child]:border-r-0 [&_thead_tr:first-child>*]:border-t-0 [&_tbody_tr:last-child>*]:border-b-0"
+          style={style}
+        >
           {children}
         </table>
       </div>
@@ -334,16 +402,6 @@ function MarkdownRow({ children }: MarkdownCellProps) {
   );
 }
 
-/** Alignment: what the markdown asked for, else right when numeric. */
-function cellAlignment(
-  style: CSSProperties | undefined,
-  numeric: boolean,
-  fallback: CSSProperties['textAlign'],
-): CSSProperties['textAlign'] {
-  if (style?.textAlign) return style.textAlign;
-  return numeric ? 'right' : fallback;
-}
-
 /**
  * A header cell, carrying its column's citation when every body cell in the
  * column cited the same source. Appended only when the header does not
@@ -365,8 +423,12 @@ function HeaderCell({
 
   return (
     <th
-      className="border border-outline px-3 py-2 font-medium"
-      style={{ ...style, textAlign: cellAlignment(style, numeric, 'left') }}
+      // An explicit markdown alignment arrives in `style` and wins over the
+      // class.
+      className={`border border-border px-6 pb-2 pt-3 font-medium ${
+        numeric ? 'text-right' : 'text-left'
+      }`}
+      style={style}
     >
       {renderWithCitations(children, sources)}
       {toAppend.map((n) => (
@@ -390,10 +452,12 @@ function DataCell({ children, colIndex, style, sources }: MarkdownCellProps) {
 
   return (
     <td
-      className={`border border-outline px-3 py-2${
-        numeric ? ' tabular-nums' : ''
+      // An explicit markdown alignment arrives in `style` and wins over the
+      // class.
+      className={`border border-border px-6 py-2${
+        numeric ? ' tabular-nums text-right' : ''
       }`}
-      style={{ ...style, textAlign: cellAlignment(style, numeric, undefined) }}
+      style={style}
     >
       <HideCitationsProvider value={hoisted}>
         {renderWithCitations(children, sources)}

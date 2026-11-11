@@ -464,6 +464,54 @@ export function pageBreak(
   return shortened;
 }
 
+/**
+ * Readies the mounted clone for paper: no panel backgrounds, and nothing that
+ * clips text.
+ *
+ * Runs after mounting, since it reads computed styles. Inlined charts keep
+ * their own styling, as a legend swatch is a background color, and
+ * screen-reader-only text stays clipped out of sight.
+ *
+ * Reads every computed style before writing any inline one: interleaving the
+ * two would force a style recalculation per element.
+ */
+export function flattenForPrint(clone: HTMLElement) {
+  const snapshots = Array.from(clone.querySelectorAll<HTMLElement>('*'))
+    .filter((el) => !el.closest('[data-chart-inner], .sr-only'))
+    .map((el) => {
+      const computed = window.getComputedStyle(el);
+      return {
+        el,
+        clipsOverflow:
+          computed.overflowX !== 'visible' || computed.overflowY !== 'visible',
+        truncatesText: computed.textOverflow === 'ellipsis',
+      };
+    });
+  for (const { el, clipsOverflow, truncatesText } of snapshots) {
+    el.style.backgroundColor = 'transparent';
+    el.style.backgroundImage = 'none';
+    if (clipsOverflow) {
+      el.style.overflow = 'visible';
+    }
+    if (truncatesText) {
+      el.style.textOverflow = 'clip';
+      el.style.whiteSpace = 'normal';
+    }
+  }
+  // A table scrolls sideways on screen, but paper has no scrollbar: fit it to
+  // the page, letting cells break long values only when nothing else fits.
+  clone
+    .querySelectorAll<HTMLElement>('.markdown-body table')
+    .forEach((table) => {
+      table.style.width = '100%';
+      table.style.minWidth = '0';
+      table.querySelectorAll<HTMLElement>('th, td').forEach((cell) => {
+        cell.style.whiteSpace = 'normal';
+        cell.style.overflowWrap = 'anywhere';
+      });
+    });
+}
+
 /** Turns the question into a filesystem-safe basename. */
 function fileNameFor(question: string): string {
   const slug = question
@@ -545,8 +593,7 @@ async function renderToPdf(
     numeric.style.cursor = 'auto';
   });
 
-  // The question is the document's heading: undo its on-screen one-line
-  // truncation so a long question is not cut off.
+  // The question is the document's heading.
   clone.querySelectorAll<HTMLElement>('.print-question').forEach((heading) => {
     heading.style.whiteSpace = 'normal';
     heading.style.textOverflow = 'clip';
@@ -562,7 +609,6 @@ async function renderToPdf(
       row.style.minHeight = '0';
       row.style.alignItems = 'flex-start';
       row.style.padding = '0 0 12px 0';
-      row.style.background = '#ffffff';
       row.style.borderBottom = '0';
     }
   });
@@ -588,6 +634,7 @@ async function renderToPdf(
 
   stage.appendChild(clone);
   document.body.appendChild(stage);
+  flattenForPrint(clone);
   scaleChartsToWidth(stage);
   fitCardsToPage(stage, pageHeightFor(clone));
 
