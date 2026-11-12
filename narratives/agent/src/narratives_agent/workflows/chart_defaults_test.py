@@ -1316,7 +1316,8 @@ def test_the_default_chart_of_a_window_ranking_is_a_line() -> None:
     # Situation: Six states ranked by their change from 2020 to 2024, with
     #   three entries per end.
     # Expectation: The default chart is an undated line of the three states
-    #   the ranking lists first, rather than a ranking of the latest levels.
+    #   the ranking lists first, clamped to the window, rather than a
+    #   ranking of the latest levels.
     entry = _make_window_table()
     analysis = AnalysisSpecification.model_validate(
         {
@@ -1345,6 +1346,8 @@ def test_the_default_chart_of_a_window_ranking_is_a_line() -> None:
         "title": "Total Population",
         "variable_dcids": ["Count_Person"],
         "place_dcids": [_STATES[5], _STATES[4], _STATES[3]],
+        "start_date": "2020",
+        "end_date": "2024",
     }
 
 
@@ -1354,7 +1357,8 @@ def test_a_window_ranking_line_shows_five_places_and_the_parent() -> None:
     #   six entries per end, and an `analyze_timeseries` step on `t2`, the
     #   same variable for the states' parent, the United States.
     # Expectation: An undated line of the five states the ranking lists
-    #   first and the United States, drawn from both tables.
+    #   first and the United States, drawn from both tables and clamped to
+    #   the window.
     entry = _make_window_table()
     parent = _make_table("t2", places=("country/USA",), dates=("2020", "2024"))
     analysis = AnalysisSpecification.model_validate(
@@ -1392,6 +1396,8 @@ def test_a_window_ranking_line_shows_five_places_and_the_parent() -> None:
         "title": "Total Population",
         "variable_dcids": ["Count_Person"],
         "place_dcids": [*reversed(_STATES[1:]), "country/USA"],
+        "start_date": "2020",
+        "end_date": "2024",
     }
 
 
@@ -1431,3 +1437,164 @@ def test_no_default_chart_for_a_relation_over_a_date_window() -> None:
         _resolve_default_wire(digest, analysis, _make_cache(population, income))
         is None
     )
+
+
+@pytest.mark.parametrize(
+    ("start_date", "end_date", "expected_bounds"),
+    [
+        ("2020", "2022", {"start_date": "2020", "end_date": "2022"}),
+        ("2020", None, {"start_date": "2020"}),
+        (None, "2022", {"end_date": "2022"}),
+        (None, None, {}),
+        ("2019-06", "2022-06", {"start_date": "2019", "end_date": "2022"}),
+    ],
+    ids=[
+        "both_bounds",
+        "start_only",
+        "end_only",
+        "unbounded",
+        "bounds_finer_than_the_rows",
+    ],
+)
+def test_a_default_series_line_is_clamped_to_its_step_window(
+    start_date: str | None,
+    end_date: str | None,
+    expected_bounds: dict[str, str],
+) -> None:
+    # Test: The date bounds of the default line of a time-series step.
+    # Situation: Two countries hold annual values from 2018 to 2023, and
+    #   the `analyze_timeseries` step bounds its window at the start, the
+    #   end, both, or neither, including with monthly bounds finer than the
+    #   annual rows.
+    # Expectation: The default line is clamped on each side the step
+    #   bounds, to the first and last dates the step summarized, so a
+    #   monthly bound becomes the annual date the summary includes and the
+    #   component draws; an unbounded step's line carries neither bound.
+    table = _make_table(
+        "t1", dates=("2018", "2019", "2020", "2021", "2022", "2023")
+    )
+    step: dict[str, object] = {
+        "step_id": "s1",
+        "script": "analyze_timeseries",
+        "table": "t1",
+    }
+    bounds = {
+        key: value
+        for key, value in (("start_date", start_date), ("end_date", end_date))
+        if value is not None
+    }
+    analysis = _make_spec(**step, **bounds)
+    digest = _make_digest(
+        analyze_timeseries(
+            table.table, start_date=start_date, end_date=end_date, step_id="s1"
+        )
+    )
+
+    chart = _resolve_default_wire(digest, analysis, _make_cache(table))
+
+    assert chart == {
+        "viz_type": "line",
+        "title": "Total Population",
+        "variable_dcids": ["Count_Person"],
+        "place_dcids": ["country/FRA", "country/DEU"],
+        **expected_bounds,
+    }
+
+
+@pytest.mark.parametrize(
+    "dates",
+    [("2015", "2020", "2024"), ("2020-01", "2020-03", "2020-06")],
+    ids=["annual_window", "monthly_window"],
+)
+def test_a_default_window_ranking_line_is_clamped_to_the_window(
+    dates: tuple[str, str, str],
+) -> None:
+    # Test: The date bounds of the default line of a window ranking.
+    # Situation: Six states hold annual or monthly values, `reduce_series`
+    #   reduces them to the change over the window from the first date to
+    #   the last, and `rank_cohort` ranks that change.
+    # Expectation: The default line of the three leading states carries the
+    #   window's first date as `start_date` and its last as `end_date`.
+    rows = tuple(
+        ObservationRow(place, place, date, 100.0 + index * position)
+        for index, place in enumerate(_STATES, start=1)
+        for position, date in enumerate(dates)
+    )
+    entry = CachedTable(
+        "t1",
+        ObservationTable(
+            variable_dcid="Count_Person",
+            variable_name="Total Population",
+            unit="Person",
+            scaling_factor=None,
+            provenance=Provenance(),
+            rows=rows,
+            requested_places=_STATES,
+            place_names={place: place for place in _STATES},
+            parent_place_dcid="country/USA",
+            child_place_type="State",
+        ),
+    )
+    analysis = AnalysisSpecification.model_validate(
+        {
+            "steps": [
+                {
+                    "step_id": "s1",
+                    "script": "reduce_series",
+                    "table": "t1",
+                    "metric": "absolute_change",
+                },
+                {
+                    "step_id": "s2",
+                    "script": "rank_cohort",
+                    "table": "s1",
+                    "n": 3,
+                },
+            ]
+        }
+    )
+    digest = _make_digest(
+        rank_cohort(_reduce_window(entry), max_entries_per_end=3, step_id="s2")
+    )
+
+    chart = _resolve_default_wire(digest, analysis, _make_cache(entry))
+
+    assert chart is not None
+    assert chart["viz_type"] == "line"
+    assert chart["place_dcids"] == [_STATES[5], _STATES[4], _STATES[3]]
+    assert chart["start_date"] == dates[0]
+    assert chart["end_date"] == dates[-1]
+
+
+def test_a_default_cohort_series_line_is_clamped_to_its_step_window() -> None:
+    # Test: The date bounds of a default cohort line.
+    # Situation: Thirty counties, more than the place cap, hold values from
+    #   2018 to 2023, and the `analyze_timeseries` step starts in 2020.
+    # Expectation: The default line draws the cohort and starts at 2020.
+    table = _make_table(
+        "t1",
+        places=_COUNTIES,
+        dates=("2018", "2019", "2020", "2021", "2022", "2023"),
+        parent="geoId/06",
+        child_type="County",
+    )
+    analysis = _make_spec(
+        step_id="s1",
+        script="analyze_timeseries",
+        table="t1",
+        start_date="2020",
+    )
+    digest = _make_digest(
+        analyze_timeseries(table.table, start_date="2020", step_id="s1")
+    )
+
+    chart = _resolve_default_wire(digest, analysis, _make_cache(table))
+
+    assert chart == {
+        "viz_type": "line",
+        "title": "Total Population",
+        "variable_dcids": ["Count_Person"],
+        "parent_place": "geoId/06",
+        "child_place_type": "County",
+        "start_date": "2020",
+    }

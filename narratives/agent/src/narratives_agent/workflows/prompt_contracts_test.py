@@ -682,3 +682,49 @@ def test_synthesis_contract_never_turns_members_into_a_region_figure() -> None:
     assert "Name the region as the digest names it" in flattened
     assert '"countries and territories"' in flattened
     assert "Never open with it" in flattened
+
+
+def test_only_a_line_chart_takes_date_bounds() -> None:
+    # Test: Where the grammar accepts `start_date` and `end_date`.
+    # Situation: The JSON Schema of each `ChartSpecification` variant.
+    # Expectation: `LineChartSpecification` declares both bounds, and no
+    #   other variant declares either bound.
+    defs = TypeAdapter(ChartSpecification).json_schema()["$defs"]
+    variants = {
+        name: set(definition.get("properties", {}))
+        for name, definition in defs.items()
+        if "kind" in definition.get("properties", {})
+    }
+
+    assert {"start_date", "end_date"} <= variants.pop("LineChartSpecification")
+    assert variants
+    for name, properties in variants.items():
+        assert not {"start_date", "end_date"} & properties, name
+
+
+def test_synthesis_contract_clamps_bounded_line_charts() -> None:
+    # Test: The date-clamping guidance in `### Charts`.
+    # Situation: The `### Charts` section of the synthesis contract the
+    #   model receives.
+    # Expectation: It asks for `start_date` and `end_date` on a `line`
+    #   whenever the question or the figures bound the period, even when
+    #   the TABLE INVENTORY dates already start or end there, and to omit
+    #   both for the full series; the window rule no longer suggests the
+    #   chart shows a longer history.
+    contract = load_prompt_contract("synthesis")
+    _, found, remainder = contract.partition("### Charts\n")
+    assert found
+    charts = " ".join(remainder.partition("\n### ")[0].split())
+
+    assert (
+        "On a `line` chart, set `start_date`, `end_date`, or both"
+    ) in charts
+    assert "or a ranking over a date window" in charts
+    assert (
+        "Set them even when the table's dates in the TABLE INVENTORY "
+        "already start or end there"
+    ) in charts
+    assert "Omit both to show the full series." in charts
+    assert "because the chart may show a longer history" not in (
+        " ".join(contract.split())
+    )

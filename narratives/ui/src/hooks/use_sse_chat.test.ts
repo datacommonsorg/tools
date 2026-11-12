@@ -656,6 +656,45 @@ describe('applyEvent', () => {
     expect(getTurnCharts(turn)[0].sort).toBe('descending');
   });
 
+  it("maps a line chart's date bounds from the wire", () => {
+    // Test: Mapping of `start_date` and `end_date` at the boundary.
+    // Situation: A line chart block with both bounds, and line chart blocks
+    //   whose bounds are empty strings or not strings.
+    // Expectation: The first chart carries `startDate` and `endDate`; the
+    //   others carry neither, so a malformed bound is treated as absent.
+    const turn = [
+      buildChartEvent({
+        viz_type: 'line',
+        variable_dcids: ['Count_Person'],
+        place_dcids: ['country/FRA'],
+        start_date: '2005',
+        end_date: '2020-06',
+      }),
+      buildChartEvent({
+        viz_type: 'line',
+        variable_dcids: ['Count_Person'],
+        place_dcids: ['country/FRA'],
+        start_date: '',
+        end_date: '',
+      }),
+      buildChartEvent({
+        viz_type: 'line',
+        variable_dcids: ['Count_Person'],
+        place_dcids: ['country/FRA'],
+        start_date: 2005,
+        end_date: null,
+      }),
+    ].reduce(applyEvent, blankTurn());
+
+    expect(
+      getTurnCharts(turn).map(({ startDate, endDate }) => [startDate, endDate]),
+    ).toEqual([
+      ['2005', '2020-06'],
+      [undefined, undefined],
+      [undefined, undefined],
+    ]);
+  });
+
   it("keeps only the string-valued entries of a chart's facet ids", () => {
     // Test: Facet mapping validation at the boundary.
     // Situation: Chart blocks whose `facet_ids` is an array, an object with

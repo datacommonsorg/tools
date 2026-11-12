@@ -185,36 +185,46 @@ Otherwise, the request runs through the agent loop in five steps:
    tagged `chart` holding one specification: the chart kind (`line`, `bar`,
    `map`, `ranking`, `scatter`, or `highlight`), the table ids it draws from, a
    title, and the places (an explicit subset, the table's cohort, or a `top_n`
-   or `bottom_n` slice), with an optional unit and, on single-date charts, an
-   optional date.
+   or `bottom_n` slice), with an optional unit, on single-date charts an
+   optional date, and on `line` charts optional `start_date` and `end_date`
+   bounds that clamp the drawn series.
    The server splits the stream at paragraph boundaries and at the closing fence
    of each chart block, and emits one `content {block}` frame per completed
    paragraph and per chart that resolves. Resolution is set membership against
    the turn cache: an unknown table, a place or date the table does not hold, a
-   unit mismatch across the tables on one axis, or a kind the table shape cannot
-   support (a map without a cohort, a scatter without two variables) rejects the
-   chart, which is dropped and counted while the prose stands. Each resolved
-   chart carries `facet_ids` mapping its variables to the facets that served
-   them, matching the Data Commons web components' facet attributes (`facetId`
-   on highlight, `facetIds` or `facetMapping` on the other components). A
-   derived per-capita table is scaled automatically in the digest (per 1,
-   1,000, or 100,000 people so the median non-zero magnitude is at least 1) and
-   is charted when referenced by its `s<n>` table id as its numerator with the
-   web component's per-person normalization; other derived tables are not
-   chartable. At most three charts are accepted per answer. When the digest has
-   data and no chart is emitted, the default chart floor appends at most one
-   chart projected directly from the primary result (`scatter` for a cohort
-   `relate_cohorts` result, which is considered first, or the direct chart of
-   `analyze_timeseries`, `rank_cohort`, or `compute_composition`;
-   distributions, standalone derivations, non-cohort relations, and
-   relations over a window cohort receive none). A ranking of a cohort, or
-   any ranking over a window cohort, is charted as a `line` of its first five
-   places, with the parent place when a step analyzed the parent's series; a
-   single-date cohort ranking falls back to a `ranking` chart when its table
-   has one date, or when the ranking supports a relation. A `ranking`,
-   `bar`, `map`, or `scatter` of a table that the digest ranks only over a
-   window needs an explicit date, because without one it would draw the
-   latest values rather than the change the prose describes. The signed
+   unit mismatch across the tables on one axis, a `line` whose date bounds
+   leave a charted table without a place holding two dates, or a kind the
+   table shape cannot support (a map without a cohort, a scatter without two
+   variables) rejects the chart, which is dropped and counted while the prose
+   stands.
+   The date bounds are checked with the comparison `<datacommons-line>`
+   applies, so a `start_date` of `2005-06` excludes an annual `2005`. Each
+   resolved chart carries `facet_ids` mapping its variables to the facets that
+   served them, matching the Data Commons web components' facet attributes
+   (`facetId` on highlight, `facetIds` or `facetMapping` on the other
+   components). A derived per-capita table is scaled automatically in the
+   digest (per 1, 1,000, or 100,000 people so the median non-zero magnitude is
+   at least 1) and is charted when referenced by its `s<n>` table id as its
+   numerator with the web component's per-person normalization; other derived
+   tables are not chartable. At most three charts are accepted per answer.
+   When the digest has data and no chart is emitted, the default chart floor
+   appends at most one chart projected directly from the primary result
+   (`scatter` for a cohort `relate_cohorts` result, which is considered first,
+   or the direct chart of `analyze_timeseries`, `rank_cohort`, or
+   `compute_composition`; distributions, standalone derivations, non-cohort
+   relations, and relations over a window cohort receive none). A ranking of
+   a cohort, or any ranking over a window cohort, is charted as a `line` of
+   its first five places, with the parent place when a step analyzed the
+   parent's series; a single-date cohort ranking falls back to a `ranking`
+   chart when its table has one date, or when the ranking supports a
+   relation. The default `line` of a window ranking is clamped to the
+   window's start and end dates. The default `line` of an
+   `analyze_timeseries` step is clamped to the earliest date the step
+   summarized when the step sets `start_date`, and to the latest when it sets
+   `end_date`. A `ranking`, `bar`, `map`, or `scatter` of
+   a table that the digest ranks only over a window needs an explicit date,
+   because without one it would draw the latest values rather than the
+   change the prose describes. The signed
    `model_response` is the text blocks joined by blank lines,
    with the chart blocks stripped, matching the text blocks emitted in
    `content` frames. A stream that stalls for 60 seconds waiting for a chunk

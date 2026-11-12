@@ -38,6 +38,7 @@ from narratives_agent.analytics.metrics import (
     TimeseriesMetrics,
 )
 from narratives_agent.analytics.tables import (
+    WINDOW_DATE_SEPARATOR,
     clean_display_name,
     is_window_reference_date,
 )
@@ -60,6 +61,7 @@ from narratives_agent.workflows.charts import (
 from narratives_agent.workflows.messages import PER_CAPITA_CHART_TITLE_TEMPLATE
 from narratives_agent.workflows.specification import (
     AnalysisSpecification,
+    AnalyzeTimeseriesStep,
     SpecificationStep,
     list_reference_table_ids,
     list_step_inputs,
@@ -269,12 +271,16 @@ def _build_ranking_line_specification(
     table_ids: Sequence[str],
     parent: _ParentSeries | None,
     title: str,
+    *,
+    start_date: str | None = None,
+    end_date: str | None = None,
 ) -> LineChartSpecification:
     """Builds the line chart of a ranking's first places and its parent.
 
     Draws the first `_DEFAULT_RANKING_LINE_PLACE_CAP` places `metrics.top_n`
     lists, which are the end of the ranking `direction` asks for, and the
-    parent place when the specification analyzed its series.
+    parent place when the specification analyzed its series, clamped to
+    `start_date` and `end_date` when they are set.
     """
     places = [
         entry.place_dcid
@@ -285,7 +291,11 @@ def _build_ranking_line_specification(
         places.append(parent.place_dcid)
         tables.append(parent.table_id)
     return LineChartSpecification(
-        tables=tuple(tables), title=title, places=tuple(places)
+        tables=tuple(tables),
+        title=title,
+        places=tuple(places),
+        start_date=start_date,
+        end_date=end_date,
     )
 
 
@@ -304,17 +314,31 @@ def _build_ranking_specifications(
 
     A ranking of a cohort, or any ranking over a date window, is charted as
     a line of its first places and the parent place, as "Rankings" in
-    `contracts/synthesis.md` asks. A single-date cohort ranking falls back to
-    a `ranking` chart when the line cannot be drawn, such as when the table
-    has one date, and uses only the `ranking` chart when `prefers_line` is
-    false, as for a ranking that supports a relation. Any other table is a
-    `bar` of its leading places at `metrics.reference_date`.
+    `contracts/synthesis.md` asks; a line of a window ranking is clamped to
+    the window's start and end dates. A single-date cohort ranking falls
+    back to a `ranking` chart when the line cannot be drawn, such as when
+    the table has one date, and uses only the `ranking` chart when
+    `prefers_line` is false, as for a ranking that supports a relation. Any
+    other table is a `bar` of its leading places at
+    `metrics.reference_date`.
     """
     if not metrics.top_n:
         return ()
-    line = _build_ranking_line_specification(metrics, table_ids, parent, title)
     if is_window_reference_date(metrics.reference_date):
-        return (line,)
+        start_date, end_date = metrics.reference_date.split(
+            WINDOW_DATE_SEPARATOR
+        )
+        return (
+            _build_ranking_line_specification(
+                metrics,
+                table_ids,
+                parent,
+                title,
+                start_date=start_date,
+                end_date=end_date,
+            ),
+        )
+    line = _build_ranking_line_specification(metrics, table_ids, parent, title)
     if has_cohort:
         ranking = _build_cohort_ranking_specification(metrics, table_ids, title)
         return (line, ranking) if prefers_line else (ranking,)
@@ -367,15 +391,22 @@ def _build_series_specification(
     table_ids: Sequence[str],
     has_cohort: bool,
     title: str,
+    *,
+    is_start_bounded: bool,
+    is_end_bounded: bool,
 ) -> ChartSpecification | None:
     """Builds the chart of an `analyze_timeseries` result from its summaries.
 
     A result where at least one charted place spans two or more observations
     is a `line` over `metrics.series` (or over the cohort above
-    `INVENTORY_PLACE_CAP`). When every charted place holds one observation,
-    the chart is a `bar` (or `highlight` for one place) pinned to their shared
-    date, or to `"LATEST"` when their single observations fall on different
-    dates.
+    `INVENTORY_PLACE_CAP`). The line is clamped to the earliest date the
+    charted summaries hold when the step sets a start date, and to the
+    latest when it sets an end date; these are observation dates the
+    component draws, even when the step's bound is finer than the table's
+    dates. When every charted place holds one
+    observation, the chart is a `bar` (or `highlight` for one place) pinned
+    to their shared date, or to `"LATEST"` when their single observations
+    fall on different dates.
     """
     if not metrics.series:
         return None
@@ -385,12 +416,28 @@ def _build_series_specification(
     )
     places = tuple(entry.place_dcid for entry in charted)
     if any(entry.point_count >= MIN_LINE_CHART_DATES for entry in charted):
+        start_date = (
+            min(entry.start_date for entry in charted)
+            if is_start_bounded
+            else None
+        )
+        end_date = (
+            max(entry.end_date for entry in charted) if is_end_bounded else None
+        )
         if uses_cohort:
             return LineChartSpecification(
-                tables=tuple(table_ids), title=title, cohort=True
+                tables=tuple(table_ids),
+                title=title,
+                cohort=True,
+                start_date=start_date,
+                end_date=end_date,
             )
         return LineChartSpecification(
-            tables=tuple(table_ids), title=title, places=places
+            tables=tuple(table_ids),
+            title=title,
+            places=places,
+            start_date=start_date,
+            end_date=end_date,
         )
     series_dates = {entry.end_date for entry in charted}
     date = next(iter(series_dates)) if len(series_dates) == 1 else _LATEST_DATE
@@ -492,12 +539,28 @@ def _build_default_specification(
     table_ids: Sequence[str],
     has_cohort: bool,
     title: str,
+    step: SpecificationStep,
 ) -> ChartSpecification | None:
-    """Projects a non-ranking result's metrics to its default chart."""
+    """Projects a non-ranking result's metrics to its default chart.
+
+    A time-series line is clamped where its `analyze_timeseries` step sets
+    a start or end date.
+    """
     match metrics:
         case TimeseriesMetrics():
             return _build_series_specification(
-                metrics, table_ids, has_cohort, title
+                metrics,
+                table_ids,
+                has_cohort,
+                title,
+                is_start_bounded=(
+                    isinstance(step, AnalyzeTimeseriesStep)
+                    and step.start_date is not None
+                ),
+                is_end_bounded=(
+                    isinstance(step, AnalyzeTimeseriesStep)
+                    and step.end_date is not None
+                ),
             )
         case CompositionMetrics():
             return _build_composition_specification(
@@ -560,7 +623,7 @@ def _resolve_candidate_charts(
         )
     else:
         spec = _build_default_specification(
-            metrics, table_ids, has_cohort, title
+            metrics, table_ids, has_cohort, title, step
         )
         specs = () if spec is None else (spec,)
     for spec in specs:

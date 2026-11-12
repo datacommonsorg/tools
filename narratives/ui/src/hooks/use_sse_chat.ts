@@ -97,6 +97,16 @@ export interface ChartItem {
   showLowest?: boolean;
   /** Sort order of a bar chart's places. */
   sort?: 'ascending' | 'descending';
+  /**
+   * Inclusive first date a line chart draws (`YYYY`, `YYYY-MM`, or
+   * `YYYY-MM-DD`).
+   */
+  startDate?: string;
+  /**
+   * Inclusive last date a line chart draws (`YYYY`, `YYYY-MM`, or
+   * `YYYY-MM-DD`).
+   */
+  endDate?: string;
 }
 
 /**
@@ -130,6 +140,8 @@ interface RawChartItem {
   show_highest_lowest?: boolean;
   show_lowest?: boolean;
   sort?: ChartItem['sort'];
+  start_date?: string;
+  end_date?: string;
 }
 
 /**
@@ -160,6 +172,14 @@ function readFacetIds(value: unknown): Record<string, string> | undefined {
   return entries.length > 0 ? Object.fromEntries(entries) : undefined;
 }
 
+/**
+ * Reads an optional string field from the wire. Returns undefined for an
+ * empty or non-string value, so a malformed field is treated as absent.
+ */
+function readOptionalString(value: unknown): string | undefined {
+  return typeof value === 'string' && value.length > 0 ? value : undefined;
+}
+
 /** Converts one raw snake_case chart item into the camelCase domain shape. */
 function mapRawChartItem(raw: RawChartItem): ChartItem {
   return {
@@ -177,6 +197,8 @@ function mapRawChartItem(raw: RawChartItem): ChartItem {
     showHighestLowest: raw.show_highest_lowest,
     showLowest: raw.show_lowest,
     sort: raw.sort,
+    startDate: readOptionalString(raw.start_date),
+    endDate: readOptionalString(raw.end_date),
   };
 }
 

@@ -51,6 +51,11 @@ interface DataCommonsAttributes
   // Bar
   sort?: 'ascending' | 'descending';
 
+  // Line: inclusive date bounds of the drawn series (YYYY, YYYY-MM, or
+  // YYYY-MM-DD)
+  startDate?: string;
+  endDate?: string;
+
   // Map / slider
   allowZoom?: boolean | '' | 'true' | 'false';
 
