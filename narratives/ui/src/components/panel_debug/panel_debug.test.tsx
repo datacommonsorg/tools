@@ -481,7 +481,7 @@ describe('DebugPanel', () => {
     });
   });
 
-  it('copies the JSON turn debug report including serverReport when present', () => {
+  it('copies the JSON turn debug report including serverReport when present', async () => {
     // Test: Copy JSON clipboard includes lossless serverReport.
     // Situation: Turn carries a rawServerReport with custom payload.
     // Expectation: navigator.clipboard.writeText receives JSON with matching serverReport.
@@ -502,6 +502,11 @@ describe('DebugPanel', () => {
     expect(writeTextSpy).toHaveBeenCalledTimes(1);
     const copiedPayload = writeTextSpy.mock.calls[0][0];
     expect(JSON.parse(copiedPayload).serverReport).toEqual(rawReport);
+    await waitFor(() => {
+      expect(
+        screen.getAllByText(DEBUG_PANEL_COPY.copiedStatus).length,
+      ).toBeGreaterThan(0);
+    });
   });
 
   it('handles clipboard write rejection gracefully with Copy failed status', async () => {
@@ -562,8 +567,8 @@ describe('DebugPanel', () => {
   });
 
   it('switches tabs and updates tabpanel attributes on tab click', () => {
-    // Test: Tab switching in DebugPanelBody.
-    // Situation: The user clicks the Data, Trajectory, Response, Timing, and Tokens tabs.
+    // Test: Tab switching across all 9 tabs in DebugPanelBody.
+    // Situation: The user clicks Data, Trajectory, Analysis, Synthesis, Response, Timing, Tokens, and Configuration.
     // Expectation: active tab updates, tabpanel id updates, and corresponding tab content renders.
     openInspector(
       buildFinishedTurn({
@@ -573,7 +578,7 @@ describe('DebugPanel', () => {
         },
         serverReport:
           parseServerDebugReport({
-            turn_id: 'turn-d3b-test',
+            turn_id: 'turn-d4c-test',
             terminal_state: 'complete',
             duration_ms: 450,
             tokens: { total_token_count: 130 },
@@ -586,6 +591,13 @@ describe('DebugPanel', () => {
                 row_count: 1,
               },
             ],
+            scripts: ['ranking'],
+            synthesis_prompt: {
+              text: 'Test synthesis prompt text',
+              truncated: false,
+              total_chars: 26,
+            },
+            build_sha: 'sha-test-build',
           }) ?? undefined,
       }),
     );
@@ -604,6 +616,22 @@ describe('DebugPanel', () => {
     expect(screen.getByRole('tabpanel').getAttribute('aria-labelledby')).toBe(
       trajectoryTab.getAttribute('id'),
     );
+
+    const analysisTab = screen.getByRole('tab', { name: /Analysis/ });
+    fireEvent.click(analysisTab);
+    expect(analysisTab.getAttribute('aria-selected')).toBe('true');
+    expect(screen.getByRole('tabpanel').getAttribute('aria-labelledby')).toBe(
+      analysisTab.getAttribute('id'),
+    );
+    expect(screen.getByText('Analysis summary')).toBeDefined();
+
+    const synthesisTab = screen.getByRole('tab', { name: /Synthesis/ });
+    fireEvent.click(synthesisTab);
+    expect(synthesisTab.getAttribute('aria-selected')).toBe('true');
+    expect(screen.getByRole('tabpanel').getAttribute('aria-labelledby')).toBe(
+      synthesisTab.getAttribute('id'),
+    );
+    expect(screen.getByText('Test synthesis prompt text')).toBeDefined();
 
     const responseTab = screen.getByRole('tab', { name: /Response/ });
     fireEvent.click(responseTab);
@@ -626,5 +654,39 @@ describe('DebugPanel', () => {
       tokensTab.getAttribute('id'),
     );
     expect(screen.getByText('Token totals')).toBeDefined();
+
+    const configTab = screen.getByRole('tab', { name: /Configuration/ });
+    fireEvent.click(configTab);
+    expect(configTab.getAttribute('aria-selected')).toBe('true');
+    expect(screen.getByRole('tabpanel').getAttribute('aria-labelledby')).toBe(
+      configTab.getAttribute('id'),
+    );
+    expect(screen.getByText('sha-test-build')).toBeDefined();
+  });
+
+  it('displays non-zero trajectory badge on an aborted turn when tool calls exist only on serverReport', () => {
+    // Test: Trajectory badge on aborted turn.
+    // Situation: turn.toolCalls is empty, but serverReport has 2 tool calls.
+    // Expectation: Trajectory tab badge displays 2.
+    const serverReport = parseServerDebugReport({
+      turn_id: 'turn-aborted-badge',
+      terminal_state: 'error',
+      duration_ms: 200,
+      tokens: { total_token_count: 10 },
+      tool_calls: [
+        { name: 'fetch_observations', arguments: {}, duration_ms: 50 },
+        { name: 'run_script', arguments: {}, duration_ms: 40 },
+      ],
+    });
+
+    openInspector(
+      buildFinishedTurn({
+        toolCalls: [],
+        serverReport: serverReport ?? undefined,
+      }),
+    );
+
+    const trajectoryTab = screen.getByRole('tab', { name: /Trajectory 2/ });
+    expect(trajectoryTab).toBeDefined();
   });
 });

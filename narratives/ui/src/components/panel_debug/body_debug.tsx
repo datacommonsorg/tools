@@ -16,8 +16,8 @@
 
 /**
  * @fileoverview Tabbed debug panel body: coordinates the top-level tab bar and
- * renders the selected debug section (Overview, Data, Trajectory, Response,
- * Timing, or Tokens).
+ * renders the selected debug section (Overview, Data, Trajectory, Analysis,
+ * Synthesis, Response, Timing, Tokens, or Configuration).
  */
 
 import { useId, useMemo, useState } from 'react';
@@ -27,9 +27,12 @@ import {
   formatDurationMs,
 } from '@/src/components/panel_debug/copy_debug';
 import { buildTurnDebugReport } from '@/src/components/panel_debug/report_debug';
+import { AnalysisTab } from '@/src/components/panel_debug/tab_debug_analysis';
+import { ConfigurationTab } from '@/src/components/panel_debug/tab_debug_configuration';
 import { DataTab } from '@/src/components/panel_debug/tab_debug_data';
 import { OverviewTab } from '@/src/components/panel_debug/tab_debug_overview';
 import { ResponseTab } from '@/src/components/panel_debug/tab_debug_response';
+import { SynthesisTab } from '@/src/components/panel_debug/tab_debug_synthesis';
 import { TimingTab } from '@/src/components/panel_debug/tab_debug_timing';
 import { TokensTab } from '@/src/components/panel_debug/tab_debug_tokens';
 import { TrajectoryTab } from '@/src/components/panel_debug/tab_debug_trajectory';
@@ -46,9 +49,12 @@ export type DebugTabId =
   | 'overview'
   | 'data'
   | 'trajectory'
+  | 'analysis'
+  | 'synthesis'
   | 'response'
   | 'timing'
-  | 'tokens';
+  | 'tokens'
+  | 'configuration';
 
 /** Props for {@link DebugPanelBody}. */
 export interface DebugPanelBodyProps {
@@ -82,7 +88,19 @@ export const DebugPanelBody = ({ turn }: DebugPanelBodyProps) => {
       {
         id: 'trajectory',
         label: DEBUG_TAB_LABELS.trajectory,
-        badge: turn.toolCalls.length,
+        badge: Math.max(
+          turn.toolCalls.length,
+          turn.serverReport?.toolCalls.length ?? 0,
+        ),
+      },
+      {
+        id: 'analysis',
+        label: DEBUG_TAB_LABELS.analysis,
+        badge: turn.serverReport ? turn.serverReport.scripts.length : undefined,
+      },
+      {
+        id: 'synthesis',
+        label: DEBUG_TAB_LABELS.synthesis,
       },
       {
         id: 'response',
@@ -100,6 +118,10 @@ export const DebugPanelBody = ({ turn }: DebugPanelBodyProps) => {
         badge: turn.serverReport
           ? turn.serverReport.tokens.totalTokenCount.toLocaleString()
           : undefined,
+      },
+      {
+        id: 'configuration',
+        label: DEBUG_TAB_LABELS.configuration,
       },
     ],
     [turn.serverReport, turn.toolCalls.length, turn.blocks.length, timingBadge],
@@ -134,7 +156,17 @@ export const DebugPanelBody = ({ turn }: DebugPanelBodyProps) => {
           <DataTab serverReport={turn.serverReport ?? null} />
         )}
         {activeTab === 'trajectory' && (
-          <TrajectoryTab thoughts={turn.thoughts} toolCalls={turn.toolCalls} />
+          <TrajectoryTab
+            thoughts={turn.thoughts}
+            toolCalls={turn.toolCalls}
+            serverReport={turn.serverReport ?? null}
+          />
+        )}
+        {activeTab === 'analysis' && (
+          <AnalysisTab serverReport={turn.serverReport ?? null} />
+        )}
+        {activeTab === 'synthesis' && (
+          <SynthesisTab serverReport={turn.serverReport ?? null} />
         )}
         {activeTab === 'response' && (
           <ResponseTab outcome={report.outcome} response={report.response} />
@@ -147,6 +179,9 @@ export const DebugPanelBody = ({ turn }: DebugPanelBodyProps) => {
         )}
         {activeTab === 'tokens' && (
           <TokensTab serverReport={turn.serverReport ?? null} />
+        )}
+        {activeTab === 'configuration' && (
+          <ConfigurationTab serverReport={turn.serverReport ?? null} />
         )}
       </div>
     </>
