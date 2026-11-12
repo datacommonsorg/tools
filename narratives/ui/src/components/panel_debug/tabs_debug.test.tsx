@@ -37,6 +37,7 @@ import {
   DebugTabs,
   getDebugTabElementId,
   getDebugTabPanelElementId,
+  normalizeWheelDeltaPx,
 } from '@/src/components/panel_debug/tabs_debug';
 
 type SampleTabId = 'overview' | 'trajectory' | 'response' | 'timing';
@@ -472,5 +473,53 @@ describe('DebugTabs', () => {
     metrics.scrollWidth = 240;
     expect(fireEvent.wheel(tablist, { deltaY: 50, deltaX: 0 })).toBe(true);
     expect(metrics.scrollLeft).toBe(90);
+  });
+
+  it('converts line-mode wheel deltas to pixels before scrolling', () => {
+    // Test: Line-mode wheel normalization on the tablist.
+    // Situation: A vertical wheel event reports `deltaY = 3` in
+    //   `DOM_DELTA_LINE` on an overflowing tablist.
+    // Expectation: `scrollLeft` advances by 3 lines of 16px (48px) rather
+    //   than by 3px.
+    render(
+      <DebugTabs
+        idPrefix="turn-0"
+        ariaLabel="Turn debug sections"
+        tabs={SAMPLE_TABS}
+        activeTabId="overview"
+        onSelectTab={vi.fn()}
+      />,
+    );
+
+    const tablist = screen.getByRole('tablist');
+    const metrics = defineScrollMetrics(tablist, {
+      scrollLeft: 0,
+      clientWidth: 240,
+      scrollWidth: 600,
+    });
+
+    expect(
+      fireEvent.wheel(tablist, {
+        deltaY: 3,
+        deltaX: 0,
+        deltaMode: WheelEvent.DOM_DELTA_LINE,
+      }),
+    ).toBe(false);
+    expect(metrics.scrollLeft).toBe(48);
+  });
+});
+
+describe('normalizeWheelDeltaPx', () => {
+  it.each([
+    { mode: 'pixel', deltaMode: 0, delta: 90, expected: 90 },
+    { mode: 'line', deltaMode: 1, delta: 3, expected: 48 },
+    { mode: 'line (negative)', deltaMode: 1, delta: -2, expected: -32 },
+    { mode: 'page', deltaMode: 2, delta: 1, expected: 240 },
+  ])('converts a $mode delta to pixels', ({ deltaMode, delta, expected }) => {
+    // Test: Wheel delta unit conversion.
+    // Situation: A delta in pixel, line, or page mode with a 240px page size.
+    // Expectation: Pixels pass through, lines scale by 16px, and pages scale
+    //   by the page size.
+    expect(normalizeWheelDeltaPx(delta, deltaMode, 240)).toBe(expected);
   });
 });

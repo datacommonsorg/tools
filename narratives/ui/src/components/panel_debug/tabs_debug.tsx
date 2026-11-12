@@ -34,6 +34,8 @@ import { DEBUG_PANEL_COPY } from '@/src/components/panel_debug/copy_debug';
 const MIN_SCROLL_STEP_PX = 120;
 const VIEWPORT_SCROLL_FRACTION = 0.75;
 const SCROLL_END_TOLERANCE_PX = 1;
+/** Pixels per line for wheel events that report `DOM_DELTA_LINE`. */
+const WHEEL_LINE_HEIGHT_PX = 16;
 
 const TAB_STRIP_CLASSES =
   'flex items-center gap-1 border-b border-outline pb-2';
@@ -71,6 +73,25 @@ const resolveNextTabIndex = (
     return tabCount - 1;
   }
   return null;
+};
+
+/**
+ * Converts a wheel delta to pixels: line deltas are multiplied by
+ * `WHEEL_LINE_HEIGHT_PX`, page deltas by `pageSizePx`, and pixel deltas are
+ * returned unchanged.
+ */
+export const normalizeWheelDeltaPx = (
+  delta: number,
+  deltaMode: number,
+  pageSizePx: number,
+): number => {
+  if (deltaMode === WheelEvent.DOM_DELTA_LINE) {
+    return delta * WHEEL_LINE_HEIGHT_PX;
+  }
+  if (deltaMode === WheelEvent.DOM_DELTA_PAGE) {
+    return delta * pageSizePx;
+  }
+  return delta;
 };
 
 /** Builds the DOM `id` of a `<button role="tab">` rendered by {@link DebugTabs}. */
@@ -171,7 +192,13 @@ export const DebugTabs = <T extends string = string>({
         event.deltaX === 0 &&
         element.scrollWidth > element.clientWidth
       ) {
-        element.scrollLeft += event.deltaY;
+        // Normalize so the scroll distance does not depend on which unit the
+        // browser reports the wheel delta in.
+        element.scrollLeft += normalizeWheelDeltaPx(
+          event.deltaY,
+          event.deltaMode,
+          element.clientWidth,
+        );
         event.preventDefault();
         updateScrollState();
       }
