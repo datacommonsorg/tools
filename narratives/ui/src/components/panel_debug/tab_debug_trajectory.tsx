@@ -42,6 +42,10 @@ export interface TrajectoryTabProps {
   serverReport?: ServerDebugReport | null;
 }
 
+/** Whether a round is a recorded 1-based discovery round. */
+const isRecordedRound = (round: number | undefined): round is number =>
+  round !== undefined && Number.isInteger(round) && round > 0;
+
 const renderThoughtCards = (thoughtsList: readonly ThoughtEvent[]) => (
   <div className="flex flex-col gap-3">
     {thoughtsList.map((thought, index) => (
@@ -110,21 +114,12 @@ export const TrajectoryTab = ({
   const rounds = useMemo(() => {
     const roundSet = new Set<number>();
     for (const thought of effectiveThoughts) {
-      if (
-        thought.phase === 'discovery' &&
-        typeof thought.round === 'number' &&
-        Number.isInteger(thought.round) &&
-        thought.round > 0
-      ) {
+      if (thought.phase === 'discovery' && isRecordedRound(thought.round)) {
         roundSet.add(thought.round);
       }
     }
     for (const call of effectiveToolCalls) {
-      if (
-        typeof call.round === 'number' &&
-        Number.isInteger(call.round) &&
-        call.round > 0
-      ) {
+      if (isRecordedRound(call.round)) {
         roundSet.add(call.round);
       }
     }
@@ -158,12 +153,10 @@ export const TrajectoryTab = ({
   }
 
   const unroundedDiscoveryThoughts = effectiveThoughts.filter(
-    (t) =>
-      t.phase === 'discovery' &&
-      (t.round === undefined || t.round <= 0 || !Number.isInteger(t.round)),
+    (t) => t.phase === 'discovery' && !isRecordedRound(t.round),
   );
   const unroundedToolCalls = effectiveToolCalls.filter(
-    (c) => c.round === undefined || c.round <= 0 || !Number.isInteger(c.round),
+    (c) => !isRecordedRound(c.round),
   );
   const synthesisThoughts = effectiveThoughts.filter(
     (t) => t.phase === 'synthesis',
