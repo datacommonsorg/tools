@@ -20,7 +20,9 @@
  */
 
 import { MenuIcon } from '@/src/components/icons';
+import { classifyLinkHref, Link } from '@/src/components/link';
 import { Tooltip } from '@/src/components/tooltip';
+import { getBasePath } from '@/src/config/base_url';
 import { getInstanceConfig } from '@/src/config/instance_config';
 import { resolveNavItems } from '@/src/config/nav_config';
 import { getRuntimeConfig } from '@/src/config/runtime_config';
@@ -44,25 +46,43 @@ export function Header() {
   const logoAltText = logoText
     ? ''
     : logoAlt || `${instanceName || 'Data Commons'} logo`;
+  // At the site root, a same-origin logo link would reload the app and drop
+  // the current chat, so the logo stays plain unless it leaves the app.
+  const isLogoLinked =
+    getBasePath() !== '' || classifyLinkHref(logoHref) === 'external';
+  const logo = (
+    <>
+      <img
+        src={logoUrl}
+        alt={logoAltText}
+        className="w-auto object-contain"
+        style={{ height: 'var(--logo-height)' }}
+      />
+      {logoText && (
+        <span className="text-body-large-emphasized text-on-surface whitespace-nowrap">
+          {logoText}
+        </span>
+      )}
+    </>
+  );
 
   return (
     <header className="sticky top-0 z-[5] bg-surface w-full flex items-center justify-between gap-3 px-3 sm:px-6 lg:px-12 py-4 sm:py-5 shrink-0">
-      <a
-        href={logoHref}
-        className="flex items-center gap-2 select-none shrink-0 rounded-sm focus-visible:outline-offset-2"
-      >
-        <img
-          src={logoUrl}
-          alt={logoAltText}
-          className="w-auto object-contain"
-          style={{ height: 'var(--logo-height)' }}
-        />
-        {logoText && (
-          <span className="text-body-large-emphasized text-on-surface whitespace-nowrap">
-            {logoText}
-          </span>
-        )}
-      </a>
+      {isLogoLinked ? (
+        // `target="_self"` keeps external targets in this tab; `py-2 -my-2`
+        // gives a 44px touch target without changing the header height.
+        <Link
+          href={logoHref}
+          target="_self"
+          className="flex items-center gap-2 select-none shrink-0 py-2 -my-2 rounded-sm focus-visible:outline-offset-2"
+        >
+          {logo}
+        </Link>
+      ) : (
+        <div className="flex items-center gap-2 select-none shrink-0">
+          {logo}
+        </div>
+      )}
 
       {navItems.length > 0 && (
         <nav

@@ -189,7 +189,7 @@
       "type": "string"
     },
     "logo_href": {
-      "description": "Link target of the header logo: a same-origin path starting with '/', an http(s) URL, or a '#' hash route. Defaults to '/', the site root; an empty or unsafe value falls back to it. Set it on instances served at '/', where the default reloads the app.",
+      "description": "Link target of the header logo: a same-origin path starting with '/', an http(s) URL, or a '#' hash route. Defaults to '/', the site root; an empty or unsafe value falls back to it. When the app is served at the site root, the logo links only to an http(s) URL, since a same-origin link would reload the app.",
       "type": "string"
     },
     "favicon": {

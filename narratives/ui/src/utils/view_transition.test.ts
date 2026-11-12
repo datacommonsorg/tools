@@ -22,7 +22,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   isOutsideApp,
   registerViewTransitionFilter,
-} from '@/src/config/view_transition';
+} from '@/src/utils/view_transition';
 
 const ORIGIN = 'https://datacommons.org';
 

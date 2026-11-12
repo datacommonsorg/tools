@@ -14,19 +14,6 @@
     <script id="runtime-config" type="application/json"></script>
     <!-- Data Commons web components (used by ChartTile to render charts). -->
     <script src="https://datacommons.org/datacommons.js" defer></script>
-    <!-- Cross-document view transition (browser cross-fade), only for
-         navigations to/from same-origin Data Commons pages outside this app's
-         base path. This app filters its outgoing navigations in
-         `src/config/view_transition.ts`; DC's base.html has the mirror opt-in
-         and filters its own. -->
-    <style>
-      @media (prefers-reduced-motion: no-preference) {
-        @view-transition { navigation: auto; }
-      }
-      /* The destination page's CSS sets the duration; keep in sync with DC base.html. */
-      ::view-transition-old(root),
-      ::view-transition-new(root) { animation-duration: 300ms; }
-    </style>
   </head>
   <body>
     <div id="root"></div>
