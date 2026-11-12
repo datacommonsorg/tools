@@ -15,10 +15,10 @@
 """Streams a chat turn to the browser as typed Server-Sent Events.
 
 Each event carries an `event:` name (`status`, `thought`, `content`,
-`terminal`, `follow_ups`), a JSON `data:` payload, and an `id:` that counts
-up from 1 within the stream. An `event: heartbeat` frame, without an `id:`,
-is also sent every `HEARTBEAT_INTERVAL_SECONDS`, so that proxies do not drop
-the connection while the turn waits on slow upstream calls.
+`terminal`, `follow_ups`, `debug_report`), a JSON `data:` payload, and an `id:`
+that counts up from 1 within the stream. An `event: heartbeat` frame, without
+an `id:`, is also sent every `HEARTBEAT_INTERVAL_SECONDS`, so that proxies do
+not drop the connection while the turn waits on slow upstream calls.
 """
 
 import asyncio
@@ -83,6 +83,7 @@ class ChatRequest(BaseModel):
     idempotency_key: IdempotencyKey = Field(
         default_factory=lambda: uuid.uuid4().hex
     )
+    debug: bool = False
 
 
 def _heartbeat() -> ServerSentEvent:
@@ -92,6 +93,8 @@ def _heartbeat() -> ServerSentEvent:
 
 async def _turn_events(
     transcript: Transcript,
+    *,
+    request_debug: bool = False,
 ) -> AsyncGenerator[ServerSentEvent]:
     """Runs the turn in a task and yields its events as they arrive.
 
@@ -111,7 +114,7 @@ async def _turn_events(
 
     async def produce() -> None:
         try:
-            await run_turn(transcript, emit)
+            await run_turn(transcript, emit, request_debug=request_debug)
         finally:
             queue.put_nowait(None)
 
@@ -185,7 +188,8 @@ async def chat_stream(request: Request) -> ClosingEventSourceResponse:
         "message": "user query",
         "turns": [...signed turns from the previous terminal event...],
         "compacted_summary": "summary of compacted turns, or null",
-        "idempotency_key": "optional client-generated key"
+        "idempotency_key": "optional client-generated key",
+        "debug": false
     }
 
     Raises:
@@ -210,7 +214,7 @@ async def chat_stream(request: Request) -> ClosingEventSourceResponse:
             status_code=400,
             detail={"reason": "transcript_invalid", "message": str(error)},
         ) from error
-    events = _turn_events(transcript)
+    events = _turn_events(transcript, request_debug=body.debug)
 
     async def close_events() -> None:
         # `events.aclose` itself cannot be the task: it is a builtin method,

@@ -35,15 +35,39 @@ export const DEBUG_PANEL_COPY = {
   noneFallback: 'None',
   notRecordedFallback: 'Not recorded',
   unnamedSource: 'Unnamed source',
+  serverTurnDuration: 'Server turn duration',
+} as const;
+
+/** User-facing labels for timing milestones. */
+export const DEBUG_MILESTONE_LABELS = {
+  headersReceivedMs: 'Headers received',
+  firstThoughtMs: 'First thought',
+  firstBlockMs: 'First answer block',
+  terminalMs: 'Terminal frame',
+  followUpsMs: 'Follow-up suggestions',
+  totalMs: 'Total duration',
+} as const;
+
+/** Usage status labels for a cached table. */
+export const DEBUG_TABLE_USAGE_LABELS = {
+  used: 'Used in answer',
+  unused: 'Unused',
+} as const;
+
+/** Scope line field labels for a cached table. */
+export const DEBUG_TABLE_SCOPE_LABELS = {
+  scope: 'Scope:',
+  places: 'Places:',
 } as const;
 
 /** User-facing labels for each tab in DebugTabs. */
 export const DEBUG_TAB_LABELS = {
   overview: 'Overview',
-  provenance: 'Provenance',
+  data: 'Data',
   trajectory: 'Trajectory',
   response: 'Response',
   timing: 'Timing',
+  tokens: 'Tokens',
 } as const;
 
 /** Headings of the panel's body sections. */
@@ -53,9 +77,8 @@ export const DEBUG_SECTION_HEADINGS = {
   turnOutcome: 'Turn outcome',
   summaryCounts: 'Summary counts',
   conversationContext: 'Conversation context',
-  provenances: 'Provenances used',
-  variables: 'Variables',
-  charts: 'Charts requested',
+  tokenTotals: 'Token totals',
+  serverTimings: 'Server timings',
   answerBlocks: 'Answer blocks',
   citations: 'Citations',
   followUps: 'Follow-up suggestions',
@@ -65,8 +88,9 @@ export const DEBUG_SECTION_HEADINGS = {
 
 /** Empty-state messages for debug tabs. */
 export const DEBUG_EMPTY_STATE_MESSAGES = {
-  provenance:
-    'No provenances, variables, places, or charts were recorded for this turn.',
+  noServerReport: 'No server debug report was received for this turn.',
+  dataTables: 'No tables were recorded for this turn.',
+  tokenCalls: 'No token calls were recorded for this turn.',
   trajectory: 'No thoughts or tool calls were recorded for this turn.',
   answerBlocks: 'No answer blocks were recorded for this turn.',
   citations: 'No citations were recorded for this turn.',
@@ -77,35 +101,73 @@ export const DEBUG_EMPTY_STATE_MESSAGES = {
 /** Fallback provenance name for a facet without a title or label. */
 export const UNNAMED_SOURCE_LABEL = '(unnamed source)';
 
-/** Detail labels on a single facet. */
+/** Detail labels on a single facet or table. */
 export const DEBUG_FACET_DETAIL_LABELS = {
   coverage: 'coverage',
   observations: 'observations',
   unit: 'unit',
-  license: 'license',
+  scalingFactor: 'scaling factor',
+  measurementMethod: 'method',
+  observationPeriod: 'period',
   facet: 'facet',
+  license: 'license',
 } as const;
 
 /** Separator between a variable's DCID and its display name. */
 export const VARIABLE_NAME_SEPARATOR = ' — ';
 
-/** Note on a variable found while searching but never fetched. */
-export const RESOLVED_DURING_SEARCH_NOTE = ' (resolved during search)';
-
 /** Marker appended to a tool call that finished with an error. */
 export const TOOL_CALL_ERROR_MARKER = ' · error';
 
-/** Returns the places section heading for `count` places. */
-export const formatPlacesHeading = (count: number): string =>
-  `Places (${count})`;
+/** Returns the token calls section heading for count calls. */
+export const formatTokenCallsHeading = (count: number): string =>
+  `Token calls (${count})`;
 
-/** Returns the tool calls section heading for `count` calls. */
+/** Returns the cached tables section heading for count tables. */
+export const formatCachedTablesHeading = (count: number): string =>
+  `Cached tables (${count})`;
+
+/** Formats a server phase label, noting when it is nested within a parent phase. */
+export const formatServerPhaseLabel = (
+  phase: string,
+  parentPhase?: string,
+): string => (parentPhase ? `${phase} (nested in ${parentPhase})` : phase);
+
+/** Formats an optional round number for a token call. */
+export const formatRoundLabel = (round: number): string => `round ${round}`;
+
+/** Formats a child-place table scope summary with place count with data. */
+export const formatChildScopeSummary = (
+  childPlaceType: string,
+  parentPlaceDcid: string,
+  placesWithDataCount: number,
+): string =>
+  `${childPlaceType} in ${parentPlaceDcid} (${placesWithDataCount.toLocaleString()} with data)`;
+
+/** Formats table date range or falls back to source date range. */
+export const formatTableCoverage = (
+  dateRange: readonly [string, string] | null,
+  fallback?: string | null,
+): string | undefined => {
+  if (dateRange) {
+    const [start, end] = dateRange;
+    return start === end ? start : `${start}..${end}`;
+  }
+  return fallback ?? undefined;
+};
+
+/** Formats a place reference for table displays. */
+export const formatPlaceRef = (place: {
+  dcid: string;
+  name?: string;
+}): string =>
+  place.name && place.name !== place.dcid
+    ? `${place.name} (${place.dcid})`
+    : place.dcid;
+
+/** Returns the tool calls section heading for count calls. */
 export const formatToolCallsHeading = (count: number): string =>
   `Tool calls (${count})`;
-
-/** Returns the suffix that counts the places a requested chart covers. */
-export const formatChartPlacesSuffix = (count: number): string =>
-  ` @ ${count} place(s)`;
 
 /**
  * Returns the label of a tool call's raw response toggle, naming the action

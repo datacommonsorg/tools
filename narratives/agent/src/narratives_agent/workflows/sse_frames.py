@@ -32,13 +32,13 @@ from narratives_agent.telemetry import ErrorType, TerminalState
 from narratives_agent.workflows.blocks import SynthesisBlock, TextBlock
 from narratives_agent.workflows.charts import serialize_resolved_chart
 from narratives_agent.workflows.classify import RefusedReason
+from narratives_agent.workflows.debug_report import DebugReport, ThoughtPhase
 from narratives_agent.workflows.transcript import SignedWindow
 
 type EventName = Literal[
-    "status", "thought", "content", "terminal", "follow_ups"
+    "status", "thought", "content", "terminal", "follow_ups", "debug_report"
 ]
 type StatusPhase = Literal["classify", "discovery", "processing", "synthesis"]
-type ThoughtPhase = Literal["discovery", "synthesis"]
 
 
 def serialize_source(source: Source) -> JsonObject:
@@ -99,19 +99,28 @@ class ThoughtFrame:
         thought: The model thought text chunk.
         phase: The phase that produced the thought (`"discovery"` or
             `"synthesis"`).
+        round_number: The 1-based discovery round in which the thought was
+            produced, or `None` for synthesis thoughts.
     """
 
     event: ClassVar[EventName] = "thought"
     thought: str
     phase: ThoughtPhase
+    round_number: int | None = None
 
     def payload(self) -> JsonObject:
         """Returns the `data` payload of the frame.
 
         Returns:
-            A JSON object with `thought` and `phase`.
+            A JSON object with `thought` and `phase`, and optionally `round`.
         """
-        return {"thought": self.thought, "phase": self.phase}
+        if self.round_number is None:
+            return {"thought": self.thought, "phase": self.phase}
+        return {
+            "thought": self.thought,
+            "phase": self.phase,
+            "round": self.round_number,
+        }
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -356,6 +365,26 @@ class TerminalErrorFrame:
         }
 
 
+@dataclass(frozen=True, kw_only=True)
+class DebugReportFrame:
+    """Carries the gated turn debug report at the end of the turn stream.
+
+    Attributes:
+        report: The typed turn debug report domain object.
+    """
+
+    event: ClassVar[EventName] = "debug_report"
+    report: DebugReport
+
+    def payload(self) -> JsonObject:
+        """Returns the `data` payload of the frame.
+
+        Returns:
+            A finite snake_case JSON object representing the debug report.
+        """
+        return self.report.to_dict()
+
+
 type SseFrame = (
     StatusFrame
     | ThoughtFrame
@@ -367,11 +396,13 @@ type SseFrame = (
     | TerminalCompleteFrame
     | TerminalRefusedFrame
     | TerminalErrorFrame
+    | DebugReportFrame
 )
 
 __all__ = [
     "BlockContentFrame",
     "DataStatusFrame",
+    "DebugReportFrame",
     "EventName",
     "FollowUpsFrame",
     "SourcesFrame",

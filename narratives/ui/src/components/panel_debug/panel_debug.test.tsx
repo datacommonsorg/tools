@@ -31,18 +31,15 @@ import {
   afterAll,
   afterEach,
   beforeAll,
-  beforeEach,
   describe,
   expect,
   it,
   vi,
 } from 'vitest';
 import { DEBUG_PANEL_COPY } from '@/src/components/panel_debug/copy_debug';
-import {
-  DebugPanel,
-  isDebugPanelEnabled,
-} from '@/src/components/panel_debug/panel_debug';
+import { DebugPanel } from '@/src/components/panel_debug/panel_debug';
 import type { ChatTurn, ToolCallEvent } from '@/src/hooks/use_sse_chat';
+import { parseServerDebugReport } from '@/src/types/debug_report';
 
 const FETCH_CALL: ToolCallEvent = {
   name: 'fetch_observations',
@@ -473,13 +470,38 @@ describe('DebugPanel', () => {
 
     expect(writeTextSpy).toHaveBeenCalledTimes(1);
     const copiedPayload = writeTextSpy.mock.calls[0][0];
-    expect(JSON.parse(copiedPayload).userMessage).toBe(turn.userMessage);
+    const parsedReport = JSON.parse(copiedPayload);
+    expect(parsedReport.userMessage).toBe(turn.userMessage);
+    expect(parsedReport.serverReport).toBeNull();
 
     await waitFor(() => {
       const liveRegion = document.querySelector('[aria-live="polite"]');
       expect(liveRegion).not.toBeNull();
       expect(liveRegion?.textContent).toBe('Copied');
     });
+  });
+
+  it('copies the JSON turn debug report including serverReport when present', () => {
+    // Test: Copy JSON clipboard includes lossless serverReport.
+    // Situation: Turn carries a rawServerReport with custom payload.
+    // Expectation: navigator.clipboard.writeText receives JSON with matching serverReport.
+    setReducedMotionPreference(true);
+    const writeTextSpy = vi.fn().mockResolvedValue(undefined);
+    vi.stubGlobal('navigator', {
+      ...navigator,
+      clipboard: { writeText: writeTextSpy },
+    });
+
+    const rawReport = { turn_id: 't-99', custom_metric: 42 };
+    const turn = buildFinishedTurn({ rawServerReport: rawReport });
+    openInspector(turn);
+
+    const copyButton = getCopyJsonButton();
+    fireEvent.click(copyButton);
+
+    expect(writeTextSpy).toHaveBeenCalledTimes(1);
+    const copiedPayload = writeTextSpy.mock.calls[0][0];
+    expect(JSON.parse(copiedPayload).serverReport).toEqual(rawReport);
   });
 
   it('handles clipboard write rejection gracefully with Copy failed status', async () => {
@@ -541,7 +563,7 @@ describe('DebugPanel', () => {
 
   it('switches tabs and updates tabpanel attributes on tab click', () => {
     // Test: Tab switching in DebugPanelBody.
-    // Situation: The user clicks the Provenance, Trajectory, Response, and Timing tabs.
+    // Situation: The user clicks the Data, Trajectory, Response, Timing, and Tokens tabs.
     // Expectation: active tab updates, tabpanel id updates, and corresponding tab content renders.
     openInspector(
       buildFinishedTurn({
@@ -549,15 +571,32 @@ describe('DebugPanel', () => {
           submittedAt: '2026-11-04T12:00:00.000Z',
           totalMs: 400,
         },
+        serverReport:
+          parseServerDebugReport({
+            turn_id: 'turn-d3b-test',
+            terminal_state: 'complete',
+            duration_ms: 450,
+            tokens: { total_token_count: 130 },
+            tables: [
+              {
+                table_id: 't0_panel_test',
+                used_in_answer: true,
+                variable_dcid: 'Count_Person',
+                variable_name: 'Total population',
+                row_count: 1,
+              },
+            ],
+          }) ?? undefined,
       }),
     );
 
-    const provenanceTab = screen.getByRole('tab', { name: /Provenance/ });
-    fireEvent.click(provenanceTab);
-    expect(provenanceTab.getAttribute('aria-selected')).toBe('true');
+    const dataTab = screen.getByRole('tab', { name: /Data/ });
+    fireEvent.click(dataTab);
+    expect(dataTab.getAttribute('aria-selected')).toBe('true');
     expect(screen.getByRole('tabpanel').getAttribute('aria-labelledby')).toBe(
-      provenanceTab.getAttribute('id'),
+      dataTab.getAttribute('id'),
     );
+    expect(screen.getByText('t0_panel_test')).toBeDefined();
 
     const trajectoryTab = screen.getByRole('tab', { name: /Trajectory/ });
     fireEvent.click(trajectoryTab);
@@ -579,48 +618,13 @@ describe('DebugPanel', () => {
     expect(screen.getByRole('tabpanel').getAttribute('aria-labelledby')).toBe(
       timingTab.getAttribute('id'),
     );
-  });
-});
 
-describe('isDebugPanelEnabled', () => {
-  let originalUrl = '';
-
-  beforeEach(() => {
-    originalUrl = window.location.href;
-  });
-
-  afterEach(() => {
-    window.history.replaceState(null, '', originalUrl);
-  });
-
-  it('is enabled by ?debug, ?debug=true, and ?debug=1', () => {
-    // Test: Enabling debug query parameter variations.
-    // Situation: The page URL carries ?debug, ?debug=true, or ?debug=1.
-    // Expectation: isDebugPanelEnabled returns true.
-    window.history.replaceState(null, '', '/?debug');
-    expect(isDebugPanelEnabled()).toBe(true);
-
-    window.history.replaceState(null, '', '/?debug=true');
-    expect(isDebugPanelEnabled()).toBe(true);
-
-    window.history.replaceState(null, '', '/?debug=1');
-    expect(isDebugPanelEnabled()).toBe(true);
-  });
-
-  it('is disabled by legacy ?debug=provenance, false, 0, or absent parameter', () => {
-    // Test: Non-enabling debug query parameter values.
-    // Situation: The page URL carries ?debug=provenance, ?debug=false, or no debug param.
-    // Expectation: isDebugPanelEnabled returns false.
-    window.history.replaceState(null, '', '/?debug=provenance');
-    expect(isDebugPanelEnabled()).toBe(false);
-
-    window.history.replaceState(null, '', '/?debug=false');
-    expect(isDebugPanelEnabled()).toBe(false);
-
-    window.history.replaceState(null, '', '/?debug=0');
-    expect(isDebugPanelEnabled()).toBe(false);
-
-    window.history.replaceState(null, '', '/');
-    expect(isDebugPanelEnabled()).toBe(false);
+    const tokensTab = screen.getByRole('tab', { name: /Tokens/ });
+    fireEvent.click(tokensTab);
+    expect(tokensTab.getAttribute('aria-selected')).toBe('true');
+    expect(screen.getByRole('tabpanel').getAttribute('aria-labelledby')).toBe(
+      tokensTab.getAttribute('id'),
+    );
+    expect(screen.getByText('Token totals')).toBeDefined();
   });
 });

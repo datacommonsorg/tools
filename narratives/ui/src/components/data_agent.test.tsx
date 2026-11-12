@@ -26,6 +26,7 @@ import {
   fireEvent,
   render,
   screen,
+  waitFor,
 } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
@@ -43,7 +44,9 @@ import {
   ChatSessionContext,
   type ChatSessionContextValue,
 } from '@/src/hooks/chat_session_context';
+import { resetDebugModeCacheForTests } from '@/src/hooks/use_debug_mode';
 import type { ChatTurn } from '@/src/hooks/use_sse_chat';
+import { parseServerDebugReport } from '@/src/types/debug_report';
 
 class NoopResizeObserver {
   observe = vi.fn();
@@ -56,6 +59,14 @@ let originalUrl = '';
 beforeEach(() => {
   originalUrl = window.location.href;
   vi.stubGlobal('ResizeObserver', NoopResizeObserver);
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async () => ({
+      ok: true,
+      status: 200,
+      json: async () => ({ status: 'ok', debug_report: 'off' }),
+    })),
+  );
 });
 
 afterEach(() => {
@@ -63,6 +74,7 @@ afterEach(() => {
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
   vi.useRealTimers();
+  resetDebugModeCacheForTests();
   window.history.replaceState(null, '', originalUrl);
 });
 
@@ -674,6 +686,115 @@ describe('DataAgent skeleton handoff', () => {
         provenance: [],
       },
     ]);
+
+    expect(
+      screen.queryByLabelText(DEBUG_PANEL_COPY.openButtonLabel),
+    ).toBeNull();
+  });
+
+  it('renders DebugPanel without ?debug when /agent/health reports debug_report on', async () => {
+    // Test: Debug panel display gated on debug report mode on without ?debug.
+    // Situation: URL debug is absent, /agent/health reports debug_report: 'on', turn is stopped.
+    // Expectation: DebugPanel trigger button renders for settled turn.
+    window.history.replaceState(null, '', '/');
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string) => {
+        if (url.endsWith('/agent/health')) {
+          return {
+            ok: true,
+            status: 200,
+            json: async () => ({ status: 'ok', debug_report: 'on' }),
+          };
+        }
+        throw new Error(`Unexpected url: ${url}`);
+      }),
+    );
+
+    renderTurns([
+      {
+        userMessage: 'What is the population of France?',
+        status: 'done',
+        stopped: true,
+        toolCalls: [],
+        thoughts: [],
+        text: '',
+        blocks: [],
+        provenance: [],
+      },
+    ]);
+
+    await waitFor(() => {
+      expect(
+        screen.getByLabelText(DEBUG_PANEL_COPY.openButtonLabel),
+      ).toBeDefined();
+    });
+  });
+
+  it('renders DebugPanel without ?debug when turn.serverReport is present', () => {
+    // Test: Debug panel rendering when serverReport is attached.
+    // Situation: URL debug is absent, turn has serverReport attached.
+    // Expectation: DebugPanel trigger button renders.
+    window.history.replaceState(null, '', '/');
+    const serverReport = parseServerDebugReport({
+      turn_id: 't1',
+      terminal_state: 'refused',
+      duration_ms: 50,
+      tokens: {},
+    });
+    expect(serverReport).not.toBeNull();
+    if (!serverReport) {
+      throw new Error('Expected serverReport to parse');
+    }
+
+    renderTurns([
+      {
+        userMessage: 'What is the population of France?',
+        status: 'refused',
+        refusalMessage: 'Refused query.',
+        toolCalls: [],
+        thoughts: [],
+        text: '',
+        blocks: [],
+        provenance: [],
+        serverReport,
+      },
+    ]);
+
+    expect(
+      screen.getByLabelText(DEBUG_PANEL_COPY.openButtonLabel),
+    ).toBeDefined();
+  });
+
+  it.each([
+    'flag',
+    'off',
+  ])('omits DebugPanel without ?debug when /agent/health returns %s', async (mode) => {
+    // Test: Debug panel suppressed when server mode is flag or off.
+    // Situation: URL debug is absent, /agent/health reports mode flag or off.
+    // Expectation: DebugPanel is not rendered.
+    window.history.replaceState(null, '', '/');
+    const fetchMock = vi.fn(async () => ({
+      ok: true,
+      status: 200,
+      json: async () => ({ status: 'ok', debug_report: mode }),
+    }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    renderTurns([
+      {
+        userMessage: 'What is the population of France?',
+        status: 'refused',
+        refusalMessage: 'Refused query.',
+        toolCalls: [],
+        thoughts: [],
+        text: '',
+        blocks: [],
+        provenance: [],
+      },
+    ]);
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
 
     expect(
       screen.queryByLabelText(DEBUG_PANEL_COPY.openButtonLabel),

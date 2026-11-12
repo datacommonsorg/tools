@@ -256,6 +256,7 @@ describe('buildTurnDebugReport', () => {
         stateSlots: null,
         compactedSummary: null,
       },
+      serverReport: null,
     });
     expect(JSON.parse(JSON.stringify(report))).toEqual(report);
   });
@@ -315,10 +316,30 @@ describe('buildTurnDebugReport', () => {
     const report = buildTurnDebugReport(turn);
     const serialized = JSON.stringify(report);
 
+    expect(report.serverReport).toBeNull();
     expect(report.context.signedInWindow).toBe(true);
     expect(report).not.toHaveProperty('hmac');
     expect(report.context).not.toHaveProperty('hmac');
     expect(serialized).not.toContain(secretHmac);
     expect(JSON.parse(serialized)).toEqual(report);
+  });
+
+  it('preserves rawServerReport losslessly including arbitrary nested keys', () => {
+    // Test: Lossless server report preservation in TurnDebugReport.
+    // Situation: A turn carries a rawServerReport with arbitrary nested keys.
+    // Expectation: buildTurnDebugReport exposes the exact object under serverReport.
+    const rawReport = {
+      turn_id: 'turn_abc',
+      specification: { arbitrary: { nested: [1, 2, 'three'] } },
+      digest: { custom_key: 'custom_value' },
+    };
+    const turn = makeTurn({
+      status: 'done',
+      rawServerReport: rawReport,
+    });
+
+    const report = buildTurnDebugReport(turn);
+    expect(report.serverReport).toEqual(rawReport);
+    expect(JSON.parse(JSON.stringify(report)).serverReport).toEqual(rawReport);
   });
 });

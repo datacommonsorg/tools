@@ -16,8 +16,8 @@
 
 /**
  * @fileoverview Tabbed debug panel body: coordinates the top-level tab bar and
- * renders the selected debug section (Overview, Provenance, Trajectory,
- * Response, or Timing).
+ * renders the selected debug section (Overview, Data, Trajectory, Response,
+ * Timing, or Tokens).
  */
 
 import { useId, useMemo, useState } from 'react';
@@ -27,10 +27,11 @@ import {
   formatDurationMs,
 } from '@/src/components/panel_debug/copy_debug';
 import { buildTurnDebugReport } from '@/src/components/panel_debug/report_debug';
+import { DataTab } from '@/src/components/panel_debug/tab_debug_data';
 import { OverviewTab } from '@/src/components/panel_debug/tab_debug_overview';
-import { ProvenanceTab } from '@/src/components/panel_debug/tab_debug_provenance';
 import { ResponseTab } from '@/src/components/panel_debug/tab_debug_response';
 import { TimingTab } from '@/src/components/panel_debug/tab_debug_timing';
+import { TokensTab } from '@/src/components/panel_debug/tab_debug_tokens';
 import { TrajectoryTab } from '@/src/components/panel_debug/tab_debug_trajectory';
 import {
   type DebugTabItem,
@@ -38,16 +39,16 @@ import {
   getDebugTabElementId,
   getDebugTabPanelElementId,
 } from '@/src/components/panel_debug/tabs_debug';
-import { type ChatTurn, getTurnCharts } from '@/src/hooks/use_sse_chat';
-import { inspectTurn } from '@/src/utils/inspect_turn';
+import type { ChatTurn } from '@/src/hooks/use_sse_chat';
 
 /** Identifiers for each tab in the turn debug panel. */
 export type DebugTabId =
   | 'overview'
-  | 'provenance'
+  | 'data'
   | 'trajectory'
   | 'response'
-  | 'timing';
+  | 'timing'
+  | 'tokens';
 
 /** Props for {@link DebugPanelBody}. */
 export interface DebugPanelBodyProps {
@@ -62,19 +63,21 @@ export const DebugPanelBody = ({ turn }: DebugPanelBodyProps) => {
   const [activeTab, setActiveTab] = useState<DebugTabId>('overview');
 
   const report = useMemo(() => buildTurnDebugReport(turn), [turn]);
-  const charts = useMemo(() => getTurnCharts(turn), [turn]);
-  const inspection = useMemo(
-    () => inspectTurn(turn.toolCalls, charts, turn.provenance),
-    [turn.toolCalls, charts, turn.provenance],
-  );
+
+  const totalDurationMs =
+    turn.clientTimings?.totalMs ?? turn.serverReport?.durationMs;
+  const timingBadge =
+    totalDurationMs !== undefined
+      ? formatDurationMs(totalDurationMs)
+      : undefined;
 
   const tabs: readonly DebugTabItem<DebugTabId>[] = useMemo(
     () => [
       { id: 'overview', label: DEBUG_TAB_LABELS.overview },
       {
-        id: 'provenance',
-        label: DEBUG_TAB_LABELS.provenance,
-        badge: inspection.facets.length,
+        id: 'data',
+        label: DEBUG_TAB_LABELS.data,
+        badge: turn.serverReport ? turn.serverReport.tables.length : undefined,
       },
       {
         id: 'trajectory',
@@ -89,18 +92,17 @@ export const DebugPanelBody = ({ turn }: DebugPanelBodyProps) => {
       {
         id: 'timing',
         label: DEBUG_TAB_LABELS.timing,
-        badge:
-          turn.clientTimings?.totalMs !== undefined
-            ? formatDurationMs(turn.clientTimings.totalMs)
-            : undefined,
+        badge: timingBadge,
+      },
+      {
+        id: 'tokens',
+        label: DEBUG_TAB_LABELS.tokens,
+        badge: turn.serverReport
+          ? turn.serverReport.tokens.totalTokenCount.toLocaleString()
+          : undefined,
       },
     ],
-    [
-      inspection.facets.length,
-      turn.toolCalls.length,
-      turn.blocks.length,
-      turn.clientTimings?.totalMs,
-    ],
+    [turn.serverReport, turn.toolCalls.length, turn.blocks.length, timingBadge],
   );
 
   return (
@@ -122,9 +124,14 @@ export const DebugPanelBody = ({ turn }: DebugPanelBodyProps) => {
         tabIndex={0}
         className="flex-1 min-h-0 overflow-y-auto p-4"
       >
-        {activeTab === 'overview' && <OverviewTab report={report} />}
-        {activeTab === 'provenance' && (
-          <ProvenanceTab inspection={inspection} />
+        {activeTab === 'overview' && (
+          <OverviewTab
+            report={report}
+            serverReport={turn.serverReport ?? null}
+          />
+        )}
+        {activeTab === 'data' && (
+          <DataTab serverReport={turn.serverReport ?? null} />
         )}
         {activeTab === 'trajectory' && (
           <TrajectoryTab thoughts={turn.thoughts} toolCalls={turn.toolCalls} />
@@ -133,7 +140,13 @@ export const DebugPanelBody = ({ turn }: DebugPanelBodyProps) => {
           <ResponseTab outcome={report.outcome} response={report.response} />
         )}
         {activeTab === 'timing' && (
-          <TimingTab clientTimings={turn.clientTimings ?? null} />
+          <TimingTab
+            clientTimings={turn.clientTimings ?? null}
+            serverReport={turn.serverReport ?? null}
+          />
+        )}
+        {activeTab === 'tokens' && (
+          <TokensTab serverReport={turn.serverReport ?? null} />
         )}
       </div>
     </>

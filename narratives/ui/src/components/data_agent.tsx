@@ -32,10 +32,7 @@ import { SkeletonCard } from '@/src/components/card_skeleton';
 import { PromptInput } from '@/src/components/input_prompt';
 import { ErrorNotice } from '@/src/components/notice_error';
 import { AnswerPanel } from '@/src/components/panel_answer';
-import {
-  DebugPanel,
-  isDebugPanelEnabled,
-} from '@/src/components/panel_debug/panel_debug';
+import { DebugPanel } from '@/src/components/panel_debug/panel_debug';
 import { isTurnSettled } from '@/src/components/panel_debug/report_debug';
 import { InitialView } from '@/src/components/view_initial';
 import {
@@ -44,6 +41,7 @@ import {
   SCROLL_PIN_OFFSET_PX,
 } from '@/src/config/motion';
 import { useChatSession } from '@/src/hooks/chat_session_context';
+import { useDebugMode } from '@/src/hooks/use_debug_mode';
 import {
   assignCitationNumbers,
   type ChatTurn,
@@ -279,6 +277,7 @@ export function TurnView({
     hasAnswer(turn) &&
     !turn.stopped &&
     (turn.status === 'done' || turn.status === 'error');
+  const isDebugEnabled = useDebugMode(!showAnswer && isTurnSettled(turn));
   const showSkeleton =
     !showAnswer &&
     !turn.stopped &&
@@ -477,11 +476,13 @@ export function TurnView({
         <ErrorNotice message={turn.error} onRetry={retry} />
       )}
 
-      {!showAnswer && isTurnSettled(turn) && isDebugPanelEnabled() && (
-        <div data-non-print="true" className="self-start">
-          <DebugPanel turn={turn} />
-        </div>
-      )}
+      {!showAnswer &&
+        isTurnSettled(turn) &&
+        (isDebugEnabled || turn.serverReport !== undefined) && (
+          <div data-non-print="true" className="self-start">
+            <DebugPanel turn={turn} />
+          </div>
+        )}
     </div>
   );
 }

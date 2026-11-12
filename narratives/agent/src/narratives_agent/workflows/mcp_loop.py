@@ -171,6 +171,10 @@ _SERVER_REPORT = "server_report_unavailable"
 
 type StatusPhase = Literal["discovery", "processing"]
 type StatusCallback = Callable[[StatusPhase, str], None]
+type ThoughtCallback = Callable[[str, int], None]
+type RejectionReason = Literal[
+    "schema_invalid", "reference_invalid", "processing_failed"
+]
 
 # Status `(phase, message)` pairs reported for discovery and processing phases.
 DISCOVERY_STATUS: tuple[StatusPhase, str] = (
@@ -181,6 +185,25 @@ PROCESSING_STATUS: tuple[StatusPhase, str] = (
     "processing",
     _PROCESSING_STATUS_MESSAGE,
 )
+
+
+@dataclass(frozen=True, kw_only=True)
+class RejectedSubmission:
+    """A specification rejected by validation or analytical processing.
+
+    Attributes:
+        round_number: 1-based discovery round in which submit_specification ran.
+        reason: Why the submission was rejected.
+        errors: Sanitized validation error messages or diagnostic failure
+            reason.
+        specification: The parsed specification when available, or None when
+            schema validation failed.
+    """
+
+    round_number: int
+    reason: RejectionReason
+    errors: tuple[str, ...]
+    specification: AnalysisSpecification | None = None
 
 
 class McpLoopError(Exception):
@@ -194,6 +217,7 @@ class McpLoopError(Exception):
         error_type: The machine-readable error classification for telemetry.
         is_retryable: False only when the failure is identified as
             permanent; every other failure is retryable.
+        result: The partial DiscoveryResult produced before the loop failed.
     """
 
     def __init__(
@@ -202,10 +226,12 @@ class McpLoopError(Exception):
         message: str,
         *,
         is_retryable: bool,
+        result: DiscoveryResult | None = None,
     ) -> None:
         super().__init__(message)
         self.error_type = error_type
         self.is_retryable = is_retryable
+        self.result = result if result is not None else DiscoveryResult()
 
 
 @dataclass
@@ -237,6 +263,10 @@ class DiscoveryResult:
         last_diagnostic: The diagnostic of the last processing failure so
             the caller can record it when retries are exhausted, or `None`
             when no processing step failed.
+        rejected_submissions: All specifications rejected during discovery, in
+            submission order.
+        diagnostics: Processing diagnostics paired with their 1-based discovery
+            round, in occurrence order.
     """
 
     tool_calls: list[JsonObject] = field(default_factory=list)
@@ -246,6 +276,10 @@ class DiscoveryResult:
     unavailable: UnavailableReport | None = None
     processing_retries: int = 0
     last_diagnostic: ProcessingDiagnostic | None = None
+    rejected_submissions: list[RejectedSubmission] = field(default_factory=list)
+    diagnostics: list[tuple[int, ProcessingDiagnostic]] = field(
+        default_factory=list
+    )
 
 
 def _build_gemini_tools(
@@ -619,6 +653,7 @@ async def _run_tools(
     cache: TurnCache,
     *,
     round_number: int,
+    completed_records: list[JsonObject] | None = None,
 ) -> list[JsonObject]:
     """Runs the calls of one model turn in a task group.
 
@@ -639,6 +674,8 @@ async def _run_tools(
         telemetry: The turn's telemetry collector.
         cache: The turn's table and metadata cache.
         round_number: 1-based discovery round number.
+        completed_records: Optional list to receive tool records that completed
+            before a sibling call failed with McpLoopError.
 
     Returns:
         The tool-call records, in the order of `function_calls`.
@@ -670,6 +707,12 @@ async def _run_tools(
         # Unwrap McpLoopError so callers handle one exception type.
         loop_errors, _ = failures.split(McpLoopError)
         if loop_errors is not None:
+            if completed_records is not None:
+                completed_records.extend(
+                    task.result()
+                    for task in tasks
+                    if not task.cancelled() and task.exception() is None
+                )
             raise loop_errors.exceptions[0] from failures
         raise
     return [task.result() for task in tasks]
@@ -732,12 +775,13 @@ class _Loop:
         return self.result.processing_retries < MAX_PROCESSING_RETRIES
 
     async def submit_specification(
-        self, arguments: Mapping[str, JsonValue]
+        self, arguments: Mapping[str, JsonValue], *, round_number: int
     ) -> tuple[str, bool]:
         """Validates and processes a submitted specification.
 
         Args:
             arguments: Raw `submit_specification` arguments from the model.
+            round_number: 1-based discovery round in which the submission ran.
 
         Returns:
             The text the model receives as the tool's response, and whether
@@ -748,17 +792,33 @@ class _Loop:
         try:
             specification = AnalysisSpecification.model_validate(arguments)
         except ValidationError as error:
-            return self._record_failed_submission(
-                "The specification is invalid:\n"
-                + "\n".join(
-                    _format_validation_errors(
-                        error, default_location="specification"
-                    )
+            errors = tuple(
+                _format_validation_errors(
+                    error, default_location="specification"
                 )
+            )
+            self.result.rejected_submissions.append(
+                RejectedSubmission(
+                    round_number=round_number,
+                    reason="schema_invalid",
+                    errors=errors,
+                    specification=None,
+                )
+            )
+            return self._record_failed_submission(
+                "The specification is invalid:\n" + "\n".join(errors)
             )
         self.result.specification = specification
         problems = validate_specification(specification, self.cache)
         if problems is not None:
+            self.result.rejected_submissions.append(
+                RejectedSubmission(
+                    round_number=round_number,
+                    reason="reference_invalid",
+                    errors=tuple(problems.splitlines()),
+                    specification=specification,
+                )
+            )
             return self._record_failed_submission(
                 f"The specification references are invalid:\n{problems}"
             )
@@ -770,6 +830,15 @@ class _Loop:
             outcome = await execute_specification(specification, self.cache)
         if isinstance(outcome, ProcessingDiagnostic):
             self.result.last_diagnostic = outcome
+            self.result.diagnostics.append((round_number, outcome))
+            self.result.rejected_submissions.append(
+                RejectedSubmission(
+                    round_number=round_number,
+                    reason="processing_failed",
+                    errors=(outcome.message,),
+                    specification=specification,
+                )
+            )
             return self._record_failed_submission(outcome.format_for_retry())
         self.result.digest = outcome
         return (
@@ -915,6 +984,7 @@ class _Loop:
             self.telemetry,
             self.cache,
             round_number=round_number,
+            completed_records=self.result.tool_calls,
         )
         self.result.tool_calls.extend(records)
         finished = False
@@ -928,7 +998,9 @@ class _Loop:
                 text = "Ignored: only the first terminal call is handled."
                 failed = True
             elif name == SUBMIT_SPECIFICATION:
-                text, finished = await self.submit_specification(arguments)
+                text, finished = await self.submit_specification(
+                    arguments, round_number=round_number
+                )
                 failed = self.result.digest is None
             else:
                 text, finished = self.report_unavailable(arguments)
@@ -953,7 +1025,7 @@ async def _request_discovery_turn(
     role: RoleConfig,
     gemini_tools: Sequence[types.FunctionDeclaration],
     telemetry: TurnTelemetry,
-    thought_callback: Callable[[str], None] | None,
+    thought_callback: ThoughtCallback | None,
     *,
     round_number: int,
 ) -> GeminiResponse:
@@ -977,6 +1049,11 @@ async def _request_discovery_turn(
         McpLoopError: If the model call fails or returns neither function
             calls nor non-blank text.
     """
+    callback = (
+        (lambda text: thought_callback(text, round_number))
+        if thought_callback is not None
+        else None
+    )
     try:
         response = await async_gemini_request_with_thought_streaming(
             messages=contents,
@@ -986,7 +1063,7 @@ async def _request_discovery_turn(
             temperature=role.temperature,
             thinking_level=role.thinking_level,
             token_usage=telemetry.tokens,
-            thought_callback=thought_callback,
+            thought_callback=callback,
             token_phase=GeminiRole.DISCOVERY.value,
             token_round=round_number,
         )
@@ -1018,7 +1095,7 @@ async def _iterate(
     config: AgentConfig,
     tools: Sequence[mcp_client.McpTool],
     loop: _Loop,
-    thought_callback: Callable[[str], None] | None,
+    thought_callback: ThoughtCallback | None,
     classification: QueryClassification | None,
 ) -> None:
     """Runs model turns until the model ends the loop or a bound is reached.
@@ -1162,9 +1239,10 @@ async def execute_discovery_loop(
     telemetry: TurnTelemetry,
     cache: TurnCache,
     *,
-    thought_callback: Callable[[str], None] | None = None,
+    thought_callback: ThoughtCallback | None = None,
     status_callback: StatusCallback | None = None,
     classification: QueryClassification | None = None,
+    result: DiscoveryResult | None = None,
 ) -> DiscoveryResult:
     """Runs the discovery loop for one user query.
 
@@ -1180,12 +1258,13 @@ async def execute_discovery_loop(
             iteration count, tool names, and the processing phase.
         cache: The turn's cache, which receives every fetched table.
         thought_callback: Optional callable invoked with each thought chunk
-            as the model streams it.
+            and its 1-based discovery round.
         status_callback: Optional callable invoked with a phase name and a
             message when the loop moves between discovery and processing.
         classification: The classify phase's verdict, whose pattern
             directive is appended to the system instruction, or `None` when
             the classifier failed.
+        result: Optional pre-allocated DiscoveryResult to receive partial state.
 
     Returns:
         The tool-call records, the truncation flag, and the digest, the
@@ -1201,7 +1280,7 @@ async def execute_discovery_loop(
     """
     # Open the turn's MCP session scope here so concurrent calls share it.
     mcp_client.ensure_session_scope()
-    result = DiscoveryResult()
+    result = result if result is not None else DiscoveryResult()
     loop = _Loop(cache, telemetry, status_callback, result, from_tools(tools))
     try:
         async with asyncio.timeout(MCP_LOOP_TIMEOUT_SECONDS):
@@ -1221,7 +1300,10 @@ async def execute_discovery_loop(
                 MCP_LOOP_TIMEOUT_SECONDS,
             )
             raise McpLoopError(
-                ErrorType.MCP_TIMEOUT, MCP_LOOP_TIMEOUT, is_retryable=True
+                ErrorType.MCP_TIMEOUT,
+                MCP_LOOP_TIMEOUT,
+                is_retryable=True,
+                result=result,
             ) from error
         logger.warning(
             "Discovery loop exceeded %.0f seconds after %d iterations and %d "
@@ -1231,6 +1313,9 @@ async def execute_discovery_loop(
             len(result.tool_calls),
         )
         result.truncated = True
+    except McpLoopError as error:
+        error.result = result
+        raise
     return result
 
 
@@ -1246,6 +1331,9 @@ __all__ = [
     "SERVER_FUNCTION_NAMES",
     "DiscoveryResult",
     "McpLoopError",
+    "RejectedSubmission",
+    "RejectionReason",
     "StatusCallback",
+    "ThoughtCallback",
     "execute_discovery_loop",
 ]
