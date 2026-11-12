@@ -29,16 +29,21 @@ import {
   DebugField,
   DebugSection,
 } from '@/src/components/panel_debug/section_debug';
+import type { ServerDebugReport } from '@/src/types/debug_report';
 
 /** Props for {@link OverviewTab}. */
 export interface OverviewTabProps {
   report: TurnDebugReport;
+  serverReport?: ServerDebugReport | null;
 }
 
 /**
  * Renders the top-level metadata and outcome classification of a chat turn.
  */
-export const OverviewTab = ({ report }: OverviewTabProps) => {
+export const OverviewTab = ({
+  report,
+  serverReport = null,
+}: OverviewTabProps) => {
   const { outcome, context } = report;
 
   return (
@@ -59,8 +64,28 @@ export const OverviewTab = ({ report }: OverviewTabProps) => {
           {'reason' in outcome && (
             <DebugField
               label="Terminal reason"
-              value={outcome.reason ?? DEBUG_PANEL_COPY.noneFallback}
+              value={
+                serverReport?.terminalReason ??
+                outcome.reason ??
+                DEBUG_PANEL_COPY.noneFallback
+              }
             />
+          )}
+          {serverReport && (
+            <>
+              <DebugField
+                label="Server terminal state"
+                value={serverReport.terminalState}
+              />
+              <DebugField
+                label="Clarification"
+                value={serverReport.isClarification ? 'Yes' : 'No'}
+              />
+              <DebugField
+                label="Query pattern"
+                value={serverReport.pattern ?? DEBUG_PANEL_COPY.noneFallback}
+              />
+            </>
           )}
           {outcome.kind === 'done' && (
             <DebugField
@@ -105,6 +130,13 @@ export const OverviewTab = ({ report }: OverviewTabProps) => {
             value={report.idempotencyKey ?? DEBUG_PANEL_COPY.noneFallback}
             valueClassName={`${DEBUG_MONO_TEXT_CLASSES} break-all`}
           />
+          {serverReport && (
+            <DebugField
+              label="Server turn ID"
+              value={serverReport.turnId}
+              valueClassName={`${DEBUG_MONO_TEXT_CLASSES} break-all`}
+            />
+          )}
         </dl>
       </DebugSection>
 
@@ -130,6 +162,35 @@ export const OverviewTab = ({ report }: OverviewTabProps) => {
             value={report.response.provenance.length}
             valueClassName="font-medium"
           />
+          {serverReport && (
+            <>
+              <DebugField
+                label="Cached tables"
+                value={serverReport.tables.length}
+                valueClassName="font-medium"
+              />
+              <DebugField
+                label="MCP iterations"
+                value={serverReport.mcpIterations}
+                valueClassName="font-medium"
+              />
+              <DebugField
+                label="Processing retries"
+                value={serverReport.processingRetries}
+                valueClassName="font-medium"
+              />
+              <DebugField
+                label="Charts emitted / rejected"
+                value={`${serverReport.chartsEmitted} / ${serverReport.chartsRejected}`}
+                valueClassName="font-medium"
+              />
+              <DebugField
+                label="Total tokens"
+                value={serverReport.tokens.totalTokenCount.toLocaleString()}
+                valueClassName="font-medium"
+              />
+            </>
+          )}
         </dl>
       </DebugSection>
 
