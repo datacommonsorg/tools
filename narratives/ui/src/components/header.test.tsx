@@ -15,12 +15,12 @@
  */
 
 /**
- * @fileoverview Tests for Header navigation, wordmark, logo alt text, and the
- * menu button.
+ * @fileoverview Tests for Header navigation, wordmark, logo alt text and link,
+ * and the menu button.
  */
 
 import { cleanup, render, screen, within } from '@testing-library/react';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { Header } from '@/src/components/header';
 import { resetInstanceConfigForTests } from '@/src/config/instance_config';
 import { resetRuntimeConfigForTests } from '@/src/config/runtime_config';
@@ -55,6 +55,7 @@ const getLogoAlt = (container: HTMLElement): string | null =>
   container.querySelector('img')?.getAttribute('alt') ?? null;
 
 afterEach(() => {
+  vi.unstubAllGlobals();
   cleanup();
   document.getElementById('instance-config')?.remove();
   document.getElementById('runtime-config')?.remove();
@@ -97,6 +98,48 @@ describe('Header', () => {
     ]);
     expect(links[0].getAttribute('aria-current')).toBe('page');
     expect(links[1].getAttribute('aria-current')).toBeNull();
+  });
+
+  it.each([
+    ['under a base path by default', '/labs/discover/', {}, '/'],
+    [
+      'under a base path to logo_href',
+      '/labs/discover/',
+      { logo_href: '/explore' },
+      '/explore',
+    ],
+    [
+      'at the root to an http(s) logo_href',
+      '/',
+      { logo_href: 'https://acme.example/' },
+      'https://acme.example/',
+    ],
+  ])('links the logo %s', (_, pathname, themeDocument, expectedHref) => {
+    // Test: Header logo link target.
+    // Situation: The app is served under a base path with the default or a
+    //            same-origin `logo_href`, or at the root with an http(s)
+    //            `logo_href`.
+    // Expectation: The logo and wordmark link to the target in the same tab.
+    vi.stubGlobal('location', new URL(`https://datacommons.org${pathname}`));
+    writeSlot(themeDocument);
+    renderHeader();
+    const logoLink = screen.getByRole('link', { name: 'Data Commons' });
+    expect(logoLink.getAttribute('href')).toBe(expectedHref);
+    expect(logoLink.getAttribute('target')).toBe('_self');
+  });
+
+  it.each([
+    ['by default', {}],
+    ['with a same-origin logo_href', { logo_href: '/explore' }],
+  ])('renders a plain logo at the root %s', (_, themeDocument) => {
+    // Test: Logo link guard when the app is served at the site root.
+    // Situation: The app is at `/`, and `logo_href` is omitted or same-origin,
+    //            so following it would reload the app.
+    // Expectation: The logo and wordmark render without a link.
+    vi.stubGlobal('location', new URL('https://datacommons.org/'));
+    writeSlot(themeDocument);
+    renderHeader();
+    expect(screen.getByText('Data Commons').closest('a')).toBeNull();
   });
 
   it('hides the wordmark when the theme document omits logo_text', () => {

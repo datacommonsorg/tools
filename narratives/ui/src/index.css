@@ -735,3 +735,26 @@ select:not(:disabled) {
     animation: none;
   }
 }
+
+/* ==========================================================================
+   Cross-document view transition (browser cross-fade), only for navigations
+   to/from same-origin Data Commons pages outside this app's base path. This app
+   filters its outgoing navigations in `src/utils/view_transition.ts`; Data
+   Commons' base.html has the mirror opt-in and filters its own.
+   The production build loads this file as a render-blocking stylesheet, so an
+   incoming page has the opt-in when it first renders. Under `pnpm dev:ui`, Vite
+   injects CSS through JS, so incoming transitions do not run.
+   ========================================================================== */
+
+@media (prefers-reduced-motion: no-preference) {
+  @view-transition {
+    navigation: auto;
+  }
+}
+
+/* The destination page's CSS sets the duration; keep in sync with Data Commons'
+   base.html. */
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation-duration: 300ms;
+}

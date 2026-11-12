@@ -15,11 +15,15 @@
  */
 
 /**
- * @fileoverview Tests for trimTrailingSlashes and withBaseUrl.
+ * @fileoverview Tests for trimTrailingSlashes, getBasePath, and withBaseUrl.
  */
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { trimTrailingSlashes, withBaseUrl } from '@/src/config/base_url';
+import {
+  getBasePath,
+  trimTrailingSlashes,
+  withBaseUrl,
+} from '@/src/config/base_url';
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -67,6 +71,7 @@ describe('withBaseUrl', () => {
     // Expectation: Assets and API endpoints resolve under a single-slash mount
     //              prefix without generating protocol-relative `//` URLs.
     vi.stubGlobal('location', new URL(href));
+    expect(getBasePath()).toBe(expectedPrefix);
     expect(withBaseUrl('/dc-logo.svg')).toBe(`${expectedPrefix}/dc-logo.svg`);
     expect(withBaseUrl('agent/chat/stream')).toBe(
       `${expectedPrefix}/agent/chat/stream`,
@@ -79,6 +84,7 @@ describe('withBaseUrl', () => {
     //            without a leading slash.
     // Expectation: Both inputs return `/<cleanPath>`.
     vi.stubGlobal('window', undefined);
+    expect(getBasePath()).toBe('');
     expect(withBaseUrl('/dc-logo.svg')).toBe('/dc-logo.svg');
     expect(withBaseUrl('agent/chat/stream')).toBe('/agent/chat/stream');
   });

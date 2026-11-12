@@ -8,6 +8,7 @@
   "logo": "/dc-logo.svg",
   "favicon": "/dc-logo.svg",
   "logo_alt": "Data Commons",
+  "logo_href": "/",
   "logo_text": "Data Commons",
   "logo_height": "28px",
   "headline": "Data agent explorer",

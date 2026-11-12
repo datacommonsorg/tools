@@ -37,6 +37,8 @@ export interface InstanceConfig {
   logoText: string;
   /** Alternative text for the header logo when no wordmark is displayed. */
   logoAlt: string;
+  /** Link target of the header logo, usually the instance's home page. */
+  logoHref: string;
   /** URL of the animated indicator shown while the agent is streaming. */
   thinkingIndicatorUrl: string;
   /** URL of the static indicator shown after the agent finishes streaming. */
@@ -58,6 +60,7 @@ export const DEFAULT_INSTANCE_CONFIG: Readonly<InstanceConfig> = {
   logoUrl: '/dc-logo.svg',
   logoText: 'Data Commons',
   logoAlt: 'Data Commons',
+  logoHref: '/',
   thinkingIndicatorUrl: '/agent-thinking.svg',
   doneIndicatorUrl: '/agent-done-thinking.svg',
   headline: 'Data agent explorer',
@@ -205,6 +208,7 @@ const mergeOverrides = (raw: Record<string, unknown>): InstanceConfig => {
       isString,
       hasCustomIdentity ? '' : defaults.logoAlt,
     ),
+    logoHref: pick('logo_href', raw.logo_href, isNavHref, defaults.logoHref),
     thinkingIndicatorUrl: sanitizeUrl(
       pick(
         'splash_assets.thinking_indicator',
