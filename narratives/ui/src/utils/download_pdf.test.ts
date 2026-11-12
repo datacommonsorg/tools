@@ -271,12 +271,13 @@ describe('stackChartsForPrint', () => {
     }
   });
 
-  it('keeps the cards of a row hidden on screen out of the PDF', () => {
+  it('leaves a row hidden on screen out of the PDF', () => {
     // Test: A row whose charts all reported no data.
     // Situation: A chart tile holding a visible row and a row hidden by the
     //   `hidden` class, whose one card is hidden with inline `display: none`.
-    // Expectation: Both rows are set to block layout, and the hidden row's
-    //   card keeps `display: none`, so the row takes no height.
+    // Expectation: Only the visible row is set to block layout; the hidden
+    //   row keeps no inline display, so its `hidden` class still applies, and
+    //   its card keeps `display: none`.
     const root = document.createElement('div');
     root.innerHTML = `
       <div class="dc-charts-container flex flex-col gap-6">
@@ -294,7 +295,7 @@ describe('stackChartsForPrint', () => {
     const rows = Array.from(
       root.querySelectorAll<HTMLElement>('.dc-charts-row'),
     );
-    expect(rows.map((row) => row.style.display)).toEqual(['block', 'block']);
+    expect(rows.map((row) => row.style.display)).toEqual(['block', '']);
     expect(root.querySelector<HTMLElement>('#empty')?.style.display).toBe(
       'none',
     );

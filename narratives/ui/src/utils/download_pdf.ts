@@ -518,11 +518,13 @@ export function flattenForPrint(clone: HTMLElement) {
  * On screen a chart tile lays its rows out as a flex column and each row as a
  * grid, which can set charts side by side. Setting both to `display: block`
  * puts every card on a line of its own, spaced by the card's bottom margin. A
- * row hidden on screen holds only hidden cards, so it still takes no height.
+ * row hidden on screen is skipped, so it stays out of the layout.
  */
 export function stackChartsForPrint(clone: HTMLElement) {
   clone
-    .querySelectorAll<HTMLElement>('.dc-charts-container, .dc-charts-row')
+    .querySelectorAll<HTMLElement>(
+      '.dc-charts-container, .dc-charts-row:not(.hidden)',
+    )
     .forEach((layout) => {
       layout.style.display = 'block';
     });
