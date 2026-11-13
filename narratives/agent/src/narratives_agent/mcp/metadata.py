@@ -21,10 +21,14 @@ observation `sourceMetadata` blocks.
 import math
 from collections.abc import Iterator, Mapping, Sequence
 from dataclasses import dataclass, field, replace
-from urllib.parse import urlparse
+from urllib.parse import urlparse, urlsplit
 
 from narratives_agent.analytics.provenance import Source
 from narratives_agent.json_value import JsonObject, JsonValue
+
+_SAFE_URL_SCHEMES = frozenset({"http", "https"})
+_MAX_ASCII_C0_CODE = 0x1F
+_ASCII_DEL_CODE = 0x7F
 
 
 def get_first_present_value(
@@ -42,19 +46,49 @@ def get_first_present_value(
     return ""
 
 
-def _get_provenance_url(properties: Mapping[str, JsonValue]) -> str:
-    """Returns a provenance node's `url`, else its first `descriptionUrl`.
+def _get_safe_url(value: JsonValue) -> str:
+    """Returns the trimmed `value` if it is a safe absolute http(s) URL, or "".
 
-    MCP 1.3.x sends `descriptionUrl` as a string or a list of strings.
+    A URL is safe when it parses to an `http` or `https` scheme with a
+    non-empty host and contains no backslash or ASCII control character.
+    These are the same rules that `classifyLinkHref` in the UI's `link.tsx`
+    applies.
     """
-    url = get_first_present_value(properties, "url", "descriptionUrl")
-    if url:
-        return url
+    if not isinstance(value, str):
+        return ""
+    url = value.strip()
+    has_control_character = any(
+        ord(character) <= _MAX_ASCII_C0_CODE
+        or ord(character) == _ASCII_DEL_CODE
+        for character in url
+    )
+    if not url or "\\" in url or has_control_character:
+        return ""
+    try:
+        parts = urlsplit(url)
+    except ValueError:
+        return ""
+    if parts.scheme.lower() not in _SAFE_URL_SCHEMES or not parts.hostname:
+        return ""
+    return url
+
+
+def _get_provenance_url(properties: Mapping[str, JsonValue]) -> str:
+    """Returns the first safe URL among `url` and `descriptionUrl`, or "".
+
+    MCP 1.3.x sends `descriptionUrl` as a string or a list of strings. When
+    `url` is unsafe, the first safe `descriptionUrl` is returned instead.
+    """
     description_urls = properties.get("descriptionUrl")
+    candidates: list[JsonValue] = [properties.get("url")]
     if isinstance(description_urls, list):
-        for item in description_urls:
-            if isinstance(item, str) and item.strip():
-                return item.strip()
+        candidates.extend(description_urls)
+    else:
+        candidates.append(description_urls)
+    for candidate in candidates:
+        url = _get_safe_url(candidate)
+        if url:
+            return url
     return ""
 
 
@@ -130,7 +164,7 @@ def _provenance_entry_from_properties(
 
     Prefers `isPartOf` over `source` for the display name because `isPartOf`
     names the dataset whereas `source` names the publishing organization.
-    Returns `None` when the provenance node carries no URL.
+    Returns `None` when the provenance node carries no safe URL.
     """
     url = _get_provenance_url(properties)
     if not url:
@@ -164,7 +198,7 @@ def _facet_entries(
     Walks `result_data["variables"]` and yields every facet that carries a
     non-empty `id`. `provenance` is the `Source` built from the matching entry
     in `result_data["provenances"]`, or `None` when the facet's `provenanceId`
-    is absent or carries no URL.
+    is absent or carries no safe URL.
     """
     variables = result_data.get("variables")
     if not isinstance(variables, dict):
@@ -214,9 +248,12 @@ def get_source_from_observation_metadata(
     Used when no `get_variable_metadata` call described the served facet. The
     display name is read from `importName` or `sourceName`, falling back to
     the URL's hostname with any leading `www.` stripped, and then to
-    `"Data Source"`. Returns `None` when `metadata` carries no `provenanceUrl`.
+    `"Data Source"`. Returns `None` when `metadata` carries no safe
+    `provenanceUrl`.
     """
-    url = get_first_present_value(metadata, "provenanceUrl", "provenance_url")
+    url = _get_safe_url(metadata.get("provenanceUrl")) or _get_safe_url(
+        metadata.get("provenance_url")
+    )
     if not url:
         return None
     name = get_first_present_value(
