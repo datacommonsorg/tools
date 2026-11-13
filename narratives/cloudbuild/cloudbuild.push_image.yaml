@@ -12,16 +12,20 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# Official CI/CD pipeline for building and pushing the Narratives container
-# image to GCR / Artifact Registry in datcom-ci and triggering the
-# datacommons-website autopush deployment via Pub/Sub.
+# Official CI/CD pipeline for building and pushing the Discover container
+# image (alongside the legacy datacommons-narratives image during migration)
+# to Artifact Registry in datcom-ci and notifying the datacommons-website
+# Cloud Deploy pipeline via Pub/Sub.
 #
 # Trigger: push to main branch on datacommonsorg/tools, filtered to paths
 # matching narratives/**.
 
 steps:
-  # 1. Build and push the multi-stage container image to datcom-ci.
-  - id: push-narratives-image
+  # 1. Build and push the multi-stage container image to datcom-ci under both
+  #    datacommons-discover and legacy datacommons-narratives tags.
+  # TODO(juliawu): Remove narratives image once we've migrated to the discover
+  #                image in the downstream website pipeline.
+  - id: push-discover-image
     name: gcr.io/cloud-builders/docker
     dir: narratives
     entrypoint: bash
@@ -30,17 +34,38 @@ steps:
       - |
         set -euo pipefail
         docker build \
+          -t "gcr.io/$PROJECT_ID/datacommons-discover:$SHORT_SHA" \
+          -t "gcr.io/$PROJECT_ID/datacommons-discover:latest" \
+          -t "gcr.io/$PROJECT_ID/datacommons-discover:cicd" \
           -t "gcr.io/$PROJECT_ID/datacommons-narratives:$SHORT_SHA" \
           -t "gcr.io/$PROJECT_ID/datacommons-narratives:latest" \
           -t "gcr.io/$PROJECT_ID/datacommons-narratives:cicd" \
           .
+        docker push "gcr.io/$PROJECT_ID/datacommons-discover:$SHORT_SHA"
+        docker push "gcr.io/$PROJECT_ID/datacommons-discover:latest"
+        docker push "gcr.io/$PROJECT_ID/datacommons-discover:cicd"
         docker push "gcr.io/$PROJECT_ID/datacommons-narratives:$SHORT_SHA"
         docker push "gcr.io/$PROJECT_ID/datacommons-narratives:latest"
         docker push "gcr.io/$PROJECT_ID/datacommons-narratives:cicd"
 
-  # 2. Publish a Pub/Sub message to notify datacommons-website Cloud Deploy
-  #    that a new narratives image has been pushed.
-  - id: publish-image-pushed
+  # 2. Publish Pub/Sub messages to both the Discover topic and the legacy
+  #    Narratives topic so datacommons-website Cloud Deploy triggers cleanly
+  #    before and after the trigger subscription cutover.
+  # TODO(juliawu): Remove narratives Pub/Sub once downstream website pipeline
+  #                is migrated over to the discover Pub/Sub message.
+  - id: publish-discover-image-pushed
+    name: gcr.io/google.com/cloudsdktool/cloud-sdk:slim
+    entrypoint: gcloud
+    args:
+      - pubsub
+      - topics
+      - publish
+      - discover-image-pushed
+      - --project=$PROJECT_ID
+      - --message=$SHORT_SHA
+    waitFor: ["push-discover-image"]
+
+  - id: publish-narratives-image-pushed
     name: gcr.io/google.com/cloudsdktool/cloud-sdk:slim
     entrypoint: gcloud
     args:
@@ -50,7 +75,7 @@ steps:
       - narratives-image-pushed
       - --project=$PROJECT_ID
       - --message=$SHORT_SHA
-    waitFor: ["push-narratives-image"]
+    waitFor: ["push-discover-image"]
 
 options:
   logging: CLOUD_LOGGING_ONLY
