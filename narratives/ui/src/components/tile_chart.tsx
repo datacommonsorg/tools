@@ -40,8 +40,9 @@ import {
  * metadata (not USA, which was the bug in the previous Recharts impl
  * that defaulted missing placeDcids to country/USA).
  *
- * We keep the surrounding card chrome from Figma (rounded border, max
- * charts cap, 2-column grid) but the chart interior is no longer custom.
+ * The surrounding card chrome from Figma is kept (rounded border, max charts
+ * cap, charts side by side in a row grid, with each scatter chart on a row of
+ * its own), but the chart interior is no longer custom.
  * This matches the Key Metrics dashboard's approach to chart rendering.
  */
 interface ChartTileProps {
@@ -72,7 +73,35 @@ const PENDING_HEIGHT_CLASS: Partial<
 > = { 'datacommons-highlight': 'min-h-30' };
 const DEFAULT_PENDING_HEIGHT_CLASS = 'min-h-90';
 
-/** Renders the agent's chart directive as a responsive grid of DC charts. */
+/**
+ * Chart kinds that take a row of their own. A scatter plots one variable
+ * against another, so its two axes need the tile's full width to stay legible.
+ */
+const FULL_ROW_CHART_KINDS: ReadonlySet<ChartItem['vizType']> = new Set([
+  'scatter',
+]);
+
+/** Fewest visible charts that a row lays out side by side. */
+const MIN_CHARTS_SIDE_BY_SIDE = 2;
+
+/** The tile: its rows stacked `gap-6` (24px at the default root size) apart. */
+const CHARTS_CONTAINER_CLASS = 'dc-charts-container flex flex-col gap-6';
+/**
+ * A row whose visible charts sit side by side, `gap-6` apart, in as many
+ * columns of at least 20rem (320px at the default root size) as fit.
+ */
+const CHARTS_ROW_SIDE_BY_SIDE_CLASS =
+  'dc-charts-row grid gap-6 grid-cols-[repeat(auto-fit,minmax(min(100%,20rem),1fr))]';
+/** A row with one visible chart, which spans the tile's full width. */
+const CHARTS_ROW_SINGLE_CLASS = 'dc-charts-row grid gap-6 grid-cols-1';
+/** A row whose charts are all empty, taken out of the layout. */
+const CHARTS_ROW_HIDDEN_CLASS = 'dc-charts-row hidden';
+
+/**
+ * Renders the agent's chart directive as rows of DC charts. Each scatter chart
+ * has a row of its own, and the charts between scatters share a row, side by
+ * side when there is room (see `splitChartRows`).
+ */
 export function ChartTile({
   config,
   onSettled,
@@ -128,31 +157,76 @@ export function ChartTile({
   ).length;
   if (visibleCount === 0) return null;
 
-  const isGrid = visibleCount >= 2;
   return (
     <div
       /* No top margin: the answer card's own flex gap already spaces this. */
-      className="dc-charts-container"
-      style={{
-        display: 'grid',
-        gridTemplateColumns: isGrid
-          ? 'repeat(auto-fit, minmax(min(100%, 320px), 1fr))'
-          : '1fr',
-        gap: 24,
-      }}
+      className={CHARTS_CONTAINER_CLASS}
     >
-      {toRender.map((chart, index) => (
-        <ChartCard
-          key={index}
-          chart={chart}
-          hidden={emptyIndices.has(index)}
-          shouldHoldSkeleton={shouldHoldSkeleton}
-          onEmpty={() => markEmpty(index)}
-          onSettled={() => markSettled(index)}
-        />
-      ))}
+      {splitChartRows(toRender).map((row) => {
+        const rowVisibleCount = row.filter(
+          (index) => !emptyIndices.has(index),
+        ).length;
+        return (
+          <div
+            // The first index is stable as charts stream in, so a row keeps
+            // its element and its cards are not remounted.
+            key={row[0]}
+            className={getChartRowClass(rowVisibleCount)}
+          >
+            {row.map((index) => (
+              <ChartCard
+                key={index}
+                chart={toRender[index]}
+                hidden={emptyIndices.has(index)}
+                shouldHoldSkeleton={shouldHoldSkeleton}
+                onEmpty={() => markEmpty(index)}
+                onSettled={() => markSettled(index)}
+              />
+            ))}
+          </div>
+        );
+      })}
     </div>
   );
+}
+
+/**
+ * Splits a tile's charts into rows of indices into `charts`, in order. Each
+ * chart of a kind in `FULL_ROW_CHART_KINDS` is a row of its own, and each
+ * maximal stretch of other charts between them is one row. Rows depend on
+ * chart kinds and order only, never on which charts reported no data, so a
+ * card never moves to another row element, which would remount it and replay
+ * its fetch.
+ */
+export function splitChartRows(charts: readonly ChartItem[]): number[][] {
+  const rows: number[][] = [];
+  for (const [index, chart] of charts.entries()) {
+    const lastRow = rows.at(-1);
+    const shouldJoinLastRow =
+      lastRow !== undefined &&
+      !isFullRowChart(chart) &&
+      !isFullRowChart(charts[lastRow[0]]);
+    if (shouldJoinLastRow) {
+      lastRow.push(index);
+    } else {
+      rows.push([index]);
+    }
+  }
+  return rows;
+}
+
+/** Returns whether `chart` takes a row of its own. */
+function isFullRowChart(chart: ChartItem): boolean {
+  return FULL_ROW_CHART_KINDS.has(chart.vizType);
+}
+
+/** Returns the class of a row that shows `visibleCount` charts. */
+function getChartRowClass(visibleCount: number): string {
+  if (visibleCount === 0) return CHARTS_ROW_HIDDEN_CLASS;
+  if (visibleCount >= MIN_CHARTS_SIDE_BY_SIDE) {
+    return CHARTS_ROW_SIDE_BY_SIDE_CLASS;
+  }
+  return CHARTS_ROW_SINGLE_CLASS;
 }
 
 /** Returns the charts of `config` the tile can render; empty when none. */
