@@ -22,6 +22,12 @@ import { useRef } from 'react';
 import { ExportIcon } from '@/src/components/icons';
 import { Tooltip } from '@/src/components/tooltip';
 
+/**
+ * Whether the answer panel shows its PDF export controls. Off for now: the
+ * export works but is hidden from users. Flip to `true` to bring it back.
+ */
+export const IS_PDF_EXPORT_ENABLED = false;
+
 interface ExportPdfButtonProps {
   onExport: () => void;
   busy?: boolean;

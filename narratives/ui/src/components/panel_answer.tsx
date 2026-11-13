@@ -26,7 +26,10 @@ import {
   useRef,
   useState,
 } from 'react';
-import { ExportPdfButton } from '@/src/components/button_export_pdf';
+import {
+  ExportPdfButton,
+  IS_PDF_EXPORT_ENABLED,
+} from '@/src/components/button_export_pdf';
 import { CardHeader } from '@/src/components/card_header';
 import { ResponseCard } from '@/src/components/card_response';
 import { CitationNumberingProvider } from '@/src/components/chip_citation';
@@ -253,9 +256,12 @@ export function AnswerPanel({
             (isDebugEnabled || turn.serverReport !== undefined) && (
               <DebugPanel turn={turn} />
             )}
-          {turn.status === 'done' && isRevealed && areChartsSettled && (
-            <ToolbarExportPdfPill onExport={onExport} busy={exporting} />
-          )}
+          {IS_PDF_EXPORT_ENABLED &&
+            turn.status === 'done' &&
+            isRevealed &&
+            areChartsSettled && (
+              <ToolbarExportPdfPill onExport={onExport} busy={exporting} />
+            )}
         </CardHeader>
 
         {/* Intro block: the question as the answer's title. Outside the content
@@ -318,9 +324,12 @@ export function AnswerPanel({
           {(hasCharts || hasCitations) && <DisclaimerNote />}
 
           {/* 5. Export PDF (filled, in-content) */}
-          {turn.status === 'done' && isRevealed && areChartsSettled && (
-            <ExportPdfButton onExport={onExport} busy={exporting} />
-          )}
+          {IS_PDF_EXPORT_ENABLED &&
+            turn.status === 'done' &&
+            isRevealed &&
+            areChartsSettled && (
+              <ExportPdfButton onExport={onExport} busy={exporting} />
+            )}
         </div>
         {exportedAt !== null && (
           <Toast
