@@ -11,7 +11,7 @@
   },
   "chat": {
     "enabled": true,
-    "unavailable_message": "Due to high traffic, the application is currently unavailable."
+    "unavailable_message": "This Data Commons tool is temporarily unavailable due to high traffic."
   },
   "debug": {
     "report": "off"

@@ -83,7 +83,7 @@
           "type": "string",
           "minLength": 1,
           "pattern": "\\S",
-          "default": "Due to high traffic, the application is currently unavailable."
+          "default": "This Data Commons tool is temporarily unavailable due to high traffic."
         },
         "_comment": {
           "type": "string",

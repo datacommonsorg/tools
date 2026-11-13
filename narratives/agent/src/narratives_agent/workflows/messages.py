@@ -23,22 +23,40 @@ PROCESSING_STATUS = "Analyzing data..."
 SYNTHESIS_STATUS = "Generating response..."
 
 # Refusal messages carried on `terminal` SSE frames with `state == "refused"`.
-# Adversarial and safety-blocked turns always return a fixed string rather
-# than model-generated text.
-REFUSED_MESSAGE = "We cannot service that request."
-# Format template for off-domain refusals; `{premise}` is `" (<topic>)"` or
-# `""` when no sanitized topic premise is available.
-OFF_DOMAIN_TEMPLATE = (
-    "That request is outside the public statistical data this service "
-    "covers{premise}. Ask about a demographic, economic, health, climate, "
-    "or social indicator for a place."
+# Refused turns always return a fixed string rather than model-generated text.
+# `REFUSED_MESSAGE` answers questions the classifier marks adversarial (for
+# example, subjective or demeaning questions); `SAFETY_REFUSED_MESSAGE` answers
+# pre-filter matches (prompt-injection attempts), Model Armor matches, and
+# Gemini safety blocks.
+REFUSED_MESSAGE = (
+    "Data Commons is built to explore standardized public data (such as "
+    "demographics, economics, health, and education) rather than subjective "
+    "or opinion-based questions."
 )
+SAFETY_REFUSED_MESSAGE = (
+    "Data Commons is built to explore standardized public data (such as "
+    "demographics, economics, health, and education) and can't do more "
+    "than that."
+)
+# Format template for off-domain refusals. `{subject}` is
+# `OFF_DOMAIN_NAMED_SUBJECT` with the sanitized topic premise, or
+# `OFF_DOMAIN_UNNAMED_SUBJECT` when no premise is available.
+OFF_DOMAIN_TEMPLATE = (
+    "{subject} falls outside the public statistics Data Commons is built to "
+    "explore. Try asking about a demographic, economic, health, climate, or "
+    "social measure for a country, state, or city."
+)
+OFF_DOMAIN_NAMED_SUBJECT = 'The topic "{premise}"'
+OFF_DOMAIN_UNNAMED_SUBJECT = "This topic"
 
 # Informational and truncation messages carried on `data_status` SSE frames.
-NO_DATA_MESSAGE = "We didn't find data for your query."
+NO_DATA_MESSAGE = (
+    "Data Commons does not have matching data for this question. Try asking "
+    "about a broader geography, time period, or measure."
+)
 TRUNCATED_MESSAGE = (
-    "We ran out of research steps before finding data for your query. Try "
-    "asking something narrower."
+    "This question covers more ground than Data Commons can match at once. "
+    "Try breaking it into a simpler question about a single measure or place."
 )
 
 # Error messages carried on `terminal` SSE frames with `state == "error"`.
@@ -48,15 +66,35 @@ TRUNCATED_MESSAGE = (
 # `chat.unavailable_message` (default `DEFAULT_UNAVAILABLE_MESSAGE` in
 # `config_model.py`).
 CONFIG_MISSING = "Backend config not loaded"
-SYNTHESIS_FAILED = "The response could not be generated."
-SYNTHESIS_TRANSIENT_ERROR = "We are experiencing unusually high traffic."
-MCP_UNAVAILABLE = "We are experiencing unusually high traffic."
-MCP_TOOLS_TIMEOUT = "We are experiencing unusually high traffic."
-MCP_MODEL_ERROR = "The data request failed."
-MCP_TRANSIENT_MODEL_ERROR = "We are experiencing unusually high traffic."
-MCP_NO_RESPONSE = "We are experiencing unusually high traffic."
-MCP_LOOP_TIMEOUT = "We are experiencing unusually high traffic."
-INTERNAL_ERROR = "We are experiencing unusually high traffic."
+SYNTHESIS_FAILED = (
+    "Data Commons was unable to complete an answer for that prompt. Try "
+    "asking a simpler or different question instead."
+)
+SYNTHESIS_TRANSIENT_ERROR = (
+    "Data Commons is experiencing unusually high traffic right now."
+)
+MCP_UNAVAILABLE = (
+    "Data Commons is experiencing unusually high traffic right now."
+)
+MCP_TOOLS_TIMEOUT = (
+    "Data Commons is experiencing unusually high traffic right now."
+)
+MCP_MODEL_ERROR = (
+    "Data Commons ran into an issue retrieving the data for that. Try "
+    "rephrasing or asking about a different public statistic."
+)
+MCP_TRANSIENT_MODEL_ERROR = (
+    "Data Commons is experiencing unusually high traffic right now."
+)
+MCP_NO_RESPONSE = (
+    "Data Commons is experiencing unusually high traffic right now."
+)
+MCP_LOOP_TIMEOUT = (
+    "Data Commons is experiencing unusually high traffic right now."
+)
+INTERNAL_ERROR = (
+    "Data Commons is experiencing unusually high traffic right now."
+)
 
 # Default chart titles built by the agent loop. `{variable_name}` is the
 # display name of the fetched numerator the chart normalizes by population.
@@ -74,10 +112,13 @@ __all__ = [
     "MCP_TRANSIENT_MODEL_ERROR",
     "MCP_UNAVAILABLE",
     "NO_DATA_MESSAGE",
+    "OFF_DOMAIN_NAMED_SUBJECT",
     "OFF_DOMAIN_TEMPLATE",
+    "OFF_DOMAIN_UNNAMED_SUBJECT",
     "PER_CAPITA_CHART_TITLE_TEMPLATE",
     "PROCESSING_STATUS",
     "REFUSED_MESSAGE",
+    "SAFETY_REFUSED_MESSAGE",
     "SYNTHESIS_FAILED",
     "SYNTHESIS_STATUS",
     "SYNTHESIS_TRANSIENT_ERROR",

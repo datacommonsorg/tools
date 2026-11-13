@@ -1233,7 +1233,9 @@ describe('useSseChat', () => {
 
     await act(() => result.current.chat.send('And Germany?'));
 
-    expect(result.current.turns[1].error).toBe('HTTP 400 Bad Request');
+    expect(result.current.turns[1].error).toBe(
+      'Data Commons ran into a server error. HTTP 400 Bad Request.',
+    );
     expect(result.current.turns[0].hmac).toBe(sig('0'));
   });
 
@@ -1241,19 +1243,22 @@ describe('useSseChat', () => {
     {
       status: 400,
       statusText: 'Bad Request',
-      expectedError: 'HTTP 400 Bad Request',
+      expectedError:
+        'Data Commons ran into a server error. HTTP 400 Bad Request.',
       isRetryable: false,
     },
     {
       status: 413,
       statusText: 'Content Too Large',
-      expectedError: 'HTTP 413 Content Too Large',
+      expectedError:
+        'Data Commons ran into a server error. HTTP 413 Content Too Large.',
       isRetryable: false,
     },
     {
       status: 422,
       statusText: 'Unprocessable Entity',
-      expectedError: 'HTTP 422 Unprocessable Entity',
+      expectedError:
+        'Data Commons ran into a server error. HTTP 422 Unprocessable Entity.',
       isRetryable: false,
     },
     {

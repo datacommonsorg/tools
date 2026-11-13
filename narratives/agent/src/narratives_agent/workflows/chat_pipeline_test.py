@@ -128,6 +128,7 @@ from narratives_agent.workflows.messages import (
     MCP_UNAVAILABLE,
     NO_DATA_MESSAGE,
     REFUSED_MESSAGE,
+    SAFETY_REFUSED_MESSAGE,
     SYNTHESIS_FAILED,
     SYNTHESIS_TRANSIENT_ERROR,
     TRUNCATED_MESSAGE,
@@ -2068,10 +2069,10 @@ async def test_the_classify_phase_opens_the_stream_and_guides_the_turn(
         (RefusedReason.ADVERSARIAL, REFUSED_MESSAGE),
         (
             RefusedReason.OFF_DOMAIN,
-            "That request is outside the public statistical data this "
-            "service covers (brand-specific coffee prices). Ask about a "
-            "demographic, economic, health, climate, or social indicator "
-            "for a place.",
+            'The topic "brand-specific coffee prices" falls outside the '
+            "public statistics Data Commons is built to explore. Try asking "
+            "about a demographic, economic, health, climate, or social "
+            "measure for a country, state, or city.",
         ),
     ],
 )
@@ -2223,7 +2224,7 @@ async def test_a_blocked_call_before_synthesis_refuses_the_turn(
     terminal = _get_only_terminal(turn)
     assert terminal["state"] == TerminalState.REFUSED
     assert terminal["reason"] == RefusedReason.SAFETY_BLOCKED
-    assert terminal["message"] == REFUSED_MESSAGE
+    assert terminal["message"] == SAFETY_REFUSED_MESSAGE
     assert "error" not in terminal
     assert turn.synthesis_calls == 0
     assert turn.finished == [
@@ -2305,7 +2306,7 @@ async def test_a_synthesis_stream_blocked_before_any_block_refuses_the_turn(
     terminal = _get_only_terminal(turn)
     assert terminal["state"] == TerminalState.REFUSED
     assert terminal["reason"] == RefusedReason.SAFETY_BLOCKED
-    assert terminal["message"] == REFUSED_MESSAGE
+    assert terminal["message"] == SAFETY_REFUSED_MESSAGE
     assert turn.finished == [
         (TerminalState.REFUSED, RefusedReason.SAFETY_BLOCKED)
     ]
