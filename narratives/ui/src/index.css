@@ -120,6 +120,11 @@
      viewport, and <main> pads by it to clear the fixed rail. Consumed as
      `w-rail`, `lg:pl-rail`, and `lg:-ml-rail`. */
   --spacing-rail: 72px;
+  /* Top padding of the rail, clearing the sticky header above it: the header's
+     32px block padding plus its tallest child (the logo, or the ~28px nav
+     links), plus a 4px gap. 64px at the default 28px logo. Consumed as
+     `pt-rail-top`. */
+  --spacing-rail-top: calc(max(var(--logo-height), 28px) + 36px);
 
   /* Inverse surface — the M3 role for UI that sits *over* the page rather
      than in it (m3.material.io/components/tooltips). */

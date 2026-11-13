@@ -39,11 +39,11 @@ export function Sidebar() {
 
   // The rail is fixed so the header can span the viewport over it. `lg:z-1`
   // lifts it above <main>, whose `lg:pl-rail` padding would otherwise cover
-  // it and catch its clicks, and keeps it below the header's `z-5`. `pt-16`
-  // clears the header at the default 28px `--logo-height`; a theme logo
-  // taller than about 32px makes the header overlap the New chat button.
+  // it and catch its clicks, and keeps it below the header's `z-5`.
+  // `pt-rail-top` grows with `--logo-height` so the header never covers the
+  // New chat button.
   return (
-    <aside className="hidden lg:flex lg:fixed lg:inset-y-0 lg:left-0 lg:z-1 w-rail bg-surface-blue flex-col items-center pt-16 pb-4 gap-4 motion-safe:animate-enter-from-left">
+    <aside className="hidden lg:flex lg:fixed lg:inset-y-0 lg:left-0 lg:z-1 w-rail bg-surface-blue flex-col items-center pt-rail-top pb-4 gap-4 motion-safe:animate-enter-from-left">
       {shouldShowNewChat && (
         /* Clears the conversation on screen and starts an empty one. Chats
            are not saved, so there is nothing to come back to. */
