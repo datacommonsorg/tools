@@ -392,6 +392,7 @@ class DebugReport:
     processing_retries: int
     charts_emitted: int
     charts_rejected: int
+    title_emitted: bool
     tokens: DebugTokenUsage
     tables: tuple[DebugTableRecord, ...]
     thoughts: tuple[DebugThought, ...] = ()
@@ -426,6 +427,7 @@ class DebugReport:
             "processing_retries": self.processing_retries,
             "charts_emitted": self.charts_emitted,
             "charts_rejected": self.charts_rejected,
+            "title_emitted": self.title_emitted,
             "tokens": {
                 "prompt_token_count": self.tokens.prompt_token_count,
                 "candidates_token_count": self.tokens.candidates_token_count,
@@ -841,6 +843,7 @@ def build_debug_report(
         processing_retries=telemetry.processing_retries,
         charts_emitted=telemetry.charts_emitted,
         charts_rejected=telemetry.charts_rejected,
+        title_emitted=telemetry.title_emitted,
         tokens=tokens,
         tables=tuple(tables),
         thoughts=tuple(thoughts),

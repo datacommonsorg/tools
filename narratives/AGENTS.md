@@ -78,7 +78,9 @@ process and PR expectations: [`CONTRIBUTING.md`](../CONTRIBUTING.md).
       (`debug_report.py`), the chart grammar, resolver, and wire serializer
       (`charts.py`), the default chart floor (`chart_defaults.py`), the
       synthesis prompt builder (`synthesis.py`), the streaming block splitter
-      (`blocks.py`), follow-up generation (`follow_up.py`), user-visible
+      (`blocks.py`), the answer title directive and the extractor that takes
+      the title line off the synthesis stream (`title.py`), follow-up
+      generation (`follow_up.py`), user-visible
       messages (`messages.py`), the typed SSE frames the agent loop sends
       (`sse_frames.py`), the turn's state slots (`state_slots.py`), and
       signed transcripts (`transcript.py`). Of the agent's subpackages, it

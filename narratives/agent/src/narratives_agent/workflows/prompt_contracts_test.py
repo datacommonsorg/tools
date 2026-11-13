@@ -138,6 +138,37 @@ def test_compose_orders_guidance_contract_and_directive() -> None:
     assert guided.endswith(build_pattern_directive(classification, "discovery"))
 
 
+def test_compose_places_the_addendum_after_the_contract() -> None:
+    # Test: Placement of `contract_addendum`.
+    # Situation: `compose_system_instruction` is called for synthesis with an
+    #   addendum and a ranking classification.
+    # Expectation: The addendum follows the synthesis contract directly, and
+    #   the pattern directive stays last.
+    classification = QueryClassification.model_validate(
+        {
+            "serviceable": True,
+            "pattern": "top_n_ranking",
+            "geographic_shape": "single_place",
+            "requires_computation": True,
+        }
+    )
+    contract = load_prompt_contract("synthesis")
+
+    composed = compose_system_instruction(
+        "Custom guidance.",
+        "synthesis",
+        classification,
+        contract_addendum="### Title line",
+    )
+
+    assert composed.startswith(
+        f"Custom guidance.\n\n{contract}\n\n### Title line"
+    )
+    assert composed.endswith(
+        build_pattern_directive(classification, "synthesis")
+    )
+
+
 def test_composed_default_discovery_prompt_includes_guidance_and_contract() -> (
     None
 ):

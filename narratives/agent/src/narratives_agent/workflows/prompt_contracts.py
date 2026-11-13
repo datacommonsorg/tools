@@ -79,6 +79,7 @@ def compose_system_instruction(
     classification: QueryClassification | None = None,
     *,
     has_cohort_table: bool = True,
+    contract_addendum: str = "",
 ) -> str:
     """Composes guidance, a code-owned contract, and pattern guidance.
 
@@ -89,17 +90,21 @@ def compose_system_instruction(
             classifier failed.
         has_cohort_table: Whether a fetched table covers a cohort of child
             places, passed to `append_pattern_guidance`; synthesis sets it.
+        contract_addendum: Code-owned text that depends on the turn, such as
+            the synthesis title directive, appended right after the contract.
 
     Returns:
         The composed system instruction with `guidance` first, the packaged
-        contract second, and the pattern directive last when `classification`
-        is present.
+        contract and `contract_addendum` second, and the pattern directive
+        last when `classification` is present.
 
     Raises:
         RuntimeError: If the packaged contract file for `contract` is missing,
             unreadable, or empty once HTML comments are stripped.
     """
     contract_text = load_prompt_contract(contract)
+    if contract_addendum:
+        contract_text = f"{contract_text}\n\n{contract_addendum}"
     composed = f"{guidance}\n\n{contract_text}" if guidance else contract_text
     return append_pattern_guidance(
         composed, classification, contract, has_cohort_table=has_cohort_table

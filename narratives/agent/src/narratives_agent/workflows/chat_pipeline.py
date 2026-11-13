@@ -134,6 +134,7 @@ from narratives_agent.workflows.sse_frames import (
     TerminalErrorFrame,
     TerminalRefusedFrame,
     ThoughtFrame,
+    TitleFrame,
     ToolCallFrame,
 )
 from narratives_agent.workflows.state_slots import build_state_slots
@@ -141,6 +142,10 @@ from narratives_agent.workflows.synthesis import (
     SYNTHESIS_CHUNK_TIMEOUT_SECONDS,
     build_synthesis_inputs,
     render_synthesis_message,
+)
+from narratives_agent.workflows.title import (
+    TitleExtractor,
+    title_directive,
 )
 from narratives_agent.workflows.transcript import (
     ConversationStateSlots,
@@ -290,18 +295,20 @@ class SynthesisPhaseResult:
     """Holds what the synthesis phase streamed.
 
     `text` is the answer that is signed: the text blocks joined by blank
-    lines, with every chart block left out. `charts` are the resolved
-    charts in the order their blocks were emitted.
+    lines, with every chart block and the title line left out. `charts` are
+    the resolved charts in the order their blocks were emitted.
 
     Attributes:
         text: The signed prose text with chart blocks excluded.
         charts: Resolved charts in emission order.
+        title: The answer's title, or `None` when it has none.
         rendered_prompt: The rendered synthesis user prompt.
         raw_output: The raw Gemini output including chart fences.
     """
 
     text: str
     charts: tuple[ResolvedChart, ...] = ()
+    title: str | None = None
     rendered_prompt: str = ""
     raw_output: str = ""
 
@@ -654,7 +661,10 @@ async def run_synthesis_phase(
     The user message is rendered from the typed inputs at the last moment,
     the stream is split into blocks as it arrives, and every chart block is
     resolved against the turn's table inventory and cache before it is
-    emitted. When the digest has data and no chart block was emitted, at
+    emitted. When the digest has data, the model opens with a title line,
+    which is taken off the stream and emitted as a `TitleFrame` before the
+    first block; a turn without data gets no title. When the digest has data
+    and no chart block was emitted, at
     most one default chart from the primary result is appended. Opening the
     stream and reading each chunk are bounded by
     `SYNTHESIS_CHUNK_TIMEOUT_SECONDS`, so a stalled stream ends the turn
@@ -703,6 +713,7 @@ async def run_synthesis_phase(
                     "synthesis",
                     ctx.classification,
                     has_cohort_table=has_cohort_table,
+                    contract_addendum=title_directive(discovery.has_data),
                 ),
                 model=role.model,
                 temperature=role.temperature,
@@ -758,8 +769,16 @@ async def run_synthesis_phase(
         on_block=lambda block: ctx.emit(BlockContentFrame(block=block)),
         resolve_chart=resolve,
     )
+    extractor = TitleExtractor(
+        forward=splitter.feed,
+        on_title=lambda title: ctx.emit(TitleFrame(title=title)),
+        accept=discovery.has_data,
+    )
     try:
-        await _consume_synthesis_stream(ctx, stream, splitter, raw_chunks)
+        await _consume_synthesis_stream(
+            ctx, stream, extractor, splitter, raw_chunks
+        )
+        extractor.finish()
         splitter.finish()
         if not splitter.text:
             logger.warning("Synthesis returned no answer text")
@@ -776,12 +795,14 @@ async def run_synthesis_phase(
     finally:
         ctx.telemetry.charts_emitted = splitter.charts_emitted
         ctx.telemetry.charts_rejected = splitter.charts_rejected
+        ctx.telemetry.title_emitted = extractor.title is not None
         raw_output = "".join(raw_chunks)
         if capture is not None:
             capture.raw_output = raw_output
     return SynthesisPhaseResult(
         splitter.text,
         tuple(splitter.charts),
+        title=extractor.title,
         rendered_prompt=rendered_prompt,
         raw_output=raw_output,
     )
@@ -790,6 +811,7 @@ async def run_synthesis_phase(
 async def _consume_synthesis_stream(
     ctx: TurnContext,
     stream: AsyncGenerator[StreamChunk],
+    extractor: TitleExtractor,
     splitter: BlockSplitter,
     raw_chunks: list[str],
 ) -> None:
@@ -799,6 +821,8 @@ async def _consume_synthesis_stream(
         ctx: The turn context holding the `emit` callback.
         stream: The open Gemini synthesis stream yielding thought and text
             chunks.
+        extractor: The title extractor that takes the title line off the
+            stream and forwards the rest to `splitter`.
         splitter: The block splitter that buffers paragraphs and chart blocks
             and emits each completed block.
         raw_chunks: Mutable list collecting raw non-thought chunk texts.
@@ -831,7 +855,7 @@ async def _consume_synthesis_stream(
                 ctx.emit(ThoughtFrame(thought=chunk.text, phase="synthesis"))
             else:
                 raw_chunks.append(chunk.text)
-                splitter.feed(chunk.text)
+                extractor.feed(chunk.text)
     except GeminiBlockedError as error:
         if not splitter.text_blocks and not splitter.charts:
             raise

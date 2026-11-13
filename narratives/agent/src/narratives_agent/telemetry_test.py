@@ -306,6 +306,7 @@ def test_turn_summary_records_operations_without_content(
     turn.processing_retries = 1
     turn.charts_emitted = 2
     turn.charts_rejected = 1
+    turn.title_emitted = True
     turn.tokens.add(
         telemetry.TokenCounts(prompt=10, candidates=0, thoughts=0, total=15)
     )
@@ -332,6 +333,7 @@ def test_turn_summary_records_operations_without_content(
     assert record["processing_retries"] == 1
     assert record["charts_emitted"] == 2
     assert record["charts_rejected"] == 1
+    assert record["title_emitted"] is True
     assert record["tokens"] == {
         "prompt_token_count": 10,
         "candidates_token_count": 4,
@@ -357,6 +359,7 @@ def test_turn_summary_records_operations_without_content(
         "processing_retries",
         "charts_emitted",
         "charts_rejected",
+        "title_emitted",
     }
 
 
@@ -369,7 +372,8 @@ def test_repeated_phases_accumulate_and_analysis_fields_reach_the_span(
     #   the clock advanced by 100 ms and then 50 ms, and records the
     #   analysis and chart counts before finishing.
     # Expectation: The processing duration is the sum of both runs, and
-    #   the turn span carries the scripts and the five counts.
+    #   the turn span carries the scripts, the five counts, and whether a
+    #   title was emitted.
     exporter = InMemorySpanExporter()
     provider = TracerProvider()
     provider.add_span_processor(SimpleSpanProcessor(exporter))
@@ -392,6 +396,7 @@ def test_repeated_phases_accumulate_and_analysis_fields_reach_the_span(
     turn.processing_retries = 1
     turn.charts_emitted = 1
     turn.charts_rejected = 2
+    turn.title_emitted = True
 
     turn.finish(telemetry.TerminalState.COMPLETE)
 
@@ -408,6 +413,7 @@ def test_repeated_phases_accumulate_and_analysis_fields_reach_the_span(
     assert attributes["narratives.processing_retries"] == 1
     assert attributes["narratives.charts_emitted"] == 1
     assert attributes["narratives.charts_rejected"] == 2
+    assert attributes["narratives.title_emitted"] is True
 
 
 @pytest.mark.parametrize(

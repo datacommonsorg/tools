@@ -33,12 +33,12 @@ function randomLineWidths(): number[][] {
   );
 }
 
-interface SkeletonCardProps {
-  query: string;
-}
-
-/** Loading placeholder card shown while the agent works on `query`. */
-export function SkeletonCard({ query }: SkeletonCardProps) {
+/**
+ * Loading placeholder card shown while the agent works on the question. Its
+ * header shows a ghost line rather than text: the question already shows in
+ * the user's bubble, and the reasoning header above reports progress.
+ */
+export function SkeletonCard() {
   const [lineWidths] = useState(randomLineWidths);
 
   return (
@@ -48,7 +48,7 @@ export function SkeletonCard({ query }: SkeletonCardProps) {
         aria-hidden="true"
         className="pointer-events-none absolute inset-0 rounded-card border border-border mask-[linear-gradient(to_bottom,black,transparent)]"
       ></div>
-      <CardHeader title={query} />
+      <CardHeader />
       <div className="p-4 sm:p-6 flex flex-col gap-6">
         <div className="absolute top-1/2 bottom-0 right-0 left-0 bg-linear-to-b from-transparent to-surface z-10"></div>
         {lineWidths.map((paragraph, p) => (
