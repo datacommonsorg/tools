@@ -21,8 +21,13 @@
 import type { ReactNode } from 'react';
 
 interface CardHeaderProps {
-  /** The user's question, shown as the card title. */
-  title: string;
+  /**
+   * The card title: a label with the citation count once the answer presents
+   * data, a no-matching-data label when it has none, or an empty string,
+   * which leaves the header empty. Omitted while the answer loads, when the
+   * header shows a ghost line instead.
+   */
+  title?: string;
   /** Toolbar actions on the right; absent while the answer is in flight. */
   children?: ReactNode;
 }
@@ -37,7 +42,14 @@ export function CardHeader({ title, children }: CardHeaderProps) {
       {/* Wraps onto as many lines as the question needs. utils/download_pdf.ts
           finds this class and restyles it as the PDF's heading. */}
       <span className="flex-1 min-w-0 py-1.5 wrap-break-word print-question text-label-large text-on-surface">
-        {title}
+        {title ?? (
+          // A ghost line like the body's, sized inside one text line so the
+          // header keeps its height when the title replaces it.
+          <span
+            aria-hidden="true"
+            className="inline-block align-middle h-3 w-48 max-w-full rounded animate-pulse bg-skeleton-bar"
+          />
+        )}
       </span>
       {/* Always mounted at the pill's 32px height so the header doesn't grow
           when the actions appear. */}

@@ -47,6 +47,7 @@ from narratives_agent.workflows.sse_frames import (
     TerminalErrorFrame,
     TerminalRefusedFrame,
     ThoughtFrame,
+    TitleFrame,
     ToolCallFrame,
     serialize_source,
 )
@@ -200,6 +201,11 @@ _WINDOW_FIELD = (
                 '"{\\"data\\": {}}", "status": "success"}}',
             ),
             id="tool_call",
+        ),
+        pytest.param(
+            TitleFrame(title="Population of France"),
+            ("content", '{"title": "Population of France"}'),
+            id="title",
         ),
         pytest.param(
             DataStatusFrame(data_status={"has_data": True, "truncated": False}),

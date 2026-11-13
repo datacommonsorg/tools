@@ -431,7 +431,7 @@ export function TurnView({
               // transition reads, so reduced motion stays instant.
               style={{ '--tw-duration': `${HANDOFF_MS}ms` } as CSSProperties}
             >
-              <SkeletonCard query={turn.userMessage} />
+              <SkeletonCard />
             </div>
           )}
           {showAnswer && (

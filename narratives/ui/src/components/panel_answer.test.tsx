@@ -37,6 +37,7 @@ import { EXIT_MS, VISIBLE_MS } from '@/src/components/toast';
 import { resetDebugModeCacheForTests } from '@/src/hooks/use_debug_mode';
 import type { ChartItem, ChatTurn } from '@/src/hooks/use_sse_chat';
 import { parseServerDebugReport } from '@/src/types/debug_report';
+import { downloadPdf } from '@/src/utils/download_pdf';
 import { calculateStreamDurationMs } from '@/src/utils/rehype_stream_words';
 
 vi.mock('@/src/utils/download_pdf', () => ({
@@ -526,19 +527,164 @@ describe('AnswerPanel', () => {
     expect(screen.getByRole('button', followUp)).not.toBeNull();
   });
 
-  it('opens with the question as its h1, visible during the reveal', () => {
+  it('opens with the agent title as its h1, visible during the reveal', () => {
     // Test: Intro block.
-    // Situation: A streaming answer that has not finished revealing.
-    // Expectation: The question is the panel's level-one heading and is not
-    //   inside the content body the reveal hides.
-    const turn = buildTurnWithBlocks([
-      { index: 0, type: 'text', markdown: 'France has about 68 million.' },
-    ]);
+    // Situation: A streaming answer with an agent title that has not
+    //   finished revealing.
+    // Expectation: The title, not the question, is the panel's level-one
+    //   heading, and it is not inside the content body the reveal hides.
+    const turn = buildTurnWithBlocks(
+      [{ index: 0, type: 'text', markdown: 'France has about 68 million.' }],
+      { title: 'Population of France' },
+    );
     render(<AnswerPanel turn={turn} isStreaming />);
     const heading = screen.getByRole('heading', { level: 1 });
 
-    expect(heading.textContent).toBe(turn.userMessage);
+    expect(heading.textContent).toBe('Population of France');
     expect(heading.closest('[class*="opacity-0"]')).toBeNull();
+  });
+
+  it('labels the header with the citation count when the answer has data', () => {
+    // Test: Card header of an answer that presents data.
+    // Situation: Finished answers with data cite two sources, one source, and
+    //   none.
+    // Expectation: The header reads "Overview of available data" followed by
+    //   the citation count, in the singular for one, and alone with none;
+    //   the question does not appear in the header.
+    const blocks: ChatTurn['blocks'] = [
+      { index: 0, type: 'text', markdown: 'France has about 68 million.' },
+    ];
+    const source = (name: string) => ({ name, url: `https://${name}.org/` });
+    const readHeader = (provenance: ChatTurn['provenance']): string => {
+      const { container } = render(
+        <AnswerPanel
+          turn={buildTurnWithBlocks(blocks, { hasData: true, provenance })}
+          isStreaming={false}
+        />,
+      );
+      const text = container.querySelector('.print-question')?.textContent;
+      cleanup();
+      return text ?? '';
+    };
+
+    expect(readHeader([source('insee'), source('worldbank')])).toBe(
+      'Overview of available data • 2 citations',
+    );
+    expect(readHeader([source('insee')])).toBe(
+      'Overview of available data • 1 citation',
+    );
+    expect(readHeader([])).toBe('Overview of available data');
+  });
+
+  it('labels the header when the answer found no matching data', () => {
+    // Test: Card header of an answer without data.
+    // Situation: A finished answer whose turn has `hasData` false.
+    // Expectation: The header reads "No matching data found" with no ghost
+    //   line, and the question is not repeated under the user's bubble.
+    const { container } = render(
+      <AnswerPanel
+        turn={buildTurnWithBlocks(
+          [{ index: 0, type: 'text', markdown: 'No data was found.' }],
+          { hasData: false },
+        )}
+        isStreaming={false}
+      />,
+    );
+    const header = container.querySelector('.print-question');
+
+    expect(header?.textContent).toBe('No matching data found');
+    expect(header?.querySelector('.animate-pulse')).toBeNull();
+  });
+
+  it('leaves the header empty when the answer never reports data', () => {
+    // Test: Card header of an answer that reports no data status.
+    // Situation: A finished answer whose turn has no `hasData`, as a
+    //   clarifying question does.
+    // Expectation: The header holds no text and no ghost line.
+    const { container } = render(
+      <AnswerPanel
+        turn={buildTurnWithBlocks([
+          { index: 0, type: 'text', markdown: 'Did you mean the state?' },
+        ])}
+        isStreaming={false}
+      />,
+    );
+    const header = container.querySelector('.print-question');
+
+    expect(header?.textContent).toBe('');
+    expect(header?.querySelector('.animate-pulse')).toBeNull();
+  });
+
+  it('renders no h1 when the answer has no title', () => {
+    // Test: Intro block of an answer without a title.
+    // Situation: A finished answer whose turn carries no `title`, as an
+    //   answer without data does.
+    // Expectation: No level-one heading renders, and the question is not
+    //   shown in its place.
+    render(
+      <AnswerPanel
+        turn={buildTurnWithBlocks([
+          { index: 0, type: 'text', markdown: 'No data was found.' },
+        ])}
+        isStreaming={false}
+      />,
+    );
+
+    expect(screen.queryByRole('heading', { level: 1 })).toBeNull();
+  });
+
+  it('offers no PDF export for an answer without data', () => {
+    // Test: Export controls of an answer that reports no data.
+    // Situation: A finished, settled answer whose turn has `hasData` false.
+    // Expectation: Neither the toolbar pill nor the in-content Export PDF
+    //   button renders.
+    render(
+      <AnswerPanel
+        turn={buildTurnWithBlocks(
+          [{ index: 0, type: 'text', markdown: 'No data was found.' }],
+          { hasData: false },
+        )}
+        isStreaming={false}
+      />,
+    );
+
+    expect(screen.queryAllByRole('button', { name: 'Export PDF' })).toEqual([]);
+  });
+
+  it('exports the PDF under the title, or the question without one', async () => {
+    // Test: Heading passed to the PDF export.
+    // Situation: The user exports an answer with a title, then one without.
+    // Expectation: The title is the PDF heading when present; otherwise the
+    //   question is.
+    const exportFirst = async () => {
+      await act(async () => {
+        fireEvent.click(
+          screen.getAllByRole('button', { name: 'Export PDF' })[0],
+        );
+      });
+    };
+    const blocks: ChatTurn['blocks'] = [
+      { index: 0, type: 'text', markdown: 'France has about 68 million.' },
+    ];
+    vi.mocked(downloadPdf).mockClear();
+
+    render(
+      <AnswerPanel
+        turn={buildTurnWithBlocks(blocks, { title: 'Population of France' })}
+        isStreaming={false}
+      />,
+    );
+    await exportFirst();
+    cleanup();
+    render(
+      <AnswerPanel turn={buildTurnWithBlocks(blocks)} isStreaming={false} />,
+    );
+    await exportFirst();
+
+    expect(vi.mocked(downloadPdf).mock.calls.map((call) => call[1])).toEqual([
+      'Population of France',
+      'What is the population of France?',
+    ]);
   });
 
   it('places back-to-back charts in one shared tile', () => {

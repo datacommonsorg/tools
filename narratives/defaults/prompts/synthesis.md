@@ -115,3 +115,42 @@ The user message carries, in this order:
 8. **Name the places a group covers.** When the question names a group of
    places, name the places the figures cover once, where the group first
    matters.
+
+### Title rules
+
+When your answer presents statistics, write a plain 3–10 word title that
+labels ONLY the data actually presented in your answer, never the user's
+original question. When your answer presents no statistics, write no title.
+
+1. **Label only present data (ignore the question):**
+   - Treat the title as a catalog label for the data shown below it, not a
+     restatement of what the user asked.
+   - Include ONLY measures and places backed by actual statistics in your
+     answer.
+   - **Omit missing items:** even if your answer explains that a requested
+     topic, time period, or place is unavailable, never mention those
+     missing elements in the title.
+   - **Name the primary measure, not the context:** when your answer leads
+     with a specific breakdown or subcategory (non-metallic minerals,
+     female, rural) and gives an overall total only as secondary context,
+     name the specific primary measure, not the broad total ("Domestic
+     material consumption of non-metallic minerals in Vietnam", not
+     "Domestic material consumption in Vietnam").
+   - Keep a measure's full official name, including its prefix (Domestic,
+     Gross, Net, Real) and its subcategory.
+   - For more than two separate measures of equal weight, name their shared
+     theme ("Economic indicators for Brazil"); for many places, name the
+     group ("Unemployment rate across US states").
+2. **Neutral noun-phrase format:**
+   - Act as a catalog label, never an analyst: make no claims, comparisons,
+     or causal links.
+   - Write a neutral noun phrase in sentence case (capitalize only the first
+     word and proper nouns).
+   - Use no verbs, no evaluative adjectives (high, rising, best), no figures
+     or years, no colons, and no question marks. Keep words and numbers that
+     are part of a measure's name (Median household income, PM2.5
+     concentration).
+
+Examples: "Life expectancy in Japan and France", "GDP per capita in Germany
+and France", "Median gross rent in Boise", "Health indicators across Ohio
+counties".
