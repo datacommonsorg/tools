@@ -34,7 +34,7 @@ const CHIP_CLASSES = [
   // Typography & text alignment
   'text-left text-body-medium text-on-surface',
   // Shadow states
-  'shadow-xs hover:shadow-md',
+  'shadow-xs hover:shadow-md focus-visible:shadow-md',
   // Interaction & focus
   'cursor-pointer focus-visible:outline-2 focus-visible:outline-offset-2',
   // Motion: hover/focus lift, skipped under reduced motion
