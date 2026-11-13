@@ -67,9 +67,9 @@ export const DEFAULT_INSTANCE_CONFIG: Readonly<InstanceConfig> = {
   tagline: "powered by Google's Data Commons",
   navigation: [],
   suggestions: [
-    'How big is the financial sector in Vietnam',
-    'How is India doing in agricultural practices',
-    'How is Africa doing combating HIV/AIDS',
+    'How has renewable energy adoption changed in Spain?',
+    'Compare infant mortality rates between Kenya and Ghana',
+    'How has agricultural land area changed in the USA?',
   ],
   metrics: { tabs: [] },
 };
