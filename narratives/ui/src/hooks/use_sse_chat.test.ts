@@ -563,6 +563,25 @@ describe('applyEvent', () => {
     expect(unknown.hasData).toBeUndefined();
   });
 
+  it('records the answer title', () => {
+    // Test: Recording of the `title` content frame.
+    // Situation: One turn receives a title padded with whitespace; another
+    //   receives a blank title.
+    // Expectation: The first turn's title is the trimmed text; the second
+    //   has no title, so a blank frame never renders an empty heading.
+    const titled = applyEvent(blankTurn(), {
+      event: 'content',
+      data: { title: '  Life expectancy in Japan and France ' },
+    });
+    const blank = applyEvent(blankTurn(), {
+      event: 'content',
+      data: { title: '   ' },
+    });
+
+    expect(titled.title).toBe('Life expectancy in Japan and France');
+    expect(blank.title).toBeUndefined();
+  });
+
   it('ignores a block without content', () => {
     // Test: Tolerance of malformed block frames.
     // Situation: A turn receives an empty text block, chart blocks whose

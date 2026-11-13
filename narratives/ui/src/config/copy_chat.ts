@@ -82,6 +82,22 @@ export const CANCELED_TURN_ERROR =
 /** Fallback error message shown when an `error` terminal frame omits `error`. */
 export const DEFAULT_TURN_ERROR = 'The response failed.';
 
+/** Label in the answer card's header when the agent found no matching data. */
+export const NO_MATCHING_DATA_HEADER = 'No matching data found';
+
+/** Label in the answer card's header when the answer presents data. */
+export const ANSWER_HEADER_LABEL = 'Overview of available data';
+
+/**
+ * Formats the answer card's header for an answer that presents data: the
+ * label, then the number of citations listed under the answer when it has any.
+ */
+export const formatAnswerHeader = (citationCount: number): string => {
+  if (citationCount <= 0) return ANSWER_HEADER_LABEL;
+  const noun = citationCount === 1 ? 'citation' : 'citations';
+  return `${ANSWER_HEADER_LABEL} • ${citationCount} ${noun}`;
+};
+
 /** Fallback notice message shown when a `refused` terminal frame omits `message`. */
 export const DEFAULT_REFUSAL_MESSAGE = 'The request was declined.';
 

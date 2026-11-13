@@ -619,10 +619,12 @@ containing the terminal state, error reason (if any), phase latencies
 tool names and counts, token usage, the analytical `pattern` assigned by the
 `classify` phase, and the analysis counts (`scripts`, `tables_fetched`,
 `total_rows_fetched`, `processing_retries`, `charts_emitted`, and
-`charts_rejected`; user query text is never logged). The turn span carries the
-same analysis counts as `narratives.scripts`, `narratives.tables_fetched`,
+`charts_rejected`), and `title_emitted`, whether the answer carried a title
+(user query text is never logged). The turn span carries the same fields as
+`narratives.scripts`, `narratives.tables_fetched`,
 `narratives.total_rows_fetched`, `narratives.processing_retries`,
-`narratives.charts_emitted`, and `narratives.charts_rejected`. On a `refused`
+`narratives.charts_emitted`, `narratives.charts_rejected`, and
+`narratives.title_emitted`. On a `refused`
 turn, `error_type` holds the refusal reason (`adversarial`, `off_domain`,
 `safety_blocked`, or `chat_disabled`) and `pattern` is omitted; if the
 classifier call itself fails, the turn falls through with `pattern` set to

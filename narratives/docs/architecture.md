@@ -214,10 +214,14 @@ Otherwise, the request runs through the agent loop in five steps:
    has one date, or when the ranking supports a relation. A `ranking`,
    `bar`, `map`, or `scatter` of a table that the digest ranks only over a
    window needs an explicit date, because without one it would draw the
-   latest values rather than the change the prose describes. The signed
-   `model_response` is the text blocks joined by blank lines,
-   with the chart blocks stripped, matching the text blocks emitted in
-   `content` frames. A stream that stalls for 60 seconds waiting for a chunk
+   latest values rather than the change the prose describes. When the digest
+   has data, the synthesis model opens its answer with a title line, a short
+   label for the data the answer presents (`workflows/title.py`); the server
+   takes it off the stream and sends it as a `{title}` `content` frame before
+   the first block. A turn without data gets no title, even when the model
+   writes one. The signed `model_response` is the text blocks joined by blank
+   lines, with the chart blocks and the title line stripped, matching the text
+   blocks emitted in `content` frames. A stream that stalls for 60 seconds waiting for a chunk
    ends the turn with `synthesis_stream_error`.
 4. **Turn signing (`finalize`):** The server builds the turn's `state_slots`
    from the fetched tables the specification used and the displayed charts
@@ -236,7 +240,7 @@ for `heartbeat`) a sequential `id` starting at `1`:
 | :--- | :--- |
 | `status` | Current step (`classify`, `discovery`, `processing`, or `synthesis`) and status message |
 | `thought` | Model reasoning summary from the `discovery` or `synthesis` step |
-| `content` | Answer block (`{block}` of type `text` or `chart`), tool call details (`{tool_call}`), citations (`{sources}`), or data status (`{data_status}`) |
+| `content` | Answer title (`{title}`, before the first block, only when the answer has data), answer block (`{block}` of type `text` or `chart`), tool call details (`{tool_call}`), citations (`{sources}`), or data status (`{data_status}`) |
 | `terminal` | Final turn status (`state: "complete"`, `"refused"`, or `"error"`), plus the signed conversation state on completion, `{reason, message}` (with no `error` key) on refusal, or `{error, reason, is_retryable}` on failure |
 | `follow_ups` | `{follow_up_questions}`, sent after `terminal` when available |
 | `debug_report` | Gated turn debug report, sent as the final frame when the debug report mode is `on`, or `flag` with `"debug": true` |
