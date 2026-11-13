@@ -215,12 +215,14 @@ Otherwise, the request runs through the agent loop in five steps:
    relations, and relations over a window cohort receive none). A ranking of
    a cohort, or any ranking over a window cohort, is charted as a `line` of
    its first five places, with the parent place when a step analyzed the
-   parent's series; a single-date cohort ranking falls back to a `ranking`
-   chart when its table has one date, or when the ranking supports a
-   relation. The default `line` of a window ranking is clamped to the
-   window's start and end dates. The default `line` of an
-   `analyze_timeseries` step is clamped to the earliest date the step
-   summarized when the step sets `start_date`, and to the latest when it sets
+   parent's series and the parent's table holds at least two dates in the
+   drawn span, and with the ranked places alone otherwise; a single-date
+   cohort ranking falls back to a `ranking` chart when its table has one
+   date, or when the ranking supports a relation. The default `line` of a
+   window ranking is clamped to the window's start and end dates. The
+   default `line` of an `analyze_timeseries` step is clamped to the
+   earliest date the step summarized when the step, or the derived table
+   it reads, sets `start_date`, and to the latest when either sets
    `end_date`. A `ranking`, `bar`, `map`, or `scatter` of
    a table that the digest ranks only over a window needs an explicit date,
    because without one it would draw the latest values rather than the

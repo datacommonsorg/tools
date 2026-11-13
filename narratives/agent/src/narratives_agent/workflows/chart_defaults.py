@@ -62,6 +62,7 @@ from narratives_agent.workflows.messages import PER_CAPITA_CHART_TITLE_TEMPLATE
 from narratives_agent.workflows.specification import (
     AnalysisSpecification,
     AnalyzeTimeseriesStep,
+    ComputeDerivedMetricStep,
     SpecificationStep,
     list_reference_table_ids,
     list_step_inputs,
@@ -299,6 +300,42 @@ def _build_ranking_line_specification(
     )
 
 
+def _build_ranking_line_candidates(
+    metrics: RankingMetrics,
+    table_ids: Sequence[str],
+    parent: _ParentSeries | None,
+    title: str,
+    *,
+    start_date: str | None = None,
+    end_date: str | None = None,
+) -> tuple[LineChartSpecification, ...]:
+    """Builds a ranking's line charts, the one with the parent place first.
+
+    With a parent series, the line of the ranked places alone follows the
+    line that adds the parent place, so the ranked places are still drawn
+    when the parent's table holds fewer than two dates in the drawn span.
+    """
+    with_parent = _build_ranking_line_specification(
+        metrics,
+        table_ids,
+        parent,
+        title,
+        start_date=start_date,
+        end_date=end_date,
+    )
+    if parent is None:
+        return (with_parent,)
+    without_parent = _build_ranking_line_specification(
+        metrics,
+        table_ids,
+        None,
+        title,
+        start_date=start_date,
+        end_date=end_date,
+    )
+    return (with_parent, without_parent)
+
+
 def _build_ranking_specifications(
     metrics: RankingMetrics,
     table_ids: Sequence[str],
@@ -315,8 +352,10 @@ def _build_ranking_specifications(
     A ranking of a cohort, or any ranking over a date window, is charted as
     a line of its first places and the parent place, as "Rankings" in
     `contracts/synthesis.md` asks; a line of a window ranking is clamped to
-    the window's start and end dates. A single-date cohort ranking falls
-    back to a `ranking` chart when the line cannot be drawn, such as when
+    the window's start and end dates. The parent place is drawn when its
+    table holds at least two dates in the drawn span, and the line falls
+    back to the ranked places alone otherwise. A single-date cohort ranking
+    falls back to a `ranking` chart when no line can be drawn, such as when
     the table has one date, and uses only the `ranking` chart when
     `prefers_line` is false, as for a ranking that supports a relation. Any
     other table is a `bar` of its leading places at
@@ -328,20 +367,22 @@ def _build_ranking_specifications(
         start_date, end_date = metrics.reference_date.split(
             WINDOW_DATE_SEPARATOR
         )
-        return (
-            _build_ranking_line_specification(
-                metrics,
-                table_ids,
-                parent,
-                title,
-                start_date=start_date,
-                end_date=end_date,
-            ),
+        return _build_ranking_line_candidates(
+            metrics,
+            table_ids,
+            parent,
+            title,
+            start_date=start_date,
+            end_date=end_date,
         )
-    line = _build_ranking_line_specification(metrics, table_ids, parent, title)
     if has_cohort:
         ranking = _build_cohort_ranking_specification(metrics, table_ids, title)
-        return (line, ranking) if prefers_line else (ranking,)
+        if not prefers_line:
+            return (ranking,)
+        lines = _build_ranking_line_candidates(
+            metrics, table_ids, parent, title
+        )
+        return (*lines, ranking)
     places = tuple(
         entry.place_dcid for entry in metrics.top_n[:_DEFAULT_RANKED_PLACE_CAP]
     )
@@ -534,33 +575,59 @@ def _is_chartable_metrics(
     )
 
 
+def _read_series_bound_flags(
+    analysis: AnalysisSpecification, step: SpecificationStep
+) -> tuple[bool, bool]:
+    """Returns whether a time-series step's window is bounded at each end.
+
+    An `analyze_timeseries` step is bounded at an end when it sets that
+    date, or when the `compute_derived_metric` table it reads does, since
+    the derived table then holds only the dates inside that window.
+
+    Returns:
+        Whether the start is bounded, then whether the end is; both false
+        for any other script.
+    """
+    if not isinstance(step, AnalyzeTimeseriesStep):
+        return False, False
+    input_step = analysis.find_step(step.table)
+    derived = (
+        input_step if isinstance(input_step, ComputeDerivedMetricStep) else None
+    )
+    is_start_bounded = step.start_date is not None or (
+        derived is not None and derived.start_date is not None
+    )
+    is_end_bounded = step.end_date is not None or (
+        derived is not None and derived.end_date is not None
+    )
+    return is_start_bounded, is_end_bounded
+
+
 def _build_default_specification(
     metrics: TimeseriesMetrics | CompositionMetrics | RelationMetrics,
     table_ids: Sequence[str],
     has_cohort: bool,
     title: str,
+    analysis: AnalysisSpecification,
     step: SpecificationStep,
 ) -> ChartSpecification | None:
     """Projects a non-ranking result's metrics to its default chart.
 
-    A time-series line is clamped where its `analyze_timeseries` step sets
-    a start or end date.
+    A time-series line is clamped where its `analyze_timeseries` step, or
+    the derived table that step reads, sets a start or end date.
     """
     match metrics:
         case TimeseriesMetrics():
+            is_start_bounded, is_end_bounded = _read_series_bound_flags(
+                analysis, step
+            )
             return _build_series_specification(
                 metrics,
                 table_ids,
                 has_cohort,
                 title,
-                is_start_bounded=(
-                    isinstance(step, AnalyzeTimeseriesStep)
-                    and step.start_date is not None
-                ),
-                is_end_bounded=(
-                    isinstance(step, AnalyzeTimeseriesStep)
-                    and step.end_date is not None
-                ),
+                is_start_bounded=is_start_bounded,
+                is_end_bounded=is_end_bounded,
             )
         case CompositionMetrics():
             return _build_composition_specification(
@@ -623,7 +690,7 @@ def _resolve_candidate_charts(
         )
     else:
         spec = _build_default_specification(
-            metrics, table_ids, has_cohort, title, step
+            metrics, table_ids, has_cohort, title, analysis, step
         )
         specs = () if spec is None else (spec,)
     for spec in specs:

@@ -1598,3 +1598,176 @@ def test_a_default_cohort_series_line_is_clamped_to_its_step_window() -> None:
         "child_place_type": "County",
         "start_date": "2020",
     }
+
+
+@pytest.mark.parametrize(
+    "parent_dates",
+    [("2024",), ("2018", "2022")],
+    ids=["one_date", "one_date_in_the_window"],
+)
+def test_a_window_ranking_line_drops_a_parent_without_two_window_dates(
+    parent_dates: tuple[str, ...],
+) -> None:
+    # Test: The parent place of a default window-ranking line whose table
+    #   cannot draw a series inside the window.
+    # Situation: Six states are ranked by their change from 2020 to 2024,
+    #   and an `analyze_timeseries` step reads `t2`, the same variable for
+    #   the United States, which holds one date in total or one date inside
+    #   the window.
+    # Expectation: The default chart is the clamped line of the five
+    #   leading states alone, drawn from `t1`, rather than no default line
+    #   for the ranking.
+    entry = _make_window_table()
+    parent = _make_table("t2", places=("country/USA",), dates=parent_dates)
+    analysis = AnalysisSpecification.model_validate(
+        {
+            "steps": [
+                {
+                    "step_id": "s1",
+                    "script": "reduce_series",
+                    "table": "t1",
+                    "metric": "absolute_change",
+                },
+                {
+                    "step_id": "s2",
+                    "script": "rank_cohort",
+                    "table": "s1",
+                    "n": 6,
+                },
+                {
+                    "step_id": "s3",
+                    "script": "analyze_timeseries",
+                    "table": "t2",
+                },
+            ]
+        }
+    )
+    digest = _make_digest(
+        rank_cohort(_reduce_window(entry), max_entries_per_end=6, step_id="s2"),
+        analyze_timeseries(parent.table, step_id="s3"),
+    )
+
+    chart = _resolve_default_wire(digest, analysis, _make_cache(entry, parent))
+
+    assert chart == {
+        "viz_type": "line",
+        "title": "Total Population",
+        "variable_dcids": ["Count_Person"],
+        "place_dcids": list(reversed(_STATES[1:])),
+        "start_date": "2020",
+        "end_date": "2024",
+    }
+
+
+def test_a_cohort_ranking_line_drops_a_single_date_parent() -> None:
+    # Test: The parent place of a default single-date cohort-ranking line
+    #   whose table holds one date.
+    # Situation: Six states hold values for 2022 and 2023 and are ranked on
+    #   2023, five per end, and an `analyze_timeseries` step reads `t2`, the
+    #   same variable for the United States, which holds only 2023.
+    # Expectation: The default chart is the line of the five leading states
+    #   alone, rather than the `ranking` chart the floor falls back to when
+    #   no line can be drawn.
+    cohort = _make_cohort(dates=("2022", "2023"))
+    parent = _make_table("t2", places=("country/USA",), dates=("2023",))
+    analysis = AnalysisSpecification.model_validate(
+        {
+            "steps": [
+                {
+                    "step_id": "s1",
+                    "script": "rank_cohort",
+                    "table": "t1",
+                    "n": 5,
+                },
+                {
+                    "step_id": "s2",
+                    "script": "analyze_timeseries",
+                    "table": "t2",
+                },
+            ]
+        }
+    )
+    digest = _make_digest(
+        rank_cohort(cohort.table, max_entries_per_end=5, step_id="s1"),
+        analyze_timeseries(parent.table, step_id="s2"),
+    )
+
+    chart = _resolve_default_wire(digest, analysis, _make_cache(cohort, parent))
+
+    assert chart == {
+        "viz_type": "line",
+        "title": "Total Population",
+        "variable_dcids": ["Count_Person"],
+        "place_dcids": list(reversed(_STATES))[:5],
+    }
+
+
+@pytest.mark.parametrize(
+    ("start_date", "end_date", "expected_bounds"),
+    [
+        ("2020", "2022", {"start_date": "2020", "end_date": "2022"}),
+        ("2020", None, {"start_date": "2020"}),
+        (None, "2022", {"end_date": "2022"}),
+    ],
+    ids=["both_bounds", "start_only", "end_only"],
+)
+def test_a_per_capita_series_line_is_clamped_to_its_derived_window(
+    start_date: str | None,
+    end_date: str | None,
+    expected_bounds: dict[str, str],
+) -> None:
+    # Test: The date bounds of the default line of a time-series step that
+    #   reads a bounded per-capita table.
+    # Situation: Crimes and population hold annual values for two countries
+    #   from 2018 to 2023, `s1` derives crimes per person within a window,
+    #   and `s2` summarizes `s1` without bounds of its own.
+    # Expectation: The default per-capita line is clamped on each side the
+    #   derivation bounds, to the first and last dates `s2` summarized.
+    dates = ("2018", "2019", "2020", "2021", "2022", "2023")
+    population = _make_table("t1", dates=dates)
+    crimes = _make_table(
+        "t2", "Count_Crime", name="Crimes", unit="Count", dates=dates
+    )
+    derived = derive_observation_table(
+        crimes.table,
+        population.table,
+        operation="per_capita",
+        start_date=start_date,
+        end_date=end_date,
+        step_id="s1",
+    )
+    assert derived.table is not None
+    per_capita = CachedTable("s1", derived.table)
+    bounds = {
+        key: value
+        for key, value in (("start_date", start_date), ("end_date", end_date))
+        if value is not None
+    }
+    analysis = AnalysisSpecification.model_validate(
+        {
+            "steps": [
+                {**_PER_CAPITA_STEP, **bounds},
+                {
+                    "step_id": "s2",
+                    "script": "analyze_timeseries",
+                    "table": "s1",
+                },
+            ]
+        }
+    )
+    digest = _make_digest(
+        derived.result, analyze_timeseries(per_capita.table, step_id="s2")
+    )
+
+    chart = _resolve_default_wire(
+        digest, analysis, _make_cache(population, crimes, per_capita)
+    )
+
+    assert chart == {
+        "viz_type": "line",
+        "title": "Crimes per person",
+        "variable_dcids": ["Count_Crime"],
+        "place_dcids": ["country/FRA", "country/DEU"],
+        "per_capita": True,
+        **expected_bounds,
+    }

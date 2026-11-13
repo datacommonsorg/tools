@@ -744,6 +744,10 @@ The chart block grammar follows these instructions. Use it as follows.
   table's dates in the TABLE INVENTORY already start or end there: the
   chart fetches its own data and otherwise draws the full history. Omit
   both to show the full series.
+- Never write `start_date` or `end_date` at a finer precision than the
+  table's dates in the TABLE INVENTORY: on an annual table, write "2020",
+  not "2020-03", because a monthly `start_date` hides that year's annual
+  value.
 - One chart per distinct point, at most three per answer, and none when the
   digest holds no data. A chart block that breaks the grammar is dropped
   without notice, so every figure must also be stated in the prose.
@@ -863,8 +867,9 @@ rejected:
   tables, or `LATEST`; omit it to use the aligned reference date. A `line`
   chart takes no `date` field.
 - `line`: `start_date` and `end_date`, the inclusive first and last dates
-  the chart draws, each as YYYY, YYYY-MM, or YYYY-MM-DD; omit either to
-  leave that end of the series open.
+  the chart draws, each as YYYY, YYYY-MM, or YYYY-MM-DD and never at a
+  finer precision than the table's dates in the TABLE INVENTORY; omit
+  either to leave that end of the series open.
 - `line` and `bar`: tables that share a unit, and at most one of `places`
   (a subset of the place DCIDs listed for those tables), `cohort: true`
   (every child place of the tables' parent place), `top_n`, or `bottom_n`

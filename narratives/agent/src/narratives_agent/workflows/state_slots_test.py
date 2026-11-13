@@ -228,7 +228,7 @@ def test_a_chart_place_grounded_only_by_a_row_is_kept() -> None:
     )
 
 
-def test_a_grounded_line_chart_yields_a_scope_without_a_date_range() -> None:
+def test_an_unclamped_line_chart_yields_a_scope_without_a_date_range() -> None:
     # Test: A grounded line chart builds a chart scope with no date range.
     # Situation: A fetched table holds two places across two dates, and an
     #   emitted line chart draws one of those places.
@@ -250,6 +250,84 @@ def test_a_grounded_line_chart_yields_a_scope_without_a_date_range() -> None:
         variables={"Count_Person": "Total Population"},
         date_range=None,
     )
+
+
+@pytest.mark.parametrize(
+    ("dates", "start_date", "end_date", "expected_range"),
+    [
+        (
+            ("2012", "2016", "2020", "2026"),
+            "2015",
+            "2024",
+            ("2015", "2024"),
+        ),
+        (("2018", "2020", "2022", "2024"), "2021", None, ("2021", "2024")),
+        (("2018", "2020", "2022", "2024"), None, "2022", ("2018", "2022")),
+        (
+            ("2019-12", "2020-06", "2020-12", "2021-01"),
+            "2020-06",
+            "2020",
+            ("2020-06", "2020-12"),
+        ),
+    ],
+    ids=["closed_window", "start_only", "end_only", "mixed_precision"],
+)
+def test_a_clamped_line_chart_records_its_date_window(
+    dates: tuple[str, ...],
+    start_date: str | None,
+    end_date: str | None,
+    expected_range: tuple[str, str],
+) -> None:
+    # Test: The date range of a scope built from a clamped line chart.
+    # Situation: A fetched table holds one place's values on the given
+    #   dates, and an emitted line chart of that place is clamped at both
+    #   ends, at the start only, at the end only, or by a monthly start and
+    #   an annual end that compare as inverted only in precision.
+    # Expectation: The chart scope records the chart's bounds, fills an
+    #   open bound with the earliest or latest table date inside the other
+    #   bound, and records the span of the in-range dates for the
+    #   mixed-precision bounds, so the scope passes `QueryScope` validation.
+    table = _make_table(rows={"geoId/06": dates})
+    chart = ResolvedLineChart(
+        title="Population of California",
+        variable_dcids=("Count_Person",),
+        scope=PlaceList(("geoId/06",)),
+        start_date=start_date,
+        end_date=end_date,
+    )
+
+    scopes = build_state_slots([table], [chart]).scopes
+
+    assert scopes[1] == QueryScope(
+        places={"geoId/06": "California"},
+        variables={"Count_Person": "Total Population"},
+        date_range=expected_range,
+    )
+
+
+def test_a_clamped_line_fills_its_open_bound_from_its_charted_places() -> None:
+    # Test: The places that fill the open bound of a clamped line chart.
+    # Situation: A fetched table holds California through 2022 and Texas
+    #   through 2024, and an emitted line of California alone starts in
+    #   2020 with no end.
+    # Expectation: The chart scope ends at California's latest date, 2022,
+    #   not at Texas's 2024, which the chart does not draw.
+    table = _make_table(
+        rows={
+            "geoId/06": ("2018", "2020", "2022"),
+            "geoId/48": ("2018", "2020", "2024"),
+        }
+    )
+    chart = ResolvedLineChart(
+        title="Population of California",
+        variable_dcids=("Count_Person",),
+        scope=PlaceList(("geoId/06",)),
+        start_date="2020",
+    )
+
+    scopes = build_state_slots([table], [chart]).scopes
+
+    assert scopes[1].date_range == ("2020", "2022")
 
 
 def test_a_derived_table_grounds_nothing_for_charts() -> None:
