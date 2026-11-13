@@ -113,6 +113,13 @@
   --shadow-elevated:
     0 1px 3px 1px color-mix(in srgb, var(--color-shadow) 15%, transparent),
     0 1px 2px color-mix(in srgb, var(--color-shadow) 30%, transparent);
+  /* The hairline under the app header. Consumed as `shadow-header`. */
+  --shadow-header: 0 1px 2px color-mix(in srgb, #5e5e5e 10%, transparent);
+
+  /* Width of the desktop sidebar rail. The header pulls left by it to span the
+     viewport, and <main> pads by it to clear the fixed rail. Consumed as
+     `w-rail`, `lg:pl-rail`, and `lg:-ml-rail`. */
+  --spacing-rail: 72px;
 
   /* Inverse surface — the M3 role for UI that sits *over* the page rather
      than in it (m3.material.io/components/tooltips). */
@@ -122,6 +129,9 @@
   /* Text — primary */
   --color-on-surface: var(--theme-text, #1b1c1d);
   --color-on-surface-variant: var(--theme-text-muted, #444746);
+  /* The header wordmark: pure black on Base Data Commons, the theme's text
+     color elsewhere. */
+  --color-wordmark: var(--theme-text, #000000);
   --color-muted: #575b5f;
   /* Neutral 40: the color of the AI disclaimer under each answer. */
   --color-ai-disclaimer: #5e5e5e;
@@ -152,6 +162,46 @@
     to {
       opacity: 0;
       transform: translateY(8px);
+    }
+  }
+
+  /* Motion — app chrome on load: the header fades in, the sidebar slides in
+     from the left, the header logo nudges 16px in from the left, and the New
+     chat button 16px down from the top. Consumed as `animate-fade-in` /
+     `animate-enter-from-left` / `animate-nudge-from-left` /
+     `animate-nudge-from-top`, gated with `motion-safe:`. The New chat button's
+     400ms delay must match the `enter-from-left` duration so it starts once
+     the sidebar is in; `backwards` keeps it hidden until then. */
+  --animate-fade-in: fade-in 400ms cubic-bezier(0, 0, 0, 1);
+  --animate-enter-from-left: enter-from-left 400ms cubic-bezier(0, 0, 0, 1);
+  --animate-nudge-from-left: nudge-from-left 400ms cubic-bezier(0, 0, 0, 1);
+  --animate-nudge-from-top: nudge-from-top 400ms cubic-bezier(0, 0, 0, 1) 400ms
+    backwards;
+
+  @keyframes fade-in {
+    from {
+      opacity: 0;
+    }
+  }
+
+  @keyframes enter-from-left {
+    from {
+      opacity: 0;
+      transform: translateX(-100%);
+    }
+  }
+
+  @keyframes nudge-from-left {
+    from {
+      opacity: 0;
+      transform: translateX(-16px);
+    }
+  }
+
+  @keyframes nudge-from-top {
+    from {
+      opacity: 0;
+      transform: translateY(-16px);
     }
   }
 

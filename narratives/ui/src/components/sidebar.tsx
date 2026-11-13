@@ -37,8 +37,13 @@ export function Sidebar() {
   const isAgent = route === '' || route === 'agent';
   const shouldShowNewChat = isAgent && isChatEnabled;
 
+  // The rail is fixed so the header can span the viewport over it. `lg:z-1`
+  // lifts it above <main>, whose `lg:pl-rail` padding would otherwise cover
+  // it and catch its clicks, and keeps it below the header's `z-5`. `pt-16`
+  // clears the header at the default 28px `--logo-height`; a theme logo
+  // taller than about 32px makes the header overlap the New chat button.
   return (
-    <aside className="hidden lg:flex w-[72px] h-dvh bg-surface-blue flex-col items-center py-4 gap-4 shrink-0">
+    <aside className="hidden lg:flex lg:fixed lg:inset-y-0 lg:left-0 lg:z-1 w-rail bg-surface-blue flex-col items-center pt-16 pb-4 gap-4 motion-safe:animate-enter-from-left">
       {shouldShowNewChat && (
         /* Clears the conversation on screen and starts an empty one. Chats
            are not saved, so there is nothing to come back to. */
@@ -47,7 +52,7 @@ export function Sidebar() {
             type="button"
             aria-label="New chat"
             onClick={newChat}
-            className="w-12 h-12 flex items-center justify-center rounded-full hover:bg-button-hover transition-colors text-on-surface-variant"
+            className="w-12 h-12 flex items-center justify-center rounded-full hover:bg-button-hover transition-colors text-on-surface-variant motion-safe:animate-nudge-from-top"
           >
             <NewChatIcon />
           </button>
