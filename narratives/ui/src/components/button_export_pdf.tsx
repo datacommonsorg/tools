@@ -23,8 +23,8 @@ import { ExportIcon } from '@/src/components/icons';
 import { Tooltip } from '@/src/components/tooltip';
 
 /**
- * Whether the answer panel shows its PDF export controls. Off for now: the
- * export works but is hidden from users. Flip to `true` to bring it back.
+ * Gates the answer panel's PDF export controls. While false, the controls do
+ * not render and the bundler drops the export code from the build.
  */
 export const IS_PDF_EXPORT_ENABLED = false;
 
