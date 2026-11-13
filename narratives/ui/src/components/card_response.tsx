@@ -42,10 +42,15 @@ import {
   citationsIn,
   isBoldOnlyParagraph,
   type MarkdownNode,
+  splitHeaderTail,
   type TableAnalysis,
   textOf,
 } from '@/src/utils/markdown_table';
-import { rehypeStreamWords } from '@/src/utils/rehype_stream_words';
+import {
+  countWords,
+  rehypeStreamWords,
+  splitStreamTokens,
+} from '@/src/utils/rehype_stream_words';
 
 interface ResponseCardProps {
   title: string;
@@ -344,6 +349,7 @@ function StreamSpan({
 const EMPTY_ANALYSIS: TableAnalysis = {
   numericColumns: new Set<number>(),
   hoistedCitations: new Map<number, number[]>(),
+  rankColumns: new Set<number>(),
 };
 
 const TableAnalysisContext = createContext<TableAnalysis>(EMPTY_ANALYSIS);
@@ -414,26 +420,32 @@ function HeaderCell({
   style,
   sources,
 }: MarkdownCellProps) {
-  const { numericColumns, hoistedCitations } = useContext(TableAnalysisContext);
+  const { numericColumns, hoistedCitations, rankColumns } =
+    useContext(TableAnalysisContext);
   const numeric = colIndex !== undefined && numericColumns.has(colIndex);
+  const rank = colIndex !== undefined && rankColumns.has(colIndex);
   const hoisted =
     (colIndex !== undefined ? hoistedCitations.get(colIndex) : undefined) ?? [];
-  const alreadyStated = new Set(citationsIn(textOf(node as MarkdownNode)));
+  const headerText = textOf(node as MarkdownNode);
+  const alreadyStated = new Set(citationsIn(headerText));
   const toAppend = hoisted.filter((n) => !alreadyStated.has(n));
+  const tailGaps = countWords(splitHeaderTail(headerText)[1]) - 1;
 
   return (
     <th
       // An explicit markdown alignment arrives in `style` and wins over the
       // class.
-      className={`border border-border px-6 pb-2 pt-3 font-medium ${
-        numeric ? 'text-right' : 'text-left'
+      className={`border border-border px-4 pb-2 pt-3 font-medium ${
+        rank ? 'text-center' : numeric ? 'text-right' : 'text-left'
       }`}
       style={style}
     >
-      {renderWithCitations(children, sources)}
+      {renderWithCitations(joinHeaderTail(children, tailGaps), sources)}
+      {/* A non-breaking space keeps a hoisted marker on the line of the word
+          before it. */}
       {toAppend.map((n) => (
         <span key={n}>
-          {' '}
+          {NO_BREAK_SPACE}
           <CitationChip n={n} sources={sources} />
         </span>
       ))}
@@ -441,21 +453,61 @@ function HeaderCell({
   );
 }
 
+/** A space that never wraps, keeping the words on either side together. */
+const NO_BREAK_SPACE = '\u00A0';
+
 /**
- * A body cell, set right when its column holds values. `tabular-nums` too:
- * proportional digits leave the decimal points ragged even when flush right.
+ * Turns the last `gaps` spaces of a header cell's children, trailing
+ * whitespace aside, into non-breaking spaces, so the header's ending (see
+ * `splitHeaderTail`) wraps as one word and a citation never sits alone on a
+ * line below the unit and year it belongs to. Text children are split into
+ * words and spaces first, so this works whether the answer's reveal wrapped
+ * each word in its own span or left the header as one string.
+ */
+function joinHeaderTail(children: ReactNode, gaps: number): ReactNode {
+  if (gaps <= 0) return children;
+  const parts = (Array.isArray(children) ? children : [children]).flatMap(
+    (child: ReactNode) =>
+      typeof child === 'string' ? splitStreamTokens(child) : [child],
+  );
+  let remaining = gaps;
+  let seenWord = false;
+  for (let i = parts.length - 1; i >= 0 && remaining > 0; i--) {
+    const part = parts[i];
+    const isSpace = typeof part === 'string' && part.trim() === '';
+    if (!isSpace) {
+      seenWord = true;
+    } else if (seenWord) {
+      parts[i] = NO_BREAK_SPACE;
+      remaining--;
+    }
+  }
+  return parts;
+}
+
+/**
+ * A body cell, set right when its column holds values, or centered in a rank
+ * column, whose short ordinals read better under a centered header.
+ * `tabular-nums` too: proportional digits leave the decimal points ragged
+ * even when flush right.
  */
 function DataCell({ children, colIndex, style, sources }: MarkdownCellProps) {
-  const { numericColumns, hoistedCitations } = useContext(TableAnalysisContext);
+  const { numericColumns, hoistedCitations, rankColumns } =
+    useContext(TableAnalysisContext);
   const numeric = colIndex !== undefined && numericColumns.has(colIndex);
+  const rank = colIndex !== undefined && rankColumns.has(colIndex);
   const hoisted = colIndex !== undefined && hoistedCitations.has(colIndex);
 
   return (
     <td
       // An explicit markdown alignment arrives in `style` and wins over the
       // class.
-      className={`border border-border px-6 py-2${
-        numeric ? ' tabular-nums text-right' : ''
+      className={`border border-border px-4 py-2${
+        rank
+          ? ' tabular-nums text-center'
+          : numeric
+            ? ' tabular-nums text-right'
+            : ''
       }`}
       style={style}
     >

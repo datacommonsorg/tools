@@ -411,13 +411,17 @@ def test_the_ranking_directive_analyzes_the_parent_place() -> None:
 def test_the_ranking_directive_charts_the_first_five_places() -> None:
     # Test: The line chart of the top-N synthesis directive.
     # Situation: The `top_n_ranking` synthesis directive.
-    # Expectation: It charts the first five places in the table, not only
-    #   the places the headline names, which are the top place and its ties.
+    # Expectation: It charts the first five places of each table, directly
+    #   after it, not only the places the headline names, which are the top
+    #   place and its ties, and keeps a parent's total or count off the chart.
     directive = pattern_guidance.build_pattern_directive(
         _make_classification("top_n_ranking"), "synthesis"
     )
 
-    assert "chart a `line` of the first five places in the table" in directive
+    assert "Directly after each table, chart a `line` of its first five" in (
+        directive
+    )
+    assert "never a total or count" in directive
     assert "the places the headline names" not in directive
 
 

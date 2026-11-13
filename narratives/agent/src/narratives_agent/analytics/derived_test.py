@@ -576,6 +576,26 @@ def test_quotients_multiply_by_the_scale_before_dividing() -> None:
     assert outcome.table.rows[0].value == 30.0
 
 
+def test_a_per_capita_step_at_scale_100_is_named_as_a_percentage() -> None:
+    # Test: The name of a per-person share given as a percentage.
+    # Situation: 123 people below the poverty line out of 1,000, divided
+    #   per capita with a scale of 100.
+    # Expectation: The value is 12.3 and the derived variable reads as a
+    #   percentage of the population, never "per 100 people".
+    poor = _build_table(
+        "Poor", [("a", "2022", 123.0)], facet_id="f1", source=_WDI
+    )
+    population = _build_table(
+        "Pop", [("a", "2022", 1_000.0)], facet_id="f2", source=_CENSUS
+    )
+    outcome = derive_observation_table(
+        poor, population, operation="per_capita", scale=100.0
+    )
+    assert outcome.table is not None
+    assert outcome.table.rows[0].value == 12.3
+    assert outcome.table.variable_name == "Poor as a percentage of Pop"
+
+
 def test_difference_sum_and_pct_change_keep_or_set_the_unit() -> None:
     # Test: The additive operations.
     # Situation: Two tables in thousands of dollars with values 150 and

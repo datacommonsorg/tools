@@ -75,10 +75,15 @@ class ChartBlock:
     Attributes:
         index: The block's position among all emitted blocks, from 0.
         chart: The resolved chart.
+        standalone: Whether the server supplied the chart, such as a default
+            chart appended after the answer, rather than the model placing it
+            after the text it illustrates. The app shows a standalone chart
+            on its own, never beside the text before it.
     """
 
     index: int
     chart: ResolvedChart
+    standalone: bool = False
 
 
 # A block a `BlockSplitter` emits: a paragraph or a resolved chart.
@@ -248,7 +253,9 @@ class BlockSplitter:
             None. The chart block is passed to `on_block`.
         """
         self._charts.append(chart)
-        self._emit(ChartBlock(index=self._next_index, chart=chart))
+        self._emit(
+            ChartBlock(index=self._next_index, chart=chart, standalone=True)
+        )
 
     def _consume_line(self, line: str) -> None:
         """Routes one complete line to the open fence or the paragraph."""

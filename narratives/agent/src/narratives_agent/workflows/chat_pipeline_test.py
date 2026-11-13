@@ -542,7 +542,12 @@ async def test_complete_turn_emits_the_answer_then_the_follow_ups(
     assert turn.synthesis_phases == ["synthesis"]
     assert turn.list_blocks() == [
         {"index": 0, "type": "text", "markdown": _ANSWER},
-        {"index": 1, "type": "chart", "chart": _DEFAULT_CHART},
+        {
+            "index": 1,
+            "type": "chart",
+            "chart": _DEFAULT_CHART,
+            "standalone": True,
+        },
     ]
     content = [data for event, data in turn.events if event == "content"]
     assert content[-1] == {"block": turn.list_blocks()[1]}
@@ -2520,7 +2525,7 @@ _WIRE_FRAMES: list[tuple[EventName, str]] = [
         '{"viz_type": "line", "title": "Total Population", '
         '"variable_dcids": ["Count_Person"], '
         '"place_dcids": ["country/FRA"], '
-        '"facet_ids": {"Count_Person": "f1"}}}}',
+        '"facet_ids": {"Count_Person": "f1"}}, "standalone": true}}',
     ),
     (
         "terminal",

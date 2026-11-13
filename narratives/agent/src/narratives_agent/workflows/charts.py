@@ -104,7 +104,7 @@ logger = logging.getLogger(__name__)
 # places the synthesis inventory names per table.
 INVENTORY_PLACE_CAP = 25
 # Maximum chart blocks emitted in a single turn.
-MAX_CHARTS_PER_TURN = 3
+MAX_CHARTS_PER_TURN = 4
 # Variable DCID used by chart web components for per-capita normalization.
 _POPULATION_VARIABLE_DCID = "Count_Person"
 # Fewest distinct dates a line chart needs to draw a series.

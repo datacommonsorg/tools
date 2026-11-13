@@ -237,7 +237,7 @@ def test_an_appended_chart_takes_the_next_index() -> None:
     # Situation: The stream holds one paragraph and the server appends a
     #   chart once it has finished.
     # Expectation: The chart block follows the text block with the next
-    #   index and is counted as emitted.
+    #   index, is marked standalone, and is counted as emitted.
     splitter, recorder = _split("Only prose.")
     splitter.append_chart(_make_line_chart("Default"))
 
@@ -245,6 +245,9 @@ def test_an_appended_chart_takes_the_next_index() -> None:
         (0, "text"),
         (1, "chart"),
     ]
+    appended = recorder.blocks[1]
+    assert isinstance(appended, ChartBlock)
+    assert appended.standalone is True
     assert splitter.charts_emitted == 1
     assert splitter.text == "Only prose."
 

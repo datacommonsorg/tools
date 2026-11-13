@@ -128,15 +128,17 @@ _DIRECTIVES: Mapping[QueryPattern, Directive] = {
             "compact table. When the parent place's figure exists in the "
             "digest, give it once in the headline with its own citation "
             "marker. "
-            "After the table, chart a `line` of the first five places in the "
-            "table, with the parent place when its table is in the table "
-            "inventory, not a `ranking`. When the digest relates a "
-            "second variable to the ranking, state in plain words the "
-            "pattern between the two groups and any notable exception, put "
-            "each group's places and figures in a compact table, and name "
-            "the places the result reports as left out; chart a `ranking` "
-            "for each variable, and optionally pair the two tables in a "
-            "`scatter`."
+            "Directly after each table, chart a `line` of its first five "
+            "places, not a `ranking`, with the parent place when its table "
+            "is in the table inventory and the indicator is a rate, share, "
+            "per-person value, or average, never a total or count; for both "
+            "ends, give each end its own table and chart. When the digest "
+            "relates a second variable to the ranking, state in plain words "
+            "the pattern between the two groups and any notable exception, "
+            "put each group's places and figures in a compact table, and "
+            "name the places the result reports as left out; chart a "
+            "`ranking` for each variable directly after its table, and "
+            "optionally relate the two in a `scatter`."
         ),
     ),
     "distribution": Directive(
@@ -151,8 +153,9 @@ _DIRECTIVES: Mapping[QueryPattern, Directive] = {
         ),
         synthesis=(
             'Compare the focal place with the cohort as "One place among its '
-            'peers" describes: lead with its value, its rank, and its gap '
-            "to the median in one sentence, then the highest and lowest "
+            'peers" describes: lead with its value and its rank in one '
+            "sentence and its gap to the median in the next, then the highest "
+            "and lowest "
             "places, all at one shared observation year or over one shared "
             "window, and chart a `bar` of the places the answer names, or a "
             "`line` of them when the comparison covers a window."
@@ -174,9 +177,9 @@ _DIRECTIVES: Mapping[QueryPattern, Directive] = {
             "`summarize_distribution` on its output."
         ),
         synthesis=(
-            "Report the overall change across the period as a percentage "
-            "change, or in percentage points when the indicator is itself "
-            "a percentage, and name the key shifts, such as a peak, a low, "
+            "Report the overall change across the period in the one measure "
+            '"Reporting changes over time" gives for the indicator, and name '
+            "the key shifts, such as a peak, a low, "
             "or the sharpest rise or fall, in plain words. For a cohort "
             "ranked by its change, name the window's two dates and the "
             "places at the end of the ranking the question asks for, and "
@@ -195,8 +198,8 @@ _DIRECTIVES: Mapping[QueryPattern, Directive] = {
         ),
         synthesis=(
             "Identify the sharpest single-period rises and falls with their "
-            "change and the period they occurred in; give the values before "
-            "and after only when they help the reader."
+            "change and the period they occurred in, without the values "
+            "before and after: the chart shows them."
         ),
     ),
     "correlation": Directive(
@@ -238,15 +241,14 @@ _DIRECTIVES: Mapping[QueryPattern, Directive] = {
             "as soon as the tables have rows."
         ),
         synthesis=(
-            "Answer the question first, then give every component in a "
-            "compact table, largest first, as "
+            "Answer the question first, then give the components as "
             '"Breakdowns of a total" describes. '
             "Only when the question asks how "
             "one total splits into parts and the digest holds no composition "
             "result, lead with what the digest does show for the components, "
             "never with the total, and close the answer with one short "
-            "sentence noting that shares of the total could not be "
-            "calculated from consistent data."
+            "sentence saying in plain words that the shares of the total are "
+            "not among these figures, never how the calculation failed."
         ),
     ),
     "sequential_stages": Directive(
@@ -264,8 +266,9 @@ _DIRECTIVES: Mapping[QueryPattern, Directive] = {
             "much each stage keeps or loses from the one before it. Only "
             "when the question asks about ordered stages and the digest "
             "holds no stages result, lead with the stages the digest does "
-            "cover and close the answer with one short sentence noting that "
-            "the stage-to-stage shares could not be calculated."
+            "cover and close the answer with one short sentence saying in "
+            "plain words that the stage-to-stage shares are not among these "
+            "figures, never how the calculation failed."
         ),
     ),
     "clustering": Directive(
@@ -306,13 +309,15 @@ _DIRECTIVES: Mapping[QueryPattern, Directive] = {
         discovery=(
             "Map the core angles of the requested topic and choose one "
             'indicator for each as "Choosing indicators" describes, up to '
-            "five, one table each, fetched in the same round with "
+            "four, one table each, fetched in the same round with "
             "`fetch_observations` or `fetch_child_observations`, and specify "
             "`analyze_timeseries` or `rank_cohort` on each."
         ),
         synthesis=(
-            "Organize the indicators into a structured summary and cite the "
-            "authoritative provenance of each metric."
+            'Write the answer as "Matching the answer to the question" '
+            "describes for related measures: an opening that names the "
+            "indicators, then each indicator's own lead-in line, short list, "
+            "and chart, never one list for all of them."
         ),
     ),
     "data_availability": Directive(
@@ -340,7 +345,7 @@ _DIRECTIVES: Mapping[QueryPattern, Directive] = {
 # about named places is answered with the comparison layout and its charts.
 _NAMED_PLACE_CORRELATION_SYNTHESIS = (
     'Write the answer as "Comparing several places" describes, with its '
-    "table and charts. Describe the relationship from the figures given: say "
+    "tables and charts. Describe the relationship from the figures given: say "
     "in plain words how the indicators move together across the places and "
     "name the leading place, then name the notable exception, or the place "
     "at the bottom when nothing breaks the pattern. Claim no strength or "
@@ -356,11 +361,13 @@ _COMPARISON_DIRECTIVE = Directive(
     ),
     synthesis=(
         "Compare the places side by side: state the pattern and the notable "
-        "exception. Put the exact figures in a compact table when the "
-        "comparison covers several indicators or four or more places; for "
-        "one indicator across two or three places, give the figures in the "
-        "sentence and write no table. State the gap between places only "
-        "when the question asks for it."
+        "exception. With four or more places, put the exact figures in "
+        "compact tables, one per indicator and each followed directly by its "
+        "chart, with no trend bullets. With two or three places, write no "
+        "table: give one indicator's figures in the sentence, and give each "
+        "of several indicators its own short bullets followed directly by "
+        "its chart. Never give an indicator both a table and bullets. State "
+        "the gap between places only when the question asks for it."
     ),
 )
 
