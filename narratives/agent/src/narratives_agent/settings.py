@@ -71,7 +71,7 @@ DEFAULT_WEB_COMPONENT_API_ROOT = "https://datacommons.org"
 # The chart host settings must be http(s) URLs on an ASCII hostname. They must
 # not contain whitespace, quotes, control characters, or the `;` and `,` that
 # separate header values and policy directives, so that each value is also a
-# valid source in a response header.
+# valid source in the page's Content-Security-Policy header.
 _WEB_COMPONENT_URL_SCHEMES = frozenset({"http", "https"})
 _HEADER_UNSAFE_CHARACTERS = re.compile(r"[\s;,'\"\x00-\x1f\x7f]")
 # This pattern matches a hostname of dot-separated letter, digit, and hyphen
@@ -399,16 +399,18 @@ class Settings(BaseSettings):
     build_sha: str | None = None
 
     # The browser loads the Data Commons chart web components
-    # (`datacommons.js`) from this absolute http(s) URL.
+    # (`datacommons.js`) from this absolute http(s) URL, and the page's
+    # Content-Security-Policy allows scripts from its origin.
     dc_web_component_url: Annotated[
         str, AfterValidator(_validate_web_component_url)
     ] = DEFAULT_WEB_COMPONENT_URL
 
     # The chart web components receive this http(s) origin as their
-    # `apiroot` and fetch their data from it. The validator lowercases the
-    # hostname and removes a trailing slash. For public Data Commons, the
-    # origin is the website host, and for a custom Data Commons, it is the
-    # instance's own host.
+    # `apiroot` and fetch their data from it, and the page's
+    # Content-Security-Policy allows connections to it. The validator
+    # lowercases the hostname and removes a trailing slash. For public Data
+    # Commons, the origin is the website host, and for a custom Data Commons,
+    # it is the instance's own host.
     dc_web_component_api_root: Annotated[
         str, AfterValidator(_normalize_web_component_api_root)
     ] = DEFAULT_WEB_COMPONENT_API_ROOT

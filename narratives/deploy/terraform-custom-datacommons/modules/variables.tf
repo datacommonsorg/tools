@@ -147,7 +147,7 @@ variable "public_dc_url" {
 }
 
 variable "dc_web_component_url" {
-  description = "Full URL of datacommons.js, the Data Commons chart web components the browser loads."
+  description = "Full URL of datacommons.js, the Data Commons chart web components the browser loads. The page's Content-Security-Policy allows scripts from its origin."
   type        = string
   default     = "https://datacommons.org/datacommons.js"
 }

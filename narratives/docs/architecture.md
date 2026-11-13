@@ -68,6 +68,37 @@ sandbox` from `server/routes/spa.py`. The one response without the headers is
 the plain-text 500 that Starlette's `ServerErrorMiddleware` sends for an
 unhandled exception, because that middleware wraps every user middleware.
 
+The HTML shell (`/` and `/index.html`, on 200 and 304 responses) also carries
+the page's `Content-Security-Policy`, which `build_content_security_policy` in
+`server/routes/spa.py` builds once at startup from the chart host settings:
+
+```text
+default-src 'self';
+script-src 'self' <origin of DC_WEB_COMPONENT_URL>;
+style-src 'self' 'unsafe-inline' https://fonts.googleapis.com;
+font-src 'self' https://fonts.gstatic.com data:;
+img-src 'self' https: data: blob:;
+connect-src 'self' <DC_WEB_COMPONENT_API_ROOT>;
+frame-src 'self';
+object-src 'none';
+base-uri 'none';
+form-action 'self';
+frame-ancestors 'self'
+```
+
+`script-src` allows no inline or evaluated script: the shell's two inline
+`<script>` elements are JSON data blocks, which browsers do not run, and the
+loader that adds `datacommons.js` is part of the app's own bundle. The app
+stylesheet (`ui/src/index.css`) and `datacommons.js` both load Google Fonts, so
+`style-src` allows `fonts.googleapis.com` and `font-src` allows
+`fonts.gstatic.com`. The Emotion and styled-components code in
+`datacommons.js` inserts `<style>` elements into each chart's shadow root, so
+`style-src` keeps `'unsafe-inline'`. The PDF export code draws `data:` and
+`blob:` images. `base-uri 'none'` breaks nothing because the app resolves paths
+from `location.pathname`, and `form-action 'self'` does not affect the chat
+input, which submits through JavaScript. Static files other than the shell and
+`/agent/*` responses carry no page policy.
+
 ## How Narratives connects to Data Commons
 
 Narratives talks to Data Commons in two ways — one for the Python agent and one

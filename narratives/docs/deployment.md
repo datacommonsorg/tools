@@ -194,6 +194,11 @@ curl -s "$URL/agent/health" | jq
 BEARER_TOKEN="$(gcloud auth print-identity-token)" bash deploy/smoke.sh "$URL"
 ```
 
+Among its checks, `deploy/smoke.sh` confirms that the HTML shell carries a
+`Content-Security-Policy` with `frame-ancestors` and without `'unsafe-inline'`
+in `script-src`, and that `/agent/health` carries the HTTP security headers
+(see [architecture.md](architecture.md#http-security-headers)).
+
 In the `/agent/health` response, `mcp.support`,
 `mcp.supports_source_attribution`, and `mcp.missing_tools` report the upstream
 MCP tool surface. The agent requires six tools (`search_indicators`,
@@ -414,7 +419,10 @@ which requires an API key that the browser cannot hold. A custom Data Commons
 that serves its own data sets it to the instance's own host.
 
 The server stamps both values into the page, so a change needs a restart but
-no UI rebuild.
+no UI rebuild. The page's `Content-Security-Policy` allows scripts from the
+origin of `DC_WEB_COMPONENT_URL` and connections to
+`DC_WEB_COMPONENT_API_ROOT`, so the browser blocks a chart host that these
+variables do not name.
 
 The server refuses to start when either value is malformed.
 `DC_WEB_COMPONENT_URL` must be an absolute `http` or `https` URL with a
