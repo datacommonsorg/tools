@@ -15,16 +15,25 @@
  */
 
 /**
- * @fileoverview Tests for getRuntimeConfig.
+ * @fileoverview Tests for getRuntimeConfig: chat availability and the chart
+ * host settings.
  */
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   DEFAULT_RUNTIME_CONFIG,
   DEFAULT_UNAVAILABLE_MESSAGE,
+  DEFAULT_WEB_COMPONENT_API_ROOT,
+  DEFAULT_WEB_COMPONENT_URL,
   getRuntimeConfig,
   resetRuntimeConfigForTests,
 } from '@/src/config/runtime_config';
+
+/** The chart hosts of a configuration that sets neither of them. */
+const DEFAULT_CHART_HOSTS = {
+  webComponentUrl: DEFAULT_WEB_COMPONENT_URL,
+  webComponentApiRoot: DEFAULT_WEB_COMPONENT_API_ROOT,
+};
 
 const writeRuntimeConfigSlot = (text: string): void => {
   document.getElementById('runtime-config')?.remove();
@@ -82,6 +91,7 @@ describe('getRuntimeConfig', () => {
     expect(getRuntimeConfig()).toEqual({
       isChatEnabled: false,
       unavailableMessage: 'Custom',
+      ...DEFAULT_CHART_HOSTS,
     });
     expect(warn).not.toHaveBeenCalled();
   });
@@ -107,6 +117,7 @@ describe('getRuntimeConfig', () => {
     expect(getRuntimeConfig()).toEqual({
       isChatEnabled: false,
       unavailableMessage: DEFAULT_UNAVAILABLE_MESSAGE,
+      ...DEFAULT_CHART_HOSTS,
     });
     expect(warn).toHaveBeenCalledTimes(1);
   });
@@ -126,6 +137,7 @@ describe('getRuntimeConfig', () => {
     expect(getRuntimeConfig()).toEqual({
       isChatEnabled: false,
       unavailableMessage: DEFAULT_UNAVAILABLE_MESSAGE,
+      ...DEFAULT_CHART_HOSTS,
     });
     expect(warn).toHaveBeenCalledTimes(1);
   });
@@ -165,6 +177,7 @@ describe('getRuntimeConfig', () => {
     expect(getRuntimeConfig()).toEqual({
       isChatEnabled: false,
       unavailableMessage: DEFAULT_UNAVAILABLE_MESSAGE,
+      ...DEFAULT_CHART_HOSTS,
     });
     expect(warn).toHaveBeenCalledTimes(1);
     expect(String(warn.mock.calls[0][0])).toContain('"unavailable_message"');
@@ -183,5 +196,98 @@ describe('getRuntimeConfig', () => {
     expect(getRuntimeConfig().isChatEnabled).toBe(false);
     resetRuntimeConfigForTests();
     expect(getRuntimeConfig().isChatEnabled).toBe(true);
+  });
+});
+
+describe('getRuntimeConfig chart hosts', () => {
+  it('reads the configured chart hosts', () => {
+    // Test: Chart hosts stamped by an agent that overrides both settings.
+    // Situation: The element names autopush for `web_component_url` and
+    //   `http://localhost:8080/` for `web_component_api_root`.
+    // Expectation: The URL is read unchanged, the API root is read as an
+    //   origin without its trailing slash, chat stays enabled, and nothing
+    //   is logged.
+    const warn = spyOnWarn();
+    writeRuntimeConfigSlot(
+      JSON.stringify({
+        enable_chat: true,
+        web_component_url: 'https://autopush.datacommons.org/datacommons.js',
+        web_component_api_root: 'http://localhost:8080/',
+      }),
+    );
+    expect(getRuntimeConfig()).toEqual({
+      isChatEnabled: true,
+      unavailableMessage: DEFAULT_UNAVAILABLE_MESSAGE,
+      webComponentUrl: 'https://autopush.datacommons.org/datacommons.js',
+      webComponentApiRoot: 'http://localhost:8080',
+    });
+    expect(warn).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    'datacommons.org/datacommons.js',
+    '//datacommons.org/datacommons.js',
+    'javascript:alert(1)',
+    'ftp://datacommons.org/datacommons.js',
+    'https://user@datacommons.org/datacommons.js',
+    'https://datacommons.org/datacommons.js; script-src *',
+    'https://datacommons.org/a,b.js',
+    "https://datacommons.org/'.js",
+    'https://datacommons.org/\u0007.js',
+    'https://*/datacommons.js',
+    'https://\u4f8b\u3048.jp/datacommons.js',
+    'https://datacommons.org:/datacommons.js',
+    'https://exa%41mple.org/datacommons.js',
+    'https://[::1]/datacommons.js',
+    'https://datacommons.org:99999/datacommons.js',
+    42,
+    null,
+  ])('keeps chat enabled and uses the default URL for web_component_url %j', (value) => {
+    // Test: Invalid `web_component_url`.
+    // Situation: The value is not an absolute http(s) URL, has a wildcard,
+    //   non-ASCII, percent-encoded, or IPv6 host, carries user information
+    //   or an empty or out-of-range port, holds a character that cannot
+    //   enter a header, or is not a string.
+    // Expectation: The default URL applies, chat stays enabled, and one
+    //   warning names "web_component_url".
+    const warn = spyOnWarn();
+    writeRuntimeConfigSlot(
+      JSON.stringify({ enable_chat: true, web_component_url: value }),
+    );
+    expect(getRuntimeConfig()).toEqual(DEFAULT_RUNTIME_CONFIG);
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(String(warn.mock.calls[0][0])).toContain('"web_component_url"');
+  });
+
+  it.each([
+    'datacommons.org',
+    'javascript:alert(1)',
+    'https://datacommons.org/api',
+    'https://datacommons.org//',
+    'https://datacommons.org?x=1',
+    'https://datacommons.org/?',
+    'https://datacommons.org#top',
+    'https://datacommons.org;script-src',
+    'https://datacommons.org,https://evil.example',
+    'https://*.example.org',
+    'https://datacommons.org:',
+    'https://exa%41mple.org',
+    '',
+    42,
+  ])('keeps chat enabled and uses the default origin for web_component_api_root %j', (value) => {
+    // Test: Invalid `web_component_api_root`.
+    // Situation: The value is not an http(s) origin, holds a character that
+    //   cannot enter a header, is an empty string, or is not a string. The
+    //   invalid origins have a path, a query, a fragment, no scheme, a
+    //   wildcard or percent-encoded host, or an empty port.
+    // Expectation: The default origin applies, chat stays enabled, and one
+    //   warning names "web_component_api_root".
+    const warn = spyOnWarn();
+    writeRuntimeConfigSlot(
+      JSON.stringify({ enable_chat: true, web_component_api_root: value }),
+    );
+    expect(getRuntimeConfig()).toEqual(DEFAULT_RUNTIME_CONFIG);
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(String(warn.mock.calls[0][0])).toContain('"web_component_api_root"');
   });
 });

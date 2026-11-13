@@ -3,7 +3,6 @@
  */
 
 import { type RefObject, useEffect, useRef } from 'react';
-import { trimTrailingSlashes } from '@/src/config/base_url';
 
 /**
  * <DataCommonsComponent> — render a Data Commons web component (`<datacommons-*>`).
@@ -33,12 +32,13 @@ import { trimTrailingSlashes } from '@/src/config/base_url';
  * behave in a static HTML page and gives the DC component a stable DOM
  * node for its lifetime.
  *
- * `apiroot` used to be window.location.origin: the instance proxied the Data
- * Commons API under its own origin via the services container's nginx. That
- * container is gone, so the components fetch from datacommons.org directly.
- * This is a base-Data-Commons-only deployment, so there are no instance
- * variables to lose by doing so; an instance that ingests its own data would
- * have to serve /api/* again and point this back at its own origin.
+ * `apiroot` is not window.location.origin, because the instance does not
+ * proxy the Data Commons API under its own origin. The components fetch from
+ * a Data Commons website host directly. Callers pass the `webComponentApiRoot`
+ * runtime setting (`DC_WEB_COMPONENT_API_ROOT`), which is datacommons.org by
+ * default. That host serves the endpoints with an open CORS policy and needs
+ * no API key from the browser. An instance that ingests its own data sets the
+ * setting to its own host, which serves `/api/*`.
  */
 
 /** The Data Commons web-component tag names the UI can render. */
@@ -58,16 +58,6 @@ export type DataCommonsComponentAttributes = Record<
   string,
   string | number | boolean | undefined
 >;
-
-/**
- * API root the DC components fetch from. Defaults to public Data Commons
- * (`https://datacommons.org`), which serves these endpoints with an open CORS
- * policy and needs no API key from the browser; overridable at build time via
- * `VITE_DC_API_ROOT` (for example, `https://autopush.datacommons.org`).
- */
-export const API_ROOT: string =
-  trimTrailingSlashes(import.meta.env.VITE_DC_API_ROOT ?? '') ||
-  'https://datacommons.org';
 
 /**
  * Stacking order of a DC dialog portal. Copied from `zIndex.dialog` in the
@@ -128,9 +118,10 @@ export function DataCommonsComponent({
         else el.setAttribute(k, String(v));
       }
       host.appendChild(el);
-      // The shadow root exists once the element is defined and connected
-      // (datacommons.js loads deferred, so it may not be defined yet). The
-      // card can unmount while that is pending; skip it then.
+      // The shadow root exists once the element is defined and connected.
+      // Because datacommons.js loads asynchronously, the element may not be
+      // defined yet. If the card unmounts first, the style override is
+      // skipped.
       void customElements.whenDefined(tag).then(() => {
         const root = el.shadowRoot;
         if (!SHADOW_STYLES || !root || !el.isConnected) return;
@@ -194,7 +185,7 @@ const SETTLE_POLL_MS = 300;
  * Reads whether a mounted `<datacommons-*>` element drew anything.
  *
  * Emptiness is not knowable at render time. Each component fetches its own
- * data from {@link API_ROOT} after mount, so a chart the agent configured
+ * data from its `apiroot` after mount, so a chart the agent configured
  * against variables it did hold observations for can still come back with
  * nothing for the place or date it was given — and then renders a card whose
  * only content is "No data available." over a gray placeholder. The only place

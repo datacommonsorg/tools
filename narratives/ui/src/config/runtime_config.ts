@@ -15,8 +15,9 @@
  */
 
 /**
- * @fileoverview Runtime chat availability. {@link getRuntimeConfig} reads the
- * JSON that the agent server stamps into `<script id="runtime-config">`.
+ * @fileoverview Runtime settings: the chat availability and the hosts of the
+ * Data Commons chart web components. {@link getRuntimeConfig} reads the JSON
+ * that the agent server stamps into `<script id="runtime-config">`.
  * `runtime_config_dev.ts` imports this module, and `vite.config.ts` loads that
  * module in Node before the `@/` alias exists, so this module has no imports.
  */
@@ -28,23 +29,49 @@
 export const DEFAULT_UNAVAILABLE_MESSAGE =
   'This Data Commons tool is temporarily unavailable due to high traffic.';
 
+/**
+ * URL of `datacommons.js` when none is configured. It matches
+ * `DEFAULT_WEB_COMPONENT_URL` in the agent's `settings.py`.
+ */
+export const DEFAULT_WEB_COMPONENT_URL =
+  'https://datacommons.org/datacommons.js';
+
+/**
+ * Origin the chart web components fetch their data from when none is
+ * configured. It matches `DEFAULT_WEB_COMPONENT_API_ROOT` in the agent's
+ * `settings.py`.
+ */
+export const DEFAULT_WEB_COMPONENT_API_ROOT = 'https://datacommons.org';
+
 export interface RuntimeConfig {
   /** Whether the interactive Data Agent chat surface is active. */
   isChatEnabled: boolean;
   /** Message displayed when chat is disabled. */
   unavailableMessage: string;
+  /** URL that `datacommons.js` is loaded from (`DC_WEB_COMPONENT_URL`). */
+  webComponentUrl: string;
+  /**
+   * Origin the chart web components fetch their data from, passed as their
+   * `apiroot` (`DC_WEB_COMPONENT_API_ROOT`).
+   */
+  webComponentApiRoot: string;
 }
 
-/** Availability used when the page carries no runtime configuration. */
+/** Settings used when the page carries no runtime configuration. */
 export const DEFAULT_RUNTIME_CONFIG: Readonly<RuntimeConfig> = Object.freeze({
   isChatEnabled: true,
   unavailableMessage: DEFAULT_UNAVAILABLE_MESSAGE,
+  webComponentUrl: DEFAULT_WEB_COMPONENT_URL,
+  webComponentApiRoot: DEFAULT_WEB_COMPONENT_API_ROOT,
 });
 
-/** Availability used when a runtime configuration is present but malformed. */
+/**
+ * Settings used when a runtime configuration is present but malformed. Chat
+ * is disabled, and the charts keep their default hosts.
+ */
 const DISABLED_RUNTIME_CONFIG: Readonly<RuntimeConfig> = Object.freeze({
+  ...DEFAULT_RUNTIME_CONFIG,
   isChatEnabled: false,
-  unavailableMessage: DEFAULT_UNAVAILABLE_MESSAGE,
 });
 
 /** The id of the `<script>` element that carries the runtime JSON. */
@@ -91,9 +118,116 @@ const readUnavailableMessage = (value: unknown): string => {
 };
 
 /**
+ * Matches an absolute `http:` or `https:` URL, in any case, and captures its
+ * authority: the text between `//` and the first `/`, `?`, or `#`.
+ */
+const HTTP_URL_AUTHORITY_PATTERN = /^https?:\/\/([^/?#]*)/i;
+
+/**
+ * Matches an authority the agent accepts for a chart host: a hostname of
+ * dot-separated letter, digit, and hyphen labels with an optional numeric
+ * port. It excludes user information, wildcards (`*`), percent-encoding,
+ * IPv6 literals, non-ASCII hosts, and an empty port.
+ */
+const CHART_HOST_AUTHORITY_PATTERN =
+  /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)*(?::\d+)?$/i;
+
+/** Matches the `?` or `#` that starts a query or a fragment. */
+const QUERY_OR_FRAGMENT_PATTERN = /[?#]/;
+
+/**
+ * Matches characters that the agent rejects in a chart host because the
+ * value enters a response header: whitespace, `;`, `,`, and quotes. Control
+ * and non-ASCII characters are checked by code point in {@link isHeaderSafe}.
+ */
+const HEADER_UNSAFE_CHARACTER_PATTERN = /[\s;,'"]/;
+
+/** Highest code point of the C0 control characters. */
+const LAST_C0_CONTROL_CODE_POINT = 0x1f;
+/** Code point of DEL, the control character after the printable ASCII. */
+const DELETE_CODE_POINT = 0x7f;
+
+/**
+ * Returns whether `value` is printable ASCII without a character that cannot
+ * enter a header.
+ */
+const isHeaderSafe = (value: string): boolean =>
+  !HEADER_UNSAFE_CHARACTER_PATTERN.test(value) &&
+  [...value].every((character) => {
+    const codePoint = character.codePointAt(0) ?? 0;
+    return (
+      codePoint > LAST_C0_CONTROL_CODE_POINT && codePoint < DELETE_CODE_POINT
+    );
+  });
+
+/**
+ * Parses `value` as a chart host URL by the agent's rules, or returns
+ * `null`. A valid value is an absolute http(s) URL on a hostname of letters,
+ * digits, hyphens, and dots, with a valid port if it has one.
+ */
+const parseWebComponentUrl = (value: string): URL | null => {
+  const authority = HTTP_URL_AUTHORITY_PATTERN.exec(value)?.[1];
+  if (
+    authority === undefined ||
+    !CHART_HOST_AUTHORITY_PATTERN.test(authority) ||
+    !isHeaderSafe(value)
+  ) {
+    return null;
+  }
+  try {
+    return new URL(value);
+  } catch {
+    // A port above 65535 fails to parse.
+    return null;
+  }
+};
+
+/**
+ * Returns `web_component_url` when it is an absolute http(s) URL. Otherwise
+ * returns the default, with a warning when the value is invalid and without
+ * one when the value is absent.
+ */
+const readWebComponentUrl = (value: unknown): string => {
+  if (value === undefined) {
+    return DEFAULT_WEB_COMPONENT_URL;
+  }
+  if (typeof value === 'string' && parseWebComponentUrl(value) !== null) {
+    return value;
+  }
+  console.warn(
+    `${RUNTIME_CONFIG_LOG_PREFIX} "web_component_url" is not an http(s) URL; using the default.`,
+  );
+  return DEFAULT_WEB_COMPONENT_URL;
+};
+
+/**
+ * Returns `web_component_api_root` as an origin when it is an http(s) origin
+ * with no path other than a trailing slash and no query or fragment.
+ * Otherwise returns the default, with a warning when the value is invalid
+ * and without one when the value is absent.
+ */
+const readWebComponentApiRoot = (value: unknown): string => {
+  if (value === undefined) {
+    return DEFAULT_WEB_COMPONENT_API_ROOT;
+  }
+  const url =
+    typeof value === 'string' && !QUERY_OR_FRAGMENT_PATTERN.test(value)
+      ? parseWebComponentUrl(value)
+      : null;
+  if (url !== null && url.pathname === '/') {
+    return url.origin;
+  }
+  console.warn(
+    `${RUNTIME_CONFIG_LOG_PREFIX} "web_component_api_root" is not an http(s) origin; using the default.`,
+  );
+  return DEFAULT_WEB_COMPONENT_API_ROOT;
+};
+
+/**
  * Parses the text of `#runtime-config`. Empty or absent text gives
  * {@link DEFAULT_RUNTIME_CONFIG}; text that is not a JSON object, or an
- * `enable_chat` that is not a boolean, disables chat.
+ * `enable_chat` that is not a boolean, disables chat. A missing or invalid
+ * chart host takes its default and leaves chat unaffected.
  */
 export const parseRuntimeConfigText = (
   text: string | undefined,
@@ -120,14 +254,16 @@ export const parseRuntimeConfigText = (
   return Object.freeze({
     isChatEnabled: readEnabled(parsed.enable_chat),
     unavailableMessage: readUnavailableMessage(parsed.unavailable_message),
+    webComponentUrl: readWebComponentUrl(parsed.web_component_url),
+    webComponentApiRoot: readWebComponentApiRoot(parsed.web_component_api_root),
   });
 };
 
 let cachedConfig: Readonly<RuntimeConfig> | null = null;
 
 /**
- * Returns the runtime chat availability, reading and caching
- * `#runtime-config` on the first call. An absent or empty element gives
+ * Returns the runtime settings, reading and caching `#runtime-config` on the
+ * first call. An absent or empty element gives
  * {@link DEFAULT_RUNTIME_CONFIG}; a malformed payload, or an `enable_chat`
  * that is not a boolean, disables chat.
  */

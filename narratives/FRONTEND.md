@@ -31,12 +31,16 @@ styles.
   `getInstanceConfig()` in `src/config/instance_config.ts`, which parses
   `<script id="instance-config" type="application/json">` and falls back to the
   Base Data Commons defaults when the tag is empty.
-- **Runtime chat availability comes from `#runtime-config`** in `index.html`.
-  Components read `isChatEnabled` and `unavailableMessage` synchronously via
-  `getRuntimeConfig()` in `src/config/runtime_config.ts`, which falls back to
-  chat enabled when the tag is empty and disables chat when its JSON is
-  malformed. Under `pnpm dev:ui`, the Vite dev server copies the element from
-  the agent at `AGENT_URL`, so the agent is the only source of the value.
+- **Runtime settings come from `#runtime-config`** in `index.html`.
+  Components read the chat availability (`isChatEnabled`,
+  `unavailableMessage`) and the chart hosts (`webComponentUrl`,
+  `webComponentApiRoot`) synchronously via `getRuntimeConfig()` in
+  `src/config/runtime_config.ts`, which falls back to chat enabled and the
+  datacommons.org chart hosts when the tag is empty, disables chat when its
+  JSON is malformed, and replaces a missing or invalid chart host with its
+  default without affecting chat. Under `pnpm dev:ui`, the Vite dev server
+  copies the element from the agent at `AGENT_URL`, so the agent is the only
+  source of the values.
 - **Variants and state are expressed as conditional utility classes**, the
   Tailwind idiom — not `data-*` attributes, which belong to a stylesheet-driven
   stack. Lift any condition more complex than a single ternary out of the JSX

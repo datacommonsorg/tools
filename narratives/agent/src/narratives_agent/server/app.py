@@ -163,7 +163,10 @@ def create_app() -> FastAPI:
     app.mount(
         base_path or "/",
         spa.SpaStaticFiles(
-            directory=settings.static_root, html=True, check_dir=False
+            directory=settings.static_root,
+            html=True,
+            check_dir=False,
+            settings=settings,
         ),
     )
     return app

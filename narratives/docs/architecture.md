@@ -83,9 +83,16 @@ functions (`workflows/fetch.py`).
 ### 2. Browser chart requests
 
 When an answer includes a chart, the UI renders Data Commons web components
-(such as `<datacommons-line>` or `<datacommons-bar>`). Those components fetch
-their own chart data and place names directly from Data Commons
-(`datacommons.org` or the same-origin Data Commons website host).
+(such as `<datacommons-line>` or `<datacommons-bar>`). The browser loads them
+from `DC_WEB_COMPONENT_URL` (default
+`https://datacommons.org/datacommons.js`), and they fetch their own chart data
+and place names directly from `DC_WEB_COMPONENT_API_ROOT` (default
+`https://datacommons.org`), passed to each component as its `apiroot`. Both are
+agent settings that the server stamps into `#runtime-config` (see
+[UI theme & instance branding](#ui-theme--instance-branding)), so they change
+without a UI rebuild. The API root is a Data Commons website host, not
+`api.datacommons.org`, which requires an API key that the browser cannot
+hold.
 
 Prose figures come from the digest while charts are drawn by the Data Commons
 web components from their own fetch, pinned by `facet_ids`, so the reference
@@ -468,20 +475,36 @@ directly into `ui/index.html` and read synchronously when the app starts:
   attribute on a chart element.
 
 When the agent server serves `index.html` (`server/routes/spa.py`), it also
-stamps the effective chat availability,
-`{"enable_chat": <bool>, "unavailable_message": "<str>"}`, into
-`<script id="runtime-config" type="application/json">`, escaping `<`, `>`,
-`&`, U+2028, and U+2029. The `ETag` hashes the stamped bytes and
-`Last-Modified` is omitted, so a browser revalidating the page receives the
-current value after a restart that changes it. `getRuntimeConfig()` in
-`ui/src/config/runtime_config.ts` reads `#runtime-config` synchronously at
-startup. When `enable_chat` is `false`, `App` renders `UnavailableView`
-(`ui/src/components/view_unavailable.tsx`) with the unavailable message on the
-Data Agent route instead of the chat, keeps `Header` and `MetricsPage`
-available, and hides the "New chat" controls. Under `pnpm dev:ui`, the Vite
-dev server fetches the shell from the agent at `AGENT_URL` on every page load
-and copies its `#runtime-config` (`copyAgentRuntimeConfig` in
-`ui/src/config/runtime_config_dev.ts`, which only `vite.config.ts` imports),
-parsing and re-escaping the value. The shell is fetched from the `AGENT_URL`
-path without following redirects; when the agent cannot be read, the element
-stays empty and Vite logs a warning with the reason.
+stamps the runtime settings, the effective chat availability and the chart
+hosts, into `<script id="runtime-config" type="application/json">`:
+
+```json
+{
+  "enable_chat": true,
+  "unavailable_message": "<str>",
+  "web_component_url": "<str>",
+  "web_component_api_root": "<str>"
+}
+```
+
+The JSON is written on one line with `<`, `>`, `&`, U+2028, and U+2029
+escaped. The chart hosts are the ones the server starts with. The `ETag`
+hashes the stamped bytes and `Last-Modified` is omitted, so a browser
+revalidating the page receives the current values after a restart that
+changes them. `getRuntimeConfig()` in `ui/src/config/runtime_config.ts` reads
+`#runtime-config` synchronously at startup; a missing or invalid chart host
+takes its default without affecting chat. Before the first render,
+`ui/src/main.tsx` appends one `<script>` for `web_component_url`
+(`ui/src/utils/load_web_components.ts`). The script runs asynchronously once
+loaded, so chart code waits for each component with
+`customElements.whenDefined`. When `enable_chat` is `false`, `App` renders
+`UnavailableView` (`ui/src/components/view_unavailable.tsx`) with the
+unavailable message on the Data Agent route instead of the chat, keeps
+`Header` and `MetricsPage` available, and hides the "New chat" controls. Under
+`pnpm dev:ui`, the Vite dev server fetches the shell from the agent at
+`AGENT_URL` on every page load and copies its `#runtime-config`
+(`copyAgentRuntimeConfig` in `ui/src/config/runtime_config_dev.ts`, which only
+`vite.config.ts` imports), parsing and re-escaping the values. The shell is
+fetched from the `AGENT_URL` path without following redirects; when the agent
+cannot be read, the element stays empty and Vite logs a warning with the
+reason.

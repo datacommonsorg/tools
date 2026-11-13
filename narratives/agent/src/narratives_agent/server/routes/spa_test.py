@@ -27,10 +27,12 @@ Verifies that:
 5. Percent-encoded `..` segments cannot reach files outside the static root,
    and an unknown file or a missing static root returns 404.
 6. `/healthz` answers `ok`.
-7. The root `index.html` is served with the effective chat availability
-   stamped into `#runtime-config`, escaped for a `<script>` element, under a
-   SHA-256 `ETag` of the stamped bytes that changes with the chat settings,
-   without `Last-Modified`, and revalidated only through `If-None-Match`.
+7. The root `index.html` is served with the effective chat availability and
+   the chart hosts stamped into `#runtime-config`, escaped for a `<script>`
+   element, under a SHA-256 `ETag` of the stamped bytes that changes with the
+   chat settings, without `Last-Modified`, and revalidated only through
+   `If-None-Match`. The stamped chart hosts are the ones the app starts
+   with.
 """
 
 import hashlib
@@ -41,9 +43,12 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 
+from narratives_agent.config_model import DEFAULT_UNAVAILABLE_MESSAGE
 from narratives_agent.server.app import create_app
 from narratives_agent.server.security_headers import SECURITY_HEADERS
 from narratives_agent.settings import (
+    DC_WEB_COMPONENT_API_ROOT_ENV,
+    DC_WEB_COMPONENT_URL_ENV,
     ENABLE_CHAT_ENV,
     UNAVAILABLE_MESSAGE_ENV,
     get_settings,
@@ -52,13 +57,21 @@ from narratives_agent.settings import (
 _SHELL_HEAD = b"<!doctype html><title>Narratives</title>"
 _RUNTIME_OPEN = b'<script id="runtime-config" type="application/json">'
 _INDEX = _SHELL_HEAD + _RUNTIME_OPEN + b"</script>"
-# `_INDEX` as served when chat is enabled with the default message.
+# `_INDEX` as served when chat is enabled with the default message and the
+# chart hosts are the defaults.
 _STAMPED_INDEX = (
     _SHELL_HEAD
     + _RUNTIME_OPEN
     + b'{"enable_chat":true,"unavailable_message":"This Data Commons tool '
-    + b'is temporarily unavailable due to high traffic."}</script>'
+    + b'is temporarily unavailable due to high traffic.",'
+    + b'"web_component_url":"https://datacommons.org/datacommons.js",'
+    + b'"web_component_api_root":"https://datacommons.org"}</script>'
 )
+# The chart host entries of `#runtime-config` when no override is set.
+_DEFAULT_CHART_HOSTS = {
+    "web_component_url": "https://datacommons.org/datacommons.js",
+    "web_component_api_root": "https://datacommons.org",
+}
 _BUNDLE = b"console.log('narratives');"
 _LOGO = b"\x89PNG\r\n\x1a\n"
 _SVG = b"<svg xmlns='http://www.w3.org/2000/svg'/>"
@@ -366,13 +379,18 @@ def test_the_shell_carries_a_hash_of_the_stamped_bytes(
                     "This Data Commons tool is temporarily unavailable due "
                     "to high traffic."
                 ),
+                **_DEFAULT_CHART_HOSTS,
             },
             id="ENABLE_CHAT",
         ),
         pytest.param(
             UNAVAILABLE_MESSAGE_ENV,
             "Back at noon.",
-            {"enable_chat": True, "unavailable_message": "Back at noon."},
+            {
+                "enable_chat": True,
+                "unavailable_message": "Back at noon.",
+                **_DEFAULT_CHART_HOSTS,
+            },
             id="UNAVAILABLE_MESSAGE",
         ),
     ],
@@ -484,6 +502,7 @@ def test_the_unavailable_message_cannot_break_out_of_the_script(
     assert _read_runtime_config(body) == {
         "enable_chat": True,
         "unavailable_message": message,
+        **_DEFAULT_CHART_HOSTS,
     }
 
 
@@ -505,3 +524,67 @@ def test_a_shell_without_the_slot_is_served_unchanged(
     assert response.headers["etag"] == (
         f'"{hashlib.sha256(_SHELL_HEAD).hexdigest()}"'
     )
+
+
+def _create_shell_client(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> TestClient:
+    """Returns a test client for an app whose static root holds `_INDEX`."""
+    static_root = tmp_path / "agent" / "static"
+    static_root.mkdir(parents=True)
+    (static_root / "index.html").write_bytes(_INDEX)
+    monkeypatch.setenv("AGENT_ROOT", str(tmp_path / "agent"))
+    monkeypatch.setenv("STATIC_ROOT", str(static_root))
+    return TestClient(create_app())
+
+
+def test_the_shell_carries_the_configured_chart_hosts(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Test: Chart host settings in the stamped `#runtime-config`.
+    # Situation: When the app starts, `DC_WEB_COMPONENT_URL` and
+    #   `DC_WEB_COMPONENT_API_ROOT` name autopush, and the API root ends with
+    #   a trailing slash.
+    # Expectation: `#runtime-config` carries both hosts, with the trailing
+    #   slash removed from the API root, alongside the default chat
+    #   availability.
+    monkeypatch.setenv(
+        DC_WEB_COMPONENT_URL_ENV,
+        "https://autopush.datacommons.org/datacommons.js",
+    )
+    monkeypatch.setenv(
+        DC_WEB_COMPONENT_API_ROOT_ENV, "https://autopush.datacommons.org/"
+    )
+
+    body = _create_shell_client(tmp_path, monkeypatch).get("/").content
+
+    assert _read_runtime_config(body) == {
+        "enable_chat": True,
+        "unavailable_message": DEFAULT_UNAVAILABLE_MESSAGE,
+        "web_component_url": "https://autopush.datacommons.org/datacommons.js",
+        "web_component_api_root": "https://autopush.datacommons.org",
+    }
+
+
+def test_the_chart_hosts_are_fixed_when_the_app_starts(
+    monkeypatch: pytest.MonkeyPatch, client: TestClient
+) -> None:
+    # Test: Chart host settings changed after the app is built.
+    # Situation: The app starts with the default chart hosts. Then
+    #   `DC_WEB_COMPONENT_API_ROOT` changes, and the cached settings are
+    #   cleared.
+    # Expectation: The shell keeps the default chart hosts that the app was
+    #   built with, so the hosts cannot differ from anything else that the
+    #   app built from the settings at startup.
+    monkeypatch.setenv(
+        DC_WEB_COMPONENT_API_ROOT_ENV, "https://autopush.datacommons.org"
+    )
+    get_settings.cache_clear()
+
+    body = client.get("/").content
+
+    assert _read_runtime_config(body) == {
+        "enable_chat": True,
+        "unavailable_message": DEFAULT_UNAVAILABLE_MESSAGE,
+        **_DEFAULT_CHART_HOSTS,
+    }

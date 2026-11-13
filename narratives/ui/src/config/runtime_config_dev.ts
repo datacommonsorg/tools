@@ -15,12 +15,13 @@
  */
 
 /**
- * @fileoverview Vite dev-server helpers that copy the agent's chat
- * availability into the page the dev server serves. Only `vite.config.ts`
- * and this module's tests import it. `vite.config.ts` loads it in Node before
- * the `@/` alias exists, so its imports are relative (`biome.json` exempts
- * this file from the relative-import rule), and the modules it imports,
- * `runtime_config.ts` and `base_url.ts`, have no `@/` imports.
+ * @fileoverview Vite dev-server helpers that copy the agent's runtime
+ * settings (chat availability and chart hosts) into the page the dev server
+ * serves. Only `vite.config.ts` and this module's tests import it.
+ * `vite.config.ts` loads it in Node before the `@/` alias exists, so its
+ * imports are relative (`biome.json` exempts this file from the
+ * relative-import rule), and the modules it imports, `runtime_config.ts` and
+ * `base_url.ts`, have no `@/` imports.
  */
 
 import { trimTrailingSlashes } from './base_url';
@@ -98,14 +99,17 @@ export const extractRuntimeConfigText = (html: string): string | undefined => {
 };
 
 /**
- * Serializes `config` to the wire JSON that the agent stamps,
- * `{"enable_chat":<bool>,"unavailable_message":"<str>"}`, escaped for a
- * `<script>` element.
+ * Serializes `config` to the wire JSON that the agent stamps, with the keys
+ * `enable_chat`, `unavailable_message`, `web_component_url`, and
+ * `web_component_api_root` in the agent's order, escaped for a `<script>`
+ * element.
  */
 const serializeRuntimeConfig = (config: Readonly<RuntimeConfig>): string =>
   JSON.stringify({
     enable_chat: config.isChatEnabled,
     unavailable_message: config.unavailableMessage,
+    web_component_url: config.webComponentUrl,
+    web_component_api_root: config.webComponentApiRoot,
   }).replace(
     HTML_JSON_ESCAPE_PATTERN,
     (character) => HTML_JSON_ESCAPES[character],
@@ -192,12 +196,13 @@ const fetchAgentRuntimeConfigText = async (
 };
 
 /**
- * Returns `html` with the chat availability of the agent whose HTML shell is
+ * Returns `html` with the runtime settings of the agent whose HTML shell is
  * at `shellUrl` stamped into its empty `#runtime-config`, so the Vite dev
- * server shows the same availability as the agent. The copied text is parsed
- * with {@link parseRuntimeConfigText} and re-serialized, so a malformed
- * payload disables chat and escaping is always applied here. When the shell
- * cannot be read, `html` is returned unchanged with one warning.
+ * server shows the same chat availability and chart hosts as the agent. The
+ * copied text is parsed with {@link parseRuntimeConfigText} and
+ * re-serialized, so a malformed payload disables chat and escaping is always
+ * applied here. When the shell cannot be read, `html` is returned unchanged
+ * with one warning.
  */
 export const copyAgentRuntimeConfig = async (
   html: string,
@@ -206,7 +211,7 @@ export const copyAgentRuntimeConfig = async (
   const result = await fetchAgentRuntimeConfigText(shellUrl);
   if (typeof result !== 'string') {
     console.warn(
-      `${RUNTIME_CONFIG_LOG_PREFIX} cannot read chat availability from ` +
+      `${RUNTIME_CONFIG_LOG_PREFIX} cannot read the runtime settings from ` +
         `${shellUrl}: ${result.reason}. ${result.hint} ` +
         `Leaving #${RUNTIME_CONFIG_ELEMENT_ID} empty.`,
     );

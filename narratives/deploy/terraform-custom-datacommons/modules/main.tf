@@ -111,6 +111,16 @@ resource "google_cloud_run_v2_service" "dc_app_service" {
         name  = "TIMEZONE"
         value = var.timezone
       }
+      # These variables set where the browser loads the chart web components
+      # from and where the components fetch their data.
+      env {
+        name  = "DC_WEB_COMPONENT_URL"
+        value = var.dc_web_component_url
+      }
+      env {
+        name  = "DC_WEB_COMPONENT_API_ROOT"
+        value = var.dc_web_component_api_root
+      }
       env {
         name  = "ALLOWED_ORIGIN"
         value = var.allowed_origin

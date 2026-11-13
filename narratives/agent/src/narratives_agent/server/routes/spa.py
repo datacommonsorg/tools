@@ -19,7 +19,8 @@ UI build: `index.html`, the content-hashed files under `assets/` and
 `theme/`, and the bare files the UI loads from the root, such as
 `dc-logo.svg`. `config.json` lives under `agent_root`, outside the static
 root, so no file needs to be filtered by name or suffix. The root
-`index.html` is served with the effective chat availability stamped into its
+`index.html` is served with the runtime settings (the effective chat
+availability and the chart hosts) stamped into its
 `<script id="runtime-config" type="application/json">` element.
 """
 
@@ -38,6 +39,7 @@ from starlette.datastructures import Headers
 from starlette.types import Scope
 
 from narratives_agent.config import get_chat_config
+from narratives_agent.settings import Settings
 
 router = APIRouter()
 
@@ -90,17 +92,23 @@ async def healthz() -> PlainTextResponse:
     return PlainTextResponse("ok\n")
 
 
-def _serialize_runtime_config() -> bytes:
-    """Returns the chat availability JSON, escaped for a `<script>` element.
+def _serialize_runtime_config(settings: Settings) -> bytes:
+    """Returns the runtime settings JSON, escaped for a `<script>` element.
 
-    Only `enable_chat` and `unavailable_message` are serialized; nothing
-    else from the configuration reaches the page.
+    Only the chat availability (`enable_chat`, `unavailable_message`) and
+    the chart hosts (`web_component_url`, `web_component_api_root`) are
+    serialized, so nothing else from the configuration reaches the page.
+    The chart hosts come from `settings`, the `Settings` instance that the
+    application was built with, so they stay fixed for the life of the
+    process.
     """
     chat = get_chat_config()
     serialized = json.dumps(
         {
             "enable_chat": chat.enabled,
             "unavailable_message": chat.unavailable_message,
+            "web_component_url": settings.dc_web_component_url,
+            "web_component_api_root": settings.dc_web_component_api_root,
         },
         ensure_ascii=False,
         separators=(",", ":"),
@@ -108,7 +116,7 @@ def _serialize_runtime_config() -> bytes:
     return serialized.translate(_HTML_JSON_ESCAPES).encode("utf-8")
 
 
-def _render_shell(full_path: str) -> bytes:
+def _render_shell(full_path: str, settings: Settings) -> bytes:
     """Returns the HTML shell with the runtime JSON stamped into its slot.
 
     Reads the file, so callers run it off the event loop. A file without the
@@ -121,7 +129,7 @@ def _render_shell(full_path: str) -> bytes:
         return template
     stamped_slot = (
         _RUNTIME_CONFIG_OPEN_TAG
-        + _serialize_runtime_config()
+        + _serialize_runtime_config(settings)
         + _SCRIPT_CLOSE_TAG
     )
     return template.replace(_RUNTIME_CONFIG_SLOT, stamped_slot, 1)
@@ -140,10 +148,11 @@ def _matches_if_none_match(if_none_match: str, etag: str) -> bool:
 def _build_shell_response(body: bytes, scope: Scope) -> Response:
     """Returns the stamped shell, or 304 when `If-None-Match` matches it.
 
-    The `ETag` hashes the stamped bytes, so a change to the chat settings
-    changes it. `Last-Modified` is omitted and `If-Modified-Since` ignored:
-    the file keeps its build time across restarts that change the stamped
-    JSON, so a date comparison would return a stale 304.
+    The `ETag` hashes the stamped bytes, so a change to the runtime
+    settings changes it. The response omits `Last-Modified` and ignores
+    `If-Modified-Since` because the file keeps its build time across
+    restarts that change the stamped JSON, so a date comparison would
+    return a stale 304.
     """
     etag = f'"{hashlib.sha256(body).hexdigest()}"'
     headers = {
@@ -162,7 +171,30 @@ def _build_shell_response(body: bytes, scope: Scope) -> Response:
 
 
 class SpaStaticFiles(StaticFiles):
-    """Serves the UI build with cache and Content-Security-Policy headers."""
+    """Serves the UI build with cache and Content-Security-Policy headers.
+
+    The HTML shell carries the chart hosts from the `Settings` that this
+    instance is constructed with.
+    """
+
+    def __init__(
+        self,
+        *,
+        directory: str | os.PathLike[str],
+        html: bool,
+        check_dir: bool,
+        settings: Settings,
+    ) -> None:
+        """Configures `StaticFiles` for `directory` and stores `settings`.
+
+        Args:
+            directory: The static root.
+            html: Whether a directory path serves its `index.html`.
+            check_dir: Whether a missing `directory` raises at construction.
+            settings: The settings whose chart hosts the shell carries.
+        """
+        super().__init__(directory=directory, html=html, check_dir=check_dir)
+        self._settings = settings
 
     async def get_response(self, path: str, scope: Scope) -> Response:
         """Returns the stamped HTML shell for `/`, else the static file.
@@ -176,7 +208,9 @@ class SpaStaticFiles(StaticFiles):
                 self.lookup_path, _SHELL_FILE_NAME
             )
             if stat_result is not None and stat.S_ISREG(stat_result.st_mode):
-                body = await run_in_threadpool(_render_shell, full_path)
+                body = await run_in_threadpool(
+                    _render_shell, full_path, self._settings
+                )
                 return _build_shell_response(body, scope)
         return await super().get_response(path, scope)
 

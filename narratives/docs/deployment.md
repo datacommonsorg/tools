@@ -395,6 +395,55 @@ git pull upstream main
 ./deploy.sh
 ```
 
+### Chart hosts (`DC_WEB_COMPONENT_URL` and `DC_WEB_COMPONENT_API_ROOT`)
+
+Charts are drawn in the browser by the Data Commons web components, which the
+browser loads and which fetch their own data, without passing through the
+agent. Two environment variables on the container set the hosts they use:
+
+| Variable | Default | Sets |
+| :--- | :--- | :--- |
+| `DC_WEB_COMPONENT_URL` | `https://datacommons.org/datacommons.js` | Script URL |
+| `DC_WEB_COMPONENT_API_ROOT` | `https://datacommons.org` | Data origin |
+
+`DC_WEB_COMPONENT_URL` is the full URL of `datacommons.js`.
+`DC_WEB_COMPONENT_API_ROOT` is the origin the charts fetch their data from,
+passed to each component as its `apiroot`. It must name a Data Commons website
+host, such as `https://datacommons.org`, not `https://api.datacommons.org`,
+which requires an API key that the browser cannot hold. A custom Data Commons
+that serves its own data sets it to the instance's own host.
+
+The server stamps both values into the page, so a change needs a restart but
+no UI rebuild.
+
+The server refuses to start when either value is malformed.
+`DC_WEB_COMPONENT_URL` must be an absolute `http` or `https` URL with a
+hostname. `DC_WEB_COMPONENT_API_ROOT` must be an `http` or `https` origin: a
+scheme, a hostname, and an optional port, with no path other than a trailing
+slash (which is removed), no query, and no fragment. In both, the hostname is
+ASCII letters, digits, hyphens, and dots (no wildcard, percent-encoding, or
+IPv6 literal), a port, when present, is a number, and the value contains no
+user information, whitespace, semicolon, comma, quote, or control character,
+so that it is also a valid source in a response header.
+
+The autopush and staging deployments must set both variables to their own
+hosts (for example `https://autopush.datacommons.org/datacommons.js` and
+`https://autopush.datacommons.org`) to show their own data; with the defaults,
+their charts show production data.
+
+- **Cloud Run:** set the Terraform module variables `dc_web_component_url` and
+  `dc_web_component_api_root`, or update the service directly:
+
+  ```sh
+  gcloud run services update <instance>-app --region=<region> \
+    --update-env-vars=DC_WEB_COMPONENT_API_ROOT=https://data.example.org
+  ```
+
+- **GKE (`datacommons-website`):** set the variables in the Narratives Helm
+  values for the environment.
+- **Local development:** set them in `.env.local` (see
+  `.env.local.example`).
+
 ### Disabling chat (emergency off switch)
 
 You can temporarily disable new chat turns while keeping the static React UI,
