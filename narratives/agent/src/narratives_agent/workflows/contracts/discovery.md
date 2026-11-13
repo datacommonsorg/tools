@@ -142,7 +142,8 @@ indicators every time, so choose by this method rather than case by case:
    5. It is a standardized indicator from an official statistical framework
       or agency, or from the source the answer already uses.
    6. Only if still tied: the order the search listed them.
-3. Fetch at most five indicators, all in the same round, and fetch a
+3. Fetch at most four indicators, the most an answer reports, or five when
+   the question itself names five; fetch them all in the same round, and fetch a
    companion only from the same source as its indicator, with
    `source_override` set to that indicator's facet. The parts of a
    composition or the stages of a progression count as one indicator. Add
@@ -170,9 +171,17 @@ indicators every time, so choose by this method rather than case by case:
    - Indicators that are already rates, shares, medians, or averages
      (unemployment rate, median income, life expectancy, deaths per
      100,000): use them as they are; never divide them by population.
+   - Counts of people who are part of the population they would be divided
+     by (people below the poverty line, people without health insurance):
+     report them as a percentage of the population whenever the question
+     asks for a rate or compares places, never as the count alone. Prefer a
+     rate or percentage the source publishes; otherwise fetch the count and
+     a population table and compute it with `per_capita` and a `scale` of
+     100, so the answer reports a percentage, never a figure per 1,000
+     people.
    - Spending as a share of GDP: only when a source publishes it.
    A population table fetched only for `per_capita` does not count toward
-   the five indicators.
+   the indicator limit.
 5. In the specification's `findings`, name the angles and the indicators you
    chose. In its `related` list, name at most five related angles and
    indicators you left aside, each in plain words with the place it applies

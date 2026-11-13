@@ -74,6 +74,28 @@ function getAnchorHrefs(root: Element): (string | null)[] {
 afterEach(cleanup);
 
 describe('ResponseCard tables', () => {
+  const INCOME_TABLE = `
+| City | Median household income (USD, 2024) [1] |
+| --- | --- |
+| Austin | 93,658 |
+`;
+
+  it.each([
+    ['as one string', renderMarkdown],
+    ['with each word revealed', renderStreamingMarkdown],
+  ])('keeps a header ending with its citation %s', (_, renderBody) => {
+    // Test: A wrapping column header.
+    // Situation: The header "Median household income (USD, 2024) [1]",
+    //   rendered statically and with the word-by-word reveal.
+    // Expectation: The spaces inside "(USD, 2024) [1]" never break, while
+    //   the space before it still can, so the unit, year, and citation
+    //   wrap as one word.
+    const { container } = renderBody(INCOME_TABLE);
+    const header = container.querySelectorAll('th')[1];
+    const text = header.textContent ?? '';
+    expect(text).toContain('income (USD,\u00A02024)\u00A0');
+    expect(text).not.toContain('income\u00A0(');
+  });
   it('caps the figures at two decimals', () => {
     // Test: Rounding inside a rendered table.
     // Situation: A time series written to eleven decimals.
