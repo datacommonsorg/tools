@@ -21,7 +21,11 @@
  */
 
 import { withBaseUrl } from '@/src/config/base_url';
-import type { MetricsConfig, MetricsTab } from '@/src/types/metrics';
+import type {
+  MetricsConfig,
+  MetricsTile,
+  MetricsTileType,
+} from '@/src/types/metrics';
 
 export interface NavLink {
   label: string;
@@ -143,21 +147,128 @@ const isNavLink = (value: unknown): value is NavLink =>
 const isNavLinkArray = (value: unknown): value is NavLink[] =>
   Array.isArray(value) && value.every(isNavLink);
 
-// Validate only the fields that MetricsPage reads; remaining tile attributes are
-// forwarded directly to the Data Commons web component.
-const isMetricsTab = (value: unknown): value is MetricsTab =>
+/**
+ * The chart types that a Key Metrics tile can render. The set matches the
+ * `metricsTile.type` enum in `theme.schema.json`.
+ */
+const METRICS_TILE_TYPES: ReadonlySet<string> = new Set<MetricsTileType>([
+  'line',
+  'bar',
+  'map',
+  'ranking',
+  'highlight',
+  'scatter',
+  'pie',
+  'gauge',
+  'slider',
+]);
+
+/**
+ * The tile keys that are forwarded as attributes to the tile's
+ * `<datacommons-*>` element. The list matches `metricsTile.properties` in
+ * `theme.schema.json`, except for `type` and `title`. Every other key is
+ * dropped so that a theme cannot set an arbitrary attribute, such as
+ * `onclick`, on the chart element.
+ */
+export const METRICS_TILE_ATTRIBUTE_NAMES: readonly Exclude<
+  keyof MetricsTile,
+  'type' | 'title'
+>[] = [
+  'header',
+  'variable',
+  'variables',
+  'place',
+  'places',
+  'parentPlace',
+  'childPlaceType',
+  'date',
+  'rankingCount',
+  'showHighestLowest',
+  'showLowest',
+  'showPlaceLabels',
+  'sort',
+  'colors',
+  'unit',
+  'min',
+  'max',
+  'startDate',
+  'endDate',
+];
+
+const METRICS_TILE_ATTRIBUTE_NAME_SET: ReadonlySet<string> = new Set<string>(
+  METRICS_TILE_ATTRIBUTE_NAMES,
+);
+
+/** A tile as read from the theme, before its type and keys are checked. */
+interface RawMetricsTile {
+  type: string;
+  title: string;
+  [name: string]: unknown;
+}
+
+interface RawMetricsTab {
+  id: string;
+  label: string;
+  tiles: RawMetricsTile[];
+}
+
+interface RawMetricsConfig {
+  tabs: RawMetricsTab[];
+}
+
+const isRawMetricsTile = (value: unknown): value is RawMetricsTile =>
+  isRecord(value) && isString(value.type) && isString(value.title);
+
+const isRawMetricsTab = (value: unknown): value is RawMetricsTab =>
   isRecord(value) &&
   isString(value.id) &&
   isString(value.label) &&
   Array.isArray(value.tiles) &&
-  value.tiles.every(
-    (tile) => isRecord(tile) && isString(tile.type) && isString(tile.title),
-  );
+  value.tiles.every(isRawMetricsTile);
 
-const isMetricsConfig = (value: unknown): value is MetricsConfig =>
+const isRawMetricsConfig = (value: unknown): value is RawMetricsConfig =>
   isRecord(value) &&
   Array.isArray(value.tabs) &&
-  value.tabs.every(isMetricsTab);
+  value.tabs.every(isRawMetricsTab);
+
+const isMetricsTileType = (value: string): value is MetricsTileType =>
+  METRICS_TILE_TYPES.has(value);
+
+/**
+ * Returns a copy of `tile` that keeps only the allowlisted attributes, or
+ * `null` when `tile.type` is not a known chart type. Logs a warning for
+ * each dropped key and each dropped tile.
+ */
+const toMetricsTile = (tile: RawMetricsTile): MetricsTile | null => {
+  const { type, title, ...attributes } = tile;
+  if (!isMetricsTileType(type)) {
+    console.warn(
+      `${LOG_PREFIX} ignoring metrics tile ${JSON.stringify(title)}: unknown type ${JSON.stringify(type)}.`,
+    );
+    return null;
+  }
+  const allowedAttributes: Record<string, unknown> = {};
+  for (const [name, value] of Object.entries(attributes)) {
+    if (METRICS_TILE_ATTRIBUTE_NAME_SET.has(name)) {
+      allowedAttributes[name] = value;
+    } else {
+      console.warn(
+        `${LOG_PREFIX} ignoring attribute ${JSON.stringify(name)} of metrics tile ${JSON.stringify(title)}.`,
+      );
+    }
+  }
+  return { ...allowedAttributes, type, title };
+};
+
+const toMetricsConfig = (raw: RawMetricsConfig): MetricsConfig => ({
+  tabs: raw.tabs.map((tab) => ({
+    id: tab.id,
+    label: tab.label,
+    tiles: tab.tiles
+      .map(toMetricsTile)
+      .filter((tile): tile is MetricsTile => tile !== null),
+  })),
+});
 
 const pick = <T>(
   key: string,
@@ -182,6 +293,12 @@ const mergeOverrides = (raw: Record<string, unknown>): InstanceConfig => {
   const splashAssets = pick('splash_assets', raw.splash_assets, isRecord, {});
   const hasCustomIdentity =
     raw.logo !== undefined || raw.instance_name !== undefined;
+  const rawMetrics = pick<RawMetricsConfig | null>(
+    'metrics',
+    raw.metrics,
+    isRawMetricsConfig,
+    null,
+  );
   return {
     instanceName: pick(
       'instance_name',
@@ -241,7 +358,8 @@ const mergeOverrides = (raw: Record<string, unknown>): InstanceConfig => {
       isStringArray,
       defaults.suggestions,
     ),
-    metrics: pick('metrics', raw.metrics, isMetricsConfig, defaults.metrics),
+    metrics:
+      rawMetrics === null ? defaults.metrics : toMetricsConfig(rawMetrics),
   };
 };
 

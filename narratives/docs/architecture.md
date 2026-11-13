@@ -441,7 +441,10 @@ directly into `ui/index.html` and read synchronously when the app starts:
   `getInstanceConfig()` in `ui/src/config/instance_config.ts`. This helper
   reads `<script id="instance-config" type="application/json">`, validates each
   field, and falls back to `DEFAULT_INSTANCE_CONFIG` for any field that is
-  missing or invalid.
+  missing or invalid. A Key Metrics tile keeps only the attributes that
+  `metricsTile` lists in `schemas/theme.schema.json`, and a tile whose `type`
+  is not one of its chart types is dropped, so a theme cannot set an arbitrary
+  attribute on a chart element.
 
 When the agent server serves `index.html` (`server/routes/spa.py`), it also
 stamps the effective chat availability,

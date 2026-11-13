@@ -24,6 +24,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   DEFAULT_INSTANCE_CONFIG,
   getInstanceConfig,
+  METRICS_TILE_ATTRIBUTE_NAMES,
   resetInstanceConfigForTests,
   sanitizeUrl,
 } from '@/src/config/instance_config';
@@ -51,6 +52,10 @@ interface ThemeSchema {
   $defs: {
     assetUrl: { pattern: string };
     linkHref: { pattern: string };
+    metricsTile: {
+      properties: Record<string, unknown>;
+      required: string[];
+    };
   };
 }
 
@@ -268,6 +273,30 @@ describe('getInstanceConfig', () => {
     expect(warn).toHaveBeenCalledTimes(5);
   });
 
+  it.each([
+    ['javascript:', 'javascript:alert(1)'],
+    ['data:', 'data:text/html,<script>alert(1)</script>'],
+    ['vbscript:', 'vbscript:msgbox(1)'],
+  ])('falls back to the defaults for a %s logo, logo link, and navigation href', (_, value) => {
+    // Test: Script and data URLs in the logo, the logo link, and navigation.
+    // Situation: `logo`, `logo_href`, and the only navigation href hold the
+    //            same script or data URL.
+    // Expectation: `logoUrl`, `logoHref`, and `navigation` fall back to their
+    //              defaults.
+    spyOnWarn();
+    writeSlot(
+      JSON.stringify({
+        logo: value,
+        logo_href: value,
+        navigation: [{ label: 'Evil', href: value }],
+      }),
+    );
+    const config = getInstanceConfig();
+    expect(config.logoUrl).toBe(DEFAULT_INSTANCE_CONFIG.logoUrl);
+    expect(config.logoHref).toBe(DEFAULT_INSTANCE_CONFIG.logoHref);
+    expect(config.navigation).toEqual(DEFAULT_INSTANCE_CONFIG.navigation);
+  });
+
   it('accepts hash-route, same-origin and http(s) navigation hrefs', () => {
     // Test: Allowed navigation href formats.
     // Situation: The navigation array contains a hash route, a root-relative path,
@@ -315,6 +344,91 @@ describe('getInstanceConfig', () => {
     expect(getInstanceConfig().headline).toBe('First');
     resetInstanceConfigForTests();
     expect(getInstanceConfig().headline).toBe('Second');
+  });
+});
+
+describe('metrics tiles', () => {
+  /** Writes a theme whose only metrics tab holds `tiles`. */
+  const writeTiles = (tiles: Record<string, unknown>[]): void => {
+    writeSlot(
+      JSON.stringify({
+        metrics: { tabs: [{ id: 'econ', label: 'Economy', tiles }] },
+      }),
+    );
+  };
+
+  it('passes the allowlisted attributes through', () => {
+    // Test: Allowlisted tile attributes.
+    // Situation: A ranking tile sets `variable`, `parentPlace`,
+    //            `childPlaceType`, `rankingCount`, and `showLowest`.
+    // Expectation: The tile keeps every attribute and no warning is logged.
+    const warn = spyOnWarn();
+    const tile = {
+      type: 'ranking',
+      title: 'GDP',
+      variable: 'Amount_EconomicActivity_GrossDomesticProduction_Nominal',
+      parentPlace: 'Earth',
+      childPlaceType: 'Country',
+      rankingCount: 5,
+      showLowest: true,
+    };
+    writeTiles([tile]);
+    expect(getInstanceConfig().metrics.tabs[0].tiles).toEqual([tile]);
+    expect(warn).not.toHaveBeenCalled();
+  });
+
+  it('drops an attribute outside the allowlist and warns', () => {
+    // Test: A tile attribute the schema does not list.
+    // Situation: A line tile sets `onclick` and `apiroot` beside `variable`.
+    // Expectation: The tile keeps `variable`, drops `onclick` and `apiroot`,
+    //              and a warning names each dropped key.
+    const warn = spyOnWarn();
+    writeTiles([
+      {
+        type: 'line',
+        title: 'Population',
+        variable: 'Count_Person',
+        onclick: 'alert(1)',
+        apiroot: 'https://evil.example',
+      },
+    ]);
+    expect(getInstanceConfig().metrics.tabs[0].tiles).toEqual([
+      { type: 'line', title: 'Population', variable: 'Count_Person' },
+    ]);
+    const messages = warn.mock.calls.map((call) => String(call[0]));
+    expect(messages).toHaveLength(2);
+    expect(messages[0]).toContain('"onclick"');
+    expect(messages[1]).toContain('"apiroot"');
+  });
+
+  it('drops a tile of an unknown type and warns', () => {
+    // Test: A tile whose `type` is not a chart type.
+    // Situation: The tab holds a `donut` tile and a `bar` tile.
+    // Expectation: Only the `bar` tile remains, and a warning names the type.
+    const warn = spyOnWarn();
+    writeTiles([
+      { type: 'donut', title: 'Share' },
+      { type: 'bar', title: 'Income' },
+    ]);
+    expect(getInstanceConfig().metrics.tabs[0].tiles).toEqual([
+      { type: 'bar', title: 'Income' },
+    ]);
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(String(warn.mock.calls[0][0])).toContain('"donut"');
+  });
+
+  it('allowlists exactly the attributes the schema lists for a tile', () => {
+    // Test: Drift between the tile allowlist and `theme.schema.json`.
+    // Situation: The schema's `metricsTile.properties` is read from disk.
+    // Expectation: The allowlist equals those properties minus the required
+    //              `type` and `title`.
+    const { metricsTile } = readThemeSchema().$defs;
+    const schemaAttributes = Object.keys(metricsTile.properties).filter(
+      (name) => !metricsTile.required.includes(name),
+    );
+    expect([...METRICS_TILE_ATTRIBUTE_NAMES].sort()).toEqual(
+      schemaAttributes.sort(),
+    );
   });
 });
 
