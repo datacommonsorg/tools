@@ -37,6 +37,26 @@ const writeSlot = (text: string): void => {
   document.head.appendChild(slot);
 };
 
+/**
+ * The path of `schemas/theme.schema.json`, resolved from this file's directory
+ * so that the tests do not depend on the working directory.
+ */
+const THEME_SCHEMA_PATH = resolve(
+  import.meta.dirname,
+  '../../../schemas/theme.schema.json',
+);
+
+/** The parts of `schemas/theme.schema.json` these tests read. */
+interface ThemeSchema {
+  $defs: {
+    assetUrl: { pattern: string };
+    linkHref: { pattern: string };
+  };
+}
+
+const readThemeSchema = (): ThemeSchema =>
+  JSON.parse(readFileSync(THEME_SCHEMA_PATH, 'utf8'));
+
 const spyOnWarn = () => vi.spyOn(console, 'warn').mockReturnValue(undefined);
 
 afterEach(() => {
@@ -362,5 +382,49 @@ describe('DEFAULT_INSTANCE_CONFIG drift', () => {
       readFileSync(resolve(import.meta.dirname, '../../..', path), 'utf8'),
     );
     expect(DEFAULT_INSTANCE_CONFIG.suggestions).toEqual(theme.suggestions);
+  });
+});
+
+describe('theme schema URL patterns', () => {
+  // Each row holds a value, whether the UI accepts the value as an asset URL,
+  // and whether the UI accepts it as a link target. Both the schema patterns
+  // and the UI checks must match every row. The patterns match schemes and URL
+  // forms without parsing the URL, so they reject whitespace that `new URL`
+  // percent-encodes and accept some malformed hosts, such as an out-of-range
+  // port, that `new URL` rejects.
+  const URL_CASES: [string, boolean, boolean][] = [
+    ['/', true, true],
+    ['/dc-logo.svg', true, true],
+    ['/download?format=csv#top', true, true],
+    ['https://cdn.example/a.svg', true, true],
+    ['HTTP://CDN.EXAMPLE/A.SVG', true, true],
+    ['#/metrics', false, true],
+    ['#', false, true],
+    ['javascript:alert(1)', false, false],
+    ['JAVASCRIPT:alert(1)', false, false],
+    ['data:image/svg+xml,<svg/>', false, false],
+    ['vbscript:msgbox', false, false],
+    ['mailto:info@example.org', false, false],
+    ['//evil.example/x.svg', false, false],
+    ['/\\evil.example/x.svg', false, false],
+    ['/assets\\logo.svg', false, false],
+    ['assets/logo.png', false, false],
+    ['http:foo/bar.svg', false, false],
+    ['https://', false, false],
+  ];
+
+  it.each(URL_CASES)('agrees with the UI on %j', (value, isAsset, isLink) => {
+    // Test: Parity between the deploy-time schema and the page-load checks.
+    // Situation: One value is matched against the schema's `assetUrl` and
+    //   `linkHref` patterns, passed to `sanitizeUrl`, and set as `logo_href`.
+    // Expectation: Each pattern and each UI check accepts the value exactly
+    //   when the row says it does.
+    spyOnWarn();
+    const { $defs } = readThemeSchema();
+    expect(new RegExp($defs.assetUrl.pattern, 'u').test(value)).toBe(isAsset);
+    expect(new RegExp($defs.linkHref.pattern, 'u').test(value)).toBe(isLink);
+    expect(sanitizeUrl(value, '/fallback.svg') === value).toBe(isAsset);
+    writeSlot(JSON.stringify({ logo_href: value }));
+    expect(getInstanceConfig().logoHref === value).toBe(isLink);
   });
 });

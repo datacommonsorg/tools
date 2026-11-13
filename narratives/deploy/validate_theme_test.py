@@ -175,3 +175,107 @@ def test_main_exit_codes(tmp_path: Path) -> None:
     valid_theme = tmp_path / "valid.json"
     valid_theme.write_text('{"instance_name": "Acme"}', encoding="utf-8")
     assert validate_theme.main(["validate_theme.py", str(valid_theme)]) == 0
+
+
+def _build_theme_with_value(field: str, value: str) -> dict[str, Any]:
+    """Returns a theme document that sets one URL field to `value`."""
+    if field == "navigation":
+        return {"navigation": [{"label": "Link", "href": value}]}
+    if field in ("thinking_indicator", "done_indicator"):
+        return {"splash_assets": {field: value}}
+    return {field: value}
+
+
+_URL_FIELDS = [
+    "navigation",
+    "logo_href",
+    "logo",
+    "favicon",
+    "thinking_indicator",
+    "done_indicator",
+]
+_LINK_FIELDS = ["navigation", "logo_href"]
+_UNSAFE_URLS = [
+    "javascript:alert(1)",
+    "data:image/svg+xml,<svg/>",
+    "vbscript:msgbox(1)",
+    "//evil.example/logo.png",
+    "assets/logo.png",
+]
+_SAFE_URLS = ["https://cdn.example/logo.png", "/theme/logo.png"]
+
+
+@pytest.fixture(params=["jsonschema", "stdlib"])
+def run_under_each_validator(
+    request: pytest.FixtureRequest, monkeypatch: pytest.MonkeyPatch
+) -> str:
+    """Parametrizes a test to run under jsonschema and the stdlib fallback."""
+    mode: str = request.param
+    if mode == "stdlib":
+        monkeypatch.setitem(sys.modules, "jsonschema", None)
+    return mode
+
+
+@pytest.mark.parametrize("field", _URL_FIELDS)
+@pytest.mark.parametrize("value", _UNSAFE_URLS)
+@pytest.mark.usefixtures("run_under_each_validator")
+def test_url_fields_reject_unsafe_values(
+    schema: dict[str, Any], field: str, value: str
+) -> None:
+    """Rejects script, data, protocol-relative, and relative URL values."""
+    # Test: URL patterns on the theme's link and asset fields.
+    # Situation: Under jsonschema and under the stdlib fallback, one link or
+    #   asset field holds a `javascript:`, `data:`, or `vbscript:` URL, a
+    #   protocol-relative URL, or a relative path.
+    # Expectation: Validation reports a violation for the field.
+    problems = validate_theme.validate(
+        _build_theme_with_value(field, value), schema
+    )
+    assert problems != []
+
+
+@pytest.mark.parametrize("field", _URL_FIELDS)
+@pytest.mark.parametrize("value", _SAFE_URLS)
+@pytest.mark.usefixtures("run_under_each_validator")
+def test_url_fields_accept_http_urls_and_root_paths(
+    schema: dict[str, Any], field: str, value: str
+) -> None:
+    """Accepts an https URL and a single-slash path for every URL field."""
+    # Test: URL patterns on the theme's link and asset fields.
+    # Situation: Under jsonschema and under the stdlib fallback, one link or
+    #   asset field holds an https URL or a root-relative path.
+    # Expectation: Validation reports no violation.
+    problems = validate_theme.validate(
+        _build_theme_with_value(field, value), schema
+    )
+    assert problems == []
+
+
+@pytest.mark.parametrize("field", _LINK_FIELDS)
+@pytest.mark.usefixtures("run_under_each_validator")
+def test_link_fields_accept_hash_routes(
+    schema: dict[str, Any], field: str
+) -> None:
+    """Accepts a `#` hash route for the navigation and logo link targets."""
+    # Test: Hash routes on link fields.
+    # Situation: `navigation[].href` or `logo_href` holds `#/metrics`.
+    # Expectation: Validation reports no violation.
+    problems = validate_theme.validate(
+        _build_theme_with_value(field, "#/metrics"), schema
+    )
+    assert problems == []
+
+
+@pytest.mark.parametrize("field", ["logo", "favicon", "thinking_indicator"])
+@pytest.mark.usefixtures("run_under_each_validator")
+def test_asset_fields_reject_hash_routes(
+    schema: dict[str, Any], field: str
+) -> None:
+    """Rejects a `#` value in asset URL fields because the UI discards it."""
+    # Test: Hash values on asset fields.
+    # Situation: An asset field holds `#/metrics`.
+    # Expectation: Validation reports a violation for the field.
+    problems = validate_theme.validate(
+        _build_theme_with_value(field, "#/metrics"), schema
+    )
+    assert problems != []

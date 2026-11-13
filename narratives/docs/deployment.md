@@ -237,15 +237,15 @@ Both `branding.json` and `agent-config.json` are validated against
 `additionalProperties: false`, so unrecognized or misspelled keys fail
 validation immediately during `./deploy.sh`.
 
-### Branding and UI configuration (`config/branding.json`)
+### Branding and UI configuration (`config/theme.json`)
 
 You only need to include the keys you want to override in
-`config/branding.json`; omitted keys inherit from `defaults/branding.json`:
+`config/theme.json`; omitted keys inherit from `defaults/theme.json`:
 
 ```json
 {
   "instance_name": "Acme Data Commons",
-  "logo": "assets/acme.svg",
+  "logo": "https://acme.example/acme.svg",
   "colors": { "primary": "#0B6E8F" }
 }
 ```
@@ -257,23 +257,28 @@ You only need to include the keys you want to override in
 | **Content** | `suggestions` (landing page starter prompts), `footer` (text and links) |
 | **Structure** | `navigation` (header links), `metrics.tabs` (Key Metrics dashboard tiles), `analytics.ga_tag_id` |
 
+`logo`, `favicon`, and the `splash_assets` indicators take a same-origin path
+starting with a single `/` or an http(s) URL. `navigation` and `footer` link
+targets and `logo_href` also accept a `#` route. Validation during
+`./deploy.sh` rejects any other value, such as `assets/logo.png`.
+
 `logo_href` sets where the header logo links, `/` by default. When the app is
 served at the site root, the logo links only to an http(s) URL, since a
 same-origin link would reload the app and clear the current chat.
 
 Starter templates are available in `schemas/`:
 
-- `schemas/branding.neutral.example.json` — Neutral color palette
-- `schemas/branding.base-dc.example.json` — Base Data Commons theme
-- `schemas/branding.example.json` — Reference listing all supported fields
+- `schemas/theme.neutral.example.json`: Neutral color palette
+- `schemas/theme.base-dc.example.json`: Base Data Commons theme
+- `schemas/theme.example.json`: Reference listing all supported fields
 
 #### Header navigation (`navigation`)
 
 The `navigation` key supports three distinct states:
 
-| Value in `config/branding.json` | Behavior |
+| Value in `config/theme.json` | Behavior |
 | :--- | :--- |
-| Key omitted | Inherits the default navigation links from `defaults/branding.json` |
+| Key omitted | Inherits the default navigation links from `defaults/theme.json` |
 | `[]` (empty array) | Hides the header navigation menu completely |
 | `[{"label": "...", "href": "..."}, ...]` | Renders the specified navigation links |
 
