@@ -77,6 +77,49 @@ afterEach(() => {
   resetInstanceConfigForTests();
 });
 
+describe('ReasoningBlock links', () => {
+  const renderThought = (text: string) =>
+    render(
+      <ReasoningBlock thoughts={[{ text, phase: 'discovery' }]} defaultOpen />,
+    );
+
+  it('opens an http(s) link in a new tab with noopener noreferrer', () => {
+    // Test: A markdown link to an external page in a thought.
+    // Situation: The thought links to an https URL.
+    // Expectation: The link opens in a new tab with rel="noopener noreferrer".
+    const { getByRole } = renderThought('[WDI](https://worldbank.org/wdi)');
+    const link = getByRole('link', { name: 'WDI' });
+    expect(link.getAttribute('href')).toBe('https://worldbank.org/wdi');
+    expect(link.getAttribute('target')).toBe('_blank');
+    expect(link.getAttribute('rel')).toBe('noopener noreferrer');
+  });
+
+  it('opens a same-origin path in a new tab with noopener noreferrer', () => {
+    // Test: A markdown link to a root-relative path in a thought.
+    // Situation: The thought links to `/about`.
+    // Expectation: The link opens in a new tab with rel="noopener noreferrer".
+    const { getByRole } = renderThought('[About](/about)');
+    const link = getByRole('link', { name: 'About' });
+    expect(link.getAttribute('href')).toBe('/about');
+    expect(link.getAttribute('target')).toBe('_blank');
+    expect(link.getAttribute('rel')).toBe('noopener noreferrer');
+  });
+
+  it.each([
+    ['javascript:', 'javascript:alert(1)'],
+    ['data:', 'data:text/html,x'],
+    ['vbscript:', 'vbscript:msgbox(1)'],
+    ['relative', 'relative/path'],
+  ])('renders a %s link as plain text', (_, href) => {
+    // Test: A markdown link with an unsafe URL in a thought.
+    // Situation: The thought links to a script, data, or relative URL.
+    // Expectation: No link renders, and the link text stays visible.
+    const { container, queryByRole } = renderThought(`[Click here](${href})`);
+    expect(queryByRole('link')).toBeNull();
+    expect(container.textContent).toContain('Click here');
+  });
+});
+
 describe('ReasoningBlock', () => {
   it('renders the built-in thinking and done indicators by default', () => {
     // Test: Default indicator assets in ReasoningBlock.

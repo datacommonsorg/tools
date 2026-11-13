@@ -96,9 +96,10 @@ export function Header() {
             // Hide header navigation links below the lg breakpoint because the
             // mobile drawer provides primary navigation on narrow viewports.
             return (
-              <a
+              <Link
                 key={item.href}
                 href={item.href}
+                target="_self"
                 aria-current={isActive ? 'page' : undefined}
                 className={`relative py-1 shrink-0 transition-colors hidden lg:block ${
                   isActive
@@ -110,7 +111,7 @@ export function Header() {
                 {isActive && (
                   <span className="absolute top-0 left-0 w-full h-0.5 rounded-b-sm bg-nav-active" />
                 )}
-              </a>
+              </Link>
             );
           })}
         </nav>

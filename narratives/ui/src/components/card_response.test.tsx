@@ -440,6 +440,45 @@ describe('ResponseCard streaming composite citations', () => {
   });
 });
 
+describe('ResponseCard links', () => {
+  it('opens an http(s) link in a new tab with noopener noreferrer', () => {
+    // Test: A markdown link to an external page.
+    // Situation: The answer links to an https URL.
+    // Expectation: The link opens in a new tab with rel="noopener noreferrer".
+    renderMarkdown('[WDI](https://worldbank.org/wdi)');
+    const link = screen.getByRole('link', { name: 'WDI' });
+    expect(link.getAttribute('href')).toBe('https://worldbank.org/wdi');
+    expect(link.getAttribute('target')).toBe('_blank');
+    expect(link.getAttribute('rel')).toBe('noopener noreferrer');
+  });
+
+  it('opens a same-origin path in a new tab with noopener noreferrer', () => {
+    // Test: A markdown link to a root-relative path.
+    // Situation: The answer links to `/about`.
+    // Expectation: Like every answer link, the link opens in a new tab with
+    //   rel="noopener noreferrer".
+    renderMarkdown('[About](/about)');
+    const link = screen.getByRole('link', { name: 'About' });
+    expect(link.getAttribute('href')).toBe('/about');
+    expect(link.getAttribute('target')).toBe('_blank');
+    expect(link.getAttribute('rel')).toBe('noopener noreferrer');
+  });
+
+  it.each([
+    ['javascript:', 'javascript:alert(1)'],
+    ['data:', 'data:text/html,x'],
+    ['vbscript:', 'vbscript:msgbox(1)'],
+    ['relative', 'relative/path'],
+  ])('renders a %s link as plain text', (_, href) => {
+    // Test: A markdown link whose URL is not safe to follow.
+    // Situation: The answer links to a script, data, or relative URL.
+    // Expectation: No link renders, and the link text stays visible.
+    const { container } = renderMarkdown(`[Click here](${href})`);
+    expect(screen.queryByRole('link')).toBeNull();
+    expect(container.textContent).toContain('Click here');
+  });
+});
+
 describe('ResponseCard headings', () => {
   it('ranks markdown headings one level below the intro h1', () => {
     // Test: Heading levels.

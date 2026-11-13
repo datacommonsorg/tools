@@ -36,6 +36,7 @@ import {
   HideCitationsProvider,
   renderWithCitations,
 } from '@/src/components/chip_citation';
+import { Link } from '@/src/components/link';
 import type { ProvenanceItem } from '@/src/hooks/use_sse_chat';
 import {
   analyzeMarkdownTable,
@@ -213,16 +214,15 @@ function ReactMarkdownInner({
         </li>
       ),
       a: ({ children, href }) => (
-        <a
-          href={href}
+        <Link
+          href={href ?? ''}
           target="_blank"
-          rel="noopener noreferrer"
           className="text-theme-primary hover:underline"
         >
           <PlainTextContext.Provider value={true}>
             {children}
           </PlainTextContext.Provider>
-        </a>
+        </Link>
       ),
       code: ({ children, ...props }) => {
         const inline = !(

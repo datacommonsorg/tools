@@ -28,6 +28,7 @@ import {
 import ReactMarkdown, { type Components } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { ChevronDownIcon } from '@/src/components/icons';
+import { Link } from '@/src/components/link';
 import {
   CLOSE_REASONING_LABEL,
   REASONING_DEFAULT_PHASE_LABEL,
@@ -117,14 +118,13 @@ const REASONING_COMPONENTS: Components = {
     </code>
   ),
   a: ({ children, href }) => (
-    <a
-      href={href}
+    <Link
+      href={href ?? ''}
       target="_blank"
-      rel="noopener noreferrer"
       className="text-theme-primary hover:underline"
     >
       {children}
-    </a>
+    </Link>
   ),
 };
 
