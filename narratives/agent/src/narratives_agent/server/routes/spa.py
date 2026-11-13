@@ -149,7 +149,6 @@ def _build_shell_response(body: bytes, scope: Scope) -> Response:
     headers = {
         "Cache-Control": _REVALIDATE_CACHE_CONTROL,
         "ETag": etag,
-        "X-Content-Type-Options": "nosniff",
     }
     if _matches_if_none_match(
         Headers(scope=scope).get("if-none-match", ""), etag
@@ -163,7 +162,7 @@ def _build_shell_response(body: bytes, scope: Scope) -> Response:
 
 
 class SpaStaticFiles(StaticFiles):
-    """Serves the UI build with cache-control and security headers."""
+    """Serves the UI build with cache and Content-Security-Policy headers."""
 
     async def get_response(self, path: str, scope: Scope) -> Response:
         """Returns the stamped HTML shell for `/`, else the static file.
@@ -188,7 +187,11 @@ class SpaStaticFiles(StaticFiles):
         scope: Scope,
         status_code: int = 200,
     ) -> Response:
-        """Returns a file or 304 response with cache and security headers."""
+        """Returns a file or 304 response with cache headers.
+
+        SVG files also carry `Content-Security-Policy: sandbox`. The other
+        security headers are set by `SecurityHeadersMiddleware`.
+        """
         response = super().file_response(
             full_path, stat_result, scope, status_code
         )
@@ -199,7 +202,6 @@ class SpaStaticFiles(StaticFiles):
         else:
             cache_control = _REVALIDATE_CACHE_CONTROL
         response.headers["Cache-Control"] = cache_control
-        response.headers["X-Content-Type-Options"] = "nosniff"
         if PurePath(full_path).suffix.lower() == ".svg":
             # Sandbox SVG responses so embedded scripts cannot execute in the
             # application's origin.

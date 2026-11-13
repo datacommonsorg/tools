@@ -31,6 +31,7 @@ from narratives_agent.config import bootstrap_config_from_url
 from narratives_agent.gcp_auth import init_dc_api_key
 from narratives_agent.mcp import client as mcp_client
 from narratives_agent.server.routes import chat, spa, system
+from narratives_agent.server.security_headers import SecurityHeadersMiddleware
 from narratives_agent.settings import get_settings
 from narratives_agent.workflows.transcript import init_signing_key
 
@@ -130,6 +131,12 @@ def create_app() -> FastAPI:
         allow_methods=["*"],
         allow_headers=["*"],
     )
+    # This middleware is added after `CORSMiddleware` so that it wraps
+    # `CORSMiddleware` and also sets the security headers on preflight
+    # responses, which `CORSMiddleware` sends without calling the app.
+    # `telemetry.instrument_app` wraps the whole middleware stack regardless
+    # of the order, so its request span includes this middleware.
+    app.add_middleware(SecurityHeadersMiddleware)
     telemetry.instrument_app(app)
 
     # The app serves each request from the first route that matches, in

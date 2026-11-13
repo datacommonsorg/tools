@@ -24,20 +24,40 @@ Verifies that:
    before the first request, and fails fast on Kubernetes when
    `TRANSCRIPT_HMAC_SECRET` is unset.
 5. The lifespan writes buffered telemetry at shutdown.
+6. Every response, including a 404, a CORS preflight, and the streamed chat
+   response, carries the security headers, with or without `BASE_PATH`, and
+   the chat response still streams each frame as the turn emits it.
 """
 
+import asyncio
+import json
+from collections.abc import Mapping
 from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
+from starlette.types import Message
 
 from narratives_agent import model_armor, telemetry
 from narratives_agent.mcp.capabilities import Capabilities
 from narratives_agent.server import app as server_app
 from narratives_agent.server.app import create_app
-from narratives_agent.server.routes import system
+from narratives_agent.server.routes import chat, system
+from narratives_agent.server.security_headers import SECURITY_HEADERS
+from narratives_agent.workflows.chat_pipeline import Emit
+from narratives_agent.workflows.messages import DISCOVERY_STATUS
+from narratives_agent.workflows.sse_frames import (
+    StatusFrame,
+    TerminalCompleteFrame,
+)
+from narratives_agent.workflows.transcript import Transcript
 
 _ORIGIN = "https://narratives.example.com"
+
+# The stubbed chat turn waits at most this long for its first frame to reach
+# the client, so that a buffered response fails the test instead of hanging
+# it.
+_STREAM_TIMEOUT_SECONDS = 1
 
 
 @pytest.fixture(autouse=True)
@@ -341,3 +361,177 @@ def test_base_path_without_trailing_slash_redirects_relatively(
     assert head_response.status_code == 307
     assert head_response.headers["location"] == expected_location
     assert head_response.content == b""
+
+
+def _assert_has_security_headers(headers: Mapping[str, str]) -> None:
+    """Asserts that `headers` carries every header in `SECURITY_HEADERS`.
+
+    Args:
+        headers: The response headers, as a case-insensitive mapping or a
+            mapping keyed by lower-case name.
+    """
+    for name, value in SECURITY_HEADERS:
+        assert headers[name.lower()] == value
+
+
+@pytest.mark.parametrize("base_path", ["", "/labs/discover"])
+@pytest.mark.parametrize(
+    ("route", "status_code"),
+    [
+        ("/healthz", 200),
+        ("{base_path}/agent/health", 200),
+        ("{base_path}/missing.png", 404),
+    ],
+)
+def test_every_response_carries_the_security_headers(
+    base_path: str,
+    route: str,
+    status_code: int,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Test: Security headers on routes outside the static files.
+    # Situation: `BASE_PATH` is unset or a subpath, and a client requests the
+    #   liveness route, the health report, and a file that does not exist.
+    #   The MCP lookups are stubbed.
+    # Expectation: Each response, the 404 included, carries every header in
+    #   `SECURITY_HEADERS`.
+    if base_path:
+        monkeypatch.setenv("BASE_PATH", base_path)
+    monkeypatch.setattr(system, "mcp_url", lambda: "http://mcp.test/mcp")
+    monkeypatch.setattr(system, "mcp_capabilities", lambda: Capabilities())
+    client = TestClient(create_app())
+
+    response = client.get(route.format(base_path=base_path))
+
+    assert response.status_code == status_code
+    _assert_has_security_headers(response.headers)
+
+
+@pytest.mark.parametrize("base_path", ["", "/labs/discover"])
+def test_a_cors_preflight_carries_the_security_headers(
+    base_path: str,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Test: Security headers on a response that `CORSMiddleware` answers.
+    # Situation: `BASE_PATH` is unset or a subpath, `ALLOWED_ORIGIN` is
+    #   unset, as in local development, and the Vite dev server origin sends
+    #   a CORS preflight for the chat route.
+    # Expectation: The preflight succeeds and carries every header in
+    #   `SECURITY_HEADERS`.
+    if base_path:
+        monkeypatch.setenv("BASE_PATH", base_path)
+    monkeypatch.delenv("ALLOWED_ORIGIN", raising=False)
+    client = TestClient(create_app())
+
+    response = client.options(
+        f"{base_path}/agent/chat/stream",
+        headers={
+            "Origin": "http://localhost:3000",
+            "Access-Control-Request-Method": "POST",
+        },
+    )
+
+    assert response.status_code == 200
+    assert (
+        response.headers["access-control-allow-origin"]
+        == "http://localhost:3000"
+    )
+    _assert_has_security_headers(response.headers)
+
+
+@pytest.mark.parametrize("base_path", ["", "/labs/discover"])
+def test_the_chat_stream_carries_the_headers_and_streams_each_frame(
+    base_path: str,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Test: Security headers and incremental delivery on the chat stream.
+    # Situation: `BASE_PATH` is unset or a subpath, and the application is
+    #   driven over ASGI. The stubbed turn emits a status frame, waits until
+    #   the client has received it, and then emits the terminal frame.
+    # Expectation: The response carries every header in `SECURITY_HEADERS`,
+    #   the status frame reaches the client before the terminal frame is
+    #   emitted, and the client receives both frames.
+    if base_path:
+        monkeypatch.setenv("BASE_PATH", base_path)
+    status_frame_received = asyncio.Event()
+    response_finished = asyncio.Event()
+    delivery_before_terminal: list[bool] = []
+    sent: list[Message] = []
+
+    async def wait_for_delivery_turn(
+        transcript: Transcript,
+        emit: Emit,
+        *,
+        request_debug: bool = False,
+    ) -> None:
+        emit(StatusFrame(phase="discovery", message=DISCOVERY_STATUS))
+        try:
+            async with asyncio.timeout(_STREAM_TIMEOUT_SECONDS):
+                await status_frame_received.wait()
+        except TimeoutError:
+            delivery_before_terminal.append(False)
+        else:
+            delivery_before_terminal.append(True)
+        emit(
+            TerminalCompleteFrame(
+                idempotency_key=transcript.current_idempotency_key,
+                window=None,
+            )
+        )
+
+    monkeypatch.setattr(chat, "run_turn", wait_for_delivery_turn)
+    application = create_app()
+    body = json.dumps({"message": "Hello"}).encode()
+    path = f"{base_path}/agent/chat/stream"
+    scope = {
+        "type": "http",
+        "asgi": {"version": "3.0", "spec_version": "2.4"},
+        "http_version": "1.1",
+        "method": "POST",
+        "scheme": "http",
+        "path": path,
+        "raw_path": path.encode(),
+        "root_path": "",
+        "query_string": b"",
+        "headers": [
+            (b"content-type", b"application/json"),
+            (b"content-length", str(len(body)).encode()),
+        ],
+        "client": ("127.0.0.1", 50000),
+        "server": ("127.0.0.1", 5001),
+        "state": {},
+    }
+    is_request_delivered = False
+
+    async def receive() -> Message:
+        nonlocal is_request_delivered
+        if not is_request_delivered:
+            is_request_delivered = True
+            return {"type": "http.request", "body": body}
+        await response_finished.wait()
+        return {"type": "http.disconnect"}
+
+    async def send(message: Message) -> None:
+        sent.append(message)
+        if message["type"] != "http.response.body":
+            return
+        if b"event: status" in message.get("body", b""):
+            status_frame_received.set()
+        if not message.get("more_body", False):
+            response_finished.set()
+
+    asyncio.run(application(scope, receive, send))
+
+    start = sent[0]
+    assert start["type"] == "http.response.start"
+    assert start["status"] == 200
+    _assert_has_security_headers(
+        {
+            name.decode("latin-1"): value.decode("latin-1")
+            for name, value in start["headers"]
+        }
+    )
+    assert delivery_before_terminal == [True]
+    stream = b"".join(message.get("body", b"") for message in sent[1:])
+    assert b"event: status" in stream
+    assert b"event: terminal" in stream

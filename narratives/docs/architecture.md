@@ -47,6 +47,27 @@ serves both the frontend and backend from one origin:
 2. **Agent API (`/agent/*`)** — handles chat streaming (`/agent/chat/stream`)
    and health checks (`/agent/health`).
 
+### HTTP security headers
+
+`SecurityHeadersMiddleware` (`server/security_headers.py`) adds these headers
+to every response, including the static files, `/agent/*`, 404 responses, and
+CORS preflight responses, unless the response already sets them:
+
+| Header | Value |
+| :--- | :--- |
+| `X-Content-Type-Options` | `nosniff` |
+| `X-Frame-Options` | `SAMEORIGIN` |
+| `Referrer-Policy` | `strict-origin-when-cross-origin` |
+| `Cross-Origin-Opener-Policy` | `same-origin-allow-popups` |
+
+The middleware is plain ASGI rather than Starlette's `BaseHTTPMiddleware`: it
+edits only the response start message and forwards each body chunk as it is
+sent, so the chat stream is never buffered. It sets no
+`Content-Security-Policy`; `.svg` files carry `Content-Security-Policy:
+sandbox` from `server/routes/spa.py`. The one response without the headers is
+the plain-text 500 that Starlette's `ServerErrorMiddleware` sends for an
+unhandled exception, because that middleware wraps every user middleware.
+
 ## How Narratives connects to Data Commons
 
 Narratives talks to Data Commons in two ways — one for the Python agent and one

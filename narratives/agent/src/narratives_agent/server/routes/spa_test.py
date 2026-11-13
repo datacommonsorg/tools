@@ -19,8 +19,9 @@ static mount's options are set.
 Verifies that:
 1. `SpaStaticFiles` sets `Cache-Control` by kind of file: immutable for files
    under `assets/` and `theme/`, and `no-cache` for every other file.
-2. Every static response carries `X-Content-Type-Options: nosniff`, and every
-   SVG, and only an SVG, carries `Content-Security-Policy: sandbox`.
+2. Every static response, the shell included, carries the security headers,
+   with or without `BASE_PATH`, and every SVG, and only an SVG, carries
+   `Content-Security-Policy: sandbox`.
 3. A revalidation that returns 304 carries the same cache and security headers.
 4. HEAD returns the headers and an empty body.
 5. Percent-encoded `..` segments cannot reach files outside the static root,
@@ -34,12 +35,14 @@ Verifies that:
 
 import hashlib
 import json
+from collections.abc import Mapping
 from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
 
 from narratives_agent.server.app import create_app
+from narratives_agent.server.security_headers import SECURITY_HEADERS
 from narratives_agent.settings import (
     ENABLE_CHAT_ENV,
     UNAVAILABLE_MESSAGE_ENV,
@@ -62,6 +65,12 @@ _SVG = b"<svg xmlns='http://www.w3.org/2000/svg'/>"
 _CONFIG = b'{"mcp": {"server_url": "http://mcp.test/mcp"}}'
 
 _IMMUTABLE = "public, max-age=31536000, immutable"
+
+
+def _assert_has_security_headers(headers: Mapping[str, str]) -> None:
+    """Asserts that `headers` carries every header in `SECURITY_HEADERS`."""
+    for name, value in SECURITY_HEADERS:
+        assert headers[name.lower()] == value
 
 
 @pytest.fixture
@@ -119,22 +128,25 @@ def test_cache_control_follows_the_kind_of_file(
     "path",
     [
         "/",
+        "/index.html",
         "/assets/index-a1b2c3d4.js",
         "/theme/logo-e5f6a7b8.svg",
         "/logo.png",
         "/dc-logo.svg",
     ],
 )
-def test_every_static_response_forbids_content_sniffing(
+def test_every_static_response_carries_the_security_headers(
     path: str, client: TestClient
 ) -> None:
-    # Test: `X-Content-Type-Options` header on static responses.
-    # Situation: A client requests HTML, JavaScript, PNG, and SVG files.
-    # Expectation: Every response includes `X-Content-Type-Options: nosniff`.
+    # Test: Security headers on static responses.
+    # Situation: A client requests the HTML shell and JavaScript, PNG, and
+    #   SVG files.
+    # Expectation: Every response carries every header in
+    #   `SECURITY_HEADERS`.
     response = client.get(path)
 
     assert response.status_code == 200
-    assert response.headers["x-content-type-options"] == "nosniff"
+    _assert_has_security_headers(response.headers)
 
 
 @pytest.mark.parametrize(
@@ -168,6 +180,7 @@ def test_only_svg_files_are_sandboxed(
     ("path", "cache_control", "csp"),
     [
         ("/", "no-cache", None),
+        ("/index.html", "no-cache", None),
         ("/assets/index-a1b2c3d4.js", _IMMUTABLE, None),
         ("/theme/logo-e5f6a7b8.svg", _IMMUTABLE, "sandbox"),
         ("/logo.png", "no-cache", None),
@@ -190,7 +203,7 @@ def test_revalidation_returns_304_with_the_same_headers(
 
     assert response.status_code == 304
     assert response.headers["cache-control"] == cache_control
-    assert response.headers["x-content-type-options"] == "nosniff"
+    _assert_has_security_headers(response.headers)
     assert response.headers.get("content-security-policy") == csp
 
 
@@ -281,8 +294,9 @@ def test_static_files_serve_under_base_path(
     # Situation: `BASE_PATH` is a single- or multi-segment subpath and a client
     #   requests the SPA shell, a hashed bundle under `assets/`, and an SVG
     #   asset under `<base_path>/*`, as well as paths outside `<base_path>`.
-    # Expectation: Subpath requests return the expected content and cache
-    #   headers, while `/` and parent prefixes outside `<base_path>` return 404.
+    # Expectation: Subpath requests return the expected content, cache
+    #   headers, and security headers, while `/` and parent prefixes outside
+    #   `<base_path>` return 404.
     agent_root = tmp_path / "agent"
     static_root = agent_root / "static"
     (static_root / "assets").mkdir(parents=True)
@@ -299,6 +313,7 @@ def test_static_files_serve_under_base_path(
     assert response.status_code == 200
     assert response.content == body
     assert response.headers["cache-control"] == cache_control
+    _assert_has_security_headers(response.headers)
     assert subpath_client.get("/").status_code == 404
     assert subpath_client.get("/labs").status_code == 404
 
