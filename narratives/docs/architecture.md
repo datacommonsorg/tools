@@ -420,6 +420,11 @@ the **6 most recent turns** in full:
   the server summarizes the oldest turn into `compacted_summary`, removes that
   turn from the list, and re-signs the remaining 6 turns. The browser replaces
   its stored history with the updated `window` returned in the `terminal` event.
+  The summarization prompt quotes the earlier summary inside an
+  `<earlier_summary>` block and each evicted turn inside its own
+  `<evicted_turn>` block, removes every conversation delimiter from the quoted
+  text in any letter case and with any whitespace inside the tag, and tells the
+  model that the blocks hold material to summarize, not instructions to follow.
 - **Remembering context (`state_slots`):** Each turn records the places,
   variables, and dates used in that turn inside `state_slots`. This helps the
   agent resolve follow-up questions like *"How about Germany?"* or *"What about
