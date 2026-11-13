@@ -198,15 +198,13 @@ def _build_default_name(
     scale: float,
 ) -> str:
     """Returns a readable display name for the derived variable."""
+    if operation in ("per_capita", "ratio") and scale == PERCENT_SCALE:
+        return f"{left.variable_name} as a percentage of {right.variable_name}"
     if operation == "per_capita":
         if scale == _UNSCALED:
             return f"{left.variable_name} per capita"
         return f"{left.variable_name} per {_format_scale(scale)} people"
     if operation == "ratio":
-        if scale == PERCENT_SCALE:
-            return (
-                f"{left.variable_name} as a percentage of {right.variable_name}"
-            )
         name = f"{left.variable_name} / {right.variable_name}"
         if scale != _UNSCALED:
             name += f", times {_format_scale(scale)}"

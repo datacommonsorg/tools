@@ -563,6 +563,31 @@ describe('applyEvent', () => {
     expect(unknown.hasData).toBeUndefined();
   });
 
+  it('keeps the standalone flag of a chart the server supplied', () => {
+    // Test: Mapping of `standalone` on chart blocks.
+    // Situation: One chart block carries `standalone: true`; another omits
+    //   it.
+    // Expectation: The first block keeps `standalone`; the second has none,
+    //   so the model's charts stay eligible for pairing.
+    const chart = { viz_type: 'line', variable_dcids: ['Count_Person'] };
+    const turn = [
+      { type: 'chart', chart, standalone: true },
+      { type: 'chart', chart },
+    ].reduce(
+      (current, block) =>
+        applyEvent(current, {
+          event: 'content',
+          data: { block: block as RawAnswerBlock },
+        }),
+      blankTurn(),
+    );
+
+    expect(turn.blocks.map((block) => 'standalone' in block)).toEqual([
+      true,
+      false,
+    ]);
+  });
+
   it('ignores a block without content', () => {
     // Test: Tolerance of malformed block frames.
     // Situation: A turn receives an empty text block, chart blocks whose

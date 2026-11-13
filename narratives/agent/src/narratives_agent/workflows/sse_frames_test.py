@@ -185,6 +185,27 @@ _WINDOW_FIELD = (
             id="chart_block",
         ),
         pytest.param(
+            BlockContentFrame(
+                block=ChartBlock(
+                    index=2,
+                    chart=ResolvedLineChart(
+                        title="Population of France",
+                        variable_dcids=("Count_Person",),
+                        scope=PlaceList(("country/FRA",)),
+                    ),
+                    standalone=True,
+                )
+            ),
+            (
+                "content",
+                '{"block": {"index": 2, "type": "chart", "chart": '
+                '{"viz_type": "line", "title": "Population of France", '
+                '"variable_dcids": ["Count_Person"], '
+                '"place_dcids": ["country/FRA"]}, "standalone": true}}',
+            ),
+            id="standalone_chart_block",
+        ),
+        pytest.param(
             ToolCallFrame(
                 tool_call={
                     "name": "get_observations",

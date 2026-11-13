@@ -186,17 +186,19 @@ function mapRawChartItem(raw: RawChartItem): ChartItem {
  */
 export type RawAnswerBlock =
   | { type: 'text'; markdown: string }
-  | { type: 'chart'; chart: RawChartItem };
+  | { type: 'chart'; chart: RawChartItem; standalone?: boolean };
 
 /**
  * One block of an answer in the UI's domain shape, rendered in order. `index`
  * is the block's position in the turn, which the answer panel uses as its key.
  * The position is assigned on arrival, so a dropped malformed block cannot
- * produce duplicate or invalid React keys.
+ * produce duplicate or invalid React keys. A `standalone` chart was supplied
+ * by the server, such as a default chart appended after the answer, and is
+ * never shown beside the text before it.
  */
 export type AnswerBlock =
   | { index: number; type: 'text'; markdown: string }
-  | { index: number; type: 'chart'; chart: ChartItem };
+  | { index: number; type: 'chart'; chart: ChartItem; standalone?: boolean };
 
 /** Returns the charts a turn renders: the charts of its chart blocks, in order. */
 export function getTurnCharts(turn: ChatTurn): ChartItem[] {
@@ -1067,6 +1069,7 @@ function applyBlock(turn: ChatTurn, raw: RawAnswerBlock): ChatTurn {
       index,
       type: 'chart',
       chart: mapRawChartItem(raw.chart),
+      ...(raw.standalone === true ? { standalone: true } : {}),
     };
     return { ...turn, blocks: [...blocks, block] };
   }

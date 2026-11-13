@@ -57,15 +57,22 @@ const INCOME_CHART: ChartItem = {
   placeDcids: ['country/FRA'],
 };
 
+/** A text block and the chart after it, for the pairing cases. */
+interface ChartAnswerBlockInput {
+  text: string;
+  chart: ChartItem;
+  standalone?: boolean;
+}
+
 /** How often the chart settle poll reads the component, in milliseconds. */
 const CHART_POLL_MS = 300;
 
 /**
- * Class that hides the body's non-text children, other than chart tiles,
- * while the text reveals.
+ * Class that hides the body's non-text children, other than chart tiles and
+ * paired stats rows, while the text reveals.
  */
 const HIDE_NON_TEXT_CLASS =
-  'motion-safe:[&>:not(.markdown-body,.dc-charts-container)]:opacity-0';
+  'motion-safe:[&>:not(.markdown-body,.dc-charts-container,.answer-pair)]:opacity-0';
 
 /** Builds a finished turn whose answer arrived as the given blocks. */
 const buildTurnWithBlocks = (
@@ -539,6 +546,198 @@ describe('AnswerPanel', () => {
 
     expect(heading.textContent).toBe(turn.userMessage);
     expect(heading.closest('[class*="opacity-0"]')).toBeNull();
+  });
+
+  describe('stats and chart pairing', () => {
+    const BULLETS =
+      '- **Long-term trend:** Life expectancy rose 24.14% since 1960.\n' +
+      '- **Historical peak:** It peaked at 84.56 years in 2020.';
+    const TABLE =
+      '| Country | Infant mortality rate (2024) |\n' +
+      '| --- | --- |\n| Japan | 1.8 |\n| Italy | 2.3 |';
+    const SCATTER_CHART: ChartItem = {
+      vizType: 'scatter',
+      title: 'Income and rent',
+      variableDcids: ['Median_Income_Household', 'Median_GrossRent'],
+      parentPlace: 'country/USA',
+      childPlaceType: 'State',
+    };
+    const MAP_CHART: ChartItem = {
+      vizType: 'map',
+      title: 'Unemployment rate across states',
+      variableDcids: ['UnemploymentRate_Person'],
+      parentPlace: 'country/USA',
+      childPlaceType: 'State',
+    };
+    const renderBlocks = (blocks: ChatTurn['blocks']) =>
+      render(
+        <AnswerPanel turn={buildTurnWithBlocks(blocks)} isStreaming={false} />,
+      ).container;
+
+    it.each([
+      ['a bullet list', BULLETS],
+      ['a table', TABLE],
+    ])('sets %s beside the chart that follows it', (_, markdown) => {
+      // Test: Pairing of a stats block with its chart.
+      // Situation: A headline paragraph, then a bullet list or a table
+      //   directly followed by one line chart.
+      // Expectation: The stats block and the chart render in one paired row,
+      //   stats first; the headline stays outside it, full width.
+      const container = renderBlocks([
+        { index: 0, type: 'text', markdown: 'Life expectancy reached 84.' },
+        { index: 1, type: 'text', markdown },
+        { index: 2, type: 'chart', chart: LINE_CHART },
+      ]);
+
+      const pairs = container.querySelectorAll('.answer-pair');
+      expect(pairs).toHaveLength(1);
+      expect(
+        Array.from(pairs[0].children).map((child) =>
+          child.classList.contains('markdown-body') ? 'text' : 'chart',
+        ),
+      ).toEqual(['text', 'chart']);
+      expect(pairs[0].textContent).not.toContain('Life expectancy reached 84.');
+      // The paired stats drop their bullet markers, and only bullet stats,
+      // not a table, sit lower than the chart's top edge.
+      expect(pairs[0].className).toContain('[&_ul]:list-none');
+      expect(pairs[0].className.includes('[&>:first-child]:pt-1')).toBe(
+        markdown === BULLETS,
+      );
+    });
+
+    it('opens the stats column of a bullet list with its lead-in line', () => {
+      // Test: A lead-in line joins its bullets in the paired row.
+      // Situation: A headline paragraph, a one-line lead-in ending with a
+      //   colon, then a bullet list directly followed by its chart.
+      // Expectation: The lead-in and the bullets share the row's first
+      //   column, lead-in first, and the column sits 4px below the chart's
+      //   top edge side by side; the headline stays outside the row.
+      const container = renderBlocks([
+        { index: 0, type: 'text', markdown: 'Life expectancy reached 84.' },
+        {
+          index: 1,
+          type: 'text',
+          markdown: 'Female life expectancy in Japan and France:',
+        },
+        { index: 2, type: 'text', markdown: BULLETS },
+        { index: 3, type: 'chart', chart: LINE_CHART },
+      ]);
+
+      const pairs = container.querySelectorAll('.answer-pair');
+      expect(pairs).toHaveLength(1);
+      const [column, chart] = Array.from(pairs[0].children);
+      expect(chart.classList.contains('dc-charts-container')).toBe(true);
+      expect(column.children[0].textContent).toBe(
+        'Female life expectancy in Japan and France:',
+      );
+      expect(column.children).toHaveLength(2);
+      expect(pairs[0].textContent).not.toContain('Life expectancy reached 84.');
+      expect(pairs[0].className).toContain('[&>:first-child]:pt-1');
+    });
+
+    it("keeps a table's lead-in line full width above the row", () => {
+      // Test: A table's card stays level with its chart's.
+      // Situation: A one-line lead-in ending with a colon, then a table
+      //   directly followed by its chart.
+      // Expectation: The lead-in renders outside the paired row, whose first
+      //   child is the table itself, with no top space.
+      const container = renderBlocks([
+        {
+          index: 0,
+          type: 'text',
+          markdown: 'The ten highest are Puerto Rico and nine states:',
+        },
+        { index: 1, type: 'text', markdown: TABLE },
+        { index: 2, type: 'chart', chart: LINE_CHART },
+      ]);
+
+      const pair = container.querySelector('.answer-pair');
+      expect(pair?.textContent).not.toContain('The ten highest are');
+      expect(pair?.children[0].classList.contains('markdown-body')).toBe(true);
+      expect(pair?.className).not.toContain('[&>:first-child]:pt-1');
+    });
+
+    it('leaves a paragraph that is not a lead-in line outside the row', () => {
+      // Test: Only a one-line lead-in ending with a colon joins the row.
+      // Situation: A sentence that ends with a full stop sits directly above
+      //   a bullet list and its chart.
+      // Expectation: The sentence renders full width, outside the paired row.
+      const container = renderBlocks([
+        { index: 0, type: 'text', markdown: 'Japan leads on both measures.' },
+        { index: 1, type: 'text', markdown: BULLETS },
+        { index: 2, type: 'chart', chart: LINE_CHART },
+      ]);
+
+      const pair = container.querySelector('.answer-pair');
+      expect(pair?.textContent).not.toContain('Japan leads on both measures.');
+      expect(pair?.children[0].classList.contains('markdown-body')).toBe(true);
+    });
+
+    it.each<[string, ChartAnswerBlockInput]>([
+      [
+        'prose rather than a list or table',
+        { text: 'France has about 68 million.', chart: LINE_CHART },
+      ],
+      ['a scatter chart', { text: BULLETS, chart: SCATTER_CHART }],
+      ['a map', { text: BULLETS, chart: MAP_CHART }],
+      [
+        'a chart the server supplied',
+        { text: BULLETS, chart: LINE_CHART, standalone: true },
+      ],
+    ])('keeps the chart full width after %s', (_, input) => {
+      // Test: Charts that are never paired.
+      // Situation: A chart follows prose, is a scatter or a map, or is a
+      //   default chart the server appended.
+      // Expectation: No paired row renders; the chart stands alone.
+      const container = renderBlocks([
+        { index: 0, type: 'text', markdown: input.text },
+        {
+          index: 1,
+          type: 'chart',
+          chart: input.chart,
+          ...(input.standalone ? { standalone: true } : {}),
+        },
+      ]);
+
+      expect(container.querySelector('.answer-pair')).toBeNull();
+      expect(container.querySelectorAll('.dc-charts-container')).toHaveLength(
+        1,
+      );
+    });
+
+    it('does not pair a stats block followed by two charts', () => {
+      // Test: A stats block followed by charts back to back.
+      // Situation: A table directly followed by two line charts.
+      // Expectation: No paired row renders, and both charts share one tile.
+      const container = renderBlocks([
+        { index: 0, type: 'text', markdown: TABLE },
+        { index: 1, type: 'chart', chart: LINE_CHART },
+        { index: 2, type: 'chart', chart: INCOME_CHART },
+      ]);
+
+      expect(container.querySelector('.answer-pair')).toBeNull();
+      expect(container.querySelectorAll('.dc-charts-container')).toHaveLength(
+        1,
+      );
+    });
+
+    it('pairs each stats block with its own chart down the answer', () => {
+      // Test: Several stats and chart pairs in one answer.
+      // Situation: Two tables, each directly followed by its line chart.
+      // Expectation: Two paired rows render, in order, each with its stats
+      //   before its chart.
+      const container = renderBlocks([
+        { index: 0, type: 'text', markdown: TABLE },
+        { index: 1, type: 'chart', chart: LINE_CHART },
+        { index: 2, type: 'text', markdown: BULLETS },
+        { index: 3, type: 'chart', chart: INCOME_CHART },
+      ]);
+
+      expect(container.querySelectorAll('.answer-pair')).toHaveLength(2);
+      expect(
+        readAnswerParts(container).map((part) => part.split(':')[0]),
+      ).toEqual(['text', 'chart', 'text', 'chart']);
+    });
   });
 
   it('places back-to-back charts in one shared tile', () => {

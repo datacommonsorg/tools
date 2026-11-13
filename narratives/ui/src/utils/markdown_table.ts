@@ -51,6 +51,8 @@ export interface TableAnalysis {
    * its per-row markers.
    */
   hoistedCitations: ReadonlyMap<number, number[]>;
+  /** Columns headed "Rank", whose short ordinal numbers are centered. */
+  rankColumns: ReadonlySet<number>;
 }
 
 /** Concatenates every text node under `node`. */
@@ -68,6 +70,32 @@ export function citationsIn(text: string): number[] {
     out.push(...parseCitationNumbers(match[1]));
   }
   return out;
+}
+
+/** The longest parenthetical kept whole on one line, such as "(USD, 2025)". */
+const MAX_UNBROKEN_PARENTHETICAL = 20;
+
+/** A header's trailing citation markers, such as " [1]" or " [1, 2] [3]". */
+const TRAILING_MARKERS = /(?:\s*\[\d+(?:\s*,\s*\d+)*\])*\s*$/;
+
+/**
+ * Splits a column header into the part that may wrap and the ending that
+ * must not, so a citation never wraps away from the words it cites. The
+ * ending is the closing parenthetical, such as "(USD, 2025)", when it is
+ * short, or else the last word, together with any citation markers after
+ * it: "Median household income ($, 2024) [1]" keeps "($, 2024) [1]" on one
+ * line. Returns `[text, '']` when there is nothing to keep together.
+ */
+export function splitHeaderTail(text: string): [string, string] {
+  const markers = text.match(TRAILING_MARKERS)?.[0] ?? '';
+  const body = text.slice(0, text.length - markers.length);
+  const parenthetical = body.match(/\([^()]*\)$/)?.[0];
+  const ending =
+    parenthetical && parenthetical.length <= MAX_UNBROKEN_PARENTHETICAL
+      ? parenthetical
+      : (body.match(/\S+$/)?.[0] ?? '');
+  if (ending === '' || ending === body.trim()) return [text, ''];
+  return [body.slice(0, body.length - ending.length), ending + markers];
 }
 
 /** True when `node` is an element with the given tag. */
@@ -108,19 +136,35 @@ function rowsOf(
   return rows;
 }
 
+/** Matches a header that names a rank column, citation markers aside. */
+const RANK_HEADER = /^rank$/i;
+
 /**
- * Works out which columns hold values and which carry one shared citation.
- * Both answers need the whole column, which a single cell cannot see.
+ * Works out which columns hold values, which carry one shared citation, and
+ * which are rank columns. Each answer needs the whole column, which a single
+ * cell cannot see.
  */
 export function analyzeMarkdownTable(
   node: MarkdownNode | undefined,
 ): TableAnalysis {
   const numericColumns = new Set<number>();
   const hoistedCitations = new Map<number, number[]>();
-  if (!node) return { numericColumns, hoistedCitations };
+  const rankColumns = new Set<number>();
+  if (!node) return { numericColumns, hoistedCitations, rankColumns };
+
+  for (const row of rowsOf(node, 'thead')) {
+    row.forEach((cell, column) => {
+      const header = textOf(cell)
+        .replace(createCitationMarkerPattern(), '')
+        .trim();
+      if (RANK_HEADER.test(header)) rankColumns.add(column);
+    });
+  }
 
   const bodyRows = rowsOf(node, 'tbody');
-  if (bodyRows.length === 0) return { numericColumns, hoistedCitations };
+  if (bodyRows.length === 0) {
+    return { numericColumns, hoistedCitations, rankColumns };
+  }
   const columnCount = Math.max(...bodyRows.map((row) => row.length));
 
   for (let column = 0; column < columnCount; column++) {
@@ -158,5 +202,5 @@ export function analyzeMarkdownTable(
     }
   }
 
-  return { numericColumns, hoistedCitations };
+  return { numericColumns, hoistedCitations, rankColumns };
 }

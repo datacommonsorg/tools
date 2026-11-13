@@ -277,10 +277,10 @@ export function AnswerPanel({
           hidden until the text has finished revealing, except chart tiles,
           which hold their space behind a skeleton so no gap shows. */}
         <div
-          className={`flex flex-col gap-4 p-4 sm:p-6 bg-surface-narrative motion-safe:[&>:not(.markdown-body,.dc-charts-container)]:transition-opacity motion-safe:[&>:not(.markdown-body,.dc-charts-container)]:duration-300${
+          className={`@container flex flex-col gap-4 p-4 sm:p-6 bg-surface-narrative motion-safe:[&>:not(.markdown-body,.dc-charts-container,.answer-pair)]:transition-opacity motion-safe:[&>:not(.markdown-body,.dc-charts-container,.answer-pair)]:duration-300${
             isRevealed
               ? ''
-              : ' motion-safe:[&>:not(.markdown-body,.dc-charts-container)]:opacity-0'
+              : ' motion-safe:[&>:not(.markdown-body,.dc-charts-container,.answer-pair)]:opacity-0'
           }`}
         >
           {/* 1. The answer: text and chart blocks in emission order. */}
@@ -372,7 +372,9 @@ interface TextRevealWindow {
  * Renders a turn's blocks in emission order, as direct children of the
  * panel body: each text block through the Markdown renderer, and each run of
  * consecutive chart blocks through one chart tile, whose grid sets two or
- * three charts side by side when there is room. A tile reports every chart
+ * three charts side by side when there is room, except that a bullet list or
+ * table directly followed by its one chart renders beside it, stats first (see
+ * `groupAnswerBlocks`). A tile reports every chart
  * in its run as settled once all of them have. The text blocks share one
  * reveal in reading order, and the word animations start only once `phase`
  * is `revealing`.
@@ -401,42 +403,182 @@ function AnswerBlocks({
             />
           );
         }
+        const renderText = (block: TextAnswerBlock) => {
+          const revealWindow = schedule?.get(block.index);
+          return (
+            <ResponseCard
+              key={block.index}
+              title={turn.userMessage}
+              body={block.markdown}
+              streamMs={revealWindow?.durationMs}
+              streamStartMs={revealWindow?.startMs}
+              revealing={phase === 'revealing'}
+              sources={turn.provenance}
+              bare
+            />
+          );
+        };
         const block = group.block;
-        const revealWindow = schedule?.get(block.index);
+        if (group.type === 'text') return renderText(block);
+        const { chartIndex, leadIn } = group;
+        // The stats on the left, their chart on the right, both from the
+        // top. The stats come first in the document too, so a narrow answer
+        // stacks them above the chart and screen readers follow the visual
+        // order. Two columns need two charts' minimum width of 320px plus the
+        // gap, so the row splits once the answer body is 664px (41.5rem)
+        // wide. Only side by side do bullet stats sit 4px below the chart's
+        // top edge and get the wider spacing below the row and between
+        // items; stacked, or when the chart drew nothing and the tile is
+        // gone, they keep the standard spacing at full width. A table keeps
+        // its own card edge level with the chart's, so its lead-in stays
+        // full width above the row; a bullet list's lead-in opens its column
+        // and takes the bullets' 4px. The stats' bullets drop their markers,
+        // since each already opens with a bold label.
+        const isTable = TABLE_BLOCK_START.test(block.markdown);
+        const stats = leadIn ? (
+          <div className="flex flex-col gap-4 min-w-0">
+            {renderText(leadIn)}
+            {renderText(block)}
+          </div>
+        ) : (
+          renderText(block)
+        );
         return (
-          <ResponseCard
-            key={block.index}
-            title={turn.userMessage}
-            body={block.markdown}
-            streamMs={revealWindow?.durationMs}
-            streamStartMs={revealWindow?.startMs}
-            revealing={phase === 'revealing'}
-            sources={turn.provenance}
-            bare
-          />
+          <div
+            key={leadIn?.index ?? block.index}
+            className={
+              isTable
+                ? PAIR_ROW_CLASS
+                : `${PAIR_ROW_CLASS} ${PAIR_TOP_SPACE_CLASS}`
+            }
+          >
+            {stats}
+            <ChartTile
+              config={{ shouldRender: true, charts: [group.chart] }}
+              onSettled={() => onChartSettled(chartIndex)}
+              shouldHoldSkeleton={phase !== 'revealed'}
+            />
+          </div>
         );
       })}
     </>
   );
 }
 
-/** One rendered unit of an answer: a text block, or a run of chart blocks. */
-type AnswerBlockGroup =
-  | { type: 'text'; block: Extract<AnswerBlock, { type: 'text' }> }
-  | { type: 'charts'; charts: ChartItem[]; indices: number[] };
+type TextAnswerBlock = Extract<AnswerBlock, { type: 'text' }>;
+type ChartAnswerBlock = Extract<AnswerBlock, { type: 'chart' }>;
 
 /**
- * Groups a turn's blocks in order, merging each run of consecutive chart
- * blocks into one group so that they render in a single chart tile.
+ * One rendered unit of an answer: a text block, a run of chart blocks, or a
+ * stats block paired with the one chart that illustrates it.
+ */
+type AnswerBlockGroup =
+  | { type: 'text'; block: TextAnswerBlock }
+  | { type: 'charts'; charts: ChartItem[]; indices: number[] }
+  | {
+      type: 'pair';
+      block: TextAnswerBlock;
+      chart: ChartItem;
+      chartIndex: number;
+      /** The one-line lead-in above the stats, opening their column. */
+      leadIn?: TextAnswerBlock;
+    };
+
+/** Chart kinds that need the full width and are never paired with text. */
+const FULL_WIDTH_CHART_TYPES: ReadonlySet<ChartItem['vizType']> = new Set([
+  'map',
+  'scatter',
+]);
+
+/** Matches Markdown that opens with a list item or a table row. */
+const STATS_BLOCK_START = /^\s*(?:[-*+]\s|\d+[.)]\s|\|)/;
+
+/**
+ * Classes of a chart and stats row. It stacks by default and splits into two
+ * columns, with wider spacing below it and between its items, once the
+ * answer body (a size container) is 41.5rem wide and the chart tile drew.
+ */
+const PAIR_ROW_CLASS = [
+  'answer-pair grid grid-cols-1 items-start gap-x-6 gap-y-4 mb-1',
+  '[&_ul]:list-none [&_ul]:pl-0 [&_li]:pb-1',
+  '@min-[41.5rem]:has-[>.dc-charts-container]:grid-cols-2',
+  '@min-[41.5rem]:has-[>.dc-charts-container]:mb-2',
+  '@min-[41.5rem]:has-[>.dc-charts-container]:[&_li]:pb-2',
+].join(' ');
+
+/**
+ * Extra class of a row whose stats column opens with text (bullets or a
+ * lead-in line): side by side, the column sits 4px below the chart card's
+ * top edge, so the text does not touch the line.
+ */
+const PAIR_TOP_SPACE_CLASS =
+  '@min-[41.5rem]:has-[>.dc-charts-container]:[&>:first-child]:pt-1';
+
+/** Matches Markdown that opens with a table row. */
+const TABLE_BLOCK_START = /^\s*\|/;
+
+/**
+ * Matches a lead-in line: one line, not a heading, quote, list item, or table
+ * row, that ends with a colon (optionally inside bold or italics).
+ */
+const LEAD_IN_LINE = /^(?![#>|]|[-*+]\s|\d+[.)]\s)[^\n]*:[*_]*$/;
+
+/**
+ * Whether `text` and the chart after it render side by side: the text is a
+ * bullet list or a table, the chart was placed by the model rather than
+ * supplied by the server, it is not a kind that needs the full width, and no
+ * other chart follows it.
+ */
+function isStatsChartPair(
+  text: TextAnswerBlock,
+  chart: ChartAnswerBlock,
+  next: AnswerBlock | undefined,
+): boolean {
+  return (
+    STATS_BLOCK_START.test(text.markdown) &&
+    !chart.standalone &&
+    !FULL_WIDTH_CHART_TYPES.has(chart.chart.vizType) &&
+    next?.type !== 'chart'
+  );
+}
+
+/**
+ * Groups a turn's blocks in order. A bullet list or table directly followed
+ * by the one chart that illustrates it becomes a pair, rendered side by side,
+ * and a one-line lead-in ending with a colon directly above a bullet list
+ * joins the pair at the top of its column; above a table it stays full
+ * width, so the table's card lines up with the chart's. Any other run of
+ * consecutive chart blocks becomes one group that renders in a single chart
+ * tile.
  */
 export function groupAnswerBlocks(blocks: AnswerBlock[]): AnswerBlockGroup[] {
   const groups: AnswerBlockGroup[] = [];
-  for (const block of blocks) {
+  for (const [position, block] of blocks.entries()) {
     if (block.type === 'text') {
       groups.push({ type: 'text', block });
       continue;
     }
     const last = groups.at(-1);
+    if (
+      last?.type === 'text' &&
+      isStatsChartPair(last.block, block, blocks[position + 1])
+    ) {
+      const beforeStats = groups.at(-2);
+      const leadIn =
+        beforeStats?.type === 'text' &&
+        !TABLE_BLOCK_START.test(last.block.markdown) &&
+        LEAD_IN_LINE.test(beforeStats.block.markdown.trim())
+          ? beforeStats.block
+          : undefined;
+      groups.splice(leadIn ? -2 : -1, leadIn ? 2 : 1, {
+        type: 'pair',
+        block: last.block,
+        chart: block.chart,
+        chartIndex: block.index,
+        leadIn,
+      });
+      continue;
+    }
     if (last?.type === 'charts') {
       last.charts.push(block.chart);
       last.indices.push(block.index);
