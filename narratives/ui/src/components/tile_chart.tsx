@@ -362,5 +362,14 @@ export function getDcComponentAttributes(
   if (chart.sort) {
     attrs.sort = chart.sort;
   }
+  // Only `<datacommons-line>` reads the date bounds.
+  if (chart.vizType === 'line') {
+    if (chart.startDate) {
+      attrs.startDate = chart.startDate;
+    }
+    if (chart.endDate) {
+      attrs.endDate = chart.endDate;
+    }
+  }
   return attrs;
 }

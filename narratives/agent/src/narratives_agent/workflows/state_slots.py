@@ -271,10 +271,66 @@ def _read_chart_places(
             return (), cohort
 
 
+def _resolve_chart_date_range(
+    chart: ResolvedChart,
+    grounded_variables: Sequence[str],
+    charted_places: Sequence[str],
+    fetched: Sequence[ObservationTable],
+) -> tuple[str, str] | None:
+    """Returns the span of dates a resolved chart draws, when it is known.
+
+    A single-date chart spans its one date. An unclamped line spans no
+    recorded range. A clamped line spans its bounds, and an open bound is
+    filled with the earliest or latest date the fetched tables of its
+    grounded variables hold for its charted places inside the other bound.
+    A pair of bounds that compares as inverted only because the two differ
+    in precision, such as `2020-06` and `2020`, is replaced by the span of
+    those in-range dates.
+
+    Args:
+        chart: A resolved chart of any kind.
+        grounded_variables: The chart's variables that a fetched table
+            carries.
+        charted_places: The places the chart lists; empty for a cohort
+            chart, whose every place with data is charted.
+        fetched: The fetched tables of the turn.
+
+    Returns:
+        The `(earliest_date, latest_date)` span, or None when it is unknown.
+    """
+    if not isinstance(chart, ResolvedLineChart):
+        return (chart.date, chart.date) if _is_date(chart.date) else None
+    start_date, end_date = chart.start_date, chart.end_date
+    if start_date is None and end_date is None:
+        return None
+    in_range_dates = [
+        row.date
+        for table in fetched
+        if table.variable_dcid in grounded_variables
+        for row in table.rows
+        if (not charted_places or row.place_dcid in charted_places)
+        and _is_date(row.date)
+        and (start_date is None or row.date[: len(start_date)] >= start_date)
+        and (end_date is None or row.date[: len(end_date)] <= end_date)
+    ]
+    earliest = min(in_range_dates) if in_range_dates else None
+    latest = max(in_range_dates) if in_range_dates else None
+    start = start_date if _is_date(start_date) else earliest
+    end = end_date if _is_date(end_date) else latest
+    if start is None or end is None:
+        return None
+    if start <= end:
+        return start, end
+    if earliest is not None and latest is not None:
+        return earliest, latest
+    return None
+
+
 def _iter_chart_scopes(
     charts: Sequence[ResolvedChart],
     names: Mapping[str, str],
     known: Set[str],
+    fetched: Sequence[ObservationTable],
 ) -> Iterator[QueryScope]:
     """Yields a `QueryScope` per emitted chart, keeping known DCIDs only.
 
@@ -282,6 +338,7 @@ def _iter_chart_scopes(
         charts: The resolved charts emitted to the browser.
         names: Mapping of grounded entity DCIDs to display names.
         known: Set of grounded variable and place DCIDs from fetched tables.
+        fetched: The fetched tables that fill a clamped line's open bound.
 
     Yields:
         A `QueryScope` for each emitted chart that retains at least one
@@ -290,14 +347,17 @@ def _iter_chart_scopes(
     for chart in charts:
         places, cohort = _read_chart_places(chart)
         parent = cohort.parent_place if cohort is not None else None
-        date = None if isinstance(chart, ResolvedLineChart) else chart.date
+        variables = [dcid for dcid in chart.variable_dcids if dcid in known]
+        grounded_places = [dcid for dcid in places if dcid in known]
         scope = _build_scope(
             names,
-            variables=[dcid for dcid in chart.variable_dcids if dcid in known],
-            places=[dcid for dcid in places if dcid in known],
+            variables=variables,
+            places=grounded_places,
             parent=parent if parent in known else None,
             child_type=cohort.child_place_type if cohort is not None else None,
-            date_range=(date, date) if _is_date(date) else None,
+            date_range=_resolve_chart_date_range(
+                chart, variables, grounded_places, fetched
+            ),
         )
         if scope is not None:
             yield scope
@@ -339,7 +399,7 @@ def build_state_slots(
         for table in fetched
         if (scope := _build_table_scope(table, names)) is not None
     ]
-    candidates.extend(_iter_chart_scopes(charts, names, known))
+    candidates.extend(_iter_chart_scopes(charts, names, known, fetched))
     # Scopes compare by value, and dict equality ignores key order, so two
     # scopes listing the same places in a different order are one scope.
     scopes: list[QueryScope] = []

@@ -49,6 +49,8 @@ from narratives_agent.analytics.ranking import rank_cohort
 from narratives_agent.analytics.tables import (
     ObservationTable,
     clean_display_name,
+    is_inverted_date_range,
+    is_valid_observation_date,
     is_window_reference_date,
 )
 from narratives_agent.json_value import JsonObject, JsonValue
@@ -257,20 +259,55 @@ class _PlaceChoiceSpecification(_ChartSpecificationBase):
         return choices[0] if choices else _DefaultPlaces()
 
 
-class LineChartSpecification(_PlaceChoiceSpecification):
-    """A `line` chart block: a full series over time for places or a cohort.
+def _check_line_date_bounds(
+    start_date: str | None, end_date: str | None
+) -> None:
+    """Checks the optional inclusive date bounds of a line chart.
 
-    Takes no `date` field because a line chart draws the full time series.
-    Without a place choice, the line draws every place with data, and
-    rejects more than `INVENTORY_PLACE_CAP` places.
+    Raises:
+        ValueError: If a bound is not a `YYYY`, `YYYY-MM`, or `YYYY-MM-DD`
+            date, or `start_date` comes after `end_date`.
+    """
+    for bound in (start_date, end_date):
+        if bound is not None and not is_valid_observation_date(bound):
+            raise ValueError(
+                "start_date and end_date must be YYYY, YYYY-MM, or "
+                "YYYY-MM-DD dates"
+            )
+    if (
+        start_date is not None
+        and end_date is not None
+        and is_inverted_date_range(start_date, end_date)
+    ):
+        raise ValueError("start_date must not come after end_date")
+
+
+class LineChartSpecification(_PlaceChoiceSpecification):
+    """A `line` chart block: a series over time for places or a cohort.
+
+    Takes no `date` field because a line chart draws a time series. Without
+    a place choice, the line draws every place with data, and rejects more
+    than `INVENTORY_PLACE_CAP` places.
 
     Attributes:
         kind: Always `"line"`.
+        start_date: The inclusive first date the line draws; None when the
+            series is open at the start.
+        end_date: The inclusive last date the line draws; None when the
+            series is open at the end.
     """
 
     has_shared_axis: ClassVar[bool] = True
 
     kind: Literal["line"] = "line"
+    start_date: str | None = None
+    end_date: str | None = None
+
+    @model_validator(mode="after")
+    def _check_date_bounds(self) -> Self:
+        """Rejects a malformed or inverted pair of date bounds."""
+        _check_line_date_bounds(self.start_date, self.end_date)
+        return self
 
 
 class BarChartSpecification(
@@ -525,12 +562,29 @@ class ResolvedLineChart(_ResolvedChartBase):
     Attributes:
         variable_dcids: The charted variables.
         scope: The places or the cohort the line draws.
+        start_date: The inclusive first date the component draws; None when
+            the series is open at the start.
+        end_date: The inclusive last date the component draws; None when
+            the series is open at the end.
     """
 
     viz_type: ClassVar[ChartKind] = "line"
 
     variable_dcids: tuple[str, *tuple[str, ...]]
     scope: ChartScope
+    start_date: str | None = None
+    end_date: str | None = None
+
+    def __post_init__(self) -> None:
+        """Rejects a pinned facet conflict or malformed date bounds.
+
+        Raises:
+            ValueError: If two `facet_ids` pairs name the same variable, a
+                bound is not a valid observation date, or `start_date`
+                comes after `end_date`.
+        """
+        super().__post_init__()
+        _check_line_date_bounds(self.start_date, self.end_date)
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -653,7 +707,12 @@ def _serialize_kind_fields(chart: ResolvedChart) -> dict[str, JsonValue]:
     """Returns the wire keys that depend on the chart's kind."""
     match chart:
         case ResolvedLineChart():
-            return _serialize_scope(chart.scope)
+            bounds: dict[str, JsonValue] = {}
+            if chart.start_date is not None:
+                bounds["start_date"] = chart.start_date
+            if chart.end_date is not None:
+                bounds["end_date"] = chart.end_date
+            return {**_serialize_scope(chart.scope), **bounds}
         case ResolvedBarChart():
             sort: dict[str, JsonValue] = (
                 {"sort": chart.sort} if chart.sort is not None else {}
@@ -682,8 +741,9 @@ def serialize_resolved_chart(chart: ResolvedChart) -> JsonObject:
         The wire `ChartItem` mapping: `parent_place` and
         `child_place_type` for a cohort chart and `place_dcids` otherwise,
         `ranking_count`, `show_highest_lowest`, and `show_lowest` for a
-        sliced ranking, `sort` for a sorted bar, and each other optional
-        field present only when it is set.
+        sliced ranking, `sort` for a sorted bar, `start_date` and
+        `end_date` for a line clamped at either end, and each other
+        optional field present only when it is set.
     """
     wire: dict[str, JsonValue] = {
         "viz_type": chart.viz_type,
@@ -1213,13 +1273,36 @@ def _list_shared_dates(tables: Sequence[_ResolvedTable]) -> set[str]:
     )
 
 
-def _has_line_series(
-    table: ObservationTable, places: AbstractSet[str] | None
+def _is_line_date_in_range(
+    observation_date: str, start_date: str | None, end_date: str | None
 ) -> bool:
-    """Returns whether at least one charted place spans two or more dates."""
+    """Returns whether `<datacommons-line>` draws an observation date.
+
+    Matches the component's `isDateInRange`, which compares each bound with
+    `observation_date` cut to the bound's length, rather than
+    `is_within_date_range`: a `start_date` of `2005-06` excludes an annual
+    `2005`. A bound need not equal a date the table holds.
+    """
+    if (
+        start_date is not None
+        and observation_date[: len(start_date)] < start_date
+    ):
+        return False
+    return end_date is None or observation_date[: len(end_date)] <= end_date
+
+
+def _has_line_series(
+    table: ObservationTable,
+    places: AbstractSet[str] | None,
+    start_date: str | None,
+    end_date: str | None,
+) -> bool:
+    """Returns whether a charted place spans two or more drawn dates."""
     dates_by_place: dict[str, set[str]] = {}
     for row in table.rows:
-        if places is None or row.place_dcid in places:
+        if (
+            places is None or row.place_dcid in places
+        ) and _is_line_date_in_range(row.date, start_date, end_date):
             dates_by_place.setdefault(row.place_dcid, set()).add(row.date)
     return any(
         len(dates) >= MIN_LINE_CHART_DATES for dates in dates_by_place.values()
@@ -1227,21 +1310,28 @@ def _has_line_series(
 
 
 def _check_line_dates(
-    tables: Sequence[_ResolvedTable], scope: ChartScope
+    tables: Sequence[_ResolvedTable],
+    scope: ChartScope,
+    start_date: str | None,
+    end_date: str | None,
 ) -> None:
     """Checks that each table of a line chart has a multi-date series.
 
+    Only the dates between `start_date` and `end_date`, which the component
+    draws, are counted.
+
     Raises:
         _ChartRejectedError: If a charted table has no place within `scope`
-            with at least `MIN_LINE_CHART_DATES` dates.
+            with at least `MIN_LINE_CHART_DATES` dates within the bounds.
     """
     places = set(scope.place_dcids) if isinstance(scope, PlaceList) else None
     if any(
-        not _has_line_series(item.analysis_table, places) for item in tables
+        not _has_line_series(item.analysis_table, places, start_date, end_date)
+        for item in tables
     ):
         raise _ChartRejectedError(
             "each table of a line chart needs a place with at least "
-            f"{MIN_LINE_CHART_DATES} dates"
+            f"{MIN_LINE_CHART_DATES} dates in the drawn range"
         )
 
 
@@ -1427,7 +1517,8 @@ def _resolve_line_scope(
         _ChartRejectedError: If a named place has no data, a slice selects
             no place, a cohort is requested and the tables are not one
             cohort, the place count is outside 1 to `INVENTORY_PLACE_CAP`,
-            or any table lacks a charted place with at least two dates.
+            or any table lacks a charted place with at least two dates
+            within the line's date bounds.
     """
     available = _list_available_places(tables)
     match spec.read_place_choice():
@@ -1445,7 +1536,7 @@ def _resolve_line_scope(
             scope = _build_place_list(spec.kind, ranked_places)
         case _DefaultPlaces():
             scope = _build_place_list(spec.kind, available)
-    _check_line_dates(tables, scope)
+    _check_line_dates(tables, scope, spec.start_date, spec.end_date)
     return scope
 
 
@@ -1695,6 +1786,8 @@ def _resolve(spec: ChartSpecification, context: _ChartContext) -> ResolvedChart:
             **shared,
             variable_dcids=_require_variables(variables),
             scope=_resolve_line_scope(spec, tables, context),
+            start_date=spec.start_date,
+            end_date=spec.end_date,
         )
     _check_window_snapshot(spec, tables, context)
     shared_dates = _list_shared_dates(tables)

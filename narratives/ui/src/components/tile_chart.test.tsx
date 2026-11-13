@@ -227,6 +227,42 @@ describe('getDcComponentAttributes', () => {
       unit: 'USD',
     });
   });
+
+  it('sets the date bounds only on a line chart', () => {
+    // Test: Date bound wiring.
+    // Situation: A line chart with both bounds, a line chart with only an
+    //   end bound, a line chart with none, and a bar chart whose item
+    //   carries bounds that only a line component reads.
+    // Expectation: The first line receives `startDate` and `endDate`, the
+    //   second only `endDate`, and the unbounded line and the bar receive
+    //   neither.
+    const bounded = getDcComponentAttributes({
+      ...LINE_CHART,
+      startDate: '2005',
+      endDate: '2020-06',
+    });
+    const endOnly = getDcComponentAttributes({
+      ...LINE_CHART,
+      endDate: '2020-01-31',
+    });
+    const unbounded = getDcComponentAttributes(LINE_CHART);
+    const bar = getDcComponentAttributes({
+      vizType: 'bar',
+      title: 'GDP',
+      variableDcids: [GDP],
+      placeDcids: ['country/FRA'],
+      startDate: '2005',
+      endDate: '2020',
+    });
+
+    expect(bounded).toMatchObject({ startDate: '2005', endDate: '2020-06' });
+    expect(endOnly.endDate).toBe('2020-01-31');
+    expect(endOnly).not.toHaveProperty('startDate');
+    for (const attrs of [unbounded, bar]) {
+      expect(attrs).not.toHaveProperty('startDate');
+      expect(attrs).not.toHaveProperty('endDate');
+    }
+  });
 });
 
 describe('getDcComponentTag', () => {
@@ -292,6 +328,26 @@ describe('ChartTile', () => {
     expect(element?.getAttribute('perCapita')).toBe(GDP);
     expect(element?.getAttribute('facetIds')).toBe('f1');
     expect(element?.getAttribute('header')).toBe('GDP per person by state');
+  });
+
+  it('sets the date bounds on the mounted line component', () => {
+    // Test: Rendering a line chart clamped to date bounds.
+    // Situation: A configuration holding one line chart with `startDate`
+    //   and `endDate`.
+    // Expectation: The mounted `datacommons-line` element carries the
+    //   `startDate` and `endDate` attributes.
+    const { container } = render(
+      <ChartTile
+        config={{
+          shouldRender: true,
+          charts: [{ ...LINE_CHART, startDate: '2005', endDate: '2020' }],
+        }}
+      />,
+    );
+
+    const element = container.querySelector('datacommons-line');
+    expect(element?.getAttribute('startDate')).toBe('2005');
+    expect(element?.getAttribute('endDate')).toBe('2020');
   });
 
   it('renders nothing for a chart without a place anchor', () => {
