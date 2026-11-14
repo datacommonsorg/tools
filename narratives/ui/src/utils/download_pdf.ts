@@ -615,7 +615,7 @@ async function renderToPdf(
 
   // The heading row shows the answer's data label on screen; in the
   // document it shows `heading`, the answer's title when it has one.
-  clone.querySelectorAll<HTMLElement>('.print-question').forEach((label) => {
+  clone.querySelectorAll<HTMLElement>('.print-heading').forEach((label) => {
     label.textContent = heading;
     label.style.whiteSpace = 'normal';
     label.style.textOverflow = 'clip';

@@ -570,7 +570,7 @@ describe('AnswerPanel', () => {
           isStreaming={false}
         />,
       );
-      const text = container.querySelector('.print-question')?.textContent;
+      const text = container.querySelector('.print-heading')?.textContent;
       cleanup();
       return text ?? '';
     };
@@ -598,10 +598,10 @@ describe('AnswerPanel', () => {
         isStreaming={false}
       />,
     );
-    const header = container.querySelector('.print-question');
+    const header = container.querySelector('.print-heading');
 
     expect(header?.textContent).toBe('No matching data found');
-    expect(header?.querySelector('.animate-pulse')).toBeNull();
+    expect(header?.querySelector('[aria-hidden="true"]')).toBeNull();
   });
 
   it('labels the header when the search ended before finding data', () => {
@@ -619,7 +619,7 @@ describe('AnswerPanel', () => {
         isStreaming={false}
       />,
     );
-    const header = container.querySelector('.print-question');
+    const header = container.querySelector('.print-heading');
 
     expect(header?.textContent).toBe('Search ended before finding data');
   });
@@ -637,10 +637,10 @@ describe('AnswerPanel', () => {
         isStreaming={false}
       />,
     );
-    const header = container.querySelector('.print-question');
+    const header = container.querySelector('.print-heading');
 
     expect(header?.textContent).toBe('');
-    expect(header?.querySelector('.animate-pulse')).toBeNull();
+    expect(header?.querySelector('[aria-hidden="true"]')).toBeNull();
   });
 
   it('renders no h1 when the answer has no title', () => {

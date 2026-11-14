@@ -48,7 +48,7 @@ export function SkeletonCard() {
         aria-hidden="true"
         className="pointer-events-none absolute inset-0 rounded-card border border-border mask-[linear-gradient(to_bottom,black,transparent)]"
       ></div>
-      <CardHeader />
+      <CardHeader title="" isLoading />
       <div className="p-4 sm:p-6 flex flex-col gap-6">
         <div className="absolute top-1/2 bottom-0 right-0 left-0 bg-linear-to-b from-transparent to-surface z-10"></div>
         {lineWidths.map((paragraph, p) => (

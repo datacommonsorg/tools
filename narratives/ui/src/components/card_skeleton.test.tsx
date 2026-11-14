@@ -32,12 +32,13 @@ describe('SkeletonCard', () => {
     // Situation: The skeleton renders while an answer is on its way.
     // Expectation: The header holds no text, so it neither repeats the
     //   question nor competes with the reasoning status, and shows one
-    //   pulsing ghost line hidden from assistive technology.
+    //   ghost line hidden from assistive technology, whose pulse runs only
+    //   when the user allows motion.
     const { container } = render(<SkeletonCard />);
-    const header = container.querySelector('.print-question');
+    const header = container.querySelector('.print-heading');
 
     expect(header?.textContent).toBe('');
     const ghost = header?.querySelector('[aria-hidden="true"]');
-    expect(ghost?.className).toContain('animate-pulse');
+    expect(ghost?.className).toContain('motion-safe:animate-pulse');
   });
 });

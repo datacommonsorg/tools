@@ -58,7 +58,7 @@ import {
  * Wraps the full answer in a "Side panel" card (Figma node 3427:16726):
  *   • Outer: 1px border (--color-border), 16px radius
  *   • Toolbar header (16/16/0/0 radius, #F9F9F9 fill, padding 12 12 12 20):
- *       left  = title text (user's question) — Title S, 14/20 Medium
+ *       left  = data label (`formatAnswerHeader`): Title S, 14/20 Medium
  *       right = "Export PDF" outline pill (#F0F4F9 fill)
  *   • Content body (#FFFFFF) hosts the existing sections.
  */
@@ -208,8 +208,7 @@ export function AnswerPanel({
   // the export.
   const canExport = turn.hasData !== false;
   // The question already shows in the user's bubble, so the header labels the
-  // answer instead. An empty string, unlike an absent title, shows no ghost
-  // line.
+  // answer instead.
   const headerTitle = formatAnswerHeader({
     hasData: turn.hasData,
     isTruncated: turn.truncated === true,
