@@ -18,7 +18,6 @@ Context Protocol (MCP).
   suggestions across turns.
 - **Key Metrics dashboard:** Displays a configurable dashboard of curated charts
   and indicators.
-- **PDF export:** Exports answers and charts as formatted PDF reports.
 - **Config-driven customization:** Customizes branding, themes, navigation, and
   system prompts through JSON and Markdown files in `config/` without modifying
   source code.

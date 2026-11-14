@@ -43,6 +43,14 @@ vi.mock('@/src/utils/download_pdf', () => ({
   downloadPdf: vi.fn().mockResolvedValue(undefined),
 }));
 
+// PDF export is hidden in the app; these tests turn it on to keep covering it.
+vi.mock('@/src/components/button_export_pdf', async (importOriginal) => ({
+  ...(await importOriginal<
+    typeof import('@/src/components/button_export_pdf')
+  >()),
+  IS_PDF_EXPORT_ENABLED: true,
+}));
+
 const LINE_CHART: ChartItem = {
   vizType: 'line',
   title: 'Population, France',

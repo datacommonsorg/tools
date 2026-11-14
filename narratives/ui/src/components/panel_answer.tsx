@@ -26,7 +26,10 @@ import {
   useRef,
   useState,
 } from 'react';
-import { ExportPdfButton } from '@/src/components/button_export_pdf';
+import {
+  ExportPdfButton,
+  IS_PDF_EXPORT_ENABLED,
+} from '@/src/components/button_export_pdf';
 import { CardHeader } from '@/src/components/card_header';
 import { ResponseCard } from '@/src/components/card_response';
 import { CitationNumberingProvider } from '@/src/components/chip_citation';
@@ -58,7 +61,8 @@ import {
  *   • Outer: 1px border (--color-border), 16px radius
  *   • Toolbar header (16/16/0/0 radius, #F9F9F9 fill, padding 12 12 12 20):
  *       left  = title text (user's question) — Title S, 14/20 Medium
- *       right = "Export PDF" outline pill (#F0F4F9 fill)
+ *       right = "Export PDF" outline pill (#F0F4F9 fill), hidden while
+ *               `IS_PDF_EXPORT_ENABLED` is false
  *   • Content body (#FFFFFF) hosts the existing sections.
  */
 
@@ -216,6 +220,12 @@ export function AnswerPanel({
     [citationNumbers, turnIndex],
   );
 
+  const isExportVisible =
+    IS_PDF_EXPORT_ENABLED &&
+    turn.status === 'done' &&
+    isRevealed &&
+    areChartsSettled;
+
   const onExport = async () => {
     if (exporting) return;
     setExporting(true);
@@ -253,7 +263,7 @@ export function AnswerPanel({
             (isDebugEnabled || turn.serverReport !== undefined) && (
               <DebugPanel turn={turn} />
             )}
-          {turn.status === 'done' && isRevealed && areChartsSettled && (
+          {isExportVisible && (
             <ToolbarExportPdfPill onExport={onExport} busy={exporting} />
           )}
         </CardHeader>
@@ -318,7 +328,7 @@ export function AnswerPanel({
           {(hasCharts || hasCitations) && <DisclaimerNote />}
 
           {/* 5. Export PDF (filled, in-content) */}
-          {turn.status === 'done' && isRevealed && areChartsSettled && (
+          {isExportVisible && (
             <ExportPdfButton onExport={onExport} busy={exporting} />
           )}
         </div>
