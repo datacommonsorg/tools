@@ -28,17 +28,17 @@ interface SuggestionChipProps {
  */
 const CHIP_CLASSES = [
   // Layout & dimensions
-  'w-full sm:w-[250px] min-h-[72px] px-4 py-3 flex items-center justify-center sm:justify-start',
+  'flex w-full min-h-18 items-center justify-center px-4 py-3 sm:w-62.5 sm:justify-start',
   // Borders & background
-  'border border-outline rounded-chip bg-surface',
+  'rounded-chip border border-border bg-surface-narrative',
   // Typography & text alignment
-  'text-body-medium text-on-surface text-left',
-  // Motion & transitions
-  'transition-all duration-200',
+  'text-left text-body-medium text-on-surface',
   // Shadow states
-  'shadow-[0_1px_3px_rgba(0,0,0,0.02)] hover:shadow-md',
-  // Interactive hover states
-  'hover:bg-surface-soft cursor-pointer',
+  'shadow-xs hover:shadow-md focus-visible:shadow-md',
+  // Interaction & focus
+  'cursor-pointer focus-visible:outline-2 focus-visible:outline-offset-2',
+  // Motion: hover/focus lift, skipped under reduced motion
+  'transition duration-200 motion-safe:hover:-translate-y-1 motion-safe:focus-visible:-translate-y-1',
 ].join(' ');
 
 /** Renders one clickable prompt-suggestion chip. */
