@@ -67,7 +67,7 @@ export const HIGH_TRAFFIC_ERROR =
  * because the connection dropped mid-turn.
  */
 export const INTERRUPTED_TURN_ERROR =
-  'The connection was interrupted before Data Commons could finish the answer. Please try again.';
+  'The connection was interrupted before Data Commons could finish the answer.';
 
 /**
  * Error message shown when the agent rejects the signed conversation history,
@@ -82,7 +82,7 @@ export const CANCELED_TURN_ERROR =
 
 /** Fallback error message shown when an `error` terminal frame omits `error`. */
 export const DEFAULT_TURN_ERROR =
-  'Data Commons ran into an unexpected problem. Please try again later.';
+  'Data Commons ran into an unexpected problem.';
 
 /** Fallback notice message shown when a `refused` terminal frame omits `message`. */
 export const DEFAULT_REFUSAL_MESSAGE =
@@ -95,5 +95,5 @@ export const DEFAULT_REFUSAL_MESSAGE =
  */
 export const formatHttpError = (status: number, statusText: string): string => {
   const statusLine = `HTTP ${status} ${statusText}`.trim();
-  return `Data Commons ran into a server error. ${statusLine}.`;
+  return `Data Commons ran into an error. ${statusLine}.`;
 };

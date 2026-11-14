@@ -35,8 +35,8 @@ REFUSED_MESSAGE = (
 )
 SAFETY_REFUSED_MESSAGE = (
     "Data Commons is built to explore standardized public data (such as "
-    "demographics, economics, health, and education) and can't do more "
-    "than that."
+    "demographics, economics, health, and education) and is not able to do "
+    "more than that."
 )
 # Format template for off-domain refusals. `{subject}` is
 # `OFF_DOMAIN_NAMED_SUBJECT` with the sanitized topic premise, or
