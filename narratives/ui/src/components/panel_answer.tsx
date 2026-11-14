@@ -39,10 +39,7 @@ import { FollowUpQuestions } from '@/src/components/questions_follow_up';
 import { ChartTile } from '@/src/components/tile_chart';
 import { Toast } from '@/src/components/toast';
 import { Tooltip } from '@/src/components/tooltip';
-import {
-  formatAnswerHeader,
-  NO_MATCHING_DATA_HEADER,
-} from '@/src/config/copy_chat';
+import { formatAnswerHeader } from '@/src/config/copy_chat';
 import { REDUCED_MOTION_QUERY } from '@/src/config/motion';
 import { useDebugMode } from '@/src/hooks/use_debug_mode';
 import {
@@ -211,16 +208,13 @@ export function AnswerPanel({
   // the export.
   const canExport = turn.hasData !== false;
   // The question already shows in the user's bubble, so the header labels the
-  // answer instead: its citation count when it has data, "No matching data
-  // found" when the agent reported none, and nothing for an answer that never
-  // reports data, such as a clarifying question. An empty string, unlike an
-  // absent title, shows no ghost line.
-  const headerTitle =
-    turn.hasData === true
-      ? formatAnswerHeader(turn.provenance.length)
-      : turn.hasData === false
-        ? NO_MATCHING_DATA_HEADER
-        : '';
+  // answer instead. An empty string, unlike an absent title, shows no ghost
+  // line.
+  const headerTitle = formatAnswerHeader({
+    hasData: turn.hasData,
+    isTruncated: turn.truncated === true,
+    citationCount: turn.provenance.length,
+  });
   // One export state for the card: the toolbar pill and the in-content button
   // are the same action in two placements, so they share a busy flag and a
   // single confirmation rather than each raising their own.

@@ -62,6 +62,7 @@ const makeServerReport = (
   processingRetries: 2,
   chartsEmitted: 4,
   chartsRejected: 1,
+  titleOutcome: 'omitted',
   tokens: {
     promptTokenCount: 5000,
     candidatesTokenCount: 1200,
@@ -320,7 +321,8 @@ describe('OverviewTab', () => {
     // Test: Server report enrichment on Overview tab.
     // Situation: OverviewTab is passed a valid serverReport.
     // Expectation: Server turn ID, server terminal state, clarification, query pattern,
-    // and server counts (cached tables, MCP iterations, processing retries, charts emitted/rejected, total tokens) are rendered.
+    // server counts (cached tables, MCP iterations, processing retries, charts emitted/rejected, total tokens),
+    // and the title outcome are rendered.
     const serverReport = makeServerReport({
       isClarification: true,
       pattern: 'correlation',
@@ -332,6 +334,7 @@ describe('OverviewTab', () => {
     expect(screen.getByText('correlation')).toBeDefined();
     expect(screen.getByText('3')).toBeDefined(); // MCP iterations
     expect(screen.getByText('4 / 1')).toBeDefined(); // Charts emitted / rejected
+    expect(screen.getByText('omitted')).toBeDefined(); // Title outcome
     expect(screen.getByText('6,500')).toBeDefined(); // Total tokens
   });
 

@@ -604,6 +604,26 @@ describe('AnswerPanel', () => {
     expect(header?.querySelector('.animate-pulse')).toBeNull();
   });
 
+  it('labels the header when the search ended before finding data', () => {
+    // Test: Card header of an answer whose search ended early without data.
+    // Situation: A finished answer whose turn has `hasData` false and
+    //   `truncated` true.
+    // Expectation: The header reads "Search ended before finding data", not
+    //   "No matching data found".
+    const { container } = render(
+      <AnswerPanel
+        turn={buildTurnWithBlocks(
+          [{ index: 0, type: 'text', markdown: 'No data was found.' }],
+          { hasData: false, truncated: true },
+        )}
+        isStreaming={false}
+      />,
+    );
+    const header = container.querySelector('.print-question');
+
+    expect(header?.textContent).toBe('Search ended before finding data');
+  });
+
   it('leaves the header empty when the answer never reports data', () => {
     // Test: Card header of an answer that reports no data status.
     // Situation: A finished answer whose turn has no `hasData`, as a

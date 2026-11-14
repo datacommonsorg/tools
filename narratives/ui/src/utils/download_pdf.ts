@@ -613,8 +613,8 @@ async function renderToPdf(
     numeric.style.cursor = 'auto';
   });
 
-  // The heading row shows the question on screen; in the document it shows
-  // `heading`, the answer's title when it has one.
+  // The heading row shows the answer's data label on screen; in the
+  // document it shows `heading`, the answer's title when it has one.
   clone.querySelectorAll<HTMLElement>('.print-question').forEach((label) => {
     label.textContent = heading;
     label.style.whiteSpace = 'normal';

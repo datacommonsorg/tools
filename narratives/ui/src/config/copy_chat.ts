@@ -84,17 +84,46 @@ export const CANCELED_TURN_ERROR =
 export const DEFAULT_TURN_ERROR =
   'Data Commons ran into an unexpected problem.';
 
-/** Label in the answer card's header when the agent found no matching data. */
+/**
+ * Label in the answer card's header when the agent's search finished and
+ * found no matching data.
+ */
 export const NO_MATCHING_DATA_HEADER = 'No matching data found';
+
+/**
+ * Label in the answer card's header when the agent's search ended early, at
+ * its step or time limit, before it found data.
+ */
+export const SEARCH_ENDED_HEADER = 'Search ended before finding data';
 
 /** Label in the answer card's header when the answer presents data. */
 export const ANSWER_HEADER_LABEL = 'Overview of available data';
 
+/** The facts of a turn that select the answer card's header. */
+export interface AnswerHeaderFacts {
+  /** Whether the agent found data; `undefined` when the turn never says. */
+  hasData: boolean | undefined;
+  /** Whether the agent's search ended before it finished. */
+  isTruncated: boolean;
+  /** Number of citations listed under the answer. */
+  citationCount: number;
+}
+
 /**
- * Formats the answer card's header for an answer that presents data: the
- * label, then the number of citations listed under the answer when it has any.
+ * Formats the answer card's header. An answer with data gets the data label
+ * and its citation count; an answer without data gets a label saying whether
+ * the search finished; a turn that never reports data, such as a clarifying
+ * question, gets an empty header.
  */
-export const formatAnswerHeader = (citationCount: number): string => {
+export const formatAnswerHeader = ({
+  hasData,
+  isTruncated,
+  citationCount,
+}: AnswerHeaderFacts): string => {
+  if (hasData === undefined) return '';
+  if (!hasData) {
+    return isTruncated ? SEARCH_ENDED_HEADER : NO_MATCHING_DATA_HEADER;
+  }
   if (citationCount <= 0) return ANSWER_HEADER_LABEL;
   const noun = citationCount === 1 ? 'citation' : 'citations';
   return `${ANSWER_HEADER_LABEL} • ${citationCount} ${noun}`;

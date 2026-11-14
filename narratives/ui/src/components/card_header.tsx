@@ -23,9 +23,9 @@ import type { ReactNode } from 'react';
 interface CardHeaderProps {
   /**
    * The card title: a label with the citation count once the answer presents
-   * data, a no-matching-data label when it has none, or an empty string,
-   * which leaves the header empty. Omitted while the answer loads, when the
-   * header shows a ghost line instead.
+   * data, a no-data label when it has none, or an empty string, which leaves
+   * the header empty. Omitted while the answer loads, when the header shows a
+   * ghost line instead.
    */
   title?: string;
   /** Toolbar actions on the right; absent while the answer is in flight. */
@@ -39,8 +39,8 @@ interface CardHeaderProps {
 export function CardHeader({ title, children }: CardHeaderProps) {
   return (
     <div className="flex items-start gap-3 py-2 pr-2 pl-5 border-b border-border bg-surface">
-      {/* Wraps onto as many lines as the question needs. utils/download_pdf.ts
-          finds this class and restyles it as the PDF's heading. */}
+      {/* Wraps onto as many lines as the label needs. utils/download_pdf.ts
+          finds this class and writes the PDF's heading into it. */}
       <span className="flex-1 min-w-0 py-1.5 wrap-break-word print-question text-label-large text-on-surface">
         {title ?? (
           // A ghost line like the body's, sized inside one text line so the

@@ -42,6 +42,7 @@ const makeValidRawPayload = (
   processing_retries: 1,
   charts_emitted: 2,
   charts_rejected: 0,
+  title_outcome: 'emitted',
   tokens: {
     prompt_token_count: 500,
     candidates_token_count: 150,
@@ -199,6 +200,7 @@ describe('parseServerDebugReport', () => {
     expect(report.processingRetries).toBe(1);
     expect(report.chartsEmitted).toBe(2);
     expect(report.chartsRejected).toBe(0);
+    expect(report.titleOutcome).toBe('emitted');
 
     expect(report.tokens.promptTokenCount).toBe(500);
     expect(report.tokens.candidatesTokenCount).toBe(150);
@@ -310,6 +312,22 @@ describe('parseServerDebugReport', () => {
     ]);
     expect(report.promptHashes).toEqual({ system: 'hash123' });
     expect(report.buildSha).toBe('commit_sha_xyz');
+  });
+
+  it('reads an absent or unknown title outcome as null', () => {
+    // Test: Title outcome validation.
+    // Situation: The payload omits `title_outcome`, or sends a value outside
+    //   the three outcomes.
+    // Expectation: The report parses and `titleOutcome` is null.
+    const absent = parseServerDebugReport(
+      makeValidRawPayload({ title_outcome: undefined }),
+    );
+    const unknown = parseServerDebugReport(
+      makeValidRawPayload({ title_outcome: 'shown' }),
+    );
+
+    expect(absent?.titleOutcome).toBeNull();
+    expect(unknown?.titleOutcome).toBeNull();
   });
 
   it('rejects invalid or malformed envelopes by returning null', () => {
