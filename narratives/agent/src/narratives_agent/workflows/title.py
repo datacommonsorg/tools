@@ -102,7 +102,12 @@ def parse_title_line(line: str) -> str | None:
 
 
 def _strip_final_period(text: str) -> str:
-    """Removes trailing periods, keeping the one a final abbreviation needs."""
+    """Normalizes trailing periods to the one a final abbreviation needs.
+
+    A text that ends in an abbreviation (`U.S.`) ends with exactly one
+    period, which is added when the abbreviation lost its own; any other
+    text ends with none.
+    """
     stripped = text.rstrip(".")
     if _FINAL_ABBREVIATION.search(stripped):
         return f"{stripped}."

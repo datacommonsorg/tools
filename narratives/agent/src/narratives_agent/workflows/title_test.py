@@ -94,6 +94,7 @@ def test_title_lines_are_recognized(line: str, expected: str | None) -> None:
         ),
         ("Population of the U.S.", "Population of the U.S."),
         ("GDP of the U.S. [1].", "GDP of the U.S."),
+        ("GDP of the U.S", "GDP of the U.S."),
         ("Population of Washington, D.C..", "Population of Washington, D.C."),
         ("Vitamin D intake.", "Vitamin D intake"),
         ("Life expectancy in the US.", "Life expectancy in the US"),

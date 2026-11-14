@@ -623,7 +623,7 @@ turn writes a structured `chat_turn` JSON log entry keyed by `turn_id`,
 containing the terminal state, error reason (if any), phase latencies
 (`classify`, `discovery`, `processing`, `synthesis`, `finalize`, `follow_ups`),
 tool names and counts, token usage, the analytical `pattern` assigned by the
-`classify` phase, and the analysis counts (`scripts`, `tables_fetched`,
+`classify` phase, the analysis counts (`scripts`, `tables_fetched`,
 `total_rows_fetched`, `processing_retries`, `charts_emitted`, and
 `charts_rejected`), and `title_outcome` (`emitted`, `omitted` when the model
 wrote no usable title on a turn with data, or `not_requested` when the turn
