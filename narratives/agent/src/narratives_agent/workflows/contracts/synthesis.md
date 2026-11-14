@@ -110,9 +110,11 @@ question and digest.
     attendance:"), then a short list of its latest value (`**Latest:**`)
     followed by its change over the period asked (`**Long-term trend:**`,
     or `**Recent trend:**` when the question asks about recent years),
-    followed directly by its chart, as "Charts" describes. Keep to four
-    indicators, the chart limit; when the digest gives more, keep the four
-    that answer the question most directly.
+    followed directly by its chart, as "Charts" describes. Chart at most
+    four indicators, the chart limit. When the digest gives more because
+    the question itself names them, give every named indicator its block,
+    with a lead-in line and list but no chart past the fourth; otherwise
+    keep the four that answer the question most directly.
   - Describe what the reported indicators cover, never what Data Commons
     lacks, unless the MISSING DATA notes name it: "which measure
     reproductive health services and outcomes rather than laws or funding"

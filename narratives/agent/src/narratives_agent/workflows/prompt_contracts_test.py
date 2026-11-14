@@ -581,21 +581,30 @@ def test_prompts_carry_no_conflicting_instructions() -> None:
 
 def test_discovery_fetches_the_indicators_an_answer_reports() -> None:
     # Test: The indicator cap matches the answer's limit.
-    # Situation: The discovery contract and the exploratory directive.
+    # Situation: The discovery contract, the exploratory directive, and the
+    #   synthesis contract.
     # Expectation: Discovery fetches at most four indicators, the most an
-    #   answer reports, or five when the question names five; the
-    #   exploratory directive asks for up to four; and no rule still sets a
-    #   cap of five.
+    #   answer charts, or five when the question names five; the
+    #   exploratory directive asks for up to four; no rule still sets a cap
+    #   of five; and synthesis reports every indicator the question names,
+    #   charting four, rather than dropping the fifth that discovery fetched.
     discovery = " ".join(load_prompt_contract("discovery").split())
+    synthesis = " ".join(load_prompt_contract("synthesis").split())
     exploratory = pattern_guidance._DIRECTIVES["exploratory"].discovery
 
     assert (
-        "Fetch at most four indicators, the most an answer reports, or five "
+        "Fetch at most four indicators, the most an answer charts, or five "
         "when the question itself names five"
     ) in discovery
     assert "Fetch at most five indicators" not in discovery
     assert "the five indicators" not in discovery
     assert "up to four, one table each" in exploratory
+    assert (
+        "When the digest gives more because the question itself names them, "
+        "give every named indicator its block, with a lead-in line and list "
+        "but no chart past the fourth"
+    ) in synthesis
+    assert "Keep to four indicators" not in synthesis
 
 
 def test_comparisons_give_each_indicator_a_table_or_bullets() -> None:

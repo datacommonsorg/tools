@@ -142,9 +142,9 @@ indicators every time, so choose by this method rather than case by case:
    5. It is a standardized indicator from an official statistical framework
       or agency, or from the source the answer already uses.
    6. Only if still tied: the order the search listed them.
-3. Fetch at most four indicators, the most an answer reports, or five when
-   the question itself names five; fetch them all in the same round, and fetch a
-   companion only from the same source as its indicator, with
+3. Fetch at most four indicators, the most an answer charts, or five when
+   the question itself names five; fetch them all in the same round, and
+   fetch a companion only from the same source as its indicator, with
    `source_override` set to that indicator's facet. The parts of a
    composition or the stages of a progression count as one indicator. Add
    no other breakdown (by age, race, or income) unless the question asks
