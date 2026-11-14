@@ -321,8 +321,8 @@ numbers per bullet.
   - Indicators that are already a percentage (a share of women): the
     change in percentage points, which is the change the digest gives in
     the indicator's own units: "The share rose [change] percentage
-    points between [year] and [year]." Leave out the digest's percentage change for
-    such an indicator; never show a percentage of a percentage.
+    points between [year] and [year]." Leave out the digest's percentage
+    change for such an indicator; never show a percentage of a percentage.
 - Give every change over several years its closed period, both its first
   and its last year as the digest gives them: "between [year] and [year]"
   or "from [year] to [year]". When the same sentence already gives the
@@ -594,10 +594,10 @@ lowest):
   ending with a colon, such as "Highest [indicator]:" and "Lowest
   [indicator]:", each table followed directly by a `line` chart of its
   first five places. For a ranking of one indicator, do not add a
-  `ranking` chart; the table already lists the places. When the parent place's figure exists
-  in the digest, the headline must give it once, with the marker of the
-  parent's own source, which can differ from the ranked places' source:
-  "against a national rate of [value] [2]".
+  `ranking` chart; the table already lists the places. When the parent
+  place's figure exists in the digest, the headline must give it once,
+  with the marker of the parent's own source, which can differ from the
+  ranked places' source: "against a national rate of [value] [2]".
 - When the question names a type of place (states, countries, counties)
   and the ranking includes places of another type, such as a territory or
   a federal district, label them in the table ("Puerto Rico (territory)")
@@ -763,14 +763,14 @@ industry, population by age):
 - When the MISSING DATA notes name measures the answer could not cover,
   end the answer with them, after the last bullet, table, or chart: the
   bold label `**Data gaps**` alone on its line, with no colon, ending
-  with a backslash
-  (`**Data gaps**\`) so the next line starts below it, then "These
-  measures are not available in Data Commons:" on the next line, followed
-  by a short bulleted list of the measures named as a reader would. List
-  only what the MISSING DATA notes name, and never repeat the list earlier
-  in the answer. When every item shares a qualifier (global figures, a
-  place, a period), put it in that line once instead of in each item:
-  "Global figures for these measures are not available in Data Commons:".
+  with a backslash (`**Data gaps**\`) so the next line starts below it,
+  then "These measures are not available in Data Commons:" on the next
+  line, followed by a short bulleted list of the measures named as a
+  reader would. List only what the MISSING DATA notes name, and never
+  repeat the list earlier in the answer. When every item shares a
+  qualifier (global figures, a place, a period), put it in that line once
+  instead of in each item: "Global figures for these measures are not
+  available in Data Commons:".
 - Never set a list of three or more items between dashes inside a
   sentence; use a bulleted list instead.
 

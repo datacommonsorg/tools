@@ -207,40 +207,37 @@ Otherwise, the request runs through the agent loop in five steps:
    components). A derived per-capita table is scaled automatically in the
    digest (per 1, 1,000, or 100,000 people so the median non-zero magnitude is
    at least 1), or given as a percentage when its step sets a scale of 100 (a
-   share of the population, such as people below the poverty line). A
-   per-capita table not given as a percentage is charted when referenced by
-   its `s<n>` table id as its numerator with the web component's per-person
-   normalization; a percentage is not, because that normalization applies
-   no scale and would draw per-person fractions beside the percentages, and
-   other derived tables are not chartable. At most four charts are accepted
-   per answer. The model writes
-   each chart directly after the bullet list or table holding its figures,
-   and the app shows that list or table beside the chart, a bullet list
-   headed by its one-line lead-in when it has one; maps, scatter charts, and
-   a chart after prose render full width. When the digest has data and no
-   chart is emitted, the default chart floor appends at most one chart
-   projected directly from the primary result (`scatter` for a cohort
-   `relate_cohorts` result, which is considered first, or the direct chart of
-   `analyze_timeseries`, `rank_cohort`, or `compute_composition`;
-   distributions, standalone derivations, non-cohort relations, and relations
-   over a window cohort receive none); its block carries `standalone: true`,
-   so the app shows it full width rather than beside the text before it. A
-   ranking of a cohort, or any ranking over a window cohort, is charted as a
-   `line` of its first five places, with the parent place when a step
-   analyzed the parent's series, the parent's table holds at least two
-   dates in the drawn span, and the parent's value does not exceed every
-   cohort place's value on each date they share (as a total or count does,
-   which would flatten their lines), and with the ranked places alone
-   otherwise; a single-date cohort ranking falls back to a `ranking` chart
-   when its table has one date, or when the ranking supports a relation.
-   The default `line`
-   of a window ranking is clamped to the window's start and end dates. The
-   default `line` of an `analyze_timeseries` step is clamped to the earliest
-   date the step summarized when the step, or the derived table it reads,
-   sets `start_date`, and to the latest when either sets `end_date`. A
-   `ranking`, `bar`, `map`, or `scatter` of a table that the digest ranks
-   only over a window needs an explicit date, because without one it would
-   draw the latest values rather than the change the prose describes. When
+   share of the population, such as people below the poverty line). A per-capita
+   table not given as a percentage is charted when referenced by its `s<n>`
+   table id as its numerator with the web component's per-person normalization;
+   a percentage is not, because that normalization applies no scale and would
+   draw per-person fractions beside the percentages, and other derived tables
+   are not chartable. At most four charts are accepted per answer. The model
+   writes each chart directly after the bullet list or table holding its
+   figures, and the app shows that list or table beside the chart, a bullet list
+   headed by its one-line lead-in when it has one; maps, scatter charts, and a
+   chart after prose render full width. When the digest has data and no chart is
+   emitted, the default chart floor appends at most one chart projected directly
+   from the primary result (`scatter` for a cohort `relate_cohorts` result,
+   which is considered first, or the direct chart of `analyze_timeseries`,
+   `rank_cohort`, or `compute_composition`; distributions, standalone
+   derivations, non-cohort relations, and relations over a window cohort receive
+   none); its block carries `standalone: true`, so the app shows it full width
+   rather than beside the text before it. A ranking of a cohort, or any ranking
+   over a window cohort, is charted as a `line` of its first five places, with
+   the parent place when a step analyzed the parent's series, the parent's table
+   holds at least two dates in the drawn span, and the parent's value does not
+   exceed every cohort place's value on each date they share (as a total or
+   count does, which would flatten their lines), and with the ranked places
+   alone otherwise; a single-date cohort ranking falls back to a `ranking` chart
+   when its table has one date, or when the ranking supports a relation. The
+   default `line` of a window ranking is clamped to the window's start and end
+   dates. The default `line` of an `analyze_timeseries` step is clamped to the
+   earliest date the step summarized when the step, or the derived table it
+   reads, sets `start_date`, and to the latest when either sets `end_date`. A
+   `ranking`, `bar`, `map`, or `scatter` of a table that the digest ranks only
+   over a window needs an explicit date, because without one it would draw the
+   latest values rather than the change the prose describes. When
    the digest has data, the synthesis contract's `synthesis_title` addendum
    has the model open its answer with a `# ` title line, a short label for
    the data the answer presents; the server (`workflows/title.py`) takes that
