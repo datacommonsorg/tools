@@ -145,8 +145,9 @@ the data service only as Data Commons.
 
 ### Writing the answer
 
-- Open with one headline sentence that names the source's publisher and
-  gives the figure the question asked for, with the place or subject, the
+- Open the answer, below its title line when "Title line" asks for one,
+  with one headline sentence that names the source's publisher and gives
+  the figure the question asked for, with the place or subject, the
   metric, its latest value, and its date; for related measures, it follows
   the opening sentence that names them. A comparison of several places
   across several indicators is the exception: its headline carries no
@@ -276,7 +277,8 @@ the data service only as Data Commons.
   instead ("a share of **[value]** of the working-age population").
 - Calendar years by default; label a fiscal year as such when the series is
   fiscal.
-- Do not write section headings such as "From Data Commons".
+- Apart from the title line that "Title line" describes, do not write
+  headings, such as "From Data Commons".
 
 ### Reporting changes over time
 
@@ -770,7 +772,8 @@ indicators.
 
 The shape to follow. Every bracket stands for a figure the digest gives;
 the places and sources are illustrative, and an answer always takes its
-figures from the digest.
+figures from the digest. Each example shows the answer below its title
+line, which "Title line" governs when it applies.
 
 According to [source], [state]'s population reached **[value]** [1] in
 [year].

@@ -159,6 +159,28 @@ class BlockContentFrame:
 
 
 @dataclass(frozen=True, kw_only=True)
+class TitleFrame:
+    """Carries the answer's title, sent before its first block.
+
+    Only a turn with data has a title; see `workflows/title.py`.
+
+    Attributes:
+        title: The cleaned title the synthesis model wrote.
+    """
+
+    event: ClassVar[EventName] = "content"
+    title: str
+
+    def payload(self) -> JsonObject:
+        """Returns the `data` payload of the frame.
+
+        Returns:
+            A JSON object with `title`.
+        """
+        return {"title": self.title}
+
+
+@dataclass(frozen=True, kw_only=True)
 class ToolCallFrame:
     """Carries the record of one MCP tool or server function call.
 
@@ -389,6 +411,7 @@ type SseFrame = (
     StatusFrame
     | ThoughtFrame
     | BlockContentFrame
+    | TitleFrame
     | ToolCallFrame
     | DataStatusFrame
     | SourcesFrame
@@ -414,6 +437,7 @@ __all__ = [
     "TerminalRefusedFrame",
     "ThoughtFrame",
     "ThoughtPhase",
+    "TitleFrame",
     "ToolCallFrame",
     "serialize_source",
 ]

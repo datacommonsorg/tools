@@ -39,6 +39,7 @@ import { FollowUpQuestions } from '@/src/components/questions_follow_up';
 import { ChartTile } from '@/src/components/tile_chart';
 import { Toast } from '@/src/components/toast';
 import { Tooltip } from '@/src/components/tooltip';
+import { formatAnswerHeader } from '@/src/config/copy_chat';
 import { REDUCED_MOTION_QUERY } from '@/src/config/motion';
 import { useDebugMode } from '@/src/hooks/use_debug_mode';
 import {
@@ -57,7 +58,7 @@ import {
  * Wraps the full answer in a "Side panel" card (Figma node 3427:16726):
  *   • Outer: 1px border (--color-border), 16px radius
  *   • Toolbar header (16/16/0/0 radius, #F9F9F9 fill, padding 12 12 12 20):
- *       left  = title text (user's question) — Title S, 14/20 Medium
+ *       left  = data label (`formatAnswerHeader`): Title S, 14/20 Medium
  *       right = "Export PDF" outline pill (#F0F4F9 fill)
  *   • Content body (#FFFFFF) hosts the existing sections.
  */
@@ -202,6 +203,17 @@ export function AnswerPanel({
    * thing: `citationNumbers` changes only which numeral a position wears.
    */
   const hasCitations = turn.provenance.length > 0;
+  // An answer that reports no data has nothing worth exporting, so it offers
+  // no PDF. `hasData` is undefined on turns that never report it, which keep
+  // the export.
+  const shouldOfferExport = turn.hasData !== false;
+  // The question already shows in the user's bubble, so the header labels the
+  // answer instead.
+  const headerTitle = formatAnswerHeader({
+    hasData: turn.hasData,
+    isTruncated: turn.truncated === true,
+    citationCount: turn.provenance.length,
+  });
   // One export state for the card: the toolbar pill and the in-content button
   // are the same action in two placements, so they share a busy flag and a
   // single confirmation rather than each raising their own.
@@ -220,7 +232,7 @@ export function AnswerPanel({
     if (exporting) return;
     setExporting(true);
     try {
-      await downloadPdf(panelRef.current, turn.userMessage);
+      await downloadPdf(panelRef.current, turn.title ?? turn.userMessage);
       setExportedAt(Date.now());
     } finally {
       setExporting(false);
@@ -247,31 +259,35 @@ export function AnswerPanel({
           produces a PDF missing the chart. It also waits for every chart to
           settle, since the reveal can end before a slow chart draws. This
           matches the filled "Export PDF" button below. */}
-        <CardHeader title={turn.userMessage}>
+        <CardHeader title={headerTitle}>
           {isRevealed &&
             isTurnSettled(turn) &&
             (isDebugEnabled || turn.serverReport !== undefined) && (
               <DebugPanel turn={turn} />
             )}
-          {turn.status === 'done' && isRevealed && areChartsSettled && (
-            <ToolbarExportPdfPill onExport={onExport} busy={exporting} />
-          )}
+          {shouldOfferExport &&
+            turn.status === 'done' &&
+            isRevealed &&
+            areChartsSettled && (
+              <ToolbarExportPdfPill onExport={onExport} busy={exporting} />
+            )}
         </CardHeader>
 
-        {/* Intro block: the question as the answer's title. Outside the content
-          body so the body's reveal does not hide it. A placeholder for a
-          "synthesis" block, whose title will be a processed title and a
-          synthesis of the answer, both sent by the agent; until then it shows
-          the raw question. The PDF already takes the header's question as its
-          heading, so the export leaves this out. */}
-        <div
-          className="px-4 pt-4 sm:px-6 sm:pt-6 bg-surface-narrative"
-          data-non-print="true"
-        >
-          <h1 className="text-title-large-emphasized text-on-surface wrap-break-word">
-            {turn.userMessage}
-          </h1>
-        </div>
+        {/* Intro block: the agent's title for the answer, a short label for
+          the data it presents. Outside the content body so the body's reveal
+          does not hide it. An answer without data has no title, and so no
+          intro block. The PDF writes the title into the header row as its
+          heading, so the export leaves this block out. */}
+        {turn.title && (
+          <div
+            className="px-4 pt-4 sm:px-6 sm:pt-6 bg-surface-narrative"
+            data-non-print="true"
+          >
+            <h1 className="text-title-large-emphasized text-on-surface wrap-break-word">
+              {turn.title}
+            </h1>
+          </div>
+        )}
 
         {/* Content body: everything after and between the text blocks stays
           hidden until the text has finished revealing, except chart tiles,
@@ -318,9 +334,12 @@ export function AnswerPanel({
           {(hasCharts || hasCitations) && <DisclaimerNote />}
 
           {/* 5. Export PDF (filled, in-content) */}
-          {turn.status === 'done' && isRevealed && areChartsSettled && (
-            <ExportPdfButton onExport={onExport} busy={exporting} />
-          )}
+          {shouldOfferExport &&
+            turn.status === 'done' &&
+            isRevealed &&
+            areChartsSettled && (
+              <ExportPdfButton onExport={onExport} busy={exporting} />
+            )}
         </div>
         {exportedAt !== null && (
           <Toast

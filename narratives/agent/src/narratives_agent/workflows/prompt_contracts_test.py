@@ -34,6 +34,7 @@ from narratives_agent.workflows.mcp_loop import (
 )
 from narratives_agent.workflows.pattern_guidance import build_pattern_directive
 from narratives_agent.workflows.prompt_contracts import (
+    ContractAddendumName,
     ContractName,
     compose_system_instruction,
     load_prompt_contract,
@@ -46,7 +47,10 @@ from narratives_agent.workflows.specification import (
 # The step limit as the discovery contract writes it, keyed by its value.
 _STEP_LIMIT_WORDS = {6: "six"}
 
-_CONTRACTS: tuple[ContractName, ...] = get_args(ContractName.__value__)
+_CONTRACTS: tuple[ContractName | ContractAddendumName, ...] = (
+    *get_args(ContractName.__value__),
+    *get_args(ContractAddendumName.__value__),
+)
 
 
 def _extract_table_first_column_names(contract: str, heading: str) -> set[str]:
@@ -59,10 +63,11 @@ def _extract_table_first_column_names(contract: str, heading: str) -> set[str]:
 
 @pytest.mark.parametrize("name", _CONTRACTS)
 def test_every_shipped_contract_loads_and_strips_comments(
-    name: ContractName,
+    name: ContractName | ContractAddendumName,
 ) -> None:
     # Test: Loading of every shipped prompt contract.
-    # Situation: `load_prompt_contract` is called for each `ContractName`.
+    # Situation: `load_prompt_contract` is called for each `ContractName` and
+    #   each `ContractAddendumName`.
     # Expectation: The returned text is non-empty and has all HTML comments
     #   stripped.
     load_prompt_contract.cache_clear()
@@ -136,6 +141,36 @@ def test_compose_orders_guidance_contract_and_directive() -> None:
     assert plain == f"Custom guidance.\n\n{contract}"
     assert guided.startswith(plain)
     assert guided.endswith(build_pattern_directive(classification, "discovery"))
+
+
+def test_compose_places_the_addendum_after_the_contract() -> None:
+    # Test: Placement of the contract addendum.
+    # Situation: `compose_system_instruction` is called for synthesis with the
+    #   `synthesis_title` addendum and a ranking classification.
+    # Expectation: The addendum's text follows the synthesis contract
+    #   directly, and the pattern directive stays last.
+    classification = QueryClassification.model_validate(
+        {
+            "serviceable": True,
+            "pattern": "top_n_ranking",
+            "geographic_shape": "single_place",
+            "requires_computation": True,
+        }
+    )
+    contract = load_prompt_contract("synthesis")
+    addendum = load_prompt_contract("synthesis_title")
+
+    composed = compose_system_instruction(
+        "Custom guidance.",
+        "synthesis",
+        classification,
+        addendum="synthesis_title",
+    )
+
+    assert composed.startswith(f"Custom guidance.\n\n{contract}\n\n{addendum}")
+    assert composed.endswith(
+        build_pattern_directive(classification, "synthesis")
+    )
 
 
 def test_composed_default_discovery_prompt_includes_guidance_and_contract() -> (
@@ -384,7 +419,7 @@ def test_discovery_contract_requires_a_step_for_every_reported_table() -> None:
         "Every table the answer reports, compares, or charts must be the "
         "input of a step."
     ) in discovery
-    for name in get_args(ContractName.__value__):
+    for name in _CONTRACTS:
         assert "no step" not in load_prompt_contract(name)
 
 

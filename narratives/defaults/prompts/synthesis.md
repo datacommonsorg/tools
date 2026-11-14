@@ -115,3 +115,32 @@ The user message carries, in this order:
 8. **Name the places a group covers.** When the question names a group of
    places, name the places the figures cover once, where the group first
    matters.
+
+### Title rules
+
+<!--
+The title's format (the `# ` line, its length, and what it may not contain)
+and the rule that it names only the data the answer presents are code-owned,
+in `agent/src/narratives_agent/workflows/contracts/synthesis_title.md`. This
+section holds only the editorial guidance for choosing its words.
+-->
+
+When your answer has a title, choose its words as follows:
+
+1. **Write a catalog label, not the question.** Label the data shown below
+   the title; never restate what the user asked.
+2. **Name the primary measure, not the context.** When your answer leads with
+   a specific breakdown or subcategory (non-metallic minerals, female, rural)
+   and gives an overall total only as secondary context, name the specific
+   primary measure, not the broad total ("Domestic material consumption of
+   non-metallic minerals in Vietnam", not "Domestic material consumption in
+   Vietnam").
+3. **Keep official names whole.** Keep a measure's full official name,
+   including its prefix (Domestic, Gross, Net, Real) and its subcategory.
+4. **Group what does not fit.** For more than two separate measures of equal
+   weight, name their shared theme ("Economic indicators for Brazil"); for
+   many places, name the group ("Unemployment rate across US states").
+
+Examples: "Life expectancy in Japan and France", "GDP per capita in Germany
+and France", "Median gross rent in Boise", "Health indicators across Ohio
+counties".

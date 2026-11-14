@@ -513,6 +513,35 @@ export function flattenForPrint(clone: HTMLElement) {
 }
 
 /**
+ * Writes `heading` into the header row of `clone` and styles it as the
+ * document's heading.
+ *
+ * The row shows the answer's data label on screen; in the document it shows
+ * `heading`, the answer's title when it has one. The row is sized for one line
+ * on screen, so it is let grow to fit a heading that wraps.
+ */
+export function writePrintHeading(clone: HTMLElement, heading: string) {
+  clone.querySelectorAll<HTMLElement>('.print-heading').forEach((label) => {
+    label.textContent = heading;
+    label.style.whiteSpace = 'normal';
+    label.style.textOverflow = 'clip';
+    label.style.overflow = 'visible';
+    label.style.fontSize = '18px';
+    label.style.lineHeight = '26px';
+    label.style.fontWeight = '700';
+    label.style.color = '#000000';
+    const row = label.parentElement;
+    if (row) {
+      row.style.height = 'auto';
+      row.style.minHeight = '0';
+      row.style.alignItems = 'flex-start';
+      row.style.padding = '0 0 12px 0';
+      row.style.borderBottom = '0';
+    }
+  });
+}
+
+/**
  * Stacks every chart card in `clone` at the full page width.
  *
  * On screen a chart tile lays its rows out as a flex column and each row as a
@@ -530,9 +559,9 @@ export function stackChartsForPrint(clone: HTMLElement) {
     });
 }
 
-/** Turns the question into a filesystem-safe basename. */
-function fileNameFor(question: string): string {
-  const slug = question
+/** Turns the heading into a filesystem-safe basename. */
+function fileNameFor(heading: string): string {
+  const slug = heading
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-+|-+$/g, '')
@@ -549,18 +578,20 @@ function fileNameFor(question: string): string {
  * selectable text layer.
  *
  * Elements marked `data-non-print` are dropped, so the exported document is
- * the question and the answer without the UI affordances around them.
+ * the heading and the answer without the UI affordances around them.
+ * `heading` replaces the header row's text and names the file: the answer's
+ * title, or the question when the answer has none.
  */
 export async function downloadPdf(
   target: HTMLElement | null,
-  question: string,
+  heading: string,
 ): Promise<void> {
   if (!target || !target.isConnected) return;
 
   // Leave the live panel's layout untouched so the card does not jump on
   // export: the page-width layout and chart scaling happen on the copy.
   await whenChartsDrawn(target);
-  await renderToPdf(target, question);
+  await renderToPdf(target, heading);
 }
 
 /**
@@ -573,7 +604,7 @@ export async function downloadPdf(
  */
 async function renderToPdf(
   target: HTMLElement,
-  question: string,
+  heading: string,
 ): Promise<void> {
   const [{ default: html2canvas }, { jsPDF }] = await Promise.all([
     import('html2canvas'),
@@ -611,25 +642,7 @@ async function renderToPdf(
     numeric.style.cursor = 'auto';
   });
 
-  // The question is the document's heading.
-  clone.querySelectorAll<HTMLElement>('.print-question').forEach((heading) => {
-    heading.style.whiteSpace = 'normal';
-    heading.style.textOverflow = 'clip';
-    heading.style.overflow = 'visible';
-    heading.style.fontSize = '18px';
-    heading.style.lineHeight = '26px';
-    heading.style.fontWeight = '700';
-    heading.style.color = '#000000';
-    // The row it sits in is sized for one line on screen; let it grow.
-    const row = heading.parentElement;
-    if (row) {
-      row.style.height = 'auto';
-      row.style.minHeight = '0';
-      row.style.alignItems = 'flex-start';
-      row.style.padding = '0 0 12px 0';
-      row.style.borderBottom = '0';
-    }
-  });
+  writePrintHeading(clone, heading);
 
   // Chart cards clip their contents on screen to keep rounded corners tidy.
   // In a document there is no viewport to fit, so let them grow instead --
@@ -711,7 +724,7 @@ async function renderToPdf(
       offset += sliceHeight;
     }
 
-    pdf.save(fileNameFor(question));
+    pdf.save(fileNameFor(heading));
   } finally {
     stage.remove();
   }

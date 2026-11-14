@@ -57,7 +57,8 @@ process and PR expectations: [`CONTRIBUTING.md`](../CONTRIBUTING.md).
       admission pre-filter, query classification, and pattern guidance
       (`prefilter.py`, `classify.py`, `pattern_guidance.py`), the code-owned
       prompt contracts appended after the configured guidance
-      (`prompt_contracts.py`, with packaged contracts under `contracts/`),
+      (`prompt_contracts.py`, with packaged contracts and the synthesis
+      title-line addenda under `contracts/`),
       the discovery loop (`mcp_loop.py`), the per-turn cache of
       `CachedTable`s (`t<n>` fetched, `s<n>` derived), the merged
       `VariableMetadataEnrichment`, the variable metadata the server
@@ -78,7 +79,9 @@ process and PR expectations: [`CONTRIBUTING.md`](../CONTRIBUTING.md).
       (`debug_report.py`), the chart grammar, resolver, and wire serializer
       (`charts.py`), the default chart floor (`chart_defaults.py`), the
       synthesis prompt builder (`synthesis.py`), the streaming block splitter
-      (`blocks.py`), follow-up generation (`follow_up.py`), user-visible
+      (`blocks.py`), the selection of the title-line addendum and the
+      extractor that takes the title line off the synthesis stream
+      (`title.py`), follow-up generation (`follow_up.py`), user-visible
       messages (`messages.py`), the typed SSE frames the agent loop sends
       (`sse_frames.py`), the turn's state slots (`state_slots.py`), and
       signed transcripts (`transcript.py`). Of the agent's subpackages, it

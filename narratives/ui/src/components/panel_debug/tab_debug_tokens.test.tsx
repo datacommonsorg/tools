@@ -62,6 +62,7 @@ const makeServerReport = (
   processingRetries: 0,
   chartsEmitted: 1,
   chartsRejected: 0,
+  titleOutcome: 'emitted',
   tokens: {
     promptTokenCount: 2000,
     candidatesTokenCount: 500,
