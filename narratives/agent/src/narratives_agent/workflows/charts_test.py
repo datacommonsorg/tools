@@ -15,7 +15,8 @@
 
 Covers `parse_chart_specification`, `resolve_chart_specification`,
 `serialize_resolved_chart`, and the construction
-invariants of `PlaceList`, `RankingSlice`, and the resolved charts' facets.
+invariants of `PlaceList`, `RankingSlice`, and the resolved charts' facets
+and line date bounds.
 """
 
 import json
@@ -1048,6 +1049,35 @@ def test_the_chart_kinds_match_their_classes() -> None:
             {"viz_type": "line", "place_dcids": ["geoId/01", "geoId/02"]},
         ),
         (
+            ResolvedLineChart(
+                title="x",
+                variable_dcids=("v",),
+                scope=PlaceList(("geoId/01",)),
+                start_date="2005",
+                end_date="2020-06",
+            ),
+            {
+                "viz_type": "line",
+                "place_dcids": ["geoId/01"],
+                "start_date": "2005",
+                "end_date": "2020-06",
+            },
+        ),
+        (
+            ResolvedLineChart(
+                title="x",
+                variable_dcids=("v",),
+                scope=_STATE_COHORT,
+                end_date="2020-01-31",
+            ),
+            {
+                "viz_type": "line",
+                "parent_place": "country/USA",
+                "child_place_type": "State",
+                "end_date": "2020-01-31",
+            },
+        ),
+        (
             ResolvedBarChart(
                 title="x",
                 variable_dcids=("v",),
@@ -1158,6 +1188,8 @@ def test_the_chart_kinds_match_their_classes() -> None:
     ],
     ids=[
         "line_of_places",
+        "line_clamped_at_both_ends",
+        "cohort_line_clamped_at_the_end",
         "sorted_bar_of_a_cohort",
         "ranking_of_both_ends",
         "ranking_of_the_bottom_end",
@@ -1176,7 +1208,8 @@ def test_each_resolved_chart_kind_serializes_to_its_wire_mapping(
     #   map that sets every shared optional field.
     # Expectation: The mapping holds the kind's `viz_type`, title, and
     #   variables, the place or cohort keys of its scope, the three ranking
-    #   keys only for a sliced ranking, `sort` only for a sorted bar, and
+    #   keys only for a sliced ranking, `sort` only for a sorted bar,
+    #   `start_date` and `end_date` only for a line clamped at that end, and
     #   each shared optional field only when it is set.
     wire = serialize_resolved_chart(chart)
 
@@ -1996,3 +2029,257 @@ def test_an_undated_scatter_with_a_window_ranked_table_is_rejected() -> None:
         "scatter", ["t1", "t2"], cache, digest, analysis, date="2024"
     )
     assert dated is not None
+
+
+@pytest.mark.parametrize(
+    ("dates", "bounds"),
+    [
+        (("2000", "2010", "2020"), {"start_date": "2005"}),
+        (("2000", "2010", "2020"), {"end_date": "2015"}),
+        (
+            ("2000", "2010", "2020"),
+            {"start_date": "2005", "end_date": "2020-06"},
+        ),
+        (
+            ("2020-01", "2020-02", "2020-03"),
+            {"start_date": "2020-02", "end_date": "2020-03"},
+        ),
+        (
+            ("2020-01-01", "2020-01-15", "2020-02-01"),
+            {"start_date": "2020-01-10", "end_date": "2020-02-01"},
+        ),
+        (("2000", "2010", "2020"), {"start_date": "2005", "end_date": None}),
+    ],
+    ids=[
+        "start_between_decennial_rows",
+        "end_between_decennial_rows",
+        "year_start_and_month_end",
+        "month_bounds",
+        "day_bounds",
+        "explicit_null_end",
+    ],
+)
+def test_a_line_carries_its_date_bounds_to_the_wire(
+    dates: tuple[str, ...], bounds: dict[str, str | None]
+) -> None:
+    # Test: Resolution of a line clamped to inclusive date bounds.
+    # Situation: A two-country table holds annual, monthly, or daily
+    #   observations, and the line sets `start_date`, `end_date`, or both,
+    #   at `YYYY`, `YYYY-MM`, or `YYYY-MM-DD` precision; some bounds fall
+    #   between the table's dates, such as `2005` over 2000, 2010, and 2020,
+    #   and one block writes a null `end_date`.
+    # Expectation: The chart resolves, because at least two dates remain
+    #   within the bounds, and its wire mapping carries each bound that is
+    #   set, whether or not the table holds that exact date.
+    table = _make_table("t1", dates=dates)
+
+    chart = _resolve_chart_wire(
+        "line", ["t1"], _make_cache(table), None, None, **bounds
+    )
+
+    assert chart == {
+        "viz_type": "line",
+        "title": "A chart",
+        "variable_dcids": ["Count_Person"],
+        "place_dcids": ["country/DEU", "country/FRA"],
+        **{key: value for key, value in bounds.items() if value is not None},
+    }
+
+
+@pytest.mark.parametrize(
+    "kind", ["bar", "ranking", "map", "scatter", "highlight"]
+)
+@pytest.mark.parametrize("field", ["start_date", "end_date"])
+def test_date_bounds_on_a_kind_other_than_line_fail_validation(
+    kind: str, field: str
+) -> None:
+    # Test: The grammar isolation of `start_date` and `end_date`.
+    # Situation: A `bar`, `ranking`, `map`, `scatter`, or `highlight` block
+    #   sets `start_date` or `end_date`.
+    # Expectation: `parse_chart_specification` raises `ValidationError`,
+    #   because only a `line` takes date bounds.
+    payload = {"kind": kind, "tables": ["t1"], "title": "x", field: "2020"}
+
+    with pytest.raises(ValidationError):
+        parse_chart_specification(json.dumps(payload))
+
+
+_MALFORMED_LINE_BOUNDS: list[dict[str, str]] = [
+    {"start_date": "latest"},
+    {"end_date": "2021-13"},
+    {"start_date": "2021-02-29"},
+    {"end_date": ""},
+    {"start_date": "2023", "end_date": "2020"},
+    {"start_date": "2020-07", "end_date": "2020-03"},
+]
+_MALFORMED_LINE_BOUND_IDS = [
+    "keyword",
+    "month_out_of_range",
+    "day_out_of_range",
+    "empty",
+    "inverted_years",
+    "inverted_months",
+]
+
+
+@pytest.mark.parametrize(
+    "bounds", _MALFORMED_LINE_BOUNDS, ids=_MALFORMED_LINE_BOUND_IDS
+)
+def test_malformed_line_date_bounds_fail_validation(
+    bounds: dict[str, str],
+) -> None:
+    # Test: The date checks of `LineChartSpecification`.
+    # Situation: A `line` block sets a bound that is not a real `YYYY`,
+    #   `YYYY-MM`, or `YYYY-MM-DD` date, or a `start_date` after its
+    #   `end_date`.
+    # Expectation: `parse_chart_specification` raises `ValidationError`.
+    payload = {"kind": "line", "tables": ["t1"], "title": "x", **bounds}
+
+    with pytest.raises(ValidationError):
+        parse_chart_specification(json.dumps(payload))
+
+
+@pytest.mark.parametrize(
+    "bounds", _MALFORMED_LINE_BOUNDS, ids=_MALFORMED_LINE_BOUND_IDS
+)
+def test_a_resolved_line_rejects_malformed_date_bounds(
+    bounds: dict[str, str],
+) -> None:
+    # Test: The construction invariant of `ResolvedLineChart`.
+    # Situation: A resolved line chart is built with a bound that is not a
+    #   real observation date, or with a `start_date` after its `end_date`.
+    # Expectation: The construction raises `ValueError`.
+    with pytest.raises(ValueError, match="start_date"):
+        ResolvedLineChart(
+            title="Population",
+            variable_dcids=("Count_Person",),
+            scope=PlaceList(("country/FRA",)),
+            start_date=bounds.get("start_date"),
+            end_date=bounds.get("end_date"),
+        )
+
+
+@pytest.mark.parametrize(
+    ("dates", "bounds"),
+    [
+        (("2022", "2023"), {"start_date": "2022-06"}),
+        (("2000", "2010", "2020"), {"start_date": "2011"}),
+        (("2000", "2010", "2020"), {"end_date": "2009"}),
+        (
+            ("2020-01", "2020-02", "2020-03"),
+            {"start_date": "2020-02", "end_date": "2020-02"},
+        ),
+    ],
+    ids=[
+        "month_start_excludes_its_annual_row",
+        "start_leaves_one_date",
+        "end_leaves_one_date",
+        "single_month_window",
+    ],
+)
+def test_a_line_with_fewer_than_two_dates_in_bounds_is_rejected(
+    dates: tuple[str, ...], bounds: dict[str, str]
+) -> None:
+    # Test: The multi-date series check within a line's date bounds.
+    # Situation: Each table holds two or more dates, but the bounds leave
+    #   one: a `start_date` of `2022-06` excludes the annual `2022`, as
+    #   `<datacommons-line>` compares the date cut to the bound's length,
+    #   leaving only `2023`.
+    # Expectation: Resolution returns None rather than a line the component
+    #   would draw empty.
+    table = _make_table("t1", dates=dates)
+
+    chart = _resolve_chart_wire(
+        "line", ["t1"], _make_cache(table), None, None, **bounds
+    )
+
+    assert chart is None
+
+
+def test_every_table_of_a_bounded_line_needs_two_dates_in_bounds() -> None:
+    # Test: The per-table series check of a bounded line.
+    # Situation: `t1` holds France from 2018 to 2021 and `t2`, of another
+    #   variable in the same unit, holds Germany in 2018 and 2019; the line
+    #   draws both from 2020.
+    # Expectation: The line is rejected, because `t2` keeps no date within
+    #   the bounds, and resolves once the bound leaves `t2` two dates.
+    first = _make_table(
+        "t1", places=("country/FRA",), dates=("2018", "2019", "2020", "2021")
+    )
+    second = _make_table(
+        "t2",
+        "Count_Person_Female",
+        name="Female Population",
+        places=("country/DEU",),
+        dates=("2018", "2019"),
+    )
+    cache = _make_cache(first, second)
+
+    assert (
+        _resolve_chart_wire("line", ["t1", "t2"], cache, start_date="2020")
+        is None
+    )
+    resolved = _resolve_chart_wire(
+        "line", ["t1", "t2"], cache, start_date="2018"
+    )
+    assert resolved is not None
+    assert resolved["start_date"] == "2018"
+
+
+def test_a_bound_coarser_than_the_dates_keeps_the_dates_it_contains() -> None:
+    # Test: A year bound over monthly observations.
+    # Situation: Two countries hold values in 2019-12, 2020-06, and
+    #   2020-09, and the line sets `start_date` to `2020`.
+    # Expectation: The line resolves, because the component compares each
+    #   monthly date cut to the year, so 2020-06 and 2020-09 remain.
+    table = _make_table("t1", dates=("2019-12", "2020-06", "2020-09"))
+
+    chart = _resolve_chart_wire(
+        "line", ["t1"], _make_cache(table), start_date="2020"
+    )
+
+    assert chart is not None
+    assert chart["start_date"] == "2020"
+
+
+def test_a_bounded_line_counts_only_the_named_places() -> None:
+    # Test: The place scope of the series check within date bounds.
+    # Situation: France holds 2018 to 2021 and Germany only 2018 and 2019;
+    #   a line from 2020 names Germany alone, or both places.
+    # Expectation: The line of Germany is rejected, although France keeps
+    #   two dates within the bounds, and the line of both places resolves.
+    france = _make_table(
+        "t1", places=("country/FRA",), dates=("2018", "2019", "2020", "2021")
+    )
+    germany = _make_table("t1", places=("country/DEU",), dates=("2018", "2019"))
+    table = CachedTable(
+        "t1",
+        replace(
+            france.table,
+            rows=(*france.table.rows, *germany.table.rows),
+            requested_places=("country/FRA", "country/DEU"),
+            place_names={"country/FRA": "FRA", "country/DEU": "DEU"},
+        ),
+    )
+    cache = _make_cache(table)
+
+    assert (
+        _resolve_chart_wire(
+            "line",
+            ["t1"],
+            cache,
+            places=["country/DEU"],
+            start_date="2020",
+        )
+        is None
+    )
+    assert (
+        _resolve_chart_wire(
+            "line",
+            ["t1"],
+            cache,
+            places=["country/FRA", "country/DEU"],
+            start_date="2020",
+        )
+        is not None
+    )

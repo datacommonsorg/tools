@@ -16,8 +16,8 @@
 
 /**
  * @fileoverview Tests for the chart tile: the attributes each chart item
- * hands its Data Commons web component, and the tile's rendering of a
- * one-item configuration.
+ * hands its Data Commons web component, the tile's rendering of a one-item
+ * configuration, and the rows the tile splits its charts into.
  */
 
 import { act, cleanup, render } from '@testing-library/react';
@@ -26,6 +26,7 @@ import {
   ChartTile,
   getDcComponentAttributes,
   getDcComponentTag,
+  splitChartRows,
 } from '@/src/components/tile_chart';
 import type { ChartItem } from '@/src/hooks/use_sse_chat';
 import type { DataCommonsComponentTagName } from '@/src/utils/datacommons_component';
@@ -70,6 +71,62 @@ const LINE_CHART: ChartItem = {
   variableDcids: [GDP],
   placeDcids: ['country/FRA'],
 };
+
+/** A bar chart over one place. */
+const BAR_CHART: ChartItem = {
+  vizType: 'bar',
+  title: 'GDP, Germany',
+  variableDcids: [GDP],
+  placeDcids: ['country/DEU'],
+};
+
+/** A ranking chart over the US states. */
+const RANKING_CHART: ChartItem = {
+  vizType: 'ranking',
+  title: 'GDP by state',
+  variableDcids: [GDP],
+  parentPlace: 'country/USA',
+  childPlaceType: 'State',
+};
+
+/** A scatter chart of two variables over the US states. */
+const SCATTER_CHART: ChartItem = {
+  vizType: 'scatter',
+  title: 'GDP against population by state',
+  variableDcids: [GDP, 'Count_Person'],
+  parentPlace: 'country/USA',
+  childPlaceType: 'State',
+};
+
+/** A second scatter chart, over the US counties. */
+const SECOND_SCATTER_CHART: ChartItem = {
+  ...SCATTER_CHART,
+  title: 'GDP against population by county',
+  childPlaceType: 'County',
+};
+
+/** Returns the tile's row elements in document order. */
+const getRows = (container: HTMLElement): HTMLElement[] =>
+  Array.from(container.querySelectorAll<HTMLElement>('.dc-charts-row'));
+
+/** Returns how many chart cards each row of the tile holds. */
+const countCardsPerRow = (container: HTMLElement): number[] =>
+  getRows(container).map(
+    (row) => row.querySelectorAll('.dc-chart-card').length,
+  );
+
+/** Returns the chart card that mounts the `tag` element. */
+const getCard = (
+  container: HTMLElement,
+  tag: DataCommonsComponentTagName,
+): Element | null | undefined =>
+  container.querySelector(tag)?.closest('.dc-chart-card');
+
+/** Class fragment of a row that lays its charts out side by side. */
+const SIDE_BY_SIDE_FRAGMENT = 'grid-cols-[repeat(auto-fit,';
+
+/** Class of a row that lays its charts out in one column. */
+const SINGLE_COLUMN_CLASS = 'grid-cols-1';
 
 afterEach(() => {
   cleanup();
@@ -227,6 +284,42 @@ describe('getDcComponentAttributes', () => {
       unit: 'USD',
     });
   });
+
+  it('sets the date bounds only on a line chart', () => {
+    // Test: Date bound wiring.
+    // Situation: A line chart with both bounds, a line chart with only an
+    //   end bound, a line chart with none, and a bar chart whose item
+    //   carries bounds that only a line component reads.
+    // Expectation: The first line receives `startDate` and `endDate`, the
+    //   second only `endDate`, and the unbounded line and the bar receive
+    //   neither.
+    const bounded = getDcComponentAttributes({
+      ...LINE_CHART,
+      startDate: '2005',
+      endDate: '2020-06',
+    });
+    const endOnly = getDcComponentAttributes({
+      ...LINE_CHART,
+      endDate: '2020-01-31',
+    });
+    const unbounded = getDcComponentAttributes(LINE_CHART);
+    const bar = getDcComponentAttributes({
+      vizType: 'bar',
+      title: 'GDP',
+      variableDcids: [GDP],
+      placeDcids: ['country/FRA'],
+      startDate: '2005',
+      endDate: '2020',
+    });
+
+    expect(bounded).toMatchObject({ startDate: '2005', endDate: '2020-06' });
+    expect(endOnly.endDate).toBe('2020-01-31');
+    expect(endOnly).not.toHaveProperty('startDate');
+    for (const attrs of [unbounded, bar]) {
+      expect(attrs).not.toHaveProperty('startDate');
+      expect(attrs).not.toHaveProperty('endDate');
+    }
+  });
 });
 
 describe('getDcComponentTag', () => {
@@ -292,6 +385,26 @@ describe('ChartTile', () => {
     expect(element?.getAttribute('perCapita')).toBe(GDP);
     expect(element?.getAttribute('facetIds')).toBe('f1');
     expect(element?.getAttribute('header')).toBe('GDP per person by state');
+  });
+
+  it('sets the date bounds on the mounted line component', () => {
+    // Test: Rendering a line chart clamped to date bounds.
+    // Situation: A configuration holding one line chart with `startDate`
+    //   and `endDate`.
+    // Expectation: The mounted `datacommons-line` element carries the
+    //   `startDate` and `endDate` attributes.
+    const { container } = render(
+      <ChartTile
+        config={{
+          shouldRender: true,
+          charts: [{ ...LINE_CHART, startDate: '2005', endDate: '2020' }],
+        }}
+      />,
+    );
+
+    const element = container.querySelector('datacommons-line');
+    expect(element?.getAttribute('startDate')).toBe('2005');
+    expect(element?.getAttribute('endDate')).toBe('2020');
   });
 
   it('renders nothing for a chart without a place anchor', () => {
@@ -491,5 +604,265 @@ describe('ChartTile', () => {
       vi.advanceTimersByTime(CHART_POLL_MS * 3);
     });
     expect(onSettled).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('splitChartRows', () => {
+  it.each([
+    { run: 'A', charts: [LINE_CHART], rows: [[0]] },
+    {
+      run: 'A, B, C',
+      charts: [LINE_CHART, BAR_CHART, RANKING_CHART],
+      rows: [[0, 1, 2]],
+    },
+    { run: 'A, S', charts: [LINE_CHART, SCATTER_CHART], rows: [[0], [1]] },
+    { run: 'S, A', charts: [SCATTER_CHART, LINE_CHART], rows: [[0], [1]] },
+    {
+      run: 'A, S, B',
+      charts: [LINE_CHART, SCATTER_CHART, BAR_CHART],
+      rows: [[0], [1], [2]],
+    },
+    {
+      run: 'A, B, S',
+      charts: [LINE_CHART, BAR_CHART, SCATTER_CHART],
+      rows: [[0, 1], [2]],
+    },
+    {
+      run: 'S, A, B',
+      charts: [SCATTER_CHART, LINE_CHART, BAR_CHART],
+      rows: [[0], [1, 2]],
+    },
+    {
+      run: 'S1, S2',
+      charts: [SCATTER_CHART, SECOND_SCATTER_CHART],
+      rows: [[0], [1]],
+    },
+    { run: 'empty', charts: [], rows: [] },
+  ])('splits the run $run into rows $rows', ({ charts, rows }) => {
+    // Test: The row rule.
+    // Situation: A run of charts in emission order, where S is a scatter
+    //   chart and A, B, and C are other kinds.
+    // Expectation: Each scatter is a row of its own, each stretch of other
+    //   charts between scatters is one row, and an empty run has no rows.
+    expect(splitChartRows(charts)).toEqual(rows);
+  });
+});
+
+describe('ChartTile rows', () => {
+  it('stacks a scatter below the charts before it in one tile', () => {
+    // Test: Rows of a run that ends in a scatter.
+    // Situation: A tile with a line chart, a bar chart, and a scatter chart.
+    // Expectation: One charts container holds two rows: the line and bar
+    //   charts, then the scatter chart.
+    const { container } = render(
+      <ChartTile
+        config={{
+          shouldRender: true,
+          charts: [LINE_CHART, BAR_CHART, SCATTER_CHART],
+        }}
+      />,
+    );
+
+    expect(container.querySelectorAll('.dc-charts-container')).toHaveLength(1);
+    expect(countCardsPerRow(container)).toEqual([2, 1]);
+    expect(getRows(container)[1].querySelector('datacommons-scatter')).not.toBe(
+      null,
+    );
+  });
+
+  it('lays a multi-chart row out side by side and a one-chart row in one column', () => {
+    // Test: Per-row column layout.
+    // Situation: A tile with a line chart, a bar chart, and a scatter chart,
+    //   all of which have data.
+    // Expectation: The two-chart row uses the auto-fit columns and the
+    //   scatter row uses one column.
+    const { container } = render(
+      <ChartTile
+        config={{
+          shouldRender: true,
+          charts: [LINE_CHART, BAR_CHART, SCATTER_CHART],
+        }}
+      />,
+    );
+
+    const [sharedRow, scatterRow] = getRows(container);
+    expect(sharedRow.className).toContain(SIDE_BY_SIDE_FRAGMENT);
+    expect(scatterRow.className).toContain(SINGLE_COLUMN_CLASS);
+    expect(scatterRow.className).not.toContain(SIDE_BY_SIDE_FRAGMENT);
+  });
+
+  it('keeps a run without a scatter in one side-by-side row', () => {
+    // Test: A run with no scatter chart.
+    // Situation: A tile with a line chart, a bar chart, and a ranking chart.
+    // Expectation: All three cards share one row that uses the auto-fit
+    //   columns.
+    const { container } = render(
+      <ChartTile
+        config={{
+          shouldRender: true,
+          charts: [LINE_CHART, BAR_CHART, RANKING_CHART],
+        }}
+      />,
+    );
+
+    expect(countCardsPerRow(container)).toEqual([3]);
+    expect(getRows(container)[0].className).toContain(SIDE_BY_SIDE_FRAGMENT);
+  });
+
+  it('lays a row out in one column once only one of its charts has data', () => {
+    // Test: Per-row column layout after an empty chart.
+    // Situation: A tile with a line chart, a bar chart, and a scatter chart;
+    //   the bar chart reports no data.
+    // Expectation: The first row switches to one column, because only the
+    //   line chart in it is visible.
+    vi.useFakeTimers();
+    const { container } = render(
+      <ChartTile
+        config={{
+          shouldRender: true,
+          charts: [LINE_CHART, BAR_CHART, SCATTER_CHART],
+        }}
+      />,
+    );
+
+    showNoData(container, 'datacommons-bar');
+    act(() => {
+      vi.advanceTimersByTime(CHART_POLL_MS);
+    });
+
+    const [sharedRow] = getRows(container);
+    expect(sharedRow.className).toContain(SINGLE_COLUMN_CLASS);
+    expect(sharedRow.className).not.toContain(SIDE_BY_SIDE_FRAGMENT);
+  });
+
+  it('hides a row whose charts are all empty and keeps the other rows', () => {
+    // Test: A row with no visible chart.
+    // Situation: A tile with a line chart, a bar chart, and a scatter chart;
+    //   the line and bar charts both report no data.
+    // Expectation: The first row is hidden, the scatter row stays visible,
+    //   and the scatter card is the same element as before.
+    vi.useFakeTimers();
+    const { container } = render(
+      <ChartTile
+        config={{
+          shouldRender: true,
+          charts: [LINE_CHART, BAR_CHART, SCATTER_CHART],
+        }}
+      />,
+    );
+    const scatterCard = getCard(container, 'datacommons-scatter');
+
+    showNoData(container, 'datacommons-line');
+    showNoData(container, 'datacommons-bar');
+    act(() => {
+      vi.advanceTimersByTime(CHART_POLL_MS);
+    });
+
+    const [sharedRow, scatterRow] = getRows(container);
+    expect(sharedRow.classList.contains('hidden')).toBe(true);
+    expect(scatterRow.classList.contains('hidden')).toBe(false);
+    expect(getCard(container, 'datacommons-scatter')).toBe(scatterCard);
+  });
+
+  it('keeps its rows when the scatter between two charts is empty', () => {
+    // Test: Rows ignore the empty state.
+    // Situation: A tile with a line chart, a scatter chart, and a bar chart;
+    //   the scatter chart reports no data.
+    // Expectation: The tile keeps three rows, with the scatter row hidden
+    //   and the line and bar charts on rows of their own, and neither of
+    //   their cards is remounted.
+    vi.useFakeTimers();
+    const { container } = render(
+      <ChartTile
+        config={{
+          shouldRender: true,
+          charts: [LINE_CHART, SCATTER_CHART, BAR_CHART],
+        }}
+      />,
+    );
+    const lineCard = getCard(container, 'datacommons-line');
+    const barCard = getCard(container, 'datacommons-bar');
+
+    showNoData(container, 'datacommons-scatter');
+    act(() => {
+      vi.advanceTimersByTime(CHART_POLL_MS);
+    });
+
+    expect(countCardsPerRow(container)).toEqual([1, 1, 1]);
+    expect(getRows(container)[1].classList.contains('hidden')).toBe(true);
+    expect(getCard(container, 'datacommons-line')).toBe(lineCard);
+    expect(getCard(container, 'datacommons-bar')).toBe(barCard);
+  });
+
+  it('keeps every card and row element as charts stream in', () => {
+    // Test: Streaming stability.
+    // Situation: A tile rerendered with its charts appended one at a time:
+    //   a line chart, then a scatter chart, then a bar chart.
+    // Expectation: After each rerender, the cards and rows already mounted
+    //   are the same elements as before.
+    const { container, rerender } = render(
+      <ChartTile config={{ shouldRender: true, charts: [LINE_CHART] }} />,
+    );
+    const lineCard = getCard(container, 'datacommons-line');
+    const [lineRow] = getRows(container);
+
+    rerender(
+      <ChartTile
+        config={{ shouldRender: true, charts: [LINE_CHART, SCATTER_CHART] }}
+      />,
+    );
+    const scatterCard = getCard(container, 'datacommons-scatter');
+    const scatterRow = getRows(container)[1];
+    expect(getCard(container, 'datacommons-line')).toBe(lineCard);
+    expect(getRows(container)[0]).toBe(lineRow);
+
+    rerender(
+      <ChartTile
+        config={{
+          shouldRender: true,
+          charts: [LINE_CHART, SCATTER_CHART, BAR_CHART],
+        }}
+      />,
+    );
+    expect(getCard(container, 'datacommons-line')).toBe(lineCard);
+    expect(getCard(container, 'datacommons-scatter')).toBe(scatterCard);
+    expect(getRows(container)[0]).toBe(lineRow);
+    expect(getRows(container)[1]).toBe(scatterRow);
+    expect(countCardsPerRow(container)).toEqual([1, 1, 1]);
+  });
+
+  it('keeps a row and its cards as the row gains a chart', () => {
+    // Test: Streaming stability of a growing row.
+    // Situation: A tile rerendered with its charts appended one at a time:
+    //   a line chart, then a bar chart, then a scatter chart.
+    // Expectation: The first row holds one card, then two, then sits above
+    //   the scatter row, and it stays the same element with the same line
+    //   card throughout.
+    const { container, rerender } = render(
+      <ChartTile config={{ shouldRender: true, charts: [LINE_CHART] }} />,
+    );
+    const lineCard = getCard(container, 'datacommons-line');
+    const [firstRow] = getRows(container);
+
+    rerender(
+      <ChartTile
+        config={{ shouldRender: true, charts: [LINE_CHART, BAR_CHART] }}
+      />,
+    );
+    expect(countCardsPerRow(container)).toEqual([2]);
+    expect(getRows(container)[0]).toBe(firstRow);
+    expect(getCard(container, 'datacommons-line')).toBe(lineCard);
+
+    rerender(
+      <ChartTile
+        config={{
+          shouldRender: true,
+          charts: [LINE_CHART, BAR_CHART, SCATTER_CHART],
+        }}
+      />,
+    );
+    expect(countCardsPerRow(container)).toEqual([2, 1]);
+    expect(getRows(container)[0]).toBe(firstRow);
+    expect(getCard(container, 'datacommons-line')).toBe(lineCard);
   });
 });

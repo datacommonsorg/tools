@@ -53,8 +53,8 @@ _INDEX = _SHELL_HEAD + _RUNTIME_OPEN + b"</script>"
 _STAMPED_INDEX = (
     _SHELL_HEAD
     + _RUNTIME_OPEN
-    + b'{"enable_chat":true,"unavailable_message":"Due to high traffic, '
-    + b'the application is currently unavailable."}</script>'
+    + b'{"enable_chat":true,"unavailable_message":"This Data Commons tool '
+    + b'is temporarily unavailable due to high traffic."}</script>'
 )
 _BUNDLE = b"console.log('narratives');"
 _LOGO = b"\x89PNG\r\n\x1a\n"
@@ -348,8 +348,8 @@ def test_the_shell_carries_a_hash_of_the_stamped_bytes(
             {
                 "enable_chat": False,
                 "unavailable_message": (
-                    "Due to high traffic, the application is currently "
-                    "unavailable."
+                    "This Data Commons tool is temporarily unavailable due "
+                    "to high traffic."
                 ),
             },
             id="ENABLE_CHAT",

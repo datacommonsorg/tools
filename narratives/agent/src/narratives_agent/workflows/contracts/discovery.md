@@ -291,12 +291,12 @@ discarded.
 
 | Script | Input | Produces |
 |---|---|---|
-| `analyze_timeseries` | `table` of up to ten places, or `places` | start, end, change, growth, inflection points per place |
+| `analyze_timeseries` | `table` of up to ten places, or `places`; optional `start_date` and `end_date` | start, end, change, growth, inflection points per place |
 | `reduce_series` | `table` of a cohort, `metric`, optional `start_date` and `end_date` | one figure per place over one window the places share: `latest_period_change`, `latest_period_percent_change`, `absolute_change`, `percent_change`, `cagr`, or `period_mean` |
 | `rank_cohort` | `table` of a cohort, `n`, `direction`, `focal_places`, optional `target_date` | both tails on one reference date: the leading `n` places in `direction` and the trailing `n` |
 | `summarize_distribution` | `table` of a cohort, optional `weights`, `focal_places`, optional `target_date` | median, mean, extremes, spread, and where each focal place sits |
 | `compute_composition` | `components` tables of up to ten places, or `places`; optional `total`, `mode` | shares of the whole, or stage-to-stage transitions in `stages` mode |
-| `compute_derived_metric` | `left`, `right`, `operation`, `scale` | a derived table (per capita, ratio, difference, sum, percent change) that later steps may use |
+| `compute_derived_metric` | `left`, `right`, `operation`, `scale`, optional `start_date` and `end_date` | a derived table (per capita, ratio, difference, sum, percent change) that later steps may use |
 | `relate_cohorts` | `target` and `by` tables of one cohort, `n`, optional `target_date` and `by_date` | the target's mean and median over up to `n` places with the highest and up to `n` with the lowest `by` values (at most half the shared places each), their difference, and the places only one table covers |
 | `align_cohort` | `table` of a cohort, optional `target_date` | an aligned cohort on one reference date, shared by later ranking, distribution, composition, and relation steps |
 

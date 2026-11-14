@@ -65,6 +65,14 @@ const INCOME_CHART: ChartItem = {
   placeDcids: ['country/FRA'],
 };
 
+const SCATTER_CHART: ChartItem = {
+  vizType: 'scatter',
+  title: 'Rent against income by region',
+  variableDcids: ['Median_GrossRent_HousingUnit', 'Median_Income_Household'],
+  parentPlace: 'country/FRA',
+  childPlaceType: 'AdministrativeArea1',
+};
+
 /** How often the chart settle poll reads the component, in milliseconds. */
 const CHART_POLL_MS = 300;
 
@@ -569,6 +577,32 @@ describe('AnswerPanel', () => {
     const tiles = container.querySelectorAll('.dc-charts-container');
     expect(tiles).toHaveLength(1);
     expect(tiles[0].querySelectorAll('.dc-chart-card')).toHaveLength(2);
+  });
+
+  it('gives a scatter between two charts a row of its own in the shared tile', () => {
+    // Test: A scatter inside a run of chart blocks.
+    // Situation: A finished turn whose blocks are a paragraph followed by a
+    //   line chart, a scatter chart, and a second line chart in a row.
+    // Expectation: All three charts render in a single charts container,
+    //   which holds three rows of one chart card each.
+    const { container } = render(
+      <AnswerPanel
+        turn={buildTurnWithBlocks([
+          { index: 0, type: 'text', markdown: 'Rents rise with incomes.' },
+          { index: 1, type: 'chart', chart: LINE_CHART },
+          { index: 2, type: 'chart', chart: SCATTER_CHART },
+          { index: 3, type: 'chart', chart: INCOME_CHART },
+        ])}
+        isStreaming={false}
+      />,
+    );
+
+    const tiles = container.querySelectorAll('.dc-charts-container');
+    expect(tiles).toHaveLength(1);
+    const rows = Array.from(tiles[0].querySelectorAll('.dc-charts-row'));
+    expect(
+      rows.map((row) => row.querySelectorAll('.dc-chart-card').length),
+    ).toEqual([1, 1, 1]);
   });
 
   it('keeps charts separated by text in their own tiles', () => {

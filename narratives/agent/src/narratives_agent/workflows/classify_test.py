@@ -35,7 +35,10 @@ from narratives_agent.gemini.schemas import QueryClassification
 from narratives_agent.telemetry import TerminalState, TurnTelemetry
 from narratives_agent.workflows import classify
 from narratives_agent.workflows.mcp_loop import MCP_HISTORY_RESPONSE_CHARS
-from narratives_agent.workflows.messages import REFUSED_MESSAGE
+from narratives_agent.workflows.messages import (
+    REFUSED_MESSAGE,
+    SAFETY_REFUSED_MESSAGE,
+)
 from narratives_agent.workflows.transcript import (
     ConversationStateSlots,
     Transcript,
@@ -57,7 +60,11 @@ _SERVICEABLE: dict[str, Any] = {
     "requires_computation": False,
     "off_topic_premise": "",
 }
-_SENTENCE_START = "That request is outside the public statistical data"
+_SENTENCE_END = (
+    " falls outside the public statistics Data Commons is built to explore. "
+    "Try asking about a demographic, economic, health, climate, or social "
+    "measure for a country, state, or city."
+)
 
 
 def _transcript(query: str = _QUESTION) -> Transcript:
@@ -110,27 +117,23 @@ def model(monkeypatch: pytest.MonkeyPatch) -> Callable[..., list[Any]]:
     [
         (
             "brand-specific coffee prices",
-            f"{_SENTENCE_START} this service covers (brand-specific coffee "
-            "prices). Ask about a demographic, economic, health, climate, or "
-            "social indicator for a place.",
+            f'The topic "brand-specific coffee prices"{_SENTENCE_END}',
         ),
         (
             "",
-            f"{_SENTENCE_START} this service covers. Ask about a "
-            "demographic, economic, health, climate, or social indicator for "
-            "a place.",
+            f"This topic{_SENTENCE_END}",
         ),
         (
             "line one\nline\x07two  \x1b[31m three",
-            f"{_SENTENCE_START} this service covers (line one line two "
-            "[31m three). Ask about a demographic, economic, health, "
-            "climate, or social indicator for a place.",
+            f'The topic "line one line two [31m three"{_SENTENCE_END}',
         ),
         (
             "x" * 100,
-            f"{_SENTENCE_START} this service covers ({'x' * 80}). Ask about "
-            "a demographic, economic, health, climate, or social indicator "
-            "for a place.",
+            f'The topic "{"x" * 80}"{_SENTENCE_END}',
+        ),
+        (
+            'the "best" pizza',
+            f'The topic "the best pizza"{_SENTENCE_END}',
         ),
     ],
 )
@@ -139,10 +142,11 @@ def test_the_off_domain_message_quotes_a_sanitized_premise(
 ) -> None:
     # Test: Formatting and sanitization of `off_domain_message`.
     # Situation: The premise is a plain phrase, empty, contains newlines and
-    #   control characters, or exceeds `MAX_PREMISE_CHARS`.
-    # Expectation: The formatted message strips control characters and newlines,
-    #   truncates the premise to 80 characters, and omits the parenthetical when
-    #   empty.
+    #   control characters, exceeds `MAX_PREMISE_CHARS`, or contains double
+    #   quotes.
+    # Expectation: The formatted message quotes the premise after "The topic",
+    #   strips control characters, newlines, and double quotes, truncates the
+    #   premise to 80 characters, and says "This topic" when it is empty.
     assert classify.off_domain_message(premise) == expected
 
 
@@ -175,7 +179,7 @@ async def test_a_prefilter_match_refuses_without_a_model_call(
         await classify.classify_query(_transcript(query), _CONFIG, telemetry)
 
     assert raised.value.reason == classify.RefusedReason.ADVERSARIAL
-    assert str(raised.value) == REFUSED_MESSAGE
+    assert str(raised.value) == SAFETY_REFUSED_MESSAGE
     assert screened_queries == []
     assert requests == []
     (record,) = caplog.records
@@ -194,7 +198,7 @@ async def test_a_model_armor_match_refuses_without_a_model_call(
     # Situation: The query passes the regex pre-filter, and `screen_user_prompt`
     #   returns `"pi_and_jailbreak"`.
     # Expectation: `TurnRefusedError` is raised with reason `safety_blocked`
-    #   and `REFUSED_MESSAGE`, no Gemini classifier call is made, and the
+    #   and `SAFETY_REFUSED_MESSAGE`, no Gemini classifier call is made, and the
     #   warning log records the matched filter name without the query text.
     requests = model(_verdict())
     screened_queries: list[str] = []
@@ -214,7 +218,7 @@ async def test_a_model_armor_match_refuses_without_a_model_call(
 
     assert screened_queries == [query]
     assert raised.value.reason == classify.RefusedReason.SAFETY_BLOCKED
-    assert str(raised.value) == REFUSED_MESSAGE
+    assert str(raised.value) == SAFETY_REFUSED_MESSAGE
     assert requests == []
     (record,) = caplog.records
     assert "pi_and_jailbreak" in record.getMessage()
