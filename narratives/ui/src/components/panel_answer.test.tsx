@@ -872,19 +872,65 @@ describe('AnswerPanel', () => {
       );
     });
 
-    it('does not pair a stats block followed by two charts', () => {
+    it('pairs a stats block with the first of two charts after it', () => {
       // Test: A stats block followed by charts back to back.
       // Situation: A table directly followed by two line charts.
-      // Expectation: No paired row renders, and both charts share one tile.
+      // Expectation: The table pairs with the first chart, and the second
+      //   chart renders in its own tile after the paired row.
       const container = renderBlocks([
         { index: 0, type: 'text', markdown: TABLE },
         { index: 1, type: 'chart', chart: LINE_CHART },
         { index: 2, type: 'chart', chart: INCOME_CHART },
       ]);
 
-      expect(container.querySelector('.answer-pair')).toBeNull();
+      const pair = container.querySelector<HTMLElement>('.answer-pair');
+      expect(pair).not.toBeNull();
+      expect(readAnswerParts(pair as HTMLElement)[1]).toBe(
+        `chart:${LINE_CHART.title}`,
+      );
+      expect(readAnswerParts(container).at(-1)).toBe(
+        `chart:${INCOME_CHART.title}`,
+      );
       expect(container.querySelectorAll('.dc-charts-container')).toHaveLength(
-        1,
+        2,
+      );
+    });
+
+    it('keeps a paired chart mounted as later blocks stream in', () => {
+      // Test: Stability of a pair while the answer streams.
+      // Situation: A streaming turn holds a table and its line chart, then
+      //   receives a second chart and a closing paragraph.
+      // Expectation: The paired chart tile is the same DOM node before and
+      //   after the later blocks arrive, so its chart is not refetched.
+      const pairBlocks: ChatTurn['blocks'] = [
+        { index: 0, type: 'text', markdown: TABLE },
+        { index: 1, type: 'chart', chart: LINE_CHART },
+      ];
+      const { container, rerender } = render(
+        <AnswerPanel
+          turn={buildTurnWithBlocks(pairBlocks, { status: 'synthesis' })}
+          isStreaming
+        />,
+      );
+      const tile = container.querySelector('.answer-pair .dc-charts-container');
+
+      rerender(
+        <AnswerPanel
+          turn={buildTurnWithBlocks(
+            [
+              ...pairBlocks,
+              { index: 2, type: 'chart', chart: INCOME_CHART },
+              { index: 3, type: 'text', markdown: 'Figures are annual.' },
+            ],
+            { status: 'synthesis' },
+          )}
+          isStreaming
+        />,
+      );
+
+      expect(tile).not.toBeNull();
+      expect(container.querySelector('.answer-pair .dc-charts-container')).toBe(
+        tile,
       );
     });
 

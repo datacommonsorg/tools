@@ -392,7 +392,7 @@ interface TextRevealWindow {
  * panel body: each text block through the Markdown renderer, and each run of
  * consecutive chart blocks through one chart tile, which sets two or three
  * charts side by side when there is room and gives each scatter chart a row
- * of its own, except that a bullet list or table directly followed by its one
+ * of its own, except that a bullet list or table directly followed by a
  * chart renders beside it, stats first (see `groupAnswerBlocks`). A tile
  * reports every chart in its run as settled once all of them have. The text
  * blocks share one reveal in reading order, and the word animations start
@@ -407,6 +407,21 @@ function AnswerBlocks({
   const blocks = turn.blocks;
   const schedule =
     streamMs === undefined ? undefined : scheduleTextReveal(blocks, streamMs);
+  const renderText = (block: TextAnswerBlock) => {
+    const revealWindow = schedule?.get(block.index);
+    return (
+      <ResponseCard
+        key={block.index}
+        title={turn.userMessage}
+        body={block.markdown}
+        streamMs={revealWindow?.durationMs}
+        streamStartMs={revealWindow?.startMs}
+        revealing={phase === 'revealing'}
+        sources={turn.provenance}
+        bare
+      />
+    );
+  };
   return (
     <>
       {groupAnswerBlocks(blocks).map((group) => {
@@ -422,21 +437,6 @@ function AnswerBlocks({
             />
           );
         }
-        const renderText = (block: TextAnswerBlock) => {
-          const revealWindow = schedule?.get(block.index);
-          return (
-            <ResponseCard
-              key={block.index}
-              title={turn.userMessage}
-              body={block.markdown}
-              streamMs={revealWindow?.durationMs}
-              streamStartMs={revealWindow?.startMs}
-              revealing={phase === 'revealing'}
-              sources={turn.provenance}
-              bare
-            />
-          );
-        };
         const block = group.block;
         if (group.type === 'text') return renderText(block);
         const { chartIndex, leadIn } = group;
@@ -545,43 +545,42 @@ const LEAD_IN_LINE = /^(?![#>|]|[-*+]\s|\d+[.)]\s)[^\n]*:[*_]*$/;
 /**
  * Whether `text` and the chart after it render side by side: the text is a
  * bullet list or a table, the chart was placed by the model rather than
- * supplied by the server, it is not a kind that needs the full width, and no
- * other chart follows it.
+ * supplied by the server, and it is not a kind that needs the full width.
+ * The decision reads no later block, so a pair formed while the answer
+ * streams is never regrouped, and its chart tile is never remounted, when
+ * more blocks arrive.
  */
 function isStatsChartPair(
   text: TextAnswerBlock,
   chart: ChartAnswerBlock,
-  next: AnswerBlock | undefined,
 ): boolean {
   return (
     STATS_BLOCK_START.test(text.markdown) &&
     !chart.standalone &&
-    !FULL_WIDTH_CHART_TYPES.has(chart.chart.vizType) &&
-    next?.type !== 'chart'
+    !FULL_WIDTH_CHART_TYPES.has(chart.chart.vizType)
   );
 }
 
 /**
  * Groups a turn's blocks in order. A bullet list or table directly followed
- * by the one chart that illustrates it becomes a pair, rendered side by side,
- * and a one-line lead-in ending with a colon directly above a bullet list
- * joins the pair at the top of its column; above a table it stays full
- * width, so the table's card lines up with the chart's. Any other run of
- * consecutive chart blocks becomes one group that renders in a single chart
- * tile.
+ * by a chart becomes a pair with that chart, rendered side by side, and a
+ * one-line lead-in ending with a colon directly above a bullet list joins
+ * the pair at the top of its column; above a table it stays full width, so
+ * the table's card lines up with the chart's. Any other run of consecutive
+ * chart blocks, including the charts after a pair's chart, becomes one group
+ * that renders in a single chart tile. As blocks stream in, the last group
+ * may still grow, and a trailing stats block (with its lead-in) becomes a
+ * pair when its chart arrives; a pair, once formed, is never regrouped.
  */
 export function groupAnswerBlocks(blocks: AnswerBlock[]): AnswerBlockGroup[] {
   const groups: AnswerBlockGroup[] = [];
-  for (const [position, block] of blocks.entries()) {
+  for (const block of blocks) {
     if (block.type === 'text') {
       groups.push({ type: 'text', block });
       continue;
     }
     const last = groups.at(-1);
-    if (
-      last?.type === 'text' &&
-      isStatsChartPair(last.block, block, blocks[position + 1])
-    ) {
+    if (last?.type === 'text' && isStatsChartPair(last.block, block)) {
       const beforeStats = groups.at(-2);
       const leadIn =
         beforeStats?.type === 'text' &&
