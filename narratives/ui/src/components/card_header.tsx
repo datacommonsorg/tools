@@ -46,7 +46,7 @@ type CardHeaderProps = (CardHeaderTitleState | CardHeaderLoadingState) & {
  * Card title with a toolbar slot. The skeleton and the answer both render it,
  * so the header stays put when one crossfades into the other.
  */
-export function CardHeader({ title, isLoading, children }: CardHeaderProps) {
+export function CardHeader({ isLoading, title, children }: CardHeaderProps) {
   return (
     <div className="flex items-start gap-3 py-2 pr-2 pl-5 border-b border-border bg-surface">
       {/* Wraps onto as many lines as the label needs. utils/download_pdf.ts

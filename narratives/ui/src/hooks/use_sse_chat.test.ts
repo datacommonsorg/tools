@@ -1928,10 +1928,10 @@ describe('getTurnCharts', () => {
 describe('hasAnswer', () => {
   it('reports only a turn with answer text as having an answer', () => {
     // Test: The predicate the turn view renders the answer panel on.
-    // Situation: A blank turn, a turn whose only content is a chart block,
-    //   and a turn with a text block.
+    // Situation: A blank turn, a turn whose only content is a chart block, a
+    //   turn with only a title, and a turn with a text block.
     // Expectation: Only the turn with answer text has an answer; the
-    //   chart-only turn is a failed turn and has none.
+    //   chart-only and title-only turns are failed turns and have none.
     const chartOnly: ChatTurn = {
       ...blankTurn(),
       blocks: [{ index: 0, type: 'chart', chart: LINE_CHART }],
@@ -1944,6 +1944,9 @@ describe('hasAnswer', () => {
 
     expect(hasAnswer(blankTurn())).toBe(false);
     expect(hasAnswer(chartOnly)).toBe(false);
+    expect(hasAnswer({ ...blankTurn(), title: 'Population of France' })).toBe(
+      false,
+    );
     expect(hasAnswer(withText)).toBe(true);
   });
 });

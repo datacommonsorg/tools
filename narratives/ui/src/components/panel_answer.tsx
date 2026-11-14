@@ -206,7 +206,7 @@ export function AnswerPanel({
   // An answer that reports no data has nothing worth exporting, so it offers
   // no PDF. `hasData` is undefined on turns that never report it, which keep
   // the export.
-  const canExport = turn.hasData !== false;
+  const shouldOfferExport = turn.hasData !== false;
   // The question already shows in the user's bubble, so the header labels the
   // answer instead.
   const headerTitle = formatAnswerHeader({
@@ -265,7 +265,7 @@ export function AnswerPanel({
             (isDebugEnabled || turn.serverReport !== undefined) && (
               <DebugPanel turn={turn} />
             )}
-          {canExport &&
+          {shouldOfferExport &&
             turn.status === 'done' &&
             isRevealed &&
             areChartsSettled && (
@@ -334,7 +334,7 @@ export function AnswerPanel({
           {(hasCharts || hasCitations) && <DisclaimerNote />}
 
           {/* 5. Export PDF (filled, in-content) */}
-          {canExport &&
+          {shouldOfferExport &&
             turn.status === 'done' &&
             isRevealed &&
             areChartsSettled && (
