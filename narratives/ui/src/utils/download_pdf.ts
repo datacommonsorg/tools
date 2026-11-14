@@ -513,6 +513,35 @@ export function flattenForPrint(clone: HTMLElement) {
 }
 
 /**
+ * Writes `heading` into the header row of `clone` and styles it as the
+ * document's heading.
+ *
+ * The row shows the answer's data label on screen; in the document it shows
+ * `heading`, the answer's title when it has one. The row is sized for one line
+ * on screen, so it is let grow to fit a heading that wraps.
+ */
+export function writePrintHeading(clone: HTMLElement, heading: string) {
+  clone.querySelectorAll<HTMLElement>('.print-heading').forEach((label) => {
+    label.textContent = heading;
+    label.style.whiteSpace = 'normal';
+    label.style.textOverflow = 'clip';
+    label.style.overflow = 'visible';
+    label.style.fontSize = '18px';
+    label.style.lineHeight = '26px';
+    label.style.fontWeight = '700';
+    label.style.color = '#000000';
+    const row = label.parentElement;
+    if (row) {
+      row.style.height = 'auto';
+      row.style.minHeight = '0';
+      row.style.alignItems = 'flex-start';
+      row.style.padding = '0 0 12px 0';
+      row.style.borderBottom = '0';
+    }
+  });
+}
+
+/**
  * Stacks every chart card in `clone` at the full page width.
  *
  * On screen a chart tile lays its rows out as a flex column and each row as a
@@ -613,27 +642,7 @@ async function renderToPdf(
     numeric.style.cursor = 'auto';
   });
 
-  // The heading row shows the answer's data label on screen; in the
-  // document it shows `heading`, the answer's title when it has one.
-  clone.querySelectorAll<HTMLElement>('.print-heading').forEach((label) => {
-    label.textContent = heading;
-    label.style.whiteSpace = 'normal';
-    label.style.textOverflow = 'clip';
-    label.style.overflow = 'visible';
-    label.style.fontSize = '18px';
-    label.style.lineHeight = '26px';
-    label.style.fontWeight = '700';
-    label.style.color = '#000000';
-    // The row it sits in is sized for one line on screen; let it grow.
-    const row = label.parentElement;
-    if (row) {
-      row.style.height = 'auto';
-      row.style.minHeight = '0';
-      row.style.alignItems = 'flex-start';
-      row.style.padding = '0 0 12px 0';
-      row.style.borderBottom = '0';
-    }
-  });
+  writePrintHeading(clone, heading);
 
   // Chart cards clip their contents on screen to keep rounded corners tidy.
   // In a document there is no viewport to fit, so let them grow instead --

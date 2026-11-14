@@ -388,8 +388,9 @@ export interface ChatTurn {
   truncated?: boolean;
   /**
    * Whether the agent found data for the answer, from `data_status.has_data`.
-   * Undefined until the agent reports it. When false, the suggested questions
-   * are labelled as alternatives rather than follow-ups.
+   * Undefined until the agent reports it. It selects the card header's label;
+   * when false, the answer offers no PDF export and the suggested questions
+   * are labeled as alternatives rather than follow-ups.
    */
   hasData?: boolean;
   /** Holds the key sent with the turn's request, which the agent signs into the turn. */
@@ -431,8 +432,10 @@ interface ContentPayload {
   sources?: ProvenanceItem[];
   /**
    * Reports the completeness of the data behind the answer: `truncated`
-   * raises the truncation warning, and `has_data` false labels the
-   * suggestions as alternative questions.
+   * raises the truncation warning, and `has_data` selects the card header's
+   * label and, when false, removes PDF export and labels the suggestions as
+   * alternative questions. Together they select the header for a search that
+   * ended before finding data.
    */
   data_status?: { truncated?: boolean; has_data?: boolean };
 }

@@ -20,28 +20,33 @@
 
 import type { ReactNode } from 'react';
 
-interface CardHeaderProps {
+/** The header of a settled answer, which shows its title. */
+interface CardHeaderTitleState {
+  isLoading?: false;
   /**
    * The card title: a label with the citation count once the answer presents
    * data, a no-data label when it has none, or an empty string, which leaves
    * the header empty.
    */
   title: string;
-  /** Shows a ghost line in place of the title while the answer loads. */
-  isLoading?: boolean;
+}
+
+/** The header of a loading answer, which shows a ghost line and no title. */
+interface CardHeaderLoadingState {
+  isLoading: true;
+  title?: never;
+}
+
+type CardHeaderProps = (CardHeaderTitleState | CardHeaderLoadingState) & {
   /** Toolbar actions on the right; absent while the answer is in flight. */
   children?: ReactNode;
-}
+};
 
 /**
  * Card title with a toolbar slot. The skeleton and the answer both render it,
  * so the header stays put when one crossfades into the other.
  */
-export function CardHeader({
-  title,
-  isLoading = false,
-  children,
-}: CardHeaderProps) {
+export function CardHeader({ title, isLoading, children }: CardHeaderProps) {
   return (
     <div className="flex items-start gap-3 py-2 pr-2 pl-5 border-b border-border bg-surface">
       {/* Wraps onto as many lines as the label needs. utils/download_pdf.ts
