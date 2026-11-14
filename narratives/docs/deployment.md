@@ -451,17 +451,19 @@ copies the element from the agent at `AGENT_URL`, so set `ENABLE_CHAT` and
 
   ```sh
   # Disable chat immediately (<30s rollout, no PR required)
-  kubectl set env deployment/website-narratives-app -n website ENABLE_CHAT=false
+  kubectl set env deployment/website-agentic-apps -n website \
+    -c discover ENABLE_CHAT=false
 
   # Remove the override so `chat.enabled` in agent-config.json applies again
-  kubectl set env deployment/website-narratives-app -n website ENABLE_CHAT-
+  kubectl set env deployment/website-agentic-apps -n website \
+    -c discover ENABLE_CHAT-
   ```
 
   To keep chat disabled across subsequent Cloud Deploy releases on GKE, also
-  set `narratives.enableChat: false` in `deploy/helm_charts/envs/<env>.yaml`
-  in the `datacommons-website` repository. An `ENABLE_CHAT` value that the
-  deployment always sets, such as `true`, takes precedence over
-  `chat.enabled` in `agent-config.json`.
+  set `agentic.discover.enableChat: false` in
+  `deploy/helm_charts/envs/<env>.yaml` in the `datacommons-website` repository.
+  An `ENABLE_CHAT` value that the deployment always sets, such as `true`, takes
+  precedence over `chat.enabled` in `agent-config.json`.
 
 ### Screening prompts with Google Cloud Model Armor (optional)
 
