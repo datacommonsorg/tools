@@ -26,7 +26,7 @@
  * Matches `DEFAULT_UNAVAILABLE_MESSAGE` in the agent's `config_model.py`.
  */
 export const DEFAULT_UNAVAILABLE_MESSAGE =
-  'Due to high traffic, the application is currently unavailable.';
+  'This Data Commons tool is temporarily unavailable due to high traffic.';
 
 export interface RuntimeConfig {
   /** Whether the interactive Data Agent chat surface is active. */

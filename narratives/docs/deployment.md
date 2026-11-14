@@ -400,8 +400,8 @@ Key Metrics dashboard, and shared stories online — for example, during:
   regression in generated answers without taking down the entire site.
 
 Chat availability is set by `chat.enabled` (default `true`) and
-`chat.unavailable_message` (default `"Due to high traffic, the application is
-currently unavailable."`) in `config/agent-config.json`:
+`chat.unavailable_message` (default `"This Data Commons tool is temporarily
+unavailable due to high traffic."`) in `config/agent-config.json`:
 
 ```json
 {

@@ -1233,7 +1233,9 @@ describe('useSseChat', () => {
 
     await act(() => result.current.chat.send('And Germany?'));
 
-    expect(result.current.turns[1].error).toBe('HTTP 400 Bad Request');
+    expect(result.current.turns[1].error).toBe(
+      'Data Commons ran into an error. HTTP 400 Bad Request.',
+    );
     expect(result.current.turns[0].hmac).toBe(sig('0'));
   });
 
@@ -1241,19 +1243,27 @@ describe('useSseChat', () => {
     {
       status: 400,
       statusText: 'Bad Request',
-      expectedError: 'HTTP 400 Bad Request',
+      expectedError: 'Data Commons ran into an error. HTTP 400 Bad Request.',
+      isRetryable: false,
+    },
+    {
+      status: 400,
+      statusText: '',
+      expectedError: 'Data Commons ran into an error. HTTP 400.',
       isRetryable: false,
     },
     {
       status: 413,
       statusText: 'Content Too Large',
-      expectedError: 'HTTP 413 Content Too Large',
+      expectedError:
+        'Data Commons ran into an error. HTTP 413 Content Too Large.',
       isRetryable: false,
     },
     {
       status: 422,
       statusText: 'Unprocessable Entity',
-      expectedError: 'HTTP 422 Unprocessable Entity',
+      expectedError:
+        'Data Commons ran into an error. HTTP 422 Unprocessable Entity.',
       isRetryable: false,
     },
     {
@@ -1295,9 +1305,11 @@ describe('useSseChat', () => {
     // Test: Retryability and copy of a response that cannot open the stream.
     // Situation: The agent, or a proxy in front of it, answers with the given
     //   status, or with a success status and no body, before the stream opens.
+    //   The status text is empty in one case, as is common over HTTP/2.
     // Expectation: Only a 4xx other than 408 and 429 reports the HTTP status
-    //   with `isRetryable` false; any other response shows the high-traffic
-    //   notice with `isRetryable` true.
+    //   with `isRetryable` false, with no stray space when the status text is
+    //   empty; any other response shows the high-traffic notice with
+    //   `isRetryable` true.
     const { result, fetchMock } = renderChat([]);
     fetchMock.mockResolvedValueOnce({
       ok: status < 300,
