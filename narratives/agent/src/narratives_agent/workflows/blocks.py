@@ -53,6 +53,12 @@ _FENCE_LINE = re.compile(
     r"^\s*(?:(?P<backticks>`{3,})\s*(?P<backtick_info>[^\s`]*)(?:\s[^`]*)?"
     r"|(?P<tildes>~{3,})\s*(?P<tilde_info>\S*)(?:\s.*)?)$"
 )
+# Matches a line that opens a list item or a table row.
+_STATS_LINE_START = re.compile(r"\s*(?:[-*+]\s|\d+[.)]\s|\|)")
+# Matches a lead-in line: one line, not a heading, quote, list item, or table
+# row, that ends with a colon, optionally inside bold or italics. The UI's
+# `LEAD_IN_LINE` in `panel_answer.tsx` matches the same lines.
+_LEAD_IN_LINE = re.compile(r"(?![#>|]|[-*+]\s|\d+[.)]\s).*:[*_]*")
 
 
 @dataclass(frozen=True)
@@ -129,18 +135,22 @@ class BlockSplitter:
     stream ends; a splitter reads one stream. Outside a fenced block, prose
     is split into paragraphs at blank lines, so a list or a table without
     internal blank lines stays in one block; inside a fenced block that is
-    not a chart, blank lines are kept. A chart block opens on a line that is
-    only a fence with the `chart` info string, which ends the paragraph
-    before it, and closes on a line that is only a bare fence. A JSON string
-    cannot span lines, so no line of a chart body is a bare fence. When the
-    block closes, its body is parsed as a `ChartSpecification` and resolved.
+    not a chart, blank lines are kept. A paragraph that is one lead-in line
+    ending with a colon is also ended by a list item or table row on the
+    next line, so the lead-in and its list or table are separate blocks even
+    without the blank line the synthesis contract asks for between them; the
+    app pairs a list or table block with the chart after it. A chart block opens
+    on a line that is only a fence with the `chart` info string, which ends the
+    paragraph before it, and closes on a line that is only a bare fence. A JSON
+    string cannot span lines, so no line of a chart body is a bare fence. When
+    the block closes, its body is parsed as a `ChartSpecification` and resolved.
     A body that is not valid JSON, does not match the grammar, or fails
-    resolution is dropped and counted in `charts_rejected`, as is a fence
-    still open when the stream ends, so a chart block never reaches the
-    reader as text. A chart fence line inside a code block the model left
-    open ends that code block, which is emitted as text, and opens the chart
-    block. A chart fence written inside a line of prose is not a chart block
-    and stays in the text.
+    resolution is dropped and counted in `charts_rejected`, as is a fence still
+    open when the stream ends, so a chart block never reaches the reader as
+    text. A chart fence line inside a code block the model left open ends that
+    code block, which is emitted as text, and opens the chart block. A chart
+    fence written inside a line of prose is not a chart block and stays in the
+    text.
     Backtick and tilde fences are recognized with any leading whitespace, so
     an over-indented fence never leaks raw JSON into prose. As in CommonMark,
     a code block closes only on a bare fence of its opening character that is
@@ -296,7 +306,8 @@ class BlockSplitter:
     def _consume_plain_line(self, line: str) -> None:
         """Adds a line that is not a fence to the open block or paragraph.
 
-        Outside a fenced block, a blank line ends the paragraph.
+        Outside a fenced block, a blank line ends the paragraph, and so does a
+        list item or table row after a one-line lead-in paragraph.
         """
         match self._open:
             case _ChartFence() as chart:
@@ -304,10 +315,20 @@ class BlockSplitter:
             case _CodeFence():
                 self._paragraph.append(line)
             case None:
-                if line.strip():
-                    self._paragraph.append(line)
-                else:
+                if not line.strip():
                     self._flush_paragraph()
+                    return
+                if self._is_lead_in_before(line):
+                    self._flush_paragraph()
+                self._paragraph.append(line)
+
+    def _is_lead_in_before(self, line: str) -> bool:
+        """Returns whether the paragraph is a lead-in line that `line` lists."""
+        return (
+            len(self._paragraph) == 1
+            and _LEAD_IN_LINE.fullmatch(self._paragraph[0].strip()) is not None
+            and _STATS_LINE_START.match(line) is not None
+        )
 
     def _open_chart(self, char: str) -> None:
         """Ends the current paragraph and opens a chart block."""

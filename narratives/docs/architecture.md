@@ -190,7 +190,9 @@ Otherwise, the request runs through the agent loop in five steps:
    bounds that clamp the drawn series.
    The server splits the stream at paragraph boundaries and at the closing fence
    of each chart block, and emits one `content {block}` frame per completed
-   paragraph and per chart that resolves. Resolution is set membership against
+   paragraph and per chart that resolves. A one-line lead-in ending with a
+   colon directly above a list item or table row is a paragraph of its own,
+   even without a blank line between them. Resolution is set membership against
    the turn cache: an unknown table, a place or date the table does not hold, a
    unit mismatch across the tables on one axis, a `line` whose date bounds
    leave a charted table without a place holding two dates, or a kind the

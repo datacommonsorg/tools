@@ -426,9 +426,12 @@ def test_the_outcome_does_not_depend_on_chunk_boundaries() -> None:
             assert _run_chunks(chunks) == expected
 
 
-# One segment of a generated stream: a paragraph, a valid chart, an invalid
-# chart, a non-chart code block, or a longer code fence holding a shorter one.
-type _Segment = Literal["paragraph", "chart", "invalid", "code", "nested"]
+# One segment of a generated stream: a paragraph, a lead-in line directly
+# above a list, a valid chart, an invalid chart, a non-chart code block, or a
+# longer code fence holding a shorter one.
+type _Segment = Literal[
+    "paragraph", "lead_in", "chart", "invalid", "code", "nested"
+]
 
 # The block an independent oracle expects: its kind and its Markdown or
 # chart title.
@@ -436,10 +439,16 @@ type _ExpectedBlock = tuple[Literal["text", "chart"], str]
 
 
 def _write_segment(segment: _Segment, number: int) -> tuple[str, str]:
-    """Returns the stream text of a segment and the text or title it shows."""
+    """Returns the stream text of a segment and the text or title it shows.
+
+    A lead-in segment shows two text blocks, joined here by a blank line.
+    """
     if segment == "paragraph":
         markdown = f"Paragraph {number}\ncontinues."
         return markdown, markdown
+    if segment == "lead_in":
+        lead_in, items = f"Lead-in {number}:", f"- a {number}\n- b {number}"
+        return f"{lead_in}\n{items}", f"{lead_in}\n\n{items}"
     if segment == "code":
         markdown = f"```py\na = {number}\n\nb = {number}\n```"
         return markdown, markdown
@@ -464,9 +473,10 @@ def _build_case(
 
     The oracle reads the segments rather than the stream: a paragraph or a
     code block (including a longer fence holding a shorter one) is one text
-    block, a valid chart is one chart block until `MAX_CHARTS_PER_TURN`
-    charts are shown, an invalid or unclosed chart shows nothing, and an
-    appended chart is one chart block at the end. With `is_tight`, a single
+    block, a lead-in line directly above a list is two, a valid chart is one
+    chart block until `MAX_CHARTS_PER_TURN` charts are shown, an invalid or
+    unclosed chart shows nothing, and an appended chart is one chart block
+    at the end. With `is_tight`, a single
     line break separates a chart fence from its neighbors; blank lines
     separate everything else.
     """
@@ -481,7 +491,9 @@ def _build_case(
             ] in ("chart", "invalid")
             pieces.append("\n" if is_tight and touches_chart else "\n\n")
         pieces.append(piece)
-        if segment in ("paragraph", "code", "nested"):
+        if segment == "lead_in":
+            expected.extend(("text", part) for part in shown.split("\n\n"))
+        elif segment in ("paragraph", "code", "nested"):
             expected.append(("text", shown))
         elif segment == "chart" and charts_shown < MAX_CHARTS_PER_TURN:
             expected.append(("chart", shown))
@@ -497,6 +509,7 @@ def _generate_cases() -> list[tuple[str, list[_ExpectedBlock], bool]]:
     """Generates every stream of one to four segments, with its variants."""
     alphabet: tuple[_Segment, ...] = (
         "paragraph",
+        "lead_in",
         "chart",
         "invalid",
         "code",
@@ -537,10 +550,10 @@ def _describe_block(block: SynthesisBlock) -> _ExpectedBlock:
 
 def test_generated_streams_emit_the_blocks_the_oracle_expects() -> None:
     # Test: The emitted blocks across a generated corpus.
-    # Situation: Every stream of one to four paragraph, chart, invalid
-    #   chart, and code segments, with tight or blank-line separators, with
-    #   or without an unclosed chart at the end, and with or without a chart
-    #   appended after `finish`.
+    # Situation: Every stream of one to four paragraph, lead-in, chart,
+    #   invalid chart, and code segments, with tight or blank-line
+    #   separators, with or without an unclosed chart at the end, and with
+    #   or without a chart appended after `finish`.
     # Expectation: The blocks, in order, are the ones the oracle reads from
     #   the segments.
     for stream, expected, has_append in _generate_cases():
@@ -761,3 +774,60 @@ def test_crlf_streams_parse_chart_fences_and_paragraphs() -> None:
 
     assert _run_chunks([crlf_stream]) == expected
     assert _run_chunks(list(crlf_stream)) == expected
+
+
+@pytest.mark.parametrize(
+    ("text", "expected"),
+    [
+        (
+            "Highest rates:\n- **A:** 1\n- **B:** 2",
+            ["Highest rates:", "- **A:** 1\n- **B:** 2"],
+        ),
+        (
+            "**Female:**\n1. First\n2. Second",
+            ["**Female:**", "1. First\n2. Second"],
+        ),
+        (
+            "Highest rates:\n| State | Rate |\n| --- | --- |\n| A | 1 |",
+            ["Highest rates:", "| State | Rate |\n| --- | --- |\n| A | 1 |"],
+        ),
+        (
+            "**Data gaps**\\\nThese are missing:\n- A",
+            ["**Data gaps**\\\nThese are missing:\n- A"],
+        ),
+        ("Japan leads.\n- **A:** 1", ["Japan leads.\n- **A:** 1"]),
+        ("- **A:** 1:\n- **B:** 2", ["- **A:** 1:\n- **B:** 2"]),
+        ("## Rates:\n- **A:** 1", ["## Rates:\n- **A:** 1"]),
+        ("Rates:\nNext line.", ["Rates:\nNext line."]),
+    ],
+    ids=[
+        "lead_in_and_bullets",
+        "bold_label_and_numbered_list",
+        "lead_in_and_table",
+        "two_line_paragraph",
+        "sentence_without_colon",
+        "list_item_ending_with_colon",
+        "heading",
+        "lead_in_and_prose",
+    ],
+)
+def test_a_lead_in_line_is_split_from_the_list_under_it(
+    text: str, expected: list[str]
+) -> None:
+    # Test: The split between a lead-in line and the list or table that
+    #   follows it with no blank line between them.
+    # Situation: A one-line lead-in ending with a colon (plain or as a bold
+    #   label) directly above bullets, a numbered list, or a table; and
+    #   lookalikes: a two-line paragraph ending with a colon, a sentence
+    #   with no colon, a list item ending with a colon, a heading, and a
+    #   lead-in followed by prose.
+    # Expectation: Only a one-line lead-in directly above a list or table
+    #   becomes its own block; every lookalike stays one block.
+    splitter, recorder = _split(text, chunk=3)
+
+    assert [
+        block.markdown
+        for block in recorder.blocks
+        if isinstance(block, TextBlock)
+    ] == expected
+    assert splitter.text == "\n\n".join(expected)
