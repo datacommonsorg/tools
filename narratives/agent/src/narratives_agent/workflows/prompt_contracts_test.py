@@ -1014,3 +1014,17 @@ def test_discovery_contract_lists_the_window_of_windowed_scripts() -> None:
 
     for script in ("analyze_timeseries", "compute_derived_metric"):
         assert "optional `start_date` and `end_date`" in rows[script], script
+
+
+def test_synthesis_charts_no_source_of_an_unchartable_table() -> None:
+    # Test: The rule for a table the inventory marks "do not chart it".
+    # Situation: The synthesis contract the model receives.
+    # Expectation: Such a table is never charted, and neither is a table it
+    #   is derived from in its place, so a percentage is never drawn as its
+    #   raw count.
+    synthesis = " ".join(load_prompt_contract("synthesis").split())
+
+    assert (
+        'A table marked "do not chart it" is never charted, and no table it '
+        "is derived from is charted in its place"
+    ) in synthesis

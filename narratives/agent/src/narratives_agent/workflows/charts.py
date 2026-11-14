@@ -35,6 +35,7 @@ from pydantic import (
 
 from narratives_agent.analytics.alignment import find_unit_mismatch
 from narratives_agent.analytics.digest import (
+    PERCENT_SCALE,
     AnalysisDigest,
     ScriptResult,
 )
@@ -778,9 +779,12 @@ def _find_per_capita_numerator(
     The chart components normalize a variable by `Count_Person` natively, so
     a per-capita table whose numerator and population denominator are fetched
     tables renders as the numerator with `perCapita` set. Other derived
-    tables have no series the components could fetch.
+    tables have no series the components could fetch. A per-capita table
+    given as a percentage (`scale` of 100) is not charted either: the
+    components divide by population without a scale, so its chart would draw
+    per-person fractions beside the percentages the answer states.
     """
-    if step.operation != "per_capita":
+    if step.operation != "per_capita" or step.scale == PERCENT_SCALE:
         return None
     if not (
         step.left.startswith(FETCHED_TABLE_PREFIX)

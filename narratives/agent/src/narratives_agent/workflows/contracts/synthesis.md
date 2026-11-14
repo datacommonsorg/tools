@@ -552,7 +552,8 @@ comparison covers:
   history across the places; the app shows the table beside its chart.
   Chart at most four indicators, the most telling first; an indicator past
   the fourth keeps its table without a chart. Skip a chart only when its
-  indicator has a single date.
+  indicator has a single date or the TABLE INVENTORY marks its table "do
+  not chart it".
 - Do not state the gap between the first and last place, such as "a
   population spread of [value]", unless the question asks for the gap.
 - Do not narrate how the ranking was worked out: write "has the highest
@@ -831,7 +832,8 @@ The chart block grammar follows these instructions. Use it as follows.
   renders per person even when the digest reports the rate per 1,000 or per
   100,000 people, so title the chart per person and state the digest's
   scaled figures and scale in prose. A table marked "do not chart it" is
-  never charted; describe its figures in prose instead.
+  never charted, and no table it is derived from is charted in its place;
+  describe its figures in prose instead.
 - Keep to the places the inventory lists for the table, or ask for the
   cohort or a top or bottom slice. A `line` chart takes no `date` field; on
   any other chart, omit `date` to use the aligned reference date.

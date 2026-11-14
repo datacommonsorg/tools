@@ -205,10 +205,13 @@ Otherwise, the request runs through the agent loop in five steps:
    components). A derived per-capita table is scaled automatically in the
    digest (per 1, 1,000, or 100,000 people so the median non-zero magnitude is
    at least 1), or given as a percentage when its step sets a scale of 100 (a
-   share of the population, such as people below the poverty line), and is
-   charted when referenced by its `s<n>` table id as its numerator with the
-   web component's per-person normalization; other derived tables are not
-   chartable. At most four charts are accepted per answer. The model writes
+   share of the population, such as people below the poverty line). A
+   per-capita table not given as a percentage is charted when referenced by
+   its `s<n>` table id as its numerator with the web component's per-person
+   normalization; a percentage is not, because that normalization applies
+   no scale and would draw per-person fractions beside the percentages, and
+   other derived tables are not chartable. At most four charts are accepted
+   per answer. The model writes
    each chart directly after the bullet list or table holding its figures,
    and the app shows that list or table beside the chart, a bullet list
    headed by its one-line lead-in when it has one; maps, scatter charts, and
