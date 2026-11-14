@@ -24,6 +24,7 @@ from narratives_agent.config import strip_prompt_comments
 from narratives_agent.gemini.schemas import QueryClassification
 from narratives_agent.workflows import pattern_guidance, prompt_contracts
 from narratives_agent.workflows.charts import (
+    MAX_CHARTS_PER_TURN,
     BarSort,
     ChartKind,
     ChartSpecification,
@@ -577,6 +578,45 @@ def test_prompts_carry_no_conflicting_instructions() -> None:
     assert "each indicator's own lead-in line, short list, and chart" in (
         directives
     )
+
+
+# The spelled-out chart caps the contracts may state, and their ordinals.
+_CHART_CAP_WORDS = {3: "three", 4: "four", 5: "five"}
+_CHART_CAP_ORDINALS = {3: "third", 4: "fourth", 5: "fifth"}
+
+
+def test_contract_chart_caps_match_the_server_cap() -> None:
+    # Test: The chart cap the prompts state against the cap the server
+    #   enforces.
+    # Situation: The synthesis and discovery contracts, the exploratory
+    #   directive, and `MAX_CHARTS_PER_TURN`, past which `BlockSplitter`
+    #   drops chart blocks.
+    # Expectation: These statements of the cap, its count and its ordinal,
+    #   name `MAX_CHARTS_PER_TURN`, and the count statements name no other
+    #   cap, so the prompts and the server change together.
+    assert MAX_CHARTS_PER_TURN in _CHART_CAP_WORDS, "Add the cap's words."
+    synthesis = " ".join(load_prompt_contract("synthesis").split())
+    discovery = " ".join(load_prompt_contract("discovery").split())
+    exploratory = pattern_guidance._DIRECTIVES["exploratory"].discovery
+    cap = _CHART_CAP_WORDS[MAX_CHARTS_PER_TURN]
+    ordinal = _CHART_CAP_ORDINALS[MAX_CHARTS_PER_TURN]
+    count_statements = (
+        "One chart per distinct point, at most {} per answer",
+        "at most {} chart blocks per answer",
+        "Chart at most {} indicators",
+        "keep the {} that answer the question most directly",
+    )
+
+    for statement in count_statements:
+        assert statement.format(cap) in synthesis
+        for other in set(_CHART_CAP_WORDS.values()) - {cap}:
+            assert statement.format(other) not in synthesis
+    assert f"no chart past the {ordinal}" in synthesis
+    assert f"an indicator past the {ordinal} keeps its table" in synthesis
+    assert f"Fetch at most {cap} indicators, the most an answer charts" in (
+        discovery
+    )
+    assert f"up to {cap}, one table each" in exploratory
 
 
 def test_discovery_fetches_the_indicators_an_answer_reports() -> None:
