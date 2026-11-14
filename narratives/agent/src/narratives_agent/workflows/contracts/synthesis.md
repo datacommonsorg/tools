@@ -772,7 +772,8 @@ indicators.
 
 The shape to follow. Every bracket stands for a figure the digest gives;
 the places and sources are illustrative, and an answer always takes its
-figures from the digest.
+figures from the digest. Each example shows the answer below its title
+line, which "Title line" governs when it applies.
 
 According to [source], [state]'s population reached **[value]** [1] in
 [year].

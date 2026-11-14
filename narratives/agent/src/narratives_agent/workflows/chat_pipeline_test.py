@@ -2801,6 +2801,30 @@ async def test_a_data_answer_without_a_title_line_records_it_as_omitted(
 
 
 @pytest.mark.asyncio
+async def test_a_title_with_no_answer_text_ends_the_synthesis_empty(
+    monkeypatch: pytest.MonkeyPatch, turn: _Turn
+) -> None:
+    # Test: A synthesis stream that holds only the title line.
+    # Situation: The digest has data and synthesis writes `# <title>` and a
+    #   blank line, then ends.
+    # Expectation: The title frame has already been sent, the phase aborts
+    #   with `SYNTHESIS_EMPTY` and no text block, and telemetry records the
+    #   title as emitted; the UI shows no answer for a turn without text.
+    ctx, _ = _make_synthesis_context(
+        monkeypatch, turn, "# Population of France\n\n"
+    )
+    discovery = chat_pipeline.DiscoveryPhaseResult(has_data=True)
+
+    with pytest.raises(chat_pipeline.TurnAbortedError) as exc_info:
+        await chat_pipeline.run_synthesis_phase(ctx, discovery)
+
+    assert exc_info.value.error_type == ErrorType.SYNTHESIS_EMPTY
+    assert turn.list_content_payloads("title") == ["Population of France"]
+    assert turn.list_blocks() == []
+    assert ctx.telemetry.title_outcome is TitleOutcome.EMITTED
+
+
+@pytest.mark.asyncio
 async def test_an_answer_without_data_gets_no_title(
     monkeypatch: pytest.MonkeyPatch, turn: _Turn
 ) -> None:

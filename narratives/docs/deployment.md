@@ -627,7 +627,9 @@ tool names and counts, token usage, the analytical `pattern` assigned by the
 `total_rows_fetched`, `processing_retries`, `charts_emitted`, and
 `charts_rejected`), and `title_outcome` (`emitted`, `omitted` when the model
 wrote no usable title on a turn with data, or `not_requested` when the turn
-had no data or never reached synthesis); user query text is never logged.
+had no data or never reached synthesis; read `emitted` and `omitted` on
+`complete` turns, since a synthesis that fails part-way records the outcome
+reached when it stopped); user query text is never logged.
 The turn span carries the same fields as `narratives.scripts`,
 `narratives.tables_fetched`, `narratives.total_rows_fetched`,
 `narratives.processing_retries`, `narratives.charts_emitted`,

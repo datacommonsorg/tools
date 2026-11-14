@@ -227,17 +227,17 @@ Otherwise, the request runs through the agent loop in five steps:
    a table that the digest ranks only over a window needs an explicit date,
    because without one it would draw the latest values rather than the
    change the prose describes. When the digest has data, the synthesis
-   contract's `synthesis_title` addendum has the model open its answer with
-   a `# ` title line, a short label for the data the answer presents; the
-   server (`workflows/title.py`) takes that line off the stream and sends it
-   as a `{title}` `content` frame before the first block. Only a `#` heading
-   or a line starting with a `Title:` label counts as a title line. A turn
-   without data gets the `synthesis_no_title` addendum and no title, even
-   when the model writes one. The signed
-   `model_response` is the text blocks joined by blank lines, with the chart
-   blocks and the title line stripped, matching the text blocks emitted in
-   `content` frames. A stream that stalls for 60 seconds waiting for a chunk
-   ends the turn with `synthesis_stream_error`.
+   contract's `synthesis_title` addendum has the model open its answer with a
+   `# ` title line, a short label for the data the answer presents; the server
+   (`workflows/title.py`) takes that line off the stream and sends it as a
+   `{title}` `content` frame before the first block. Only a Markdown heading
+   (`#` to `######`) or a line starting with a `Title:` label counts as a title
+   line. A turn without data gets the `synthesis_no_title` addendum and no
+   title, even when the model writes one. The signed `model_response` is the
+   text blocks joined by blank lines, with the chart blocks and the title line
+   stripped, matching the text blocks emitted in `content` frames. A stream that
+   stalls for 60 seconds waiting for a chunk ends the turn with
+   `synthesis_stream_error`.
 4. **Turn signing (`finalize`):** The server builds the turn's `state_slots`
    from the fetched tables the specification used and the displayed charts
    (`workflows/state_slots.py`), and signs the completed turn into the window

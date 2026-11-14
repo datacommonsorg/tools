@@ -61,9 +61,9 @@ _EMPHASIS = re.compile(r"[*_`]")
 # Characters trimmed from both ends of a title. A period is handled apart,
 # by `_strip_final_period`, so an abbreviation keeps its own.
 _TRIMMED = " \t\"'\u201c\u201d\u2018\u2019,:;!?"
-# A final abbreviation of single letters, each followed by a period
-# (`D.C.`, `U.S.`), whose last period belongs to the abbreviation.
-_FINAL_ABBREVIATION = re.compile(r"(?:\b[A-Za-z]\.){2,}$")
+# A final abbreviation of single letters joined by periods, with its own
+# final period already removed (`D.C`, `U.S`).
+_FINAL_ABBREVIATION = re.compile(r"(?:\b[A-Za-z]\.)+[A-Za-z]$")
 
 
 def select_title_addendum(has_data: bool) -> ContractAddendumName:
@@ -102,10 +102,11 @@ def parse_title_line(line: str) -> str | None:
 
 
 def _strip_final_period(text: str) -> str:
-    """Removes trailing periods unless the text ends in an abbreviation."""
-    if _FINAL_ABBREVIATION.search(text):
-        return text
-    return text.rstrip(".")
+    """Removes trailing periods, keeping the one a final abbreviation needs."""
+    stripped = text.rstrip(".")
+    if _FINAL_ABBREVIATION.search(stripped):
+        return f"{stripped}."
+    return stripped
 
 
 def clean_title(raw: str) -> str | None:

@@ -20,6 +20,7 @@ Covers `parse_title_line`, `clean_title`, `select_title_addendum`, and
 import pytest
 
 from narratives_agent.workflows.title import (
+    MAX_TITLE_CHARS,
     MAX_TITLE_WORDS,
     TitleExtractor,
     clean_title,
@@ -92,19 +93,23 @@ def test_title_lines_are_recognized(line: str, expected: str | None) -> None:
             "Unemployment rate in Washington, D.C.",
         ),
         ("Population of the U.S.", "Population of the U.S."),
+        ("GDP of the U.S. [1].", "GDP of the U.S."),
+        ("Population of Washington, D.C..", "Population of Washington, D.C."),
+        ("Vitamin D intake.", "Vitamin D intake"),
         ("Life expectancy in the US.", "Life expectancy in the US"),
         ("", None),
         ("  ...  ", None),
         (" ".join(["word"] * (MAX_TITLE_WORDS + 1)), None),
-        ("x" * 101, None),
+        ("x" * (MAX_TITLE_CHARS + 1), None),
     ],
 )
 def test_titles_are_cleaned_or_rejected(raw: str, expected: str | None) -> None:
     # Test: Cleaning of raw titles by `clean_title`.
     # Situation: The raw title carries quotes, trailing punctuation, a
     #   "Title:" label, emphasis, citations, or extra whitespace; keeps a
-    #   number inside a measure name; ends in an abbreviation or in a plain
-    #   sentence period; is empty; or is too long.
+    #   number inside a measure name; ends in an abbreviation, alone or
+    #   followed by a citation or a second period, or in a plain sentence
+    #   period; is empty; or is too long.
     # Expectation: Decoration and a sentence's final period are removed,
     #   while internal punctuation in a measure name and an abbreviation's
     #   final period are kept; empty and overlong titles give `None`.

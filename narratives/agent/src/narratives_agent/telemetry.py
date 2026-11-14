@@ -87,8 +87,10 @@ class TitleOutcome(StrEnum):
 
     `NOT_REQUESTED` covers every turn that never asked the synthesis model
     for a title: turns without data, clarifications, refusals, and turns that
-    ended before synthesis. `OMITTED` is a turn with data whose model wrote
-    no usable title line.
+    ended before the synthesis stream opened. `OMITTED` is a turn with data
+    whose model wrote no usable title line. Both measure the model only on
+    turns that end `complete`: a synthesis that fails part-way records the
+    outcome reached when it stopped.
     """
 
     EMITTED = "emitted"

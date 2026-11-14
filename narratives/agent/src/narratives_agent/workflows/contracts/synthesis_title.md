@@ -3,7 +3,7 @@ Code-owned addendum to the synthesis contract (`workflows/prompt_contracts.py`),
 appended after `synthesis.md` when the turn's digest has data. It cannot be
 overridden by instance configuration. `workflows/title.py` takes the title line
 off the stream: keep the line format below in sync with `parse_title_line`, and
-the word count with `MAX_TITLE_WORDS`.
+keep `MAX_TITLE_WORDS` above the 10-word upper bound below.
 -->
 ### Title line
 
