@@ -40,8 +40,11 @@ from narratives_agent.model_armor import screen_user_prompt
 from narratives_agent.telemetry import TurnTelemetry
 from narratives_agent.workflows.mcp_loop import MCP_HISTORY_RESPONSE_CHARS
 from narratives_agent.workflows.messages import (
+    OFF_DOMAIN_NAMED_SUBJECT,
     OFF_DOMAIN_TEMPLATE,
+    OFF_DOMAIN_UNNAMED_SUBJECT,
     REFUSED_MESSAGE,
+    SAFETY_REFUSED_MESSAGE,
 )
 from narratives_agent.workflows.prefilter import prefilter_match
 from narratives_agent.workflows.transcript import (
@@ -110,13 +113,18 @@ class Admitted:
 def off_domain_message(premise: str) -> str:
     """Formats the off-domain refusal message with a sanitized premise.
 
-    Control characters and newlines are stripped and the result is truncated to
-    `MAX_PREMISE_CHARS`. When the sanitized premise is empty, the parenthetical
-    is omitted.
+    Control characters, newlines, and double quotes are stripped and the result
+    is truncated to `MAX_PREMISE_CHARS`. When the sanitized premise is empty,
+    the message names no topic.
     """
-    plain = " ".join(_CONTROL_CHARS.sub(" ", premise).split())
+    plain = " ".join(_CONTROL_CHARS.sub(" ", premise).replace('"', "").split())
     plain = plain[:MAX_PREMISE_CHARS].strip()
-    return OFF_DOMAIN_TEMPLATE.format(premise=f" ({plain})" if plain else "")
+    subject = (
+        OFF_DOMAIN_NAMED_SUBJECT.format(premise=plain)
+        if plain
+        else OFF_DOMAIN_UNNAMED_SUBJECT
+    )
+    return OFF_DOMAIN_TEMPLATE.format(subject=subject)
 
 
 async def _request_classification(
@@ -215,13 +223,17 @@ async def classify_query(
     family = prefilter_match(transcript.current_query)
     if family is not None:
         logger.warning("Pre-filter matched %s; refusing turn", family)
-        raise TurnRefusedError(RefusedReason.ADVERSARIAL, REFUSED_MESSAGE)
+        raise TurnRefusedError(
+            RefusedReason.ADVERSARIAL, SAFETY_REFUSED_MESSAGE
+        )
     model_armor_match = await screen_user_prompt(transcript.current_query)
     if model_armor_match is not None:
         logger.warning(
             "Model Armor matched %s; refusing turn", model_armor_match
         )
-        raise TurnRefusedError(RefusedReason.SAFETY_BLOCKED, REFUSED_MESSAGE)
+        raise TurnRefusedError(
+            RefusedReason.SAFETY_BLOCKED, SAFETY_REFUSED_MESSAGE
+        )
     classification = await _request_classification(
         transcript, config, telemetry
     )

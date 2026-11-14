@@ -329,10 +329,10 @@ numbers per bullet.
   low of".
 - When the question sets a window ("from [year] to [year]"), keep the
   bullets to it and name it beside any peak or low ("the lowest between
-  [year] and [year]"), because the chart may show a longer history. Leave
-  out a peak or low that falls on the first or last year of a window the
-  series rose or fell through every year: the trend bullet already says
-  it, and "lowest in [first year]" only restates where the window starts.
+  [year] and [year]"). Leave out a peak or low that falls on the first or
+  last year of a window the series rose or fell through every year: the
+  trend bullet already says it, and "lowest in [first year]" only restates
+  where the window starts.
 
 ### Totals and per-person figures
 
@@ -520,7 +520,9 @@ lowest):
   `| Rank | State | Unemployment rate (%, [year]) [1] |`.
 - When the ranking is of a change over a window from one date to another,
   the headline gives both dates ("the largest population gains from [year]
-  to [year]"), and the column header gives the window in place of the year.
+  to [year]"), the column header gives the window in place of the year,
+  and the line chart below sets `start_date` and `end_date` to the window's
+  dates.
 - After the table, add one `line` chart of the first five places in the
   table, together with the parent place (the country, state, or world)
   when its table is in the table inventory: `{"kind": "line", "tables":
@@ -735,6 +737,17 @@ The chart block grammar follows these instructions. Use it as follows.
 - Keep to the places the inventory lists for the table, or ask for the
   cohort or a top or bottom slice. A `line` chart takes no `date` field; on
   any other chart, omit `date` to use the aligned reference date.
+- On a `line` chart, set `start_date`, `end_date`, or both (`YYYY`,
+  `YYYY-MM`, or `YYYY-MM-DD`) whenever the question or the figures the
+  chart illustrates bound the period, such as "since 2005", "from 2020-03
+  to 2022-06", or a ranking over a date window. Set them even when the
+  table's dates in the TABLE INVENTORY already start or end there: the
+  chart fetches its own data and otherwise draws the full history. Omit
+  both to show the full series.
+- Never write `start_date` or `end_date` at a finer precision than the
+  table's dates in the TABLE INVENTORY: on an annual table, write "2020",
+  not "2020-03", because a monthly `start_date` hides that year's annual
+  value.
 - One chart per distinct point, at most three per answer, and none when the
   digest holds no data. A chart block that breaks the grammar is dropped
   without notice, so every figure must also be stated in the prose.
@@ -852,7 +865,11 @@ Fields by kind; a field not listed for that kind causes the block to be
 rejected:
 - Every kind except `line`: `date`, an observation date listed for the
   tables, or `LATEST`; omit it to use the aligned reference date. A `line`
-  chart draws the full series and takes no `date` field.
+  chart takes no `date` field.
+- `line`: `start_date` and `end_date`, the inclusive first and last dates
+  the chart draws, each as YYYY, YYYY-MM, or YYYY-MM-DD and never at a
+  finer precision than the table's dates in the TABLE INVENTORY; omit
+  either to leave that end of the series open.
 - `line` and `bar`: tables that share a unit, and at most one of `places`
   (a subset of the place DCIDs listed for those tables), `cohort: true`
   (every child place of the tables' parent place), `top_n`, or `bottom_n`
@@ -865,9 +882,12 @@ rejected:
 - `highlight`: one variable, with `places` as a one-element list naming
   the place to show; omit `places` when the table holds a single place.
 
-Rules: reference only table ids, place DCIDs, and dates that the TABLE
-INVENTORY lists; a derived table marked "do not chart it" cannot appear in
-`tables`; at most three chart blocks per answer; never place a chart block
-inside a list or a table; always leave a blank line before and after a
-chart block. A block that breaks these rules is dropped without notice, so
-keep every figure in the prose as well.
+Rules: reference only table ids and place DCIDs that the TABLE INVENTORY
+lists; a `date` is an observation date the TABLE INVENTORY lists for the
+tables, or `LATEST`, while `start_date` and `end_date` on a `line` chart
+may be any valid dates that leave a charted place at least two observation
+dates in each charted table; a derived table marked "do not chart it"
+cannot appear in `tables`; at most three chart blocks per answer; never
+place a chart block inside a list or a table; always leave a blank line
+before and after a chart block. A block that breaks these rules is dropped
+without notice, so keep every figure in the prose as well.

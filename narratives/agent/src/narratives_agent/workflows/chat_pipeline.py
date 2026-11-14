@@ -99,7 +99,7 @@ from narratives_agent.workflows.messages import (
     MCP_TOOLS_TIMEOUT,
     MCP_UNAVAILABLE,
     NO_DATA_MESSAGE,
-    REFUSED_MESSAGE,
+    SAFETY_REFUSED_MESSAGE,
     SYNTHESIS_FAILED,
     SYNTHESIS_STATUS,
     SYNTHESIS_TRANSIENT_ERROR,
@@ -1123,7 +1123,7 @@ async def run_turn(
             TerminalRefusedFrame(
                 idempotency_key=idempotency_key,
                 reason=RefusedReason.SAFETY_BLOCKED,
-                message=REFUSED_MESSAGE,
+                message=SAFETY_REFUSED_MESSAGE,
             )
         )
     except TurnAbortedError as error:

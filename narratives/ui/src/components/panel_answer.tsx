@@ -371,11 +371,11 @@ interface TextRevealWindow {
 /**
  * Renders a turn's blocks in emission order, as direct children of the
  * panel body: each text block through the Markdown renderer, and each run of
- * consecutive chart blocks through one chart tile, whose grid sets two or
- * three charts side by side when there is room. A tile reports every chart
- * in its run as settled once all of them have. The text blocks share one
- * reveal in reading order, and the word animations start only once `phase`
- * is `revealing`.
+ * consecutive chart blocks through one chart tile, which sets two or three
+ * charts side by side when there is room and gives each scatter chart a row
+ * of its own. A tile reports every chart in its run as settled once all of
+ * them have. The text blocks share one reveal in reading order, and the word
+ * animations start only once `phase` is `revealing`.
  */
 function AnswerBlocks({
   turn,

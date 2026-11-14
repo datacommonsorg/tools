@@ -15,6 +15,7 @@ import {
   flattenForPrint,
   MAX_CARD_PAGE_FILL,
   pageBreak,
+  stackChartsForPrint,
 } from '@/src/utils/download_pdf';
 
 /** A4 content box at scale 2, roughly: 717px wide, 273mm tall. */
@@ -233,5 +234,71 @@ describe('flattenForPrint', () => {
     expect(line?.style.whiteSpace).toBe('normal');
     expect(table?.style.width).toBe('100%');
     expect(cell?.style.overflowWrap).toBe('anywhere');
+  });
+});
+
+describe('stackChartsForPrint', () => {
+  it('sets the chart tile and each of its rows to block layout', () => {
+    // Test: Chart layout in the PDF.
+    // Situation: A chart tile laid out as a flex column holding a grid row of
+    //   two cards and a grid row of one card.
+    // Expectation: The tile and both rows are set to `display: block`, so
+    //   every card stacks at the full page width, and the cards keep their
+    //   own display.
+    const root = document.createElement('div');
+    root.innerHTML = `
+      <div class="dc-charts-container" style="display: flex">
+        <div class="dc-charts-row" style="display: grid">
+          <div class="dc-chart-card"></div>
+          <div class="dc-chart-card"></div>
+        </div>
+        <div class="dc-charts-row" style="display: grid">
+          <div class="dc-chart-card"></div>
+        </div>
+      </div>
+    `;
+
+    stackChartsForPrint(root);
+
+    const container = root.querySelector<HTMLElement>('.dc-charts-container');
+    const rows = Array.from(
+      root.querySelectorAll<HTMLElement>('.dc-charts-row'),
+    );
+    expect(container?.style.display).toBe('block');
+    expect(rows.map((row) => row.style.display)).toEqual(['block', 'block']);
+    for (const card of root.querySelectorAll<HTMLElement>('.dc-chart-card')) {
+      expect(card.style.display).toBe('');
+    }
+  });
+
+  it('leaves a row hidden on screen out of the PDF', () => {
+    // Test: A row whose charts all reported no data.
+    // Situation: A chart tile holding a visible row and a row hidden by the
+    //   `hidden` class, whose one card is hidden with inline `display: none`.
+    // Expectation: Only the visible row is set to block layout; the hidden
+    //   row keeps no inline display, so its `hidden` class still applies, and
+    //   its card keeps `display: none`.
+    const root = document.createElement('div');
+    root.innerHTML = `
+      <div class="dc-charts-container flex flex-col gap-6">
+        <div class="dc-charts-row grid gap-6 grid-cols-1">
+          <div class="dc-chart-card" id="shown"></div>
+        </div>
+        <div class="dc-charts-row hidden">
+          <div class="dc-chart-card" id="empty" style="display: none"></div>
+        </div>
+      </div>
+    `;
+
+    stackChartsForPrint(root);
+
+    const rows = Array.from(
+      root.querySelectorAll<HTMLElement>('.dc-charts-row'),
+    );
+    expect(rows.map((row) => row.style.display)).toEqual(['block', '']);
+    expect(root.querySelector<HTMLElement>('#empty')?.style.display).toBe(
+      'none',
+    );
+    expect(root.querySelector<HTMLElement>('#shown')?.style.display).toBe('');
   });
 });
