@@ -55,6 +55,7 @@ from narratives_agent.json_value import JsonObject
 from narratives_agent.settings import DebugReportMode
 from narratives_agent.telemetry import (
     TerminalState,
+    TitleOutcome,
     TokenCounts,
     TurnTelemetry,
 )
@@ -236,6 +237,26 @@ def test_build_debug_report_complete_turn_with_tokens_and_phases() -> None:
     assert payload["tables"] == []
     # Verify round-trip JSON serialization.
     assert json.loads(json.dumps(payload)) == payload
+
+
+def test_the_debug_report_carries_the_title_outcome() -> None:
+    # Test: Title outcome in the debug report.
+    # Situation: A turn with data finishes after the synthesis model omitted
+    #   the title it was asked for.
+    # Expectation: The report and its payload carry `title_outcome` as
+    #   `omitted`.
+    telemetry = _make_telemetry()
+    telemetry.title_outcome = TitleOutcome.OMITTED
+
+    report = build_debug_report(
+        telemetry=telemetry,
+        terminal_state="complete",
+        terminal_reason=None,
+        is_clarification=False,
+    )
+
+    assert report.title_outcome is TitleOutcome.OMITTED
+    assert report.to_dict()["title_outcome"] == "omitted"
 
 
 def test_build_debug_report_clarification_turn() -> None:
@@ -1022,6 +1043,8 @@ def test_build_debug_report_prompt_hashes_and_contracts() -> None:
     expected_keys = set(PROMPT_SLOTS) | {
         "discovery_contract",
         "synthesis_contract",
+        "synthesis_title_contract",
+        "synthesis_no_title_contract",
     }
     assert set(hashes.keys()) == expected_keys
 
@@ -1041,6 +1064,12 @@ def test_build_debug_report_prompt_hashes_and_contracts() -> None:
     ).hexdigest()
     assert hashes["discovery_contract"] == expected_discovery
     assert hashes["synthesis_contract"] == expected_synthesis
+    assert (
+        hashes["synthesis_title_contract"]
+        == hashlib.sha256(
+            load_prompt_contract("synthesis_title").encode("utf-8")
+        ).hexdigest()
+    )
 
     # Verify slot hashes match content sha256
     assert (

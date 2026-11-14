@@ -30,19 +30,23 @@ from narratives_agent.gemini.schemas import QueryClassification
 from narratives_agent.workflows.pattern_guidance import append_pattern_guidance
 
 __all__ = [
+    "ContractAddendumName",
     "ContractName",
     "compose_system_instruction",
     "load_prompt_contract",
 ]
 
-# The packaged contracts under `narratives_agent.workflows.contracts`.
+# The packaged phase contracts under `narratives_agent.workflows.contracts`.
 type ContractName = Literal["discovery", "synthesis"]
+# The packaged addenda appended after a phase contract when they apply to the
+# turn: the synthesis title line, chosen by whether the turn has data.
+type ContractAddendumName = Literal["synthesis_title", "synthesis_no_title"]
 
 _CONTRACTS_PACKAGE = "narratives_agent.workflows.contracts"
 
 
 @cache
-def load_prompt_contract(name: ContractName) -> str:
+def load_prompt_contract(name: ContractName | ContractAddendumName) -> str:
     """Returns the comment-stripped text of the packaged contract `name`.
 
     Args:
@@ -79,7 +83,7 @@ def compose_system_instruction(
     classification: QueryClassification | None = None,
     *,
     has_cohort_table: bool = True,
-    contract_addendum: str = "",
+    addendum: ContractAddendumName | None = None,
 ) -> str:
     """Composes guidance, a code-owned contract, and pattern guidance.
 
@@ -90,21 +94,21 @@ def compose_system_instruction(
             classifier failed.
         has_cohort_table: Whether a fetched table covers a cohort of child
             places, passed to `append_pattern_guidance`; synthesis sets it.
-        contract_addendum: Code-owned text that depends on the turn, such as
-            the synthesis title directive, appended right after the contract.
+        addendum: Which packaged addendum, if any, to append right after the
+            contract, such as the synthesis title line.
 
     Returns:
         The composed system instruction with `guidance` first, the packaged
-        contract and `contract_addendum` second, and the pattern directive
-        last when `classification` is present.
+        contract and its addendum second, and the pattern directive last
+        when `classification` is present.
 
     Raises:
-        RuntimeError: If the packaged contract file for `contract` is missing,
-            unreadable, or empty once HTML comments are stripped.
+        RuntimeError: If the packaged file for `contract` or `addendum` is
+            missing, unreadable, or empty once HTML comments are stripped.
     """
     contract_text = load_prompt_contract(contract)
-    if contract_addendum:
-        contract_text = f"{contract_text}\n\n{contract_addendum}"
+    if addendum is not None:
+        contract_text = f"{contract_text}\n\n{load_prompt_contract(addendum)}"
     composed = f"{guidance}\n\n{contract_text}" if guidance else contract_text
     return append_pattern_guidance(
         composed, classification, contract, has_cohort_table=has_cohort_table

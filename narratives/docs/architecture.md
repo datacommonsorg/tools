@@ -226,11 +226,14 @@ Otherwise, the request runs through the agent loop in five steps:
    `end_date`. A `ranking`, `bar`, `map`, or `scatter` of
    a table that the digest ranks only over a window needs an explicit date,
    because without one it would draw the latest values rather than the
-   change the prose describes. When the digest has data, the synthesis model
-   opens its answer with a title line, a short label for the data the answer
-   presents (`workflows/title.py`); the server takes it off the stream and
-   sends it as a `{title}` `content` frame before the first block. A turn
-   without data gets no title, even when the model writes one. The signed
+   change the prose describes. When the digest has data, the synthesis
+   contract's `synthesis_title` addendum has the model open its answer with
+   a `# ` title line, a short label for the data the answer presents; the
+   server (`workflows/title.py`) takes that line off the stream and sends it
+   as a `{title}` `content` frame before the first block. Only a `#` heading
+   or a line starting with a `Title:` label counts as a title line. A turn
+   without data gets the `synthesis_no_title` addendum and no title, even
+   when the model writes one. The signed
    `model_response` is the text blocks joined by blank lines, with the chart
    blocks and the title line stripped, matching the text blocks emitted in
    `content` frames. A stream that stalls for 60 seconds waiting for a chunk

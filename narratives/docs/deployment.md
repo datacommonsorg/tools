@@ -309,7 +309,11 @@ rules, and fenced `chart` block grammar live in a code-owned contract
 (`workflows/contracts/synthesis.md`, composed by `workflows/prompt_contracts.py`
 together with the per-pattern synthesis directive from
 `workflows/pattern_guidance.py`) that the server appends after the configured
-`synthesis` prompt on every request and that cannot be overridden. An override
+`synthesis` prompt on every request and that cannot be overridden. So does the
+answer's title line: its format and the rule that it names only the data the
+answer presents live in `workflows/contracts/synthesis_title.md`, while the
+"Title rules" section of `synthesis.md` holds only editorial guidance on its
+wording, which an override may replace. An override
 in `config/prompts/synthesis.md` should add instance-specific tone, domain, or
 grounding guidance rather than restating the citation or chart-block grammar.
 
@@ -621,12 +625,13 @@ containing the terminal state, error reason (if any), phase latencies
 tool names and counts, token usage, the analytical `pattern` assigned by the
 `classify` phase, and the analysis counts (`scripts`, `tables_fetched`,
 `total_rows_fetched`, `processing_retries`, `charts_emitted`, and
-`charts_rejected`), and `title_emitted`, whether the answer carried a title
-(user query text is never logged). The turn span carries the same fields as
-`narratives.scripts`, `narratives.tables_fetched`,
-`narratives.total_rows_fetched`, `narratives.processing_retries`,
-`narratives.charts_emitted`, `narratives.charts_rejected`, and
-`narratives.title_emitted`. On a `refused`
+`charts_rejected`), and `title_outcome` (`emitted`, `omitted` when the model
+wrote no usable title on a turn with data, or `not_requested` when the turn
+had no data or never reached synthesis); user query text is never logged.
+The turn span carries the same fields as `narratives.scripts`,
+`narratives.tables_fetched`, `narratives.total_rows_fetched`,
+`narratives.processing_retries`, `narratives.charts_emitted`,
+`narratives.charts_rejected`, and `narratives.title_outcome`. On a `refused`
 turn, `error_type` holds the refusal reason (`adversarial`, `off_domain`,
 `safety_blocked`, or `chat_disabled`) and `pattern` is omitted; if the
 classifier call itself fails, the turn falls through with `pattern` set to

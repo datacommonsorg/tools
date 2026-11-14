@@ -13,7 +13,7 @@
 # limitations under the License.
 """Tests for `workflows.title`.
 
-Covers `parse_title_line`, `clean_title`, `title_directive`, and
+Covers `parse_title_line`, `clean_title`, `select_title_addendum`, and
 `TitleExtractor`.
 """
 
@@ -21,12 +21,10 @@ import pytest
 
 from narratives_agent.workflows.title import (
     MAX_TITLE_WORDS,
-    NO_TITLE_DIRECTIVE,
-    TITLE_DIRECTIVE,
     TitleExtractor,
     clean_title,
     parse_title_line,
-    title_directive,
+    select_title_addendum,
 )
 
 _ANSWER = (
@@ -60,9 +58,10 @@ def _extract(
     [
         ("# Life expectancy in Japan", "Life expectancy in Japan"),
         ("## Life expectancy in Japan ##", "Life expectancy in Japan"),
-        ("**Life expectancy in Japan**", "Life expectancy in Japan"),
         ("Title: Life expectancy in Japan", "Life expectancy in Japan"),
         ("**Title:** Life expectancy in Japan", "Life expectancy in Japan"),
+        ("**Title**: Life expectancy in Japan", "Life expectancy in Japan"),
+        ("**Life expectancy in Japan**", None),
         ("According to the World Bank, life expectancy rose.", None),
         ("- **Trend:** it rose.", None),
         ("#hashtag without a space", None),
@@ -70,10 +69,12 @@ def _extract(
 )
 def test_title_lines_are_recognized(line: str, expected: str | None) -> None:
     # Test: Recognition of title lines by `parse_title_line`.
-    # Situation: The line is a Markdown heading, a fully bold line, a
-    #   "Title:" label, or ordinary answer prose.
-    # Expectation: The title text is returned for the three title forms and
-    #   `None` for prose, a bulleted bold label, or a hash without a space.
+    # Situation: The line is a Markdown heading, a "Title:" label with or
+    #   without bold marks on either side of the colon, a fully bold line,
+    #   or ordinary answer prose.
+    # Expectation: The title text is returned for headings and labels, and
+    #   `None` for a fully bold line, prose, a bulleted bold label, or a hash
+    #   without a space.
     assert parse_title_line(line) == expected
 
 
@@ -86,6 +87,12 @@ def test_title_lines_are_recognized(line: str, expected: str | None) -> None:
         ("  Life   expectancy\tin Japan:  ", "Life expectancy in Japan"),
         ("Median household income?", "Median household income"),
         ("PM2.5 concentration in Delhi", "PM2.5 concentration in Delhi"),
+        (
+            "Unemployment rate in Washington, D.C.",
+            "Unemployment rate in Washington, D.C.",
+        ),
+        ("Population of the U.S.", "Population of the U.S."),
+        ("Life expectancy in the US.", "Life expectancy in the US"),
         ("", None),
         ("  ...  ", None),
         (" ".join(["word"] * (MAX_TITLE_WORDS + 1)), None),
@@ -96,19 +103,21 @@ def test_titles_are_cleaned_or_rejected(raw: str, expected: str | None) -> None:
     # Test: Cleaning of raw titles by `clean_title`.
     # Situation: The raw title carries quotes, trailing punctuation, a
     #   "Title:" label, emphasis, citations, or extra whitespace; keeps a
-    #   number inside a measure name; is empty; or is too long.
-    # Expectation: Decoration is removed while internal punctuation in a
-    #   measure name is kept; empty and overlong titles give `None`.
+    #   number inside a measure name; ends in an abbreviation or in a plain
+    #   sentence period; is empty; or is too long.
+    # Expectation: Decoration and a sentence's final period are removed,
+    #   while internal punctuation in a measure name and an abbreviation's
+    #   final period are kept; empty and overlong titles give `None`.
     assert clean_title(raw) == expected
 
 
-def test_the_directive_asks_for_a_title_only_with_data() -> None:
-    # Test: Selection of the title format directive.
+def test_the_addendum_asks_for_a_title_only_with_data() -> None:
+    # Test: Selection of the title contract addendum.
     # Situation: The turn has data, then has none.
-    # Expectation: The title directive is returned with data and the
-    #   no-title directive without.
-    assert title_directive(has_data=True) == TITLE_DIRECTIVE
-    assert title_directive(has_data=False) == NO_TITLE_DIRECTIVE
+    # Expectation: `synthesis_title` is returned with data and
+    #   `synthesis_no_title` without.
+    assert select_title_addendum(has_data=True) == "synthesis_title"
+    assert select_title_addendum(has_data=False) == "synthesis_no_title"
 
 
 @pytest.mark.parametrize("chunk", [1, 3, 5, 40, 10_000])
@@ -148,6 +157,31 @@ def test_an_answer_without_a_title_line_is_forwarded_whole() -> None:
     assert titles == []
     assert extractor.title is None
     assert forwarded == _ANSWER
+
+
+@pytest.mark.parametrize("accept", [True, False])
+def test_a_bold_first_line_stays_in_the_answer(accept: bool) -> None:
+    # Test: A fully bold first line, on turns with and without data.
+    # Situation: The answer opens with a bold label line before its list.
+    # Expectation: No title is reported, and the bold line is forwarded with
+    #   the rest of the answer.
+    answer = "**Key figures**\n\n" + _ANSWER
+    extractor, forwarded, titles = _extract(answer, accept=accept)
+
+    assert titles == []
+    assert extractor.title is None
+    assert forwarded == answer
+
+
+def test_a_first_line_that_is_not_a_title_keeps_its_leading_space() -> None:
+    # Test: Forwarding of a first line that is not a title line.
+    # Situation: The stream opens with a blank line and an indented sentence.
+    # Expectation: The text is forwarded exactly as the model wrote it,
+    #   leading whitespace included.
+    answer = "\n  " + _ANSWER
+    _, forwarded, _ = _extract(answer)
+
+    assert forwarded == answer
 
 
 def test_a_title_on_a_turn_without_data_is_dropped() -> None:

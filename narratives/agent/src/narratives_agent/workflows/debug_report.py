@@ -36,7 +36,7 @@ from narratives_agent.config_model import PROMPT_SLOTS, AgentConfig, GeminiRole
 from narratives_agent.gemini.schemas import QueryPattern
 from narratives_agent.json_value import JsonObject, JsonValue, json_safe
 from narratives_agent.settings import DebugReportMode
-from narratives_agent.telemetry import TurnTelemetry
+from narratives_agent.telemetry import TitleOutcome, TurnTelemetry
 from narratives_agent.workflows.mcp_loop import (
     RejectedSubmission,
     RejectionReason,
@@ -392,7 +392,7 @@ class DebugReport:
     processing_retries: int
     charts_emitted: int
     charts_rejected: int
-    title_emitted: bool
+    title_outcome: TitleOutcome
     tokens: DebugTokenUsage
     tables: tuple[DebugTableRecord, ...]
     thoughts: tuple[DebugThought, ...] = ()
@@ -427,7 +427,7 @@ class DebugReport:
             "processing_retries": self.processing_retries,
             "charts_emitted": self.charts_emitted,
             "charts_rejected": self.charts_rejected,
-            "title_emitted": self.title_emitted,
+            "title_outcome": self.title_outcome.value,
             "tokens": {
                 "prompt_token_count": self.tokens.prompt_token_count,
                 "candidates_token_count": self.tokens.candidates_token_count,
@@ -698,6 +698,10 @@ def _build_prompt_hashes(config: AgentConfig) -> Mapping[str, str]:
     hashes["synthesis_contract"] = hashlib.sha256(
         load_prompt_contract("synthesis").encode("utf-8")
     ).hexdigest()
+    for addendum in ("synthesis_title", "synthesis_no_title"):
+        hashes[f"{addendum}_contract"] = hashlib.sha256(
+            load_prompt_contract(addendum).encode("utf-8")
+        ).hexdigest()
     return MappingProxyType(hashes)
 
 
@@ -843,7 +847,7 @@ def build_debug_report(
         processing_retries=telemetry.processing_retries,
         charts_emitted=telemetry.charts_emitted,
         charts_rejected=telemetry.charts_rejected,
-        title_emitted=telemetry.title_emitted,
+        title_outcome=telemetry.title_outcome,
         tokens=tokens,
         tables=tuple(tables),
         thoughts=tuple(thoughts),
