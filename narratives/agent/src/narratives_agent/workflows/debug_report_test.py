@@ -1064,12 +1064,13 @@ def test_build_debug_report_prompt_hashes_and_contracts() -> None:
     ).hexdigest()
     assert hashes["discovery_contract"] == expected_discovery
     assert hashes["synthesis_contract"] == expected_synthesis
-    assert (
-        hashes["synthesis_title_contract"]
-        == hashlib.sha256(
-            load_prompt_contract("synthesis_title").encode("utf-8")
-        ).hexdigest()
-    )
+    for addendum in ("synthesis_title", "synthesis_no_title"):
+        assert (
+            hashes[f"{addendum}_contract"]
+            == hashlib.sha256(
+                load_prompt_contract(addendum).encode("utf-8")
+            ).hexdigest()
+        )
 
     # Verify slot hashes match content sha256
     assert (
