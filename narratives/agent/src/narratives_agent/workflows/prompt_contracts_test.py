@@ -682,3 +682,95 @@ def test_synthesis_contract_never_turns_members_into_a_region_figure() -> None:
     assert "Name the region as the digest names it" in flattened
     assert '"countries and territories"' in flattened
     assert "Never open with it" in flattened
+
+
+def test_only_a_line_chart_takes_date_bounds() -> None:
+    # Test: Where the grammar accepts `start_date` and `end_date`.
+    # Situation: The JSON Schema of each `ChartSpecification` variant.
+    # Expectation: `LineChartSpecification` declares both bounds, and no
+    #   other variant declares either bound.
+    defs = TypeAdapter(ChartSpecification).json_schema()["$defs"]
+    variants = {
+        name: set(definition.get("properties", {}))
+        for name, definition in defs.items()
+        if "kind" in definition.get("properties", {})
+    }
+
+    assert {"start_date", "end_date"} <= variants.pop("LineChartSpecification")
+    assert variants
+    for name, properties in variants.items():
+        assert not {"start_date", "end_date"} & properties, name
+
+
+def test_synthesis_contract_clamps_bounded_line_charts() -> None:
+    # Test: The date-clamping guidance in `### Charts`.
+    # Situation: The `### Charts` section of the synthesis contract the
+    #   model receives.
+    # Expectation: It asks for `start_date` and `end_date` on a `line`
+    #   whenever the question or the figures bound the period, even when
+    #   the TABLE INVENTORY dates already start or end there, and to omit
+    #   both for the full series; the window rule no longer suggests the
+    #   chart shows a longer history.
+    contract = load_prompt_contract("synthesis")
+    _, found, remainder = contract.partition("### Charts\n")
+    assert found
+    charts = " ".join(remainder.partition("\n### ")[0].split())
+
+    assert (
+        "On a `line` chart, set `start_date`, `end_date`, or both"
+    ) in charts
+    assert "or a ranking over a date window" in charts
+    assert (
+        "Set them even when the table's dates in the TABLE INVENTORY "
+        "already start or end there"
+    ) in charts
+    assert "Omit both to show the full series." in charts
+    assert "because the chart may show a longer history" not in (
+        " ".join(contract.split())
+    )
+
+
+def test_synthesis_contract_keeps_line_bounds_at_table_precision() -> None:
+    # Test: The precision of the date bounds the synthesis contract asks for.
+    # Situation: The `### Charts` and `### Chart blocks` sections of the
+    #   synthesis contract the model receives.
+    # Expectation: Both forbid a `start_date` or `end_date` finer than the
+    #   table's dates in the TABLE INVENTORY, and `### Charts` explains with
+    #   an annual table that a monthly start hides that year's value.
+    contract = load_prompt_contract("synthesis")
+    _, _, after_charts = contract.partition("### Charts\n")
+    charts = " ".join(after_charts.partition("\n### ")[0].split())
+    _, _, after_blocks = contract.partition("### Chart blocks\n")
+    chart_blocks = " ".join(after_blocks.split())
+
+    assert (
+        "Never write `start_date` or `end_date` at a finer precision than "
+        "the table's dates in the TABLE INVENTORY: on an annual table, write "
+        '"2020", not "2020-03", because a monthly `start_date` hides that '
+        "year's annual value."
+    ) in charts
+    assert (
+        "never at a finer precision than the table's dates in the TABLE "
+        "INVENTORY"
+    ) in chart_blocks
+
+
+def test_discovery_contract_lists_the_window_of_windowed_scripts() -> None:
+    # Test: The inputs the discovery contract lists for windowed scripts.
+    # Situation: The `### Scripts` table of the discovery contract the model
+    #   receives.
+    # Expectation: The `analyze_timeseries` and `compute_derived_metric`
+    #   rows list optional `start_date` and `end_date`, as the
+    #   `reduce_series` row does.
+    contract = load_prompt_contract("discovery")
+    _, _, after_scripts = contract.partition("### Scripts\n")
+    scripts = after_scripts.partition("\n### ")[0]
+    rows = {
+        match.group(1): match.group(2)
+        for match in re.finditer(
+            r"^\|\s*`([a-z_]+)`\s*\|([^|]*)\|", scripts, flags=re.MULTILINE
+        )
+    }
+
+    for script in ("analyze_timeseries", "compute_derived_metric"):
+        assert "optional `start_date` and `end_date`" in rows[script], script
