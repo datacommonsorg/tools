@@ -190,7 +190,10 @@ function ReactMarkdownInner({
         <em className="italic">{renderWithCitations(children, sources)}</em>
       ),
       ul: ({ children }) => (
-        <ul className="list-disc pl-6 mb-3 space-y-1">{children}</ul>
+        // biome-ignore lint/a11y/noRedundantRoles: WebKit drops the implicit list role from a list without markers, as in a paired stats row.
+        <ul role="list" className="list-disc pl-6 mb-3 space-y-1">
+          {children}
+        </ul>
       ),
       ol: ({ children }) => (
         <ol className="list-decimal pl-6 mb-3 space-y-1">{children}</ol>

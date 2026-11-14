@@ -228,6 +228,19 @@ describe('ResponseCard prose', () => {
     expect(consoleError).not.toHaveBeenCalled();
     consoleError.mockRestore();
   });
+
+  it('keeps the list role on a bullet list', () => {
+    // Test: The role of a rendered bullet list.
+    // Situation: A two-item bullet list, which a paired stats row shows
+    //   without markers.
+    // Expectation: The list carries an explicit `list` role, which WebKit
+    //   otherwise drops from a list without markers, and both items render
+    //   as list items.
+    renderMarkdown('- **Latest:** 84 years [1].\n- **Peak:** 85 years [1].');
+    const list = screen.getByRole('list');
+    expect(list.getAttribute('role')).toBe('list');
+    expect(screen.getAllByRole('listitem')).toHaveLength(2);
+  });
 });
 
 describe('ResponseCard streaming', () => {
