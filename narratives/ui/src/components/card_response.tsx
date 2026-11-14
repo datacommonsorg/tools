@@ -425,8 +425,8 @@ function HeaderCell({
 }: MarkdownCellProps) {
   const { numericColumns, hoistedCitations, rankColumns } =
     useContext(TableAnalysisContext);
-  const numeric = colIndex !== undefined && numericColumns.has(colIndex);
-  const rank = colIndex !== undefined && rankColumns.has(colIndex);
+  const isNumeric = colIndex !== undefined && numericColumns.has(colIndex);
+  const isRank = colIndex !== undefined && rankColumns.has(colIndex);
   const hoisted =
     (colIndex !== undefined ? hoistedCitations.get(colIndex) : undefined) ?? [];
   const headerText = textOf(node as MarkdownNode);
@@ -438,9 +438,9 @@ function HeaderCell({
     <th
       // An explicit markdown alignment arrives in `style` and wins over the
       // class.
-      className={`border border-border px-4 pb-2 pt-3 font-medium ${
-        rank ? 'text-center' : numeric ? 'text-right' : 'text-left'
-      }`}
+      className={`border border-border px-4 pb-2 pt-3 font-medium ${getCellAlignClass(
+        { isRank, isNumeric },
+      )}`}
       style={style}
     >
       {renderWithCitations(joinHeaderTail(children, tailGaps), sources)}
@@ -454,6 +454,22 @@ function HeaderCell({
       ))}
     </th>
   );
+}
+
+/** The kinds of column that decide a table cell's alignment. */
+interface CellColumnKind {
+  isRank: boolean;
+  isNumeric: boolean;
+}
+
+/**
+ * Returns a table cell's alignment class: centered in a rank column, flush
+ * right in a value column, and flush left otherwise.
+ */
+function getCellAlignClass({ isRank, isNumeric }: CellColumnKind): string {
+  if (isRank) return 'text-center';
+  if (isNumeric) return 'text-right';
+  return 'text-left';
 }
 
 /** A space that never wraps, keeping the words on either side together. */
@@ -497,21 +513,18 @@ function joinHeaderTail(children: ReactNode, gaps: number): ReactNode {
 function DataCell({ children, colIndex, style, sources }: MarkdownCellProps) {
   const { numericColumns, hoistedCitations, rankColumns } =
     useContext(TableAnalysisContext);
-  const numeric = colIndex !== undefined && numericColumns.has(colIndex);
-  const rank = colIndex !== undefined && rankColumns.has(colIndex);
+  const isNumeric = colIndex !== undefined && numericColumns.has(colIndex);
+  const isRank = colIndex !== undefined && rankColumns.has(colIndex);
   const hoisted = colIndex !== undefined && hoistedCitations.has(colIndex);
 
   return (
     <td
       // An explicit markdown alignment arrives in `style` and wins over the
       // class.
-      className={`border border-border px-4 py-2${
-        rank
-          ? ' tabular-nums text-center'
-          : numeric
-            ? ' tabular-nums text-right'
-            : ''
-      }`}
+      className={`border border-border px-4 py-2 ${getCellAlignClass({
+        isRank,
+        isNumeric,
+      })}${isRank || isNumeric ? ' tabular-nums' : ''}`}
       style={style}
     >
       <HideCitationsProvider value={hoisted}>

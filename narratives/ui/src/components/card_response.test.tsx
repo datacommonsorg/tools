@@ -74,6 +74,30 @@ function getAnchorHrefs(root: Element): (string | null)[] {
 afterEach(cleanup);
 
 describe('ResponseCard tables', () => {
+  it('aligns rank, label, and value columns', () => {
+    // Test: Cell alignment by column kind.
+    // Situation: A table with a "Rank" column, a state column, and a
+    //   numeric rate column.
+    // Expectation: Rank cells and their header are centered, label cells
+    //   are flush left, and value cells and their header are flush right;
+    //   rank and value cells use tabular digits.
+    const { container } = renderMarkdown(
+      '| Rank | State | Rate (%) |\n| --- | --- | --- |\n' +
+        '| 1 | Utah | 2.1 |\n| 2 | Ohio | 3.4 |',
+    );
+    const headers = container.querySelectorAll('th');
+    const cells = container.querySelectorAll('tbody tr:first-child td');
+
+    expect(headers[0].className).toContain('text-center');
+    expect(headers[2].className).toContain('text-right');
+    expect(cells[0].className).toContain('text-center');
+    expect(cells[1].className).toContain('text-left');
+    expect(cells[2].className).toContain('text-right');
+    expect(cells[0].className).toContain('tabular-nums');
+    expect(cells[1].className).not.toContain('tabular-nums');
+    expect(cells[2].className).toContain('tabular-nums');
+  });
+
   const INCOME_TABLE = `
 | City | Median household income (USD, 2024) [1] |
 | --- | --- |
