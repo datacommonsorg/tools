@@ -323,7 +323,8 @@ export const DebugPanel = ({ turn }: DebugPanelProps) => {
   return (
     <>
       {/* `download_pdf.ts` and `index.css` strip `[data-non-print="true"]`
-          elements from print and PDF exports. */}
+          elements from print and PDF exports. The `after:` overlay widens the
+          32px button's hit area to the 44px touch-target minimum. */}
       <button
         ref={triggerButtonRef}
         type="button"
@@ -332,7 +333,7 @@ export const DebugPanel = ({ turn }: DebugPanelProps) => {
         aria-expanded={isOpen}
         title={DEBUG_PANEL_COPY.openButtonTitle}
         data-non-print="true"
-        className="group w-11 h-11 flex items-center justify-center rounded-full hover:bg-button-hover transition-colors text-error"
+        className="group relative w-8 h-8 flex items-center justify-center rounded-full hover:bg-button-hover transition-colors text-error after:absolute after:-inset-1.5 after:content-['']"
       >
         <BugReportIcon
           size="sm"
