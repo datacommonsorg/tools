@@ -108,7 +108,7 @@ describe('Sidebar', () => {
     // Situation: #runtime-config holds `enable_chat: false` and the route is
     //   the Agent tab.
     // Expectation: The rail still renders, so the layout width is unchanged,
-    //   and the New chat control is absent.
+    //   and the New chat control is invisible.
     writeRuntimeConfigSlot({ enable_chat: false });
     window.location.hash = '#/agent';
     const { container } = render(
@@ -117,6 +117,38 @@ describe('Sidebar', () => {
       </ChatSessionProvider>,
     );
     expect(container.querySelector('aside')).not.toBeNull();
-    expect(screen.queryByRole('button', { name: 'New chat' })).toBeNull();
+    expect(
+      screen
+        .getByRole('button', { name: 'New chat' })
+        .classList.contains('invisible'),
+    ).toBe(true);
+  });
+
+  it('keeps the same New chat button across a Metrics round trip', () => {
+    // Test: The New chat control while switching tabs.
+    // Situation: The user goes from the Agent tab to Metrics and back.
+    // Expectation: The button is hidden on Metrics and is the same element on
+    //   return, so its one-time entrance animation does not replay.
+    window.location.hash = '#/agent';
+    render(
+      <ChatSessionProvider>
+        <Sidebar />
+      </ChatSessionProvider>,
+    );
+    const button = screen.getByRole('button', { name: 'New chat' });
+    expect(button.classList.contains('invisible')).toBe(false);
+
+    act(() => {
+      window.location.hash = '#/metrics';
+      window.dispatchEvent(new HashChangeEvent('hashchange'));
+    });
+    expect(button.classList.contains('invisible')).toBe(true);
+
+    act(() => {
+      window.location.hash = '#/agent';
+      window.dispatchEvent(new HashChangeEvent('hashchange'));
+    });
+    expect(screen.getByRole('button', { name: 'New chat' })).toBe(button);
+    expect(button.classList.contains('invisible')).toBe(false);
   });
 });

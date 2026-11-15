@@ -58,8 +58,8 @@ export interface InstanceConfig {
 export const DEFAULT_INSTANCE_CONFIG: Readonly<InstanceConfig> = {
   instanceName: 'Data Commons',
   logoUrl: '/dc-logo.svg',
-  logoText: 'Data Commons',
-  logoAlt: 'Data Commons',
+  logoText: 'Data Commons by Google',
+  logoAlt: 'Data Commons by Google',
   logoHref: '/',
   thinkingIndicatorUrl: '/agent-thinking.svg',
   doneIndicatorUrl: '/agent-done-thinking.svg',

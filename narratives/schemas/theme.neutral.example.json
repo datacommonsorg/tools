@@ -23,7 +23,9 @@
     "user_message": "#F2F2F2",
     "container": "#C9E6FD",
     "on_container": "#004A77",
-    "nav_active": "#303030"
+    "nav_active": "#303030",
+    "chrome": "#F9F9F9",
+    "on_chrome": "#1B1C1D"
   },
   "radius": {
     "card": "16px",
