@@ -211,7 +211,8 @@ Otherwise, the request runs through the agent loop in five steps:
    table not given as a percentage is charted when referenced by its `s<n>`
    table id as its numerator with the web component's per-person normalization;
    a percentage is not, because that normalization applies no scale and would
-   draw per-person fractions beside the percentages, and other derived tables
+   draw per-person fractions beside the percentages, nor is its numerator
+   charted in its place by the default chart floor; other derived tables
    are not chartable. At most four charts are accepted per answer. The model
    writes each chart directly after the bullet list or table holding its
    figures, and the app shows that list or table beside the chart, a bullet list

@@ -1847,3 +1847,75 @@ def test_a_per_capita_series_line_is_clamped_to_its_derived_window(
         "per_capita": True,
         **expected_bounds,
     }
+
+
+@pytest.mark.parametrize(
+    ("series_table", "expected_variables"),
+    [("t2", None), ("t1", ["Count_Person"])],
+    ids=["numerator", "population"],
+)
+def test_the_floor_does_not_chart_the_count_behind_a_percentage(
+    series_table: str, expected_variables: list[str] | None
+) -> None:
+    # Test: The default chart of a turn whose primary result is a
+    #   percentage, which is not chartable.
+    # Situation: People below the poverty line (`t2`) are divided by
+    #   population (`t1`) per capita with a scale of 100 in `s1`, `s2`
+    #   ranks `s1`, and `s3` analyzes the series of the numerator `t2` or of
+    #   the population `t1`.
+    # Expectation: The ranking of the percentage supplies no chart, and the
+    #   numerator's series is not charted in its place, so the raw count is
+    #   never drawn for a percentage, while the population's series still
+    #   supplies the default chart.
+    population = _make_table(
+        "t1", places=_STATES, parent="country/USA", child_type="State"
+    )
+    poor = _make_table(
+        "t2",
+        "Count_Person_BelowPovertyLevel",
+        name="Poor",
+        unit="Count",
+        places=_STATES,
+        parent="country/USA",
+        child_type="State",
+    )
+    derived = derive_observation_table(
+        poor.table,
+        population.table,
+        operation="per_capita",
+        scale=100.0,
+        step_id="s1",
+    )
+    assert derived.table is not None
+    tables = {"t1": population, "t2": poor}
+    analysis = AnalysisSpecification.model_validate(
+        {
+            "steps": [
+                {**_PER_CAPITA_STEP, "scale": 100},
+                {"step_id": "s2", "script": "rank_cohort", "table": "s1"},
+                {
+                    "step_id": "s3",
+                    "script": "analyze_timeseries",
+                    "table": series_table,
+                },
+            ]
+        }
+    )
+    digest = AnalysisDigest(
+        results=(
+            derived.result,
+            rank_cohort(derived.table, step_id="s2"),
+            analyze_timeseries(tables[series_table].table, step_id="s3"),
+        ),
+        sources=(),
+    )
+
+    chart = _resolve_default_wire(
+        digest,
+        analysis,
+        _make_cache(population, poor, CachedTable("s1", derived.table)),
+    )
+
+    assert (None if chart is None else chart["variable_dcids"]) == (
+        expected_variables
+    )

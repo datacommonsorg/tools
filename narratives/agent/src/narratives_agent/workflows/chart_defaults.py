@@ -27,6 +27,7 @@ from dataclasses import dataclass
 from typing import TypeIs
 
 from narratives_agent.analytics.digest import (
+    PERCENT_SCALE,
     AnalysisDigest,
     ScriptResult,
 )
@@ -699,6 +700,25 @@ def _order_default_candidates(
     return sorted(results, key=_rank_default_candidate)
 
 
+def _list_percentage_numerators(
+    analysis: AnalysisSpecification,
+) -> frozenset[str]:
+    """Returns the tables a per-capita step divides into a percentage.
+
+    A per-capita table given as a percentage is not charted
+    (`find_chart_entry`), and "Charts" in `contracts/synthesis.md` keeps a
+    table it is derived from out of the chart in its place, so the floor
+    does not chart its numerator, the raw count, either.
+    """
+    return frozenset(
+        step.left
+        for step in analysis.steps
+        if isinstance(step, ComputeDerivedMetricStep)
+        and step.operation == "per_capita"
+        and step.scale == PERCENT_SCALE
+    )
+
+
 def _resolve_candidate_charts(
     candidate: ScriptResult, context: _FloorContext
 ) -> tuple[ResolvedChart, ...]:
@@ -712,7 +732,9 @@ def _resolve_candidate_charts(
     if step is None:
         return ()
     table_ids = _collect_chart_table_ids(analysis, step, context.cache)
-    if not table_ids:
+    if not table_ids or not _list_percentage_numerators(analysis).isdisjoint(
+        table_ids
+    ):
         return ()
     title = _build_default_title(candidate, table_ids, context)
     if not title:
