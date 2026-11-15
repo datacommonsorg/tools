@@ -26,19 +26,18 @@ import { SectionHeading } from '@/src/components/heading_section';
  * the row's breakpoint measures the width inside its padding.
  */
 const SECTION_CLASS =
-  '@container answer-section flex flex-col gap-4 p-4 sm:p-6 rounded-card bg-surface-section';
+  '@container answer-section flex flex-col gap-4 px-5 py-4 rounded-card bg-surface-section border border-border';
 
 /**
  * Classes of the stats and chart row. It stacks by default and splits into
- * two columns, with wider spacing between its items, once the section's
- * content box is 41.5rem wide and the chart tile drew. The stats'
- * bullets drop their markers, since each already opens with a bold label.
+ * two columns once the section's content box is 41.5rem wide and the chart
+ * tile drew. Bullet and numbered stats share one indent and spacing, and the
+ * last list adds no margin below the row.
  */
 const ROW_CLASS = [
-  'answer-pair grid grid-cols-1 items-start gap-x-6 gap-y-4',
-  '[&_ul]:list-none [&_ul]:pl-0 [&_li]:pb-1',
+  'answer-pair grid grid-cols-1 items-start gap-x-5 gap-y-2',
+  '[&_:is(ul,ol)]:pl-4 [&_:is(ul,ol)]:last-of-type:mb-0 [&_li]:pb-1 [&_li]:leading-6',
   '@min-[41.5rem]:has-[>.dc-charts-container]:grid-cols-2',
-  '@min-[41.5rem]:has-[>.dc-charts-container]:[&_li]:pb-2',
 ].join(' ');
 
 /**
@@ -47,7 +46,7 @@ const ROW_CLASS = [
  * A table keeps its own card edge level with the chart's.
  */
 const ROW_TOP_SPACE_CLASS =
-  '@min-[41.5rem]:has-[>.dc-charts-container]:[&>:first-child]:pt-1';
+  '@min-[41.5rem]:has-[>.dc-charts-container]:[&>.markdown-body]:pt-1';
 
 /**
  * Marker class of each section variant, by what sits beside the chart and
@@ -55,10 +54,11 @@ const ROW_TOP_SPACE_CLASS =
  * own.
  */
 const VARIANT_CLASS = {
-  list: 'answer-section-list',
-  leadInList: 'answer-section-lead-in-list',
-  table: 'answer-section-table',
-  leadInTable: 'answer-section-lead-in-table',
+  list: { plain: 'answer-section-list', leadIn: 'answer-section-lead-in-list' },
+  table: {
+    plain: 'answer-section-table',
+    leadIn: 'answer-section-lead-in-table',
+  },
 } as const;
 
 interface AnswerSectionProps {
@@ -78,8 +78,8 @@ interface AnswerSectionProps {
  * right, both from the top. The stats come first in the document too, so a
  * narrow answer stacks them above the chart and screen readers follow the
  * visual order. Two columns need two charts' minimum width of 320px plus the
- * gap, so the row splits once the section's content box is 664px (41.5rem)
- * wide; when the chart drew nothing and the tile is gone, the stats take the
+ * 20px gap, so the row splits once the section's content box is 41.5rem
+ * (664px) wide; when the chart drew nothing and the tile is gone, the stats take the
  * full width.
  */
 export function AnswerSection({
@@ -89,17 +89,13 @@ export function AnswerSection({
   chart,
 }: AnswerSectionProps) {
   const headingId = useId();
-  const variant =
-    leadIn === undefined
-      ? isTable
-        ? 'table'
-        : 'list'
-      : isTable
-        ? 'leadInTable'
-        : 'leadInList';
+  const variantClass =
+    VARIANT_CLASS[isTable ? 'table' : 'list'][
+      leadIn === undefined ? 'plain' : 'leadIn'
+    ];
   return (
     <section
-      className={`${SECTION_CLASS} ${VARIANT_CLASS[variant]}`}
+      className={`${SECTION_CLASS} ${variantClass}`}
       aria-labelledby={leadIn === undefined ? undefined : headingId}
     >
       {leadIn !== undefined && (

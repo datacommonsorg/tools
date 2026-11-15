@@ -827,10 +827,10 @@ describe('AnswerPanel', () => {
         ),
       ).toEqual(['text', 'chart']);
       expect(pairs[0].textContent).not.toContain('Life expectancy reached 84.');
-      // The paired stats drop their bullet markers, and only bullet stats,
-      // not a table, sit lower than the chart's top edge.
-      expect(pairs[0].className).toContain('[&_ul]:list-none');
-      expect(pairs[0].className.includes('[&>:first-child]:pt-1')).toBe(
+      // With no lead-in line, the section has no heading.
+      expect(container.querySelector('.answer-heading')).toBeNull();
+      // Only bullet stats, not a table, sit lower than the chart's top edge.
+      expect(pairs[0].className.includes('[&>.markdown-body]:pt-1')).toBe(
         markdown === BULLETS,
       );
     });
@@ -863,6 +863,8 @@ describe('AnswerPanel', () => {
       const heading = sections[0].querySelector('h2');
       expect(heading?.textContent).toBe('Population by sex');
       expect(sections[0].getAttribute('aria-labelledby')).toBe(heading?.id);
+      // The heading opens the section, above the stats and chart row.
+      expect(sections[0].firstElementChild).toBe(heading);
       const row = sections[0].querySelector('.answer-pair');
       expect(
         Array.from(row?.children ?? []).map((child) =>

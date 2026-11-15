@@ -39,11 +39,11 @@ const INLINE_MARKUP = /[*_`[\]<>\\]|&[#\w]+;/;
 const LABEL_CHARACTER = /[\p{L}\p{N}]/u;
 
 /**
- * Typography of a section heading: a placeholder style, kept distinct from
- * the body text so a section heading is easy to tell apart.
+ * Typography of a section heading: the body text color, set apart by its
+ * size and weight.
  */
 const SECTION_HEADING_CLASS =
-  'text-section-heading text-theme-primary wrap-break-word';
+  'text-section-heading text-on-surface wrap-break-word';
 
 /**
  * Returns the label of a lead-in line: its text without the closing colon or
