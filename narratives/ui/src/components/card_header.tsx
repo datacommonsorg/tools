@@ -48,7 +48,7 @@ type CardHeaderProps = (CardHeaderTitleState | CardHeaderLoadingState) & {
  */
 export function CardHeader({ isLoading, title, children }: CardHeaderProps) {
   return (
-    <div className="flex items-start gap-3 py-2 pr-2 pl-5 border-b border-border bg-surface">
+    <div className="flex items-start gap-3 py-2 px-6 border-b border-border bg-surface">
       {/* Wraps onto as many lines as the label needs. utils/download_pdf.ts
           finds this class and writes the PDF's heading into it. */}
       <span className="flex-1 min-w-0 py-1.5 wrap-break-word print-heading text-label-large text-on-surface">

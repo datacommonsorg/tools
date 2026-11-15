@@ -91,7 +91,7 @@ export function CitationsList({
       >
         {CITATIONS_HEADING}
       </h2>
-      <ol className="list-none p-0 m-0 flex flex-col gap-1.5 text-body-large text-on-surface">
+      <ol className="list-none p-0 m-0 flex flex-col gap-3 text-body-medium text-on-surface">
         {sources.map((source, index) => {
           const shown = displayCitationNumber(index + 1, numbers);
           const lead = citationLead(source);
@@ -99,13 +99,13 @@ export function CitationsList({
             <li
               key={`${source.url}-${index}`}
               id={citationAnchorId(turnIndex, shown)}
-              className="flex items-baseline gap-1.5"
+              className="flex items-baseline gap-2"
             >
               <span aria-hidden="true">[{shown}]</span>
               {/* Long dataset names and URLs often have no spaces; allow them
                   to break mid-string. `min-w-0` lets this flex child
                   shrink below its content width instead of overflowing. */}
-              <span className="min-w-0 wrap-anywhere leading-5.5">
+              <span className="min-w-0 wrap-anywhere leading-5">
                 {lead && `${lead}${CITATION_ITEM_SEPARATOR}`}
                 <a
                   href={source.url}

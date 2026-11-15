@@ -283,7 +283,7 @@ export function AnswerPanel({
             className="px-4 pt-4 sm:px-6 sm:pt-6 bg-surface-narrative"
             data-non-print="true"
           >
-            <h1 className="text-title-large-emphasized text-on-surface wrap-break-word">
+            <h1 className="text-title-large-emphasized text-on-surface wrap-break-word m-0 p-0">
               {turn.title}
             </h1>
           </div>
@@ -293,7 +293,7 @@ export function AnswerPanel({
           hidden until the text has finished revealing, except chart tiles,
           which hold their space behind a skeleton so no gap shows. */}
         <div
-          className={`@container flex flex-col gap-4 p-4 sm:p-6 bg-surface-narrative motion-safe:[&>:not(.markdown-body,.dc-charts-container,.answer-pair)]:transition-opacity motion-safe:[&>:not(.markdown-body,.dc-charts-container,.answer-pair)]:duration-300${
+          className={`@container flex flex-col gap-4 px-4 sm:px-6 pt-3 pb-6 bg-surface-narrative motion-safe:[&>:not(.markdown-body,.dc-charts-container,.answer-pair)]:transition-opacity motion-safe:[&>:not(.markdown-body,.dc-charts-container,.answer-pair)]:duration-300${
             isRevealed
               ? ''
               : ' motion-safe:[&>:not(.markdown-body,.dc-charts-container,.answer-pair)]:opacity-0'
@@ -518,7 +518,7 @@ const STATS_BLOCK_START = /^\s*(?:[-*+]\s|\d+[.)]\s|\|)/;
  * answer body (a size container) is 41.5rem wide and the chart tile drew.
  */
 const PAIR_ROW_CLASS = [
-  'answer-pair grid grid-cols-1 items-start gap-x-6 gap-y-4 mb-1',
+  'answer-pair grid grid-cols-1 items-start gap-x-6 gap-y-4 mt-2',
   '[&_ul]:list-none [&_ul]:pl-0 [&_li]:pb-1',
   '@min-[41.5rem]:has-[>.dc-charts-container]:grid-cols-2',
   '@min-[41.5rem]:has-[>.dc-charts-container]:mb-2',
