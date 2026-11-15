@@ -306,6 +306,7 @@ def test_turn_summary_records_operations_without_content(
     turn.processing_retries = 1
     turn.charts_emitted = 2
     turn.charts_rejected = 1
+    turn.title_outcome = telemetry.TitleOutcome.OMITTED
     turn.tokens.add(
         telemetry.TokenCounts(prompt=10, candidates=0, thoughts=0, total=15)
     )
@@ -332,6 +333,7 @@ def test_turn_summary_records_operations_without_content(
     assert record["processing_retries"] == 1
     assert record["charts_emitted"] == 2
     assert record["charts_rejected"] == 1
+    assert record["title_outcome"] == "omitted"
     assert record["tokens"] == {
         "prompt_token_count": 10,
         "candidates_token_count": 4,
@@ -357,6 +359,7 @@ def test_turn_summary_records_operations_without_content(
         "processing_retries",
         "charts_emitted",
         "charts_rejected",
+        "title_outcome",
     }
 
 
@@ -369,7 +372,8 @@ def test_repeated_phases_accumulate_and_analysis_fields_reach_the_span(
     #   the clock advanced by 100 ms and then 50 ms, and records the
     #   analysis and chart counts before finishing.
     # Expectation: The processing duration is the sum of both runs, and
-    #   the turn span carries the scripts and the five counts.
+    #   the turn span carries the scripts, the five counts, and the title
+    #   outcome.
     exporter = InMemorySpanExporter()
     provider = TracerProvider()
     provider.add_span_processor(SimpleSpanProcessor(exporter))
@@ -392,6 +396,7 @@ def test_repeated_phases_accumulate_and_analysis_fields_reach_the_span(
     turn.processing_retries = 1
     turn.charts_emitted = 1
     turn.charts_rejected = 2
+    turn.title_outcome = telemetry.TitleOutcome.EMITTED
 
     turn.finish(telemetry.TerminalState.COMPLETE)
 
@@ -408,6 +413,23 @@ def test_repeated_phases_accumulate_and_analysis_fields_reach_the_span(
     assert attributes["narratives.processing_retries"] == 1
     assert attributes["narratives.charts_emitted"] == 1
     assert attributes["narratives.charts_rejected"] == 2
+    assert attributes["narratives.title_outcome"] == "emitted"
+
+
+def test_a_turn_that_never_reaches_synthesis_records_no_title_requested(
+    turn_records: list[str],
+) -> None:
+    # Test: Default title outcome.
+    # Situation: A turn finishes without any phase setting `title_outcome`,
+    #   as a refused or clarification turn does.
+    # Expectation: The summary records `title_outcome` as `not_requested`,
+    #   so it is not counted as a title the model omitted.
+    turn = telemetry.TurnTelemetry()
+
+    turn.finish(telemetry.TerminalState.REFUSED, "off_domain")
+
+    (message,) = turn_records
+    assert json.loads(message)["title_outcome"] == "not_requested"
 
 
 @pytest.mark.parametrize(

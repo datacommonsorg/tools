@@ -248,6 +248,51 @@ def test_the_inventory_states_the_scale_of_a_per_capita_digest() -> None:
     ) in message
 
 
+def test_the_inventory_marks_a_per_capita_percentage_unchartable() -> None:
+    # Test: The inventory line of a per-capita table given as a percentage.
+    # Situation: People below the poverty line are divided by population per
+    #   capita with a scale of 100, and the digest holds the result.
+    # Expectation: The derived table's line says "do not chart it", because
+    #   the chart components would draw per-person fractions beside the
+    #   percentages, while the fetched numerator keeps its plain line.
+    population = _make_table("t1")
+    poor = _make_table(
+        "t2", "Count_Person_BelowPovertyLevel", name="Poor", unit="Count"
+    )
+    spec = _make_spec(
+        step_id="s1",
+        script="compute_derived_metric",
+        left="t2",
+        right="t1",
+        operation="per_capita",
+        scale=100,
+    )
+    derived = derive_observation_table(
+        poor.table,
+        population.table,
+        operation="per_capita",
+        scale=100,
+        step_id="s1",
+    )
+    assert derived.table is not None
+
+    message = render_synthesis_message(
+        build_synthesis_inputs(
+            "q",
+            _make_digest(derived.result),
+            spec,
+            (population, poor, CachedTable("s1", derived.table)),
+            [],
+        )
+    )
+
+    assert (
+        "- s1 (derived from t2 and t1; not a Data Commons variable, do not "
+        "chart it)"
+    ) in message
+    assert "- t2: Poor (Count_Person_BelowPovertyLevel)" in message
+
+
 def test_a_per_capita_table_states_its_numerator_cohort() -> None:
     # Test: The cohort the inventory states for a per-capita table.
     # Situation: Population is a cohort of three states, and crimes were

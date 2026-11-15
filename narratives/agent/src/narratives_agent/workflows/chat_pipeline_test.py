@@ -101,6 +101,7 @@ from narratives_agent.settings import (
 from narratives_agent.telemetry import (
     ErrorType,
     TerminalState,
+    TitleOutcome,
     TokenCounts,
     TokenUsage,
     TurnTelemetry,
@@ -543,7 +544,12 @@ async def test_complete_turn_emits_the_answer_then_the_follow_ups(
     assert turn.synthesis_phases == ["synthesis"]
     assert turn.list_blocks() == [
         {"index": 0, "type": "text", "markdown": _ANSWER},
-        {"index": 1, "type": "chart", "chart": _DEFAULT_CHART},
+        {
+            "index": 1,
+            "type": "chart",
+            "chart": _DEFAULT_CHART,
+            "standalone": True,
+        },
     ]
     content = [data for event, data in turn.events if event == "content"]
     assert content[-1] == {"block": turn.list_blocks()[1]}
@@ -2182,9 +2188,9 @@ async def test_a_classifier_failure_proceeds_as_exploratory(
     # Test: Fall-through when the classifier failed.
     # Situation: The classify phase admits the query without a verdict.
     # Expectation: The turn completes as usual, the discovery loop receives
-    #   no classification, the synthesis system instruction is the prompt
-    #   and the synthesis contract with no directive, and telemetry records
-    #   the pattern as `exploratory`.
+    #   no classification, the synthesis system instruction is the prompt,
+    #   the synthesis contract, and the title addendum with no pattern
+    #   directive, and telemetry records the pattern as `exploratory`.
     async def return_unclassified(*args: object, **_: object) -> Admitted:
         return Admitted(None)
 
@@ -2195,6 +2201,7 @@ async def test_a_classifier_failure_proceeds_as_exploratory(
     assert turn.loop_classifications == [None]
     assert turn.synthesis_instructions == [
         f"Write prose.\n\n{load_prompt_contract('synthesis')}"
+        f"\n\n{load_prompt_contract('synthesis_title')}"
     ]
     assert turn.telemetry is not None
     assert turn.telemetry.pattern == "exploratory"
@@ -2521,7 +2528,7 @@ _WIRE_FRAMES: list[tuple[EventName, str]] = [
         '{"viz_type": "line", "title": "Total Population", '
         '"variable_dcids": ["Count_Person"], '
         '"place_dcids": ["country/FRA"], '
-        '"facet_ids": {"Count_Person": "f1"}}}}',
+        '"facet_ids": {"Count_Person": "f1"}}, "standalone": true}}',
     ),
     (
         "terminal",
@@ -2711,6 +2718,145 @@ async def test_run_synthesis_phase_captures_prompt_and_raw_output(
 
     assert capture.raw_output == result.raw_output
     assert capture.rendered_prompt == result.rendered_prompt
+
+
+def _make_synthesis_context(
+    monkeypatch: pytest.MonkeyPatch, turn: _Turn, text: str
+) -> tuple[chat_pipeline.TurnContext, list[str]]:
+    """Builds a turn context whose synthesis streams `text` as one chunk.
+
+    Returns:
+        The context and the list that collects each synthesis system
+        instruction.
+    """
+    instructions: list[str] = []
+
+    async def stream_chunks() -> AsyncGenerator[StreamChunk]:
+        yield StreamChunk("text", text)
+
+    async def start_synthesis(
+        *, system_instruction: str, **_: object
+    ) -> AsyncGenerator[StreamChunk]:
+        instructions.append(system_instruction)
+        return stream_chunks()
+
+    monkeypatch.setattr(chat_pipeline, "async_gemini_stream", start_synthesis)
+    ctx = chat_pipeline.TurnContext(
+        transcript=_TRANSCRIPT,
+        config=AgentConfig(),
+        telemetry=TurnTelemetry("test-turn-id"),
+        emit=turn.emit,
+    )
+    return ctx, instructions
+
+
+@pytest.mark.asyncio
+async def test_a_data_answer_streams_its_title_before_the_first_block(
+    monkeypatch: pytest.MonkeyPatch, turn: _Turn
+) -> None:
+    # Test: The answer title on a turn with data.
+    # Situation: The digest has data and synthesis opens with a `# ` title
+    #   line followed by two paragraphs.
+    # Expectation: The system instruction carries the `synthesis_title`
+    #   addendum; one `title` content frame is emitted before the first
+    #   block; the title is left out of the signed text but kept in the raw
+    #   output; and telemetry records the title as emitted.
+    raw = (
+        "# Population of France\n\n"
+        "France has about 68 million people.\n\n"
+        "It grew last year."
+    )
+    ctx, instructions = _make_synthesis_context(monkeypatch, turn, raw)
+    discovery = chat_pipeline.DiscoveryPhaseResult(has_data=True)
+
+    result = await chat_pipeline.run_synthesis_phase(ctx, discovery)
+
+    (instruction,) = instructions
+    assert load_prompt_contract("synthesis_title") in instruction
+    assert load_prompt_contract("synthesis_no_title") not in instruction
+    content = [data for event, data in turn.events if event == "content"]
+    assert content[0] == {"title": "Population of France"}
+    assert all("title" not in data for data in content[1:])
+    assert result.text == (
+        "France has about 68 million people.\n\nIt grew last year."
+    )
+    assert result.raw_output == raw
+    assert ctx.telemetry.title_outcome is TitleOutcome.EMITTED
+
+
+@pytest.mark.asyncio
+async def test_a_data_answer_without_a_title_line_records_it_as_omitted(
+    monkeypatch: pytest.MonkeyPatch, turn: _Turn
+) -> None:
+    # Test: A turn with data whose model writes no title line.
+    # Situation: The digest has data and synthesis opens directly with its
+    #   headline paragraph.
+    # Expectation: No `title` content frame is emitted, the headline stays in
+    #   the signed text, and telemetry records the title as omitted.
+    ctx, _ = _make_synthesis_context(
+        monkeypatch, turn, "France has about 68 million people."
+    )
+    discovery = chat_pipeline.DiscoveryPhaseResult(has_data=True)
+
+    result = await chat_pipeline.run_synthesis_phase(ctx, discovery)
+
+    assert turn.list_content_payloads("title") == []
+    assert result.text == "France has about 68 million people."
+    assert ctx.telemetry.title_outcome is TitleOutcome.OMITTED
+
+
+@pytest.mark.asyncio
+async def test_a_title_with_no_answer_text_ends_the_synthesis_empty(
+    monkeypatch: pytest.MonkeyPatch, turn: _Turn
+) -> None:
+    # Test: A synthesis stream that holds only the title line.
+    # Situation: The digest has data and synthesis writes `# <title>` and a
+    #   blank line, then ends.
+    # Expectation: The title frame has already been sent, the phase aborts
+    #   with `SYNTHESIS_EMPTY` and no text block, and telemetry records the
+    #   title as emitted; the UI shows no answer for a turn without text.
+    ctx, _ = _make_synthesis_context(
+        monkeypatch, turn, "# Population of France\n\n"
+    )
+    discovery = chat_pipeline.DiscoveryPhaseResult(has_data=True)
+
+    with pytest.raises(chat_pipeline.TurnAbortedError) as exc_info:
+        await chat_pipeline.run_synthesis_phase(ctx, discovery)
+
+    assert exc_info.value.error_type == ErrorType.SYNTHESIS_EMPTY
+    assert turn.list_content_payloads("title") == ["Population of France"]
+    assert turn.list_blocks() == []
+    assert ctx.telemetry.title_outcome is TitleOutcome.EMITTED
+
+
+@pytest.mark.asyncio
+async def test_an_answer_without_data_gets_no_title(
+    monkeypatch: pytest.MonkeyPatch, turn: _Turn
+) -> None:
+    # Test: The answer title on a turn without data.
+    # Situation: The digest has no data, yet synthesis opens with a title
+    #   line anyway.
+    # Expectation: The system instruction carries the `synthesis_no_title`
+    #   addendum; no `title` content frame is emitted; the title line is kept
+    #   out of the answer; and telemetry records that no title was requested.
+    ctx, instructions = _make_synthesis_context(
+        monkeypatch,
+        turn,
+        "# Immigration data for Germany\n\n"
+        "Immigration statistics for Germany are not available.",
+    )
+    discovery = chat_pipeline.DiscoveryPhaseResult(has_data=False)
+
+    result = await chat_pipeline.run_synthesis_phase(ctx, discovery)
+
+    (instruction,) = instructions
+    assert load_prompt_contract("synthesis_no_title") in instruction
+    assert load_prompt_contract("synthesis_title") not in instruction
+    assert turn.list_content_payloads("title") == []
+    assert result.text == (
+        "Immigration statistics for Germany are not available."
+    )
+    assert ctx.telemetry.title_outcome is TitleOutcome.NOT_REQUESTED
 
 
 @pytest.mark.asyncio

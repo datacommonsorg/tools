@@ -22,8 +22,9 @@ from pydantic import TypeAdapter
 
 from narratives_agent.config import strip_prompt_comments
 from narratives_agent.gemini.schemas import QueryClassification
-from narratives_agent.workflows import prompt_contracts
+from narratives_agent.workflows import pattern_guidance, prompt_contracts
 from narratives_agent.workflows.charts import (
+    MAX_CHARTS_PER_TURN,
     BarSort,
     ChartKind,
     ChartSpecification,
@@ -34,6 +35,7 @@ from narratives_agent.workflows.mcp_loop import (
 )
 from narratives_agent.workflows.pattern_guidance import build_pattern_directive
 from narratives_agent.workflows.prompt_contracts import (
+    ContractAddendumName,
     ContractName,
     compose_system_instruction,
     load_prompt_contract,
@@ -46,7 +48,10 @@ from narratives_agent.workflows.specification import (
 # The step limit as the discovery contract writes it, keyed by its value.
 _STEP_LIMIT_WORDS = {6: "six"}
 
-_CONTRACTS: tuple[ContractName, ...] = get_args(ContractName.__value__)
+_CONTRACTS: tuple[ContractName | ContractAddendumName, ...] = (
+    *get_args(ContractName.__value__),
+    *get_args(ContractAddendumName.__value__),
+)
 
 
 def _extract_table_first_column_names(contract: str, heading: str) -> set[str]:
@@ -59,10 +64,11 @@ def _extract_table_first_column_names(contract: str, heading: str) -> set[str]:
 
 @pytest.mark.parametrize("name", _CONTRACTS)
 def test_every_shipped_contract_loads_and_strips_comments(
-    name: ContractName,
+    name: ContractName | ContractAddendumName,
 ) -> None:
     # Test: Loading of every shipped prompt contract.
-    # Situation: `load_prompt_contract` is called for each `ContractName`.
+    # Situation: `load_prompt_contract` is called for each `ContractName` and
+    #   each `ContractAddendumName`.
     # Expectation: The returned text is non-empty and has all HTML comments
     #   stripped.
     load_prompt_contract.cache_clear()
@@ -136,6 +142,36 @@ def test_compose_orders_guidance_contract_and_directive() -> None:
     assert plain == f"Custom guidance.\n\n{contract}"
     assert guided.startswith(plain)
     assert guided.endswith(build_pattern_directive(classification, "discovery"))
+
+
+def test_compose_places_the_addendum_after_the_contract() -> None:
+    # Test: Placement of the contract addendum.
+    # Situation: `compose_system_instruction` is called for synthesis with the
+    #   `synthesis_title` addendum and a ranking classification.
+    # Expectation: The addendum's text follows the synthesis contract
+    #   directly, and the pattern directive stays last.
+    classification = QueryClassification.model_validate(
+        {
+            "serviceable": True,
+            "pattern": "top_n_ranking",
+            "geographic_shape": "single_place",
+            "requires_computation": True,
+        }
+    )
+    contract = load_prompt_contract("synthesis")
+    addendum = load_prompt_contract("synthesis_title")
+
+    composed = compose_system_instruction(
+        "Custom guidance.",
+        "synthesis",
+        classification,
+        addendum="synthesis_title",
+    )
+
+    assert composed.startswith(f"Custom guidance.\n\n{contract}\n\n{addendum}")
+    assert composed.endswith(
+        build_pattern_directive(classification, "synthesis")
+    )
 
 
 def test_composed_default_discovery_prompt_includes_guidance_and_contract() -> (
@@ -362,8 +398,8 @@ def test_synthesis_contract_keeps_calculated_figure_citations_disabled() -> (
         "`cite:` marker"
     ) in citations
     assert (
-        "each group's Var_A mean, such as **10.2%** [1, 2], and the gap of "
-        "**2.1** [1, 2] between the group means carry both."
+        "each group's Var_A mean, such as 10.2% [1, 2], and the gap of "
+        "2.1 [1, 2] between the group means carry both."
     ) in citations
     assert (
         "A figure computed from more than one variable"
@@ -384,7 +420,7 @@ def test_discovery_contract_requires_a_step_for_every_reported_table() -> None:
         "Every table the answer reports, compares, or charts must be the "
         "input of a step."
     ) in discovery
-    for name in get_args(ContractName.__value__):
+    for name in _CONTRACTS:
         assert "no step" not in load_prompt_contract(name)
 
 
@@ -413,21 +449,26 @@ def test_synthesis_contract_writes_no_sentence_about_a_scatter_chart() -> None:
     assert "rather than measuring a statistical or causal link" not in contract
 
 
-def test_synthesis_contract_gives_the_headline_series_no_bullet() -> None:
-    # Test: The layout of an answer that covers several series.
+def test_synthesis_contract_orders_stats_latest_first() -> None:
+    # Test: The order of a stats block and the series rule.
     # Situation: The synthesis contract the model receives.
-    # Expectation: The series whose figure the headline gives gets no bullet
-    #   of its own, so the first bullet never repeats the headline and an
-    #   answer of five indicators stays within four bullets.
+    # Expectation: Every stats block opens with its latest value, then the
+    #   trend, then the peak or low, leaving out the latest value only when
+    #   the sentence above already gives it, so the first bullet never
+    #   repeats the headline; the old nested series layout is gone.
     contract = " ".join(load_prompt_contract("synthesis").split())
 
     assert (
-        "The series whose figure the headline gives gets no bullet of its own"
+        "Order every stats block the same way: `**Latest:**` first, then the "
+        "trend, then the peak or low"
     ) in contract
     assert (
-        "An answer that covers five indicators then has one in the headline "
-        "and four bullets."
+        "Leave out `**Latest:**` only when the sentence directly above the "
+        "block already gives that same figure."
     ) in contract
+    assert "Never restate a figure the headline already gave" in contract
+    assert "with the same kind of short labelled sub-bullets" not in contract
+    assert "An answer that covers five indicators" not in contract
 
 
 def test_synthesis_contract_matches_the_opening_to_the_question() -> None:
@@ -437,7 +478,7 @@ def test_synthesis_contract_matches_the_opening_to_the_question() -> None:
     #   four cases; an answer built on related measures names them and what
     #   they measure before any figure, and claims a measure is unavailable
     #   only when the MISSING DATA notes name it; the missing measures close
-    #   the answer under `**Data gaps:**`; and the old rule that named the
+    #   the answer under `**Data gaps**`; and the old rule that named the
     #   indicators after the headline is gone.
     contract = load_prompt_contract("synthesis")
     flattened = " ".join(contract.split())
@@ -463,11 +504,175 @@ def test_synthesis_contract_matches_the_opening_to_the_question() -> None:
     ) in flattened
     assert (
         "end the answer with them, after the last bullet, table, or chart: "
-        "the bold label `**Data gaps:**`"
+        "the bold label `**Data gaps**`"
     ) in flattened
+    assert (
+        "alone on its line, with no colon, ending with a backslash "
+        "(`**Data gaps**\\`)"
+    ) in flattened
+    assert "**Data gaps**\\\nThese measures are not available" in contract
+    assert "Data gaps:" not in contract
     assert "name them in a separate short sentence after the headline" not in (
         flattened
     )
+
+
+def test_synthesis_contract_gives_related_measures_their_own_charts() -> None:
+    # Test: Related measures follow the chart rule.
+    # Situation: The synthesis contract the model receives.
+    # Expectation: With three or more related measures, each indicator gets
+    #   its own lead-in line, short list, and chart rather than a bullet in
+    #   one shared list; the series rule defers to the chart rule; and the
+    #   broad-question example shows a chart after each indicator's list.
+    contract = load_prompt_contract("synthesis")
+    flattened = " ".join(contract.split())
+
+    assert (
+        "Each indicator then gets its own block in the same shape, never one "
+        "list for all of them"
+    ) in flattened
+    assert "followed directly by its chart" in flattened
+    assert "each indicator gets its own bullet in the same shape" not in (
+        flattened
+    )
+    assert (
+        "get their own lead-in line, short list, and chart instead of a "
+        "bullet in one shared list"
+    ) in flattened
+    example = contract[
+        contract.index("An answer that uses related measures") : contract.index(
+            "### Chart blocks"
+        )
+    ]
+    assert example.count("```chart") == 3
+    assert "Skilled birth attendance:\n\n- **Latest:**" in example
+
+
+def test_prompts_carry_no_conflicting_instructions() -> None:
+    # Test: The contradictions found in the prompt review stay resolved.
+    # Situation: The synthesis contract and the pattern directives.
+    # Expectation: No directive asks for "could not be calculated"; four or
+    #   more categories get a table; no example uses the banned "rose X in
+    #   A and Y in B" shape; trend answers take the change measure the
+    #   contract gives; a peer comparison spans two sentences; the ranking
+    #   chart bullet appears once; caveats never split a stats-chart pair;
+    #   and exploratory answers follow the per-indicator block shape.
+    flattened = " ".join(load_prompt_contract("synthesis").split())
+    directives = " ".join(
+        directive.synthesis
+        for directive in pattern_guidance._DIRECTIVES.values()
+    )
+
+    assert "could not be calculated" not in directives
+    assert "With four or more categories, follow the opening sentences" in (
+        flattened
+    )
+    assert "With fewer categories" not in flattened
+    assert "[change A] in [place A] and [change B] nationwide" not in flattened
+    assert "as a percentage change, or in percentage points" not in directives
+    assert "its gap to the median in the next" in directives
+    assert (
+        flattened.count("A ranking of places on one indicator is charted") == 1
+    )
+    assert "after the bullets they qualify and their chart" in flattened
+    assert "each indicator's own lead-in line, short list, and chart" in (
+        directives
+    )
+
+
+# The spelled-out chart caps the contracts may state, and their ordinals.
+_CHART_CAP_WORDS = {3: "three", 4: "four", 5: "five"}
+_CHART_CAP_ORDINALS = {3: "third", 4: "fourth", 5: "fifth"}
+
+
+def test_contract_chart_caps_match_the_server_cap() -> None:
+    # Test: The chart cap the prompts state against the cap the server
+    #   enforces.
+    # Situation: The synthesis and discovery contracts, the exploratory
+    #   directive, and `MAX_CHARTS_PER_TURN`, past which `BlockSplitter`
+    #   drops chart blocks.
+    # Expectation: These statements of the cap, its count and its ordinal,
+    #   name `MAX_CHARTS_PER_TURN`, and the count statements name no other
+    #   cap, so the prompts and the server change together.
+    assert MAX_CHARTS_PER_TURN in _CHART_CAP_WORDS, "Add the cap's words."
+    synthesis = " ".join(load_prompt_contract("synthesis").split())
+    discovery = " ".join(load_prompt_contract("discovery").split())
+    exploratory = pattern_guidance._DIRECTIVES["exploratory"].discovery
+    cap = _CHART_CAP_WORDS[MAX_CHARTS_PER_TURN]
+    ordinal = _CHART_CAP_ORDINALS[MAX_CHARTS_PER_TURN]
+    count_statements = (
+        "One chart per distinct point, at most {} per answer",
+        "at most {} chart blocks per answer",
+        "Chart at most {} indicators",
+        "keep the {} that answer the question most directly",
+    )
+
+    for statement in count_statements:
+        assert statement.format(cap) in synthesis
+        for other in set(_CHART_CAP_WORDS.values()) - {cap}:
+            assert statement.format(other) not in synthesis
+    assert f"no chart past the {ordinal}" in synthesis
+    assert f"an indicator past the {ordinal} keeps its table" in synthesis
+    assert f"Fetch at most {cap} indicators, the most an answer charts" in (
+        discovery
+    )
+    assert f"up to {cap}, one table each" in exploratory
+
+
+def test_discovery_fetches_the_indicators_an_answer_reports() -> None:
+    # Test: The indicator cap matches the answer's limit.
+    # Situation: The discovery contract, the exploratory directive, and the
+    #   synthesis contract.
+    # Expectation: Discovery fetches at most four indicators, the most an
+    #   answer charts, or five when the question names five; the
+    #   exploratory directive asks for up to four; no rule still sets a cap
+    #   of five; and synthesis reports every indicator the question names,
+    #   charting four, rather than dropping the fifth that discovery fetched.
+    discovery = " ".join(load_prompt_contract("discovery").split())
+    synthesis = " ".join(load_prompt_contract("synthesis").split())
+    exploratory = pattern_guidance._DIRECTIVES["exploratory"].discovery
+
+    assert (
+        "Fetch at most four indicators, the most an answer charts, or five "
+        "when the question itself names five"
+    ) in discovery
+    assert "Fetch at most five indicators" not in discovery
+    assert "the five indicators" not in discovery
+    assert "up to four, one table each" in exploratory
+    assert (
+        "When the digest gives more because the question itself names them, "
+        "give every named indicator its block, with a lead-in line and list "
+        "but no chart past the fourth"
+    ) in synthesis
+    assert "Keep to four indicators" not in synthesis
+
+
+def test_comparisons_give_each_indicator_a_table_or_bullets() -> None:
+    # Test: A table or bullets per indicator, never both.
+    # Situation: The synthesis contract, the comparison directive, and the
+    #   discovery contract the model receives.
+    # Expectation: Several indicators across two or three places get bullets
+    #   and no tables, across four or more get tables and no trend bullets;
+    #   the comparison directive says the same; and discovery computes a
+    #   share of the population as a percentage.
+    flattened = " ".join(load_prompt_contract("synthesis").split())
+    assert "Each indicator then gets a table or bullets, never both:" in (
+        flattened
+    )
+    assert "- Two or three places: no tables." in flattened
+    assert (
+        "one table per indicator, each followed by its own chart, with no "
+        "trend bullets: the chart shows the history"
+    ) in flattened
+    directive = pattern_guidance._COMPARISON_DIRECTIVE.get_phase_text(
+        "synthesis"
+    )
+    assert "Never give an indicator both a table and bullets." in directive
+    discovery = " ".join(load_prompt_contract("discovery").split())
+    assert (
+        "with `per_capita` and a `scale` of 100, so the answer reports a "
+        "percentage, never a figure per 1,000 people"
+    ) in discovery
 
 
 def test_synthesis_contract_keeps_parts_tables_and_labels_accurate() -> None:
@@ -556,26 +761,110 @@ def test_synthesis_contract_names_publishers_units_and_remainders() -> None:
     assert "the subject next to its verb" in flattened
 
 
+def test_synthesis_contract_keeps_figures_plain_and_markers_beside_them() -> (
+    None
+):
+    # Test: Plain figures and the placement of their citation markers.
+    # Situation: The synthesis contract the model receives.
+    # Expectation: Figures are written in plain text, never bold, and a
+    #   sourced figure's marker follows the figure and its unit directly,
+    #   before its year, so removing the bold never moves a marker.
+    flattened = " ".join(load_prompt_contract("synthesis").split())
+
+    assert "immediately after every figure taken straight from a source" in (
+        flattened
+    )
+    assert "`84.04 years [1] in 2024`, never `84.04 years in 2024 [1]`" in (
+        flattened
+    )
+    assert "Write every figure and percentage in plain text, never in bold" in (
+        flattened
+    )
+    assert "Bold every figure" not in flattened
+    assert "bolded figure" not in flattened
+
+
+def test_synthesis_contract_dates_figures_and_closes_periods() -> None:
+    # Test: Year placement and closed periods in the synthesis contract.
+    # Situation: The synthesis contract the model receives.
+    # Expectation: A figure's year follows the figure and its marker; every
+    #   change over several years gives both its first and last year; a
+    #   recent window the question names leads the trend bullets; and an
+    #   open "since [year]" or a leading "In [year]," appears only as a
+    #   counter-example, never in a rule's model wording or an example.
+    contract = load_prompt_contract("synthesis")
+    flattened = " ".join(contract.split())
+
+    assert "the year directly after the figure and its marker" in flattened
+    assert "life expectancy in [place] reached [value] [1] in [year]" in (
+        flattened
+    )
+    assert 'Never write an open "since [year]"' in flattened
+    assert '"between [year] and [year]" or "from [year] to [year]"' in (
+        flattened
+    )
+    assert "lead the trend bullets with the change over that window" in (
+        flattened
+    )
+    for match in re.finditer(r"[Ss]ince \[year\]|In \[year\],", flattened):
+        context = flattened[max(0, match.start() - 60) : match.start()]
+        assert "never" in context.lower(), context
+
+
+def test_synthesis_contract_limits_number_density() -> None:
+    # Test: Number density rules in the synthesis contract.
+    # Situation: The synthesis contract the model receives.
+    # Expectation: A sentence holds at most two figures, with a peak moved to
+    #   its own sentence that keeps its marker; a change is given in one
+    #   measure, never a percentage beside a unit change such as
+    #   "[change] ([years])"; and a bullet opens with a noun subject that
+    #   never repeats its label's words.
+    contract = load_prompt_contract("synthesis")
+    flattened = " ".join(contract.split())
+
+    assert "Keep each sentence to at most two figures" in flattened
+    assert "Each sourced figure still carries its own marker" in flattened
+    assert (
+        "never a percentage beside the change in the indicator's own unit"
+        in (flattened)
+    )
+    assert "never repeat its words in the subject" in flattened
+    assert "begin with a noun subject, never a bare verb" in flattened
+    assert "the bold labels never repeat the indicator or group its title" in (
+        flattened
+    )
+    assert "give a peak or low its own bullet, never under a trend label" in (
+        flattened
+    )
+    assert '"**Female:** Life expectancy reached [value] [2] in [year]' in (
+        flattened
+    )
+    assert re.search(r"\[change[^\]]*\] \(\[years", flattened) is None
+
+
 def test_synthesis_contract_examples_carry_no_figures() -> None:
     # Test: Figures in the synthesis contract's examples.
-    # Situation: The synthesis contract the model receives, without its
-    #   `### Citations` section, whose examples are kept as they are.
-    # Expectation: No bold figure appears anywhere else: every example
-    #   shows the shape of a sentence with placeholders such as
-    #   `**[value]**`, so an answer can never take a figure from an example.
+    # Situation: The synthesis contract the model receives.
+    # Expectation: No figure or figure placeholder is bold anywhere, so the
+    #   examples match the rule that figures are plain text; only labels
+    #   such as `**Long-term trend:**` stay bold. Outside `### Citations`,
+    #   every example shows the shape of a sentence with placeholders such
+    #   as `[value] [1]`, so an answer can never take a figure from one.
     contract = load_prompt_contract("synthesis")
+    bold_spans = re.findall(r"\*\*(.+?)\*\*", contract, re.S)
+    bold_figures = [
+        " ".join(span.split())
+        for span in bold_spans
+        if re.search(r"\d|\[|\$", span)
+        and not span.rstrip().endswith((":", "."))
+    ]
     before, _, rest = contract.partition("### Citations\n")
     _, _, after = rest.partition("\n### ")
     outside_citations = before + after
-    bold_spans = re.findall(r"\*\*([^*\n]+?)\*\*", outside_citations)
-    figures = [
-        span
-        for span in bold_spans
-        if re.search(r"\d", span) and "[" not in span and not span.endswith(":")
-    ]
 
-    assert figures == []
-    assert "**[value]**" in outside_citations
+    assert bold_figures == []
+    assert "**Long-term trend:**" in contract
+    assert "[value] [1]" in outside_citations
 
 
 def test_synthesis_contract_answers_direction_with_parallel_bullets() -> None:
@@ -600,7 +889,7 @@ def test_synthesis_contract_answers_direction_with_parallel_bullets() -> None:
     assert "Never let a long-term change stand for the years asked" in (
         flattened
     )
-    assert 'never "fell **-[change]**"' in flattened
+    assert 'never "fell -[change]"' in flattened
     assert "Never turn figures into a threshold or an estimate" in flattened
 
 
@@ -774,3 +1063,17 @@ def test_discovery_contract_lists_the_window_of_windowed_scripts() -> None:
 
     for script in ("analyze_timeseries", "compute_derived_metric"):
         assert "optional `start_date` and `end_date`" in rows[script], script
+
+
+def test_synthesis_charts_no_source_of_an_unchartable_table() -> None:
+    # Test: The rule for a table the inventory marks "do not chart it".
+    # Situation: The synthesis contract the model receives.
+    # Expectation: Such a table is never charted, and neither is a table it
+    #   is derived from in its place, so a percentage is never drawn as its
+    #   raw count.
+    synthesis = " ".join(load_prompt_contract("synthesis").split())
+
+    assert (
+        'A table marked "do not chart it" is never charted, and no table it '
+        "is derived from is charted in its place"
+    ) in synthesis
