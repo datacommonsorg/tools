@@ -292,16 +292,26 @@ describe('DebugPanel', () => {
     );
   });
 
-  it('renders a 44x44 red bug_report trigger with hover rotation classes', () => {
-    // Test: Trigger button sizing, color, icon glyph, and hover rotation.
+  it('renders a 32px red bug_report trigger with a 44px hit area', () => {
+    // Test: Trigger button sizing, hit area, color, icon glyph, and hover
+    //   rotation.
     // Situation: DebugPanel renders for a finished turn with tool calls.
-    // Expectation: The 44x44 trigger uses text-error and group, and wraps a
-    //   Material bug_report SVG with motion-safe 25-degree hover rotation.
+    // Expectation: The 32x32 trigger widens its hit area to 44x44 with an
+    //   inset overlay, uses text-error and group, and wraps a Material
+    //   bug_report SVG with motion-safe 25-degree hover rotation.
     render(<DebugPanel turn={buildFinishedTurn()} />);
 
     const trigger = getInspectButton();
     expect([...trigger.classList]).toEqual(
-      expect.arrayContaining(['w-11', 'h-11', 'group', 'text-error']),
+      expect.arrayContaining([
+        'relative',
+        'w-8',
+        'h-8',
+        'after:absolute',
+        'after:-inset-1.5',
+        'group',
+        'text-error',
+      ]),
     );
     expect(trigger.classList.contains('text-on-surface-variant')).toBe(false);
 
