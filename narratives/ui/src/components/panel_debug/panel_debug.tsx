@@ -332,7 +332,7 @@ export const DebugPanel = ({ turn }: DebugPanelProps) => {
         aria-expanded={isOpen}
         title={DEBUG_PANEL_COPY.openButtonTitle}
         data-non-print="true"
-        className="group w-11 h-11 flex items-center justify-center rounded-full hover:bg-button-hover transition-colors text-error"
+        className="group w-8 h-8 flex items-center justify-center rounded-full hover:bg-button-hover transition-colors text-error"
       >
         <BugReportIcon
           size="sm"
