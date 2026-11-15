@@ -19,6 +19,7 @@
  */
 
 import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   DEFAULT_INSTANCE_CONFIG,
@@ -349,13 +350,17 @@ describe('sanitizeUrl', () => {
 
 describe('DEFAULT_INSTANCE_CONFIG drift', () => {
   it.each([
-    '../defaults/theme.json',
-    '../schemas/theme.base-dc.example.json',
+    'defaults/theme.json',
+    'schemas/theme.base-dc.example.json',
   ])('suggestions match %s', (path) => {
     // Test: Default suggestions stay in sync with the shipped theme JSON.
     // Situation: The suggestions are duplicated in `instance_config.ts` and `path`.
     // Expectation: Both lists are identical.
-    const theme = JSON.parse(readFileSync(path, 'utf8'));
+    const theme = JSON.parse(
+      // Resolved from this file, not the cwd. happy-dom replaces the global
+      // `URL`, so `new URL(path, import.meta.url)` would not give a file path.
+      readFileSync(resolve(import.meta.dirname, '../../..', path), 'utf8'),
+    );
     expect(DEFAULT_INSTANCE_CONFIG.suggestions).toEqual(theme.suggestions);
   });
 });

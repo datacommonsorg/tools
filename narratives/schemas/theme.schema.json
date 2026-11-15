@@ -215,7 +215,7 @@
         },
         "background": {
           "$ref": "#/$defs/hexColor",
-          "description": "Page background, and the surface of the composer, cards, chips and drawers (--theme-background → --color-surface)."
+          "description": "Page background, and the surface of the composer, cards and drawers (--theme-background → --color-surface)."
         },
         "surface": {
           "$ref": "#/$defs/hexColor",
