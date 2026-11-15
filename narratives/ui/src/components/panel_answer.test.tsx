@@ -45,11 +45,12 @@ vi.mock('@/src/utils/download_pdf', () => ({
 }));
 
 // PDF export is hidden in the app; these tests turn it on to keep covering it.
-vi.mock('@/src/components/button_export_pdf', async (importOriginal) => ({
-  ...(await importOriginal<
-    typeof import('@/src/components/button_export_pdf')
-  >()),
-  IS_PDF_EXPORT_ENABLED: true,
+// A getter lets a test switch it off before rendering.
+let isPdfExportEnabled = true;
+vi.mock('@/src/config/features', () => ({
+  get IS_PDF_EXPORT_ENABLED() {
+    return isPdfExportEnabled;
+  },
 }));
 
 const LINE_CHART: ChartItem = {
@@ -155,6 +156,7 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup();
+  isPdfExportEnabled = true;
   vi.useRealTimers();
   vi.unstubAllGlobals();
   resetDebugModeCacheForTests();
@@ -373,6 +375,28 @@ describe('AnswerPanel', () => {
     expect(
       screen.queryAllByRole('button', { name: 'Export PDF' }).length,
     ).toBeGreaterThan(0);
+  });
+
+  it('hides the Export PDF controls when export is disabled', () => {
+    // Test: Disabled PDF export.
+    // Situation: Export is disabled and a finished text-only answer mounts
+    //   after the stream closed, which shows the export controls when export
+    //   is enabled.
+    // Expectation: No Export PDF control renders.
+    isPdfExportEnabled = false;
+    render(
+      <AnswerPanel
+        turn={buildTurnWithBlocks([
+          { index: 0, type: 'text', markdown: 'France has about 68 million.' },
+        ])}
+        isStreaming={false}
+      />,
+    );
+
+    expect(screen.queryByText('France has about 68 million.')).not.toBeNull();
+    expect(
+      screen.queryAllByRole('button', { name: 'Export PDF' }),
+    ).toHaveLength(0);
   });
 
   it('restarts the export toast when the user exports again', async () => {

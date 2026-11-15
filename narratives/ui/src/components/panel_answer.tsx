@@ -26,10 +26,7 @@ import {
   useRef,
   useState,
 } from 'react';
-import {
-  ExportPdfButton,
-  IS_PDF_EXPORT_ENABLED,
-} from '@/src/components/button_export_pdf';
+import { ExportPdfButton } from '@/src/components/button_export_pdf';
 import { CardHeader } from '@/src/components/card_header';
 import { ResponseCard } from '@/src/components/card_response';
 import { CitationNumberingProvider } from '@/src/components/chip_citation';
@@ -43,6 +40,7 @@ import { ChartTile } from '@/src/components/tile_chart';
 import { Toast } from '@/src/components/toast';
 import { Tooltip } from '@/src/components/tooltip';
 import { formatAnswerHeader } from '@/src/config/copy_chat';
+import { IS_PDF_EXPORT_ENABLED } from '@/src/config/features';
 import { REDUCED_MOTION_QUERY } from '@/src/config/motion';
 import { useDebugMode } from '@/src/hooks/use_debug_mode';
 import {
