@@ -215,9 +215,12 @@ Otherwise, the request runs through the agent loop in five steps:
    charted in its place by the default chart floor; other derived tables
    are not chartable. At most four charts are accepted per answer. The model
    writes each chart directly after the bullet list or table holding its
-   figures, and the app shows that list or table beside the chart, a bullet list
-   headed by its one-line lead-in when it has one; maps, scatter charts, and a
-   chart after prose render full width. When the digest has data and no chart is
+   figures, and the app shows that list or table beside the chart in one
+   section on its own surface (`--color-surface-section`, white by default),
+   headed by its one-line lead-in when it has one. The app renders a lead-in
+   line whose label is plain text as an h2 section heading, without its
+   colon. Maps, scatter charts, and a chart after prose render full width.
+   When the digest has data and no chart is
    emitted, the default chart floor appends at most one chart projected directly
    from the primary result (`scatter` for a cohort `relate_cohorts` result,
    which is considered first, or the direct chart of `analyze_timeseries`,

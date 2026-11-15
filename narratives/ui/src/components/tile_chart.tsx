@@ -91,7 +91,7 @@ const CHARTS_CONTAINER_CLASS = 'dc-charts-container flex flex-col gap-6';
  * columns of at least 20rem (320px at the default root size) as fit.
  */
 const CHARTS_ROW_SIDE_BY_SIDE_CLASS =
-  'dc-charts-row grid gap-6 grid-cols-[repeat(auto-fit,minmax(min(100%,20rem),1fr))]';
+  'dc-charts-row dc-charts-row-side-by-side grid gap-6 grid-cols-[repeat(auto-fit,minmax(min(100%,20rem),1fr))]';
 /** A row with one visible chart, which spans the tile's full width. */
 const CHARTS_ROW_SINGLE_CLASS = 'dc-charts-row grid gap-6 grid-cols-1';
 /** A row whose charts are all empty, taken out of the layout. */

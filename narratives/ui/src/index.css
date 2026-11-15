@@ -67,6 +67,9 @@
   /* Subtle tint behind the reasoning card so it reads as distinct from the
      main answer body. */
   --color-surface-narrative: var(--theme-surface-narrative, #f5faff);
+  /* Each section of an answer, a stats block beside its chart under its
+     heading, set apart from the narrative surface behind it. */
+  --color-surface-section: var(--theme-surface-section, #ffffff);
   /* Landing-view suggestion chips. */
   --color-surface-chip: var(--theme-surface-chip, #f5faff);
   --color-skeleton-bar: var(--theme-skeleton-bar, #efeded);
@@ -279,6 +282,10 @@
   --static-title-large-size: 22px;
   --static-title-large-line-height: 28px;
 
+  --static-section-heading-font: var(--font-display, 'Google Sans');
+  --static-section-heading-size: 18px;
+  --static-section-heading-line-height: 24px;
+
   --static-wordmark-font: var(--font-display, 'Google Sans');
   --static-wordmark-size: 16px;
   --static-wordmark-line-height: 24px;
@@ -462,6 +469,16 @@ select:not(:disabled) {
   letter-spacing: 0;
 }
 
+/* The heading of an answer section, from the lead-in line that opens it. */
+.text-section-heading {
+  font-family: var(--static-section-heading-font, 'Google Sans');
+  font-size: var(--static-section-heading-size, 18px);
+  font-style: normal;
+  font-weight: 500;
+  line-height: var(--static-section-heading-line-height, 24px);
+  letter-spacing: 0;
+}
+
 /* The instance name beside the logo in the header. */
 .text-wordmark {
   font-family: var(--static-wordmark-font, 'Google Sans');
@@ -639,6 +656,7 @@ select:not(:disabled) {
   }
   /* Avoid splitting a chart card or table across pages where possible */
   .dc-chart-card,
+  .answer-heading,
   .markdown-body table,
   .markdown-body h2,
   .markdown-body h3,

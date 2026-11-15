@@ -249,6 +249,10 @@
           "$ref": "#/$defs/hexColor",
           "description": "Tile behind a rendered narrative — response card and its skeleton (--theme-surface-narrative → --color-surface-narrative)."
         },
+        "surface_section": {
+          "$ref": "#/$defs/hexColor",
+          "description": "Section of a rendered narrative that holds a stats block, its chart, and its heading (--theme-surface-section → --color-surface-section)."
+        },
         "surface_chip": {
           "$ref": "#/$defs/hexColor",
           "description": "Landing-view suggestion chips (--theme-surface-chip → --color-surface-chip)."

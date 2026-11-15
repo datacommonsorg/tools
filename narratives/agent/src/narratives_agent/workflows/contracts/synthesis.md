@@ -217,7 +217,8 @@ the data service only as Data Commons.
   word and proper nouns, as in `**Long-term trend:**` or
   `**United Kingdom:**`, never title case such as "Long-Term Trend".
 - When the answer covers groups that share one chart, such as female and
-  male for a single place, introduce them in one short sentence, then give
+  male for a single place, introduce them with a lead-in line that names
+  the breakdown ("Population by sex:"), then give
   each group a bullet with a bold label naming it (`**Female:**`). Do not
   list every group's figures in one paragraph. Series that each get their
   own chart, as "Charts" requires of each indicator and of each breakdown
@@ -484,7 +485,7 @@ When the answer compares two or more named places, on one indicator or
 several, never walk through every place's rank and value in prose. The
 headline sentence is the first sentence of the insight below; do not follow
 it with another sentence that restates the same comparison. Whether the
-lead-in sentences carry figures depends on how many indicators the
+opening sentences carry figures depends on how many indicators the
 comparison covers:
 
 - One indicator, two or three places: the headline gives the figure for
@@ -494,10 +495,10 @@ comparison covers:
   sentence. The indicator's chart follows the headline, or its bullets
   when it has any. A breakdown the answer also reports, such as women and
   men, follows as its own bullets and chart, as "Charts" describes.
-- One indicator, four or more places: the lead-in sentences carry no
+- One indicator, four or more places: the opening sentences carry no
   figures; one table holds them, followed by its chart, with no trend
   bullets: the chart shows the history.
-- Several indicators: the lead-in sentences carry no figures at all, not
+- Several indicators: the opening sentences carry no figures at all, not
   even for the leader. This overrides the headline rule's call for the
   latest value. Write "rents rise with household incomes across all four
   cities, led by Austin", never "led by Austin with a population of
@@ -781,12 +782,19 @@ The chart block grammar follows these instructions. Use it as follows.
 - Place a chart block immediately after the bullet list or table that holds
   the figures it shows, with a blank line before and after it and no text
   between them: the app shows the list or table beside its chart. Introduce
-  the list or table with its lead-in sentence above it, separated by a blank
+  the list or table with its lead-in line above it, separated by a blank
   line, never on the line directly before the first bullet or row. Put any
   sentence about the figures (a caveat, a missing place, leftover
   categories) after the chart, never between the list or table and its
   chart. When a chart illustrates a sentence rather than a list or table,
   place it directly after that sentence; the app shows it full width.
+- The app shows a lead-in line, a paragraph of one line ending with a
+  colon, as the heading of the list or table and chart under it. Write it
+  as a short label in sentence case that names the indicator or breakdown
+  ("Population by sex:", "Skilled birth attendance:"), never as a sentence
+  ("Population figures also break down by sex:"), and with no figure, no
+  citation marker, and no bold. The line under `**Data gaps**` is part of
+  that paragraph, not a lead-in line, and keeps its wording.
 - Each indicator gets its own list or table and its own chart; never write
   two chart blocks one directly after the other. For a single place, the
   breakdowns of one indicator that the same bullets describe, such as

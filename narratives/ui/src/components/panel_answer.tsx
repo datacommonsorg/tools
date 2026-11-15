@@ -30,12 +30,17 @@ import { ExportPdfButton } from '@/src/components/button_export_pdf';
 import { CardHeader } from '@/src/components/card_header';
 import { ResponseCard } from '@/src/components/card_response';
 import { CitationNumberingProvider } from '@/src/components/chip_citation';
+import {
+  isLeadInHeading,
+  SectionHeading,
+} from '@/src/components/heading_section';
 import { ExportIcon } from '@/src/components/icons';
 import { CitationsList } from '@/src/components/list_citations';
 import { DisclaimerNote } from '@/src/components/note_disclaimer';
 import { DebugPanel } from '@/src/components/panel_debug/panel_debug';
 import { isTurnSettled } from '@/src/components/panel_debug/report_debug';
 import { FollowUpQuestions } from '@/src/components/questions_follow_up';
+import { AnswerSection } from '@/src/components/section_answer';
 import { ChartTile } from '@/src/components/tile_chart';
 import { Toast } from '@/src/components/toast';
 import { Tooltip } from '@/src/components/tooltip';
@@ -297,12 +302,13 @@ export function AnswerPanel({
 
         {/* Content body: everything after and between the text blocks stays
           hidden until the text has finished revealing, except chart tiles,
-          which hold their space behind a skeleton so no gap shows. */}
+          section headings, and sections, which hold their space so no gap
+          shows. */}
         <div
-          className={`@container flex flex-col gap-4 px-4 sm:px-6 pt-3 pb-6 bg-surface-narrative motion-safe:[&>:not(.markdown-body,.dc-charts-container,.answer-pair)]:transition-opacity motion-safe:[&>:not(.markdown-body,.dc-charts-container,.answer-pair)]:duration-300${
+          className={`@container flex flex-col gap-4 px-4 sm:px-6 pt-3 pb-6 bg-surface-narrative motion-safe:[&>:not(.markdown-body,.dc-charts-container,.answer-heading,.answer-section)]:transition-opacity motion-safe:[&>:not(.markdown-body,.dc-charts-container,.answer-heading,.answer-section)]:duration-300${
             isRevealed
               ? ''
-              : ' motion-safe:[&>:not(.markdown-body,.dc-charts-container,.answer-pair)]:opacity-0'
+              : ' motion-safe:[&>:not(.markdown-body,.dc-charts-container,.answer-heading,.answer-section)]:opacity-0'
           }`}
         >
           {/* 1. The answer: text and chart blocks in emission order. */}
@@ -392,11 +398,12 @@ interface TextRevealWindow {
 
 /**
  * Renders a turn's blocks in emission order, as direct children of the
- * panel body: each text block through the Markdown renderer, and each run of
- * consecutive chart blocks through one chart tile, which sets two or three
- * charts side by side when there is room and gives each scatter chart a row
- * of its own, except that a bullet list or table directly followed by a
- * chart renders beside it, stats first (see `groupAnswerBlocks`). A tile
+ * panel body: each text block through the Markdown renderer, a lead-in line
+ * as a section heading, and each run of consecutive chart blocks through one
+ * chart tile, which sets two or three charts side by side when there is room
+ * and gives each scatter chart a row of its own, except that a bullet list or
+ * table directly followed by a chart renders beside it, stats first, in a
+ * section headed by its lead-in line (see `groupAnswerBlocks`). A tile
  * reports every chart in its run as settled once all of them have. The text
  * blocks share one reveal in reading order, and the word animations start
  * only once `phase` is `revealing`.
@@ -441,46 +448,31 @@ function AnswerBlocks({
           );
         }
         const block = group.block;
-        if (group.type === 'text') return renderText(block);
+        if (group.type === 'text') {
+          // A lead-in line reads as a heading whether or not its section
+          // has formed yet, so it does not change shape when its chart
+          // arrives while the answer streams.
+          return isLeadInHeading(block.markdown) ? (
+            <SectionHeading key={block.index} markdown={block.markdown} />
+          ) : (
+            renderText(block)
+          );
+        }
         const { chartIndex, leadIn } = group;
-        // The stats on the left, their chart on the right, both from the
-        // top. The stats come first in the document too, so a narrow answer
-        // stacks them above the chart and screen readers follow the visual
-        // order. Two columns need two charts' minimum width of 320px plus the
-        // gap, so the row splits once the answer body is 664px (41.5rem)
-        // wide. Only side by side do bullet stats sit 4px below the chart's
-        // top edge and get the wider spacing below the row and between
-        // items; stacked, or when the chart drew nothing and the tile is
-        // gone, they keep the standard spacing at full width. A table keeps
-        // its own card edge level with the chart's, so its lead-in stays
-        // full width above the row; a bullet list's lead-in opens its column
-        // and takes the bullets' 4px. The stats' bullets drop their markers,
-        // since each already opens with a bold label.
-        const isTable = TABLE_BLOCK_START.test(block.markdown);
-        const stats = leadIn ? (
-          <div className="flex flex-col gap-4 min-w-0">
-            {renderText(leadIn)}
-            {renderText(block)}
-          </div>
-        ) : (
-          renderText(block)
-        );
         return (
-          <div
+          <AnswerSection
             key={leadIn?.index ?? block.index}
-            className={
-              isTable
-                ? PAIR_ROW_CLASS
-                : `${PAIR_ROW_CLASS} ${PAIR_TOP_SPACE_CLASS}`
+            leadIn={leadIn?.markdown}
+            stats={renderText(block)}
+            isTable={TABLE_BLOCK_START.test(block.markdown)}
+            chart={
+              <ChartTile
+                config={{ shouldRender: true, charts: [group.chart] }}
+                onSettled={() => onChartSettled(chartIndex)}
+                shouldHoldSkeleton={phase !== 'revealed'}
+              />
             }
-          >
-            {stats}
-            <ChartTile
-              config={{ shouldRender: true, charts: [group.chart] }}
-              onSettled={() => onChartSettled(chartIndex)}
-              shouldHoldSkeleton={phase !== 'revealed'}
-            />
-          </div>
+          />
         );
       })}
     </>
@@ -502,7 +494,7 @@ type AnswerBlockGroup =
       block: TextAnswerBlock;
       chart: ChartItem;
       chartIndex: number;
-      /** The one-line lead-in above the stats, opening their column. */
+      /** The one-line lead-in above the stats, heading their section. */
       leadIn?: TextAnswerBlock;
     };
 
@@ -515,35 +507,8 @@ const FULL_WIDTH_CHART_TYPES: ReadonlySet<ChartItem['vizType']> = new Set([
 /** Matches Markdown that opens with a list item or a table row. */
 const STATS_BLOCK_START = /^\s*(?:[-*+]\s|\d+[.)]\s|\|)/;
 
-/**
- * Classes of a chart and stats row. It stacks by default and splits into two
- * columns, with wider spacing below it and between its items, once the
- * answer body (a size container) is 41.5rem wide and the chart tile drew.
- */
-const PAIR_ROW_CLASS = [
-  'answer-pair grid grid-cols-1 items-start gap-x-6 gap-y-4 mt-2',
-  '[&_ul]:list-none [&_ul]:pl-0 [&_li]:pb-1',
-  '@min-[41.5rem]:has-[>.dc-charts-container]:grid-cols-2',
-  '@min-[41.5rem]:has-[>.dc-charts-container]:mb-2',
-  '@min-[41.5rem]:has-[>.dc-charts-container]:[&_li]:pb-2',
-].join(' ');
-
-/**
- * Extra class of a row whose stats column opens with text (bullets or a
- * lead-in line): side by side, the column sits 4px below the chart card's
- * top edge, so the text does not touch the line.
- */
-const PAIR_TOP_SPACE_CLASS =
-  '@min-[41.5rem]:has-[>.dc-charts-container]:[&>:first-child]:pt-1';
-
 /** Matches Markdown that opens with a table row. */
 const TABLE_BLOCK_START = /^\s*\|/;
-
-/**
- * Matches a lead-in line: one line, not a heading, quote, list item, or table
- * row, that ends with a colon (optionally inside bold or italics).
- */
-const LEAD_IN_LINE = /^(?![#>|]|[-*+]\s|\d+[.)]\s)[^\n]*:[*_]*$/;
 
 /**
  * Whether `text` and the chart after it render side by side: the text is a
@@ -566,14 +531,14 @@ function isStatsChartPair(
 
 /**
  * Groups a turn's blocks in order. A bullet list or table directly followed
- * by a chart becomes a pair with that chart, rendered side by side, and a
- * one-line lead-in ending with a colon directly above a bullet list joins
- * the pair at the top of its column; above a table it stays full width, so
- * the table's card lines up with the chart's. Any other run of consecutive
- * chart blocks, including the charts after a pair's chart, becomes one group
- * that renders in a single chart tile. As blocks stream in, the last group
- * may still grow, and a trailing stats block (with its lead-in) becomes a
- * pair when its chart arrives; a pair, once formed, is never regrouped.
+ * by a chart becomes a pair with that chart, rendered side by side in one
+ * section, and a one-line lead-in ending with a colon directly above the
+ * list or table joins the pair as its section's heading. Any other run of
+ * consecutive chart blocks, including the charts after a pair's chart,
+ * becomes one group that renders in a single chart tile. As blocks stream
+ * in, the last group may still grow, and a trailing stats block (with its
+ * lead-in) becomes a pair when its chart arrives; a pair, once formed, is
+ * never regrouped.
  */
 export function groupAnswerBlocks(blocks: AnswerBlock[]): AnswerBlockGroup[] {
   const groups: AnswerBlockGroup[] = [];
@@ -587,8 +552,7 @@ export function groupAnswerBlocks(blocks: AnswerBlock[]): AnswerBlockGroup[] {
       const beforeStats = groups.at(-2);
       const leadIn =
         beforeStats?.type === 'text' &&
-        !TABLE_BLOCK_START.test(last.block.markdown) &&
-        LEAD_IN_LINE.test(beforeStats.block.markdown.trim())
+        isLeadInHeading(beforeStats.block.markdown)
           ? beforeStats.block
           : undefined;
       groups.splice(leadIn ? -2 : -1, leadIn ? 2 : 1, {
@@ -617,14 +581,18 @@ export function groupAnswerBlocks(blocks: AnswerBlock[]): AnswerBlockGroup[] {
 /**
  * Splits one reveal of `totalMs` across the text blocks in reading order, in
  * proportion to their word counts, so each block starts where the previous
- * one ends. Returns each text block's window keyed by its block index.
+ * one ends. A lead-in line renders as a heading, which shows at once, so it
+ * takes no share. Returns each revealed text block's window keyed by its
+ * block index.
  */
 function scheduleTextReveal(
   blocks: AnswerBlock[],
   totalMs: number,
 ): Map<number, TextRevealWindow> {
   const wordCounts = blocks.map((block) =>
-    block.type === 'text' ? countWords(block.markdown) : 0,
+    block.type === 'text' && !isLeadInHeading(block.markdown)
+      ? countWords(block.markdown)
+      : 0,
   );
   const totalWords = wordCounts.reduce((sum, count) => sum + count, 0);
   const msPerWord = totalMs / Math.max(totalWords, 1);

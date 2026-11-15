@@ -86,11 +86,11 @@ interface ChartAnswerBlockInput {
 const CHART_POLL_MS = 300;
 
 /**
- * Class that hides the body's non-text children, other than chart tiles and
- * paired stats rows, while the text reveals.
+ * Class that hides the body's non-text children, other than chart tiles,
+ * section headings, and sections, while the text reveals.
  */
 const HIDE_NON_TEXT_CLASS =
-  'motion-safe:[&>:not(.markdown-body,.dc-charts-container,.answer-pair)]:opacity-0';
+  'motion-safe:[&>:not(.markdown-body,.dc-charts-container,.answer-heading,.answer-section)]:opacity-0';
 
 /** Builds a finished turn whose answer arrived as the given blocks. */
 const buildTurnWithBlocks = (
@@ -351,6 +351,37 @@ describe('AnswerPanel', () => {
       );
     expect(readDelays(first)).toEqual(['0ms', '20ms', '40ms']);
     expect(readDelays(second)[0]).toBe('60ms');
+  });
+
+  it('gives a lead-in heading no share of the reveal', () => {
+    // Test: Section headings show at once.
+    // Situation: A text-only panel mounts mid-stream with a three-word
+    //   paragraph, a lead-in line, and a two-word list item; the stream
+    //   duration covers every word, the lead-in's included.
+    // Expectation: The lead-in renders as a heading with no word animation,
+    //   and the list's first word starts right after the paragraph's last.
+    const { container } = render(
+      <AnswerPanel
+        turn={buildTurnWithBlocks([
+          { index: 0, type: 'text', markdown: 'one two three' },
+          { index: 1, type: 'text', markdown: 'Population by sex:' },
+          { index: 2, type: 'text', markdown: '- four five' },
+        ])}
+        isStreaming
+      />,
+    );
+
+    const heading = container.querySelector('h2.answer-heading');
+    expect(heading?.querySelector('.stream-word')).toBeNull();
+    const [first, second] = Array.from(
+      container.querySelectorAll('.markdown-body'),
+    ).map((body) =>
+      Array.from(body.querySelectorAll<HTMLElement>('.stream-word')).map(
+        (word) => Number.parseFloat(word.style.animationDelay),
+      ),
+    );
+    const step = first[1] - first[0];
+    expect(second[0]).toBeCloseTo(first[2] + step);
   });
 
   it('shows everything at once when it neither reveals nor is awaited', () => {
@@ -804,56 +835,107 @@ describe('AnswerPanel', () => {
       );
     });
 
-    it('opens the stats column of a bullet list with its lead-in line', () => {
-      // Test: A lead-in line joins its bullets in the paired row.
+    it.each([
+      ['a bullet list', BULLETS],
+      ['a table', TABLE],
+    ])('heads the section of %s with its lead-in line', (_, markdown) => {
+      // Test: A lead-in line becomes the heading of its section.
       // Situation: A headline paragraph, a one-line lead-in ending with a
-      //   colon, then a bullet list directly followed by its chart.
-      // Expectation: The lead-in and the bullets share the row's first
-      //   column, lead-in first, and the column sits 4px below the chart's
-      //   top edge side by side; the headline stays outside the row.
+      //   colon, then a bullet list or a table directly followed by its
+      //   chart.
+      // Expectation: One section renders on the section surface, labeled by
+      //   an h2 that holds the lead-in without its colon, above the paired
+      //   row, whose children are the stats and the chart; the headline
+      //   stays outside it.
       const container = renderBlocks([
         { index: 0, type: 'text', markdown: 'Life expectancy reached 84.' },
-        {
-          index: 1,
-          type: 'text',
-          markdown: 'Female life expectancy in Japan and France:',
-        },
-        { index: 2, type: 'text', markdown: BULLETS },
+        { index: 1, type: 'text', markdown: '**Population by sex:**' },
+        { index: 2, type: 'text', markdown },
         { index: 3, type: 'chart', chart: LINE_CHART },
       ]);
 
-      const pairs = container.querySelectorAll('.answer-pair');
-      expect(pairs).toHaveLength(1);
-      const [column, chart] = Array.from(pairs[0].children);
-      expect(chart.classList.contains('dc-charts-container')).toBe(true);
-      expect(column.children[0].textContent).toBe(
-        'Female life expectancy in Japan and France:',
+      const sections = container.querySelectorAll('section.answer-section');
+      expect(sections).toHaveLength(1);
+      expect(sections[0].className).toContain('bg-surface-section');
+      // The section is the size container the row's breakpoint measures,
+      // so its padding counts against the two columns' minimum width.
+      expect(sections[0].className).toContain('@container');
+      const heading = sections[0].querySelector('h2');
+      expect(heading?.textContent).toBe('Population by sex');
+      expect(sections[0].getAttribute('aria-labelledby')).toBe(heading?.id);
+      const row = sections[0].querySelector('.answer-pair');
+      expect(
+        Array.from(row?.children ?? []).map((child) =>
+          child.classList.contains('markdown-body') ? 'text' : 'chart',
+        ),
+      ).toEqual(['text', 'chart']);
+      expect(sections[0].textContent).not.toContain(
+        'Life expectancy reached 84.',
       );
-      expect(column.children).toHaveLength(2);
-      expect(pairs[0].textContent).not.toContain('Life expectancy reached 84.');
-      expect(pairs[0].className).toContain('[&>:first-child]:pt-1');
     });
 
-    it("keeps a table's lead-in line full width above the row", () => {
-      // Test: A table's card stays level with its chart's.
-      // Situation: A one-line lead-in ending with a colon, then a table
-      //   directly followed by its chart.
-      // Expectation: The lead-in renders outside the paired row, whose first
-      //   child is the table itself, with no top space.
+    it('shows a lead-in line as a heading before its section forms', () => {
+      // Test: A lead-in line keeps its shape while the answer streams.
+      // Situation: A streaming turn holds a lead-in line and the bullet list
+      //   under it, and its chart has not arrived.
+      // Expectation: The lead-in renders as an h2 heading outside any
+      //   section, and the bullets render as plain text.
+      const { container } = render(
+        <AnswerPanel
+          turn={buildTurnWithBlocks(
+            [
+              { index: 0, type: 'text', markdown: 'Population by sex:' },
+              { index: 1, type: 'text', markdown: BULLETS },
+            ],
+            { status: 'synthesis' },
+          )}
+          isStreaming
+        />,
+      );
+
+      expect(container.querySelector('h2.answer-heading')?.textContent).toBe(
+        'Population by sex',
+      );
+      expect(container.querySelector('.answer-section')).toBeNull();
+    });
+
+    it('heads a list without a chart outside any section', () => {
+      // Test: A lead-in whose list has no chart in a finished answer.
+      // Situation: A finished turn holds a lead-in line and its bullets with
+      //   no chart after them, as the contract allows past the chart limit.
+      // Expectation: The lead-in renders as an h2 heading on the narrative
+      //   surface, the bullets render as text below it, and no section
+      //   renders.
       const container = renderBlocks([
-        {
-          index: 0,
-          type: 'text',
-          markdown: 'The ten highest are Puerto Rico and nine states:',
-        },
-        { index: 1, type: 'text', markdown: TABLE },
+        { index: 0, type: 'text', markdown: 'Adolescent births:' },
+        { index: 1, type: 'text', markdown: BULLETS },
+      ]);
+
+      const heading = container.querySelector('h2.answer-heading');
+      expect(heading?.textContent).toBe('Adolescent births');
+      expect(heading?.nextElementSibling?.textContent).toContain(
+        'Long-term trend',
+      );
+      expect(container.querySelector('.answer-section')).toBeNull();
+    });
+
+    it('keeps a lead-in with inline Markdown as text', () => {
+      // Test: Only a plain label renders as a heading.
+      // Situation: A lead-in whose label holds a citation marker sits above
+      //   a bullet list and its chart.
+      // Expectation: No heading renders; the lead-in renders as text, with
+      //   its marker, outside the section, which has no accessible name.
+      const container = renderBlocks([
+        { index: 0, type: 'text', markdown: 'Population by sex [1]:' },
+        { index: 1, type: 'text', markdown: BULLETS },
         { index: 2, type: 'chart', chart: LINE_CHART },
       ]);
 
-      const pair = container.querySelector('.answer-pair');
-      expect(pair?.textContent).not.toContain('The ten highest are');
-      expect(pair?.children[0].classList.contains('markdown-body')).toBe(true);
-      expect(pair?.className).not.toContain('[&>:first-child]:pt-1');
+      expect(container.querySelector('h2.answer-heading')).toBeNull();
+      expect(readAnswerParts(container)[0]).toBe('text:Population by sex [1]:');
+      const section = container.querySelector('.answer-section');
+      expect(section?.textContent).not.toContain('Population by sex');
+      expect(section?.hasAttribute('aria-labelledby')).toBe(false);
     });
 
     it('leaves a paragraph that is not a lead-in line outside the row', () => {
@@ -867,9 +949,12 @@ describe('AnswerPanel', () => {
         { index: 2, type: 'chart', chart: LINE_CHART },
       ]);
 
-      const pair = container.querySelector('.answer-pair');
-      expect(pair?.textContent).not.toContain('Japan leads on both measures.');
-      expect(pair?.children[0].classList.contains('markdown-body')).toBe(true);
+      const section = container.querySelector('.answer-section');
+      expect(section?.textContent).not.toContain(
+        'Japan leads on both measures.',
+      );
+      expect(section?.querySelector('h2')).toBeNull();
+      expect(section?.hasAttribute('aria-labelledby')).toBe(false);
     });
 
     it.each<[string, ChartAnswerBlockInput]>([
