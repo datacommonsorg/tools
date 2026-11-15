@@ -215,7 +215,7 @@
         },
         "background": {
           "$ref": "#/$defs/hexColor",
-          "description": "Page background, and the surface of the composer, cards, chips and drawers (--theme-background → --color-surface)."
+          "description": "Page background, and the surface of the composer, cards and drawers (--theme-background → --color-surface)."
         },
         "surface": {
           "$ref": "#/$defs/hexColor",
@@ -248,6 +248,10 @@
         "surface_narrative": {
           "$ref": "#/$defs/hexColor",
           "description": "Tile behind a rendered narrative — response card and its skeleton (--theme-surface-narrative → --color-surface-narrative)."
+        },
+        "surface_chip": {
+          "$ref": "#/$defs/hexColor",
+          "description": "Landing-view suggestion chips (--theme-surface-chip → --color-surface-chip)."
         },
         "code_surface": {
           "$ref": "#/$defs/hexColor",

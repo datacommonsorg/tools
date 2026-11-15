@@ -67,6 +67,8 @@
   /* Subtle tint behind the reasoning card so it reads as distinct from the
      main answer body. */
   --color-surface-narrative: var(--theme-surface-narrative, #f5faff);
+  /* Landing-view suggestion chips. */
+  --color-surface-chip: var(--theme-surface-chip, #f5faff);
   --color-skeleton-bar: var(--theme-skeleton-bar, #efeded);
   /* Inline-code chip behind `code` in the reasoning aside. */
   --color-code-surface: var(--theme-code-surface, #f2f2f2);

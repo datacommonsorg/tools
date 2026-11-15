@@ -26,6 +26,7 @@
     "gradient_border_stop_3": "#0BACD0",
     "gradient_border_stop_4": "#8CB8FF",
     "surface_narrative": "#F5FAFF",
+    "surface_chip": "#F5FAFF",
     "code_surface": "#F2F2F2",
     "skeleton_bar": "#EFEDED",
     "border": "#E3E3E3",
@@ -46,9 +47,9 @@
   },
   "navigation": [],
   "suggestions": [
-    "How big is the financial sector in Vietnam",
-    "How is India doing in agricultural practices",
-    "How is Africa doing combating HIV/AIDS"
+    "How has renewable energy adoption changed in Spain?",
+    "Compare infant mortality rates between Kenya and Ghana",
+    "How has agricultural land area changed in the USA?"
   ],
   "footer": {
     "text": "Base Data Commons — built on Custom Data Commons.",
