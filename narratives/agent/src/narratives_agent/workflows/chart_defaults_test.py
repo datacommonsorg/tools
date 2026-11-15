@@ -17,6 +17,7 @@ Covers `build_default_charts`.
 """
 
 from collections.abc import Mapping, Sequence
+from dataclasses import replace
 from typing import cast
 
 import pytest
@@ -1702,6 +1703,81 @@ def test_a_cohort_ranking_line_drops_a_single_date_parent() -> None:
     }
 
 
+_RANKED_STATES = list(reversed(_STATES[1:]))
+
+
+@pytest.mark.parametrize(
+    ("parent_values", "expected_places"),
+    [
+        ({"2022": 35.0, "2023": 35.0}, [*_RANKED_STATES, "country/USA"]),
+        ({"2022": 60.0, "2023": 60.0}, [*_RANKED_STATES, "country/USA"]),
+        ({"2022": 1_000.0, "2023": 35.0}, [*_RANKED_STATES, "country/USA"]),
+        ({"2020": 1_000.0, "2021": 1_000.0}, [*_RANKED_STATES, "country/USA"]),
+        ({"2022": 1_000.0, "2023": 1_000.0}, _RANKED_STATES),
+    ],
+    ids=[
+        "within_the_cohort_range",
+        "equal_to_the_cohort_maximum",
+        "above_the_cohort_on_one_date_only",
+        "no_shared_date",
+        "above_the_cohort_on_every_date",
+    ],
+)
+def test_a_cohort_ranking_line_keeps_a_parent_total_off_the_chart(
+    parent_values: dict[str, float], expected_places: list[str]
+) -> None:
+    # Test: The parent place of a default cohort-ranking line, by whether
+    #   its values read as a total of the cohort.
+    # Situation: Six states hold values from 10 to 60 for 2022 and 2023 and
+    #   are ranked on 2023, five per end, and an `analyze_timeseries` step
+    #   reads `t2`, the same variable for the United States, whose values
+    #   lie within the states' range (as a rate's would), equal the largest
+    #   state's, exceed every state on one shared date only, fall on dates
+    #   the states do not share, or exceed every state on every shared date
+    #   (as a total's do).
+    # Expectation: The line draws the United States with the five leading
+    #   states unless its value exceeds every state's on every shared date,
+    #   so a total never flattens the lines while a benchmark stays.
+    cohort = _make_cohort(dates=("2022", "2023"))
+    parent_rows = tuple(
+        ObservationRow("country/USA", "USA", date, value)
+        for date, value in parent_values.items()
+    )
+    parent = CachedTable(
+        "t2",
+        replace(
+            _make_table("t2", places=("country/USA",)).table,
+            rows=parent_rows,
+        ),
+    )
+    analysis = AnalysisSpecification.model_validate(
+        {
+            "steps": [
+                {
+                    "step_id": "s1",
+                    "script": "rank_cohort",
+                    "table": "t1",
+                    "n": 5,
+                },
+                {
+                    "step_id": "s2",
+                    "script": "analyze_timeseries",
+                    "table": "t2",
+                },
+            ]
+        }
+    )
+    digest = _make_digest(
+        rank_cohort(cohort.table, max_entries_per_end=5, step_id="s1"),
+        analyze_timeseries(parent.table, step_id="s2"),
+    )
+
+    chart = _resolve_default_wire(digest, analysis, _make_cache(cohort, parent))
+
+    assert chart is not None
+    assert chart["place_dcids"] == expected_places
+
+
 @pytest.mark.parametrize(
     ("start_date", "end_date", "expected_bounds"),
     [
@@ -1771,3 +1847,75 @@ def test_a_per_capita_series_line_is_clamped_to_its_derived_window(
         "per_capita": True,
         **expected_bounds,
     }
+
+
+@pytest.mark.parametrize(
+    ("series_table", "expected_variables"),
+    [("t2", None), ("t1", ["Count_Person"])],
+    ids=["numerator", "population"],
+)
+def test_the_floor_does_not_chart_the_count_behind_a_percentage(
+    series_table: str, expected_variables: list[str] | None
+) -> None:
+    # Test: The default chart of a turn whose primary result is a
+    #   percentage, which is not chartable.
+    # Situation: People below the poverty line (`t2`) are divided by
+    #   population (`t1`) per capita with a scale of 100 in `s1`, `s2`
+    #   ranks `s1`, and `s3` analyzes the series of the numerator `t2` or of
+    #   the population `t1`.
+    # Expectation: The ranking of the percentage supplies no chart, and the
+    #   numerator's series is not charted in its place, so the raw count is
+    #   never drawn for a percentage, while the population's series still
+    #   supplies the default chart.
+    population = _make_table(
+        "t1", places=_STATES, parent="country/USA", child_type="State"
+    )
+    poor = _make_table(
+        "t2",
+        "Count_Person_BelowPovertyLevel",
+        name="Poor",
+        unit="Count",
+        places=_STATES,
+        parent="country/USA",
+        child_type="State",
+    )
+    derived = derive_observation_table(
+        poor.table,
+        population.table,
+        operation="per_capita",
+        scale=100.0,
+        step_id="s1",
+    )
+    assert derived.table is not None
+    tables = {"t1": population, "t2": poor}
+    analysis = AnalysisSpecification.model_validate(
+        {
+            "steps": [
+                {**_PER_CAPITA_STEP, "scale": 100},
+                {"step_id": "s2", "script": "rank_cohort", "table": "s1"},
+                {
+                    "step_id": "s3",
+                    "script": "analyze_timeseries",
+                    "table": series_table,
+                },
+            ]
+        }
+    )
+    digest = AnalysisDigest(
+        results=(
+            derived.result,
+            rank_cohort(derived.table, step_id="s2"),
+            analyze_timeseries(tables[series_table].table, step_id="s3"),
+        ),
+        sources=(),
+    )
+
+    chart = _resolve_default_wire(
+        digest,
+        analysis,
+        _make_cache(population, poor, CachedTable("s1", derived.table)),
+    )
+
+    assert (None if chart is None else chart["variable_dcids"]) == (
+        expected_variables
+    )

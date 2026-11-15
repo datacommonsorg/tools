@@ -190,7 +190,9 @@ Otherwise, the request runs through the agent loop in five steps:
    bounds that clamp the drawn series.
    The server splits the stream at paragraph boundaries and at the closing fence
    of each chart block, and emits one `content {block}` frame per completed
-   paragraph and per chart that resolves. Resolution is set membership against
+   paragraph and per chart that resolves. A one-line lead-in ending with a
+   colon directly above a list item or table row is a paragraph of its own,
+   even without a blank line between them. Resolution is set membership against
    the turn cache: an unknown table, a place or date the table does not hold, a
    unit mismatch across the tables on one axis, a `line` whose date bounds
    leave a charted table without a place holding two dates, or a kind the
@@ -204,40 +206,50 @@ Otherwise, the request runs through the agent loop in five steps:
    (`facetId` on highlight, `facetIds` or `facetMapping` on the other
    components). A derived per-capita table is scaled automatically in the
    digest (per 1, 1,000, or 100,000 people so the median non-zero magnitude is
-   at least 1) and is charted when referenced by its `s<n>` table id as its
-   numerator with the web component's per-person normalization; other derived
-   tables are not chartable. At most three charts are accepted per answer.
-   When the digest has data and no chart is emitted, the default chart floor
-   appends at most one chart projected directly from the primary result
-   (`scatter` for a cohort `relate_cohorts` result, which is considered first,
-   or the direct chart of `analyze_timeseries`, `rank_cohort`, or
-   `compute_composition`; distributions, standalone derivations, non-cohort
-   relations, and relations over a window cohort receive none). A ranking of
-   a cohort, or any ranking over a window cohort, is charted as a `line` of
-   its first five places, with the parent place when a step analyzed the
-   parent's series and the parent's table holds at least two dates in the
-   drawn span, and with the ranked places alone otherwise; a single-date
-   cohort ranking falls back to a `ranking` chart when its table has one
-   date, or when the ranking supports a relation. The default `line` of a
-   window ranking is clamped to the window's start and end dates. The
-   default `line` of an `analyze_timeseries` step is clamped to the
-   earliest date the step summarized when the step, or the derived table
-   it reads, sets `start_date`, and to the latest when either sets
-   `end_date`. A `ranking`, `bar`, `map`, or `scatter` of
-   a table that the digest ranks only over a window needs an explicit date,
-   because without one it would draw the latest values rather than the
-   change the prose describes. When the digest has data, the synthesis
-   contract's `synthesis_title` addendum has the model open its answer with a
-   `# ` title line, a short label for the data the answer presents; the server
-   (`workflows/title.py`) takes that line off the stream and sends it as a
-   `{title}` `content` frame before the first block. Only a Markdown heading
-   (`#` to `######`) or a line starting with a `Title:` label counts as a title
-   line. A turn without data gets the `synthesis_no_title` addendum and no
-   title, even when the model writes one. The signed `model_response` is the
-   text blocks joined by blank lines, with the chart blocks and the title line
-   stripped, matching the text blocks emitted in `content` frames. A stream that
-   stalls for 60 seconds waiting for a chunk ends the turn with
-   `synthesis_stream_error`.
+   at least 1), or given as a percentage when its step sets a scale of 100 (a
+   share of the population, such as people below the poverty line). A per-capita
+   table not given as a percentage is charted when referenced by its `s<n>`
+   table id as its numerator with the web component's per-person normalization;
+   a percentage is not, because that normalization applies no scale and would
+   draw per-person fractions beside the percentages, nor is its numerator
+   charted in its place by the default chart floor; other derived tables
+   are not chartable. At most four charts are accepted per answer. The model
+   writes each chart directly after the bullet list or table holding its
+   figures, and the app shows that list or table beside the chart, a bullet list
+   headed by its one-line lead-in when it has one; maps, scatter charts, and a
+   chart after prose render full width. When the digest has data and no chart is
+   emitted, the default chart floor appends at most one chart projected directly
+   from the primary result (`scatter` for a cohort `relate_cohorts` result,
+   which is considered first, or the direct chart of `analyze_timeseries`,
+   `rank_cohort`, or `compute_composition`; distributions, standalone
+   derivations, non-cohort relations, and relations over a window cohort receive
+   none); its block carries `standalone: true`, so the app shows it full width
+   rather than beside the text before it. A ranking of a cohort, or any ranking
+   over a window cohort, is charted as a `line` of its first five places, with
+   the parent place when a step analyzed the parent's series, the parent's table
+   holds at least two dates in the drawn span, and the parent's value does not
+   exceed every cohort place's value on each date they share (as a total or
+   count does, which would flatten their lines), and with the ranked places
+   alone otherwise; a single-date cohort ranking falls back to a `ranking` chart
+   when its table has one date, or when the ranking supports a relation. The
+   default `line` of a window ranking is clamped to the window's start and end
+   dates. The default `line` of an `analyze_timeseries` step is clamped to the
+   earliest date the step summarized when the step, or the derived table it
+   reads, sets `start_date`, and to the latest when either sets `end_date`. A
+   `ranking`, `bar`, `map`, or `scatter` of a table that the digest ranks only
+   over a window needs an explicit date, because without one it would draw the
+   latest values rather than the change the prose describes. When
+   the digest has data, the synthesis contract's `synthesis_title` addendum
+   has the model open its answer with a `# ` title line, a short label for
+   the data the answer presents; the server (`workflows/title.py`) takes that
+   line off the stream and sends it as a `{title}` `content` frame before the
+   first block. Only a Markdown heading (`#` to `######`) or a line starting
+   with a `Title:` label counts as a title line. A turn without data gets the
+   `synthesis_no_title` addendum and no title, even when the model writes
+   one. The signed `model_response` is the text blocks joined by blank lines,
+   with the chart blocks and the title line stripped, matching the text
+   blocks emitted in `content` frames. A stream that stalls for 60 seconds
+   waiting for a chunk ends the turn with `synthesis_stream_error`.
 4. **Turn signing (`finalize`):** The server builds the turn's `state_slots`
    from the fetched tables the specification used and the displayed charts
    (`workflows/state_slots.py`), and signs the completed turn into the window
@@ -255,7 +267,7 @@ for `heartbeat`) a sequential `id` starting at `1`:
 | :--- | :--- |
 | `status` | Current step (`classify`, `discovery`, `processing`, or `synthesis`) and status message |
 | `thought` | Model reasoning summary from the `discovery` or `synthesis` step |
-| `content` | Answer title (`{title}`, before the first block, only when the answer has data), answer block (`{block}` of type `text` or `chart`), tool call details (`{tool_call}`), citations (`{sources}`), or data status (`{data_status}`) |
+| `content` | Answer title (`{title}`, before the first block, only when the answer has data), answer block (`{block}` of type `text` or `chart`; a server-supplied default chart adds `standalone: true`), tool call details (`{tool_call}`), citations (`{sources}`), or data status (`{data_status}`) |
 | `terminal` | Final turn status (`state: "complete"`, `"refused"`, or `"error"`), plus the signed conversation state on completion, `{reason, message}` (with no `error` key) on refusal, or `{error, reason, is_retryable}` on failure |
 | `follow_ups` | `{follow_up_questions}`, sent after `terminal` when available |
 | `debug_report` | Gated turn debug report, sent as the final frame when the debug report mode is `on`, or `flag` with `"debug": true` |
