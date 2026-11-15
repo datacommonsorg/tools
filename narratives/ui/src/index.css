@@ -61,6 +61,9 @@
   --color-surface-soft: var(--theme-surface, #f9f9f9);
   --color-surface-muted: #f3f4f6;
   --color-surface-blue: #f0f4f9;
+  /* App chrome: the header bar and the desktop rail, and the wordmark on it. */
+  --color-chrome: var(--theme-chrome, #f0f4f9);
+  --color-on-chrome: var(--theme-on-chrome, #000000);
   /* Subtle tint behind the reasoning card so it reads as distinct from the
      main answer body. */
   --color-surface-narrative: var(--theme-surface-narrative, #f5faff);
@@ -114,7 +117,9 @@
     0 1px 3px 1px color-mix(in srgb, var(--color-shadow) 15%, transparent),
     0 1px 2px color-mix(in srgb, var(--color-shadow) 30%, transparent);
   /* The hairline under the app header. Consumed as `shadow-header`. */
-  --shadow-header: 0 1px 2px color-mix(in srgb, #5e5e5e 10%, transparent);
+  --color-shadow-header: #5e5e5e;
+  --shadow-header: 0 1px 2px
+    color-mix(in srgb, var(--color-shadow-header) 10%, transparent);
 
   /* Width of the desktop sidebar rail. The header pulls left by it to span the
      viewport, and <main> pads by it to clear the fixed rail. Consumed as
@@ -134,9 +139,6 @@
   /* Text — primary */
   --color-on-surface: var(--theme-text, #1b1c1d);
   --color-on-surface-variant: var(--theme-text-muted, #444746);
-  /* The header wordmark: pure black on Base Data Commons, the theme's text
-     color elsewhere. */
-  --color-wordmark: var(--theme-text, #000000);
   --color-muted: #575b5f;
   /* Neutral 40: the color of the AI disclaimer under each answer. */
   --color-ai-disclaimer: #5e5e5e;
@@ -274,6 +276,10 @@
   --static-title-large-font: var(--font-display, 'Google Sans');
   --static-title-large-size: 22px;
   --static-title-large-line-height: 28px;
+
+  --static-wordmark-font: var(--font-display, 'Google Sans');
+  --static-wordmark-size: 16px;
+  --static-wordmark-line-height: 24px;
 
   --static-body-large-font: var(--font-sans, 'Google Sans Text');
   --static-body-large-size: 16px;
@@ -451,6 +457,16 @@ select:not(:disabled) {
   font-style: normal;
   font-weight: 500;
   line-height: var(--static-title-large-line-height, 28px);
+  letter-spacing: 0;
+}
+
+/* The instance name beside the logo in the header. */
+.text-wordmark {
+  font-family: var(--static-wordmark-font, 'Google Sans');
+  font-size: var(--static-wordmark-size, 16px);
+  font-style: normal;
+  font-weight: 400;
+  line-height: var(--static-wordmark-line-height, 24px);
   letter-spacing: 0;
 }
 

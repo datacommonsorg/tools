@@ -59,7 +59,7 @@ export function Header() {
         style={{ height: 'var(--logo-height)' }}
       />
       {logoText && (
-        <span className="font-display text-base font-normal text-wordmark whitespace-nowrap">
+        <span className="text-wordmark text-on-chrome whitespace-nowrap">
           {logoText}
         </span>
       )}
@@ -67,7 +67,7 @@ export function Header() {
   );
 
   return (
-    <header className="sticky top-0 z-5 bg-surface-blue w-full lg:-ml-rail lg:w-[calc(100%+var(--spacing-rail))] flex items-center justify-between gap-3 px-6 py-4 shrink-0 shadow-header motion-safe:animate-fade-in">
+    <header className="sticky top-0 z-5 bg-chrome lg:-ml-rail flex items-center justify-between gap-3 px-6 py-4 shrink-0 shadow-header motion-safe:animate-fade-in">
       {isLogoLinked ? (
         // `target="_self"` keeps external targets in this tab; `py-2 -my-2`
         // gives a 44px touch target without changing the header height.

@@ -31,7 +31,9 @@
     "border": "#E3E3E3",
     "user_message": "#EAEEF5",
     "container": "#C9E6FD",
-    "on_container": "#0B57D0"
+    "on_container": "#0B57D0",
+    "chrome": "#F0F4F9",
+    "on_chrome": "#000000"
   },
   "radius": {
     "card": "16px",

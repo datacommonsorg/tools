@@ -27,8 +27,9 @@ import { useHashRoute } from '@/src/hooks/use_hash_route';
 /**
  * The left rail itself stays visible across all tabs (same width, same fill)
  * so the page layout doesn't jump as the user navigates. The "New chat"
- * pencil renders only on the Agent tab while chat is enabled; otherwise the
- * rail renders empty.
+ * pencil shows only on the Agent tab while chat is enabled. It stays mounted
+ * and turns `invisible` elsewhere, so its entrance animation plays once per
+ * page load rather than on every return to the Agent tab.
  */
 export function Sidebar() {
   const [route] = useHashRoute();
@@ -43,21 +44,21 @@ export function Sidebar() {
   // `pt-rail-top` grows with `--logo-height` so the header never covers the
   // New chat button.
   return (
-    <aside className="hidden lg:flex lg:fixed lg:inset-y-0 lg:left-0 lg:z-1 w-rail bg-surface-blue flex-col items-center pt-rail-top pb-4 gap-4 motion-safe:animate-enter-from-left">
-      {shouldShowNewChat && (
-        /* Clears the conversation on screen and starts an empty one. Chats
-           are not saved, so there is nothing to come back to. */
-        <Tooltip label="New chat" placement="right">
-          <button
-            type="button"
-            aria-label="New chat"
-            onClick={newChat}
-            className="w-12 h-12 flex items-center justify-center rounded-full hover:bg-button-hover transition-colors text-on-surface-variant motion-safe:animate-nudge-from-top"
-          >
-            <NewChatIcon />
-          </button>
-        </Tooltip>
-      )}
+    <aside className="hidden lg:flex lg:fixed lg:inset-y-0 lg:left-0 lg:z-1 w-rail bg-chrome flex-col items-center pt-rail-top pb-4 gap-4 motion-safe:animate-enter-from-left">
+      {/* Clears the conversation on screen and starts an empty one. Chats
+          are not saved, so there is nothing to come back to. */}
+      <Tooltip label="New chat" placement="right">
+        <button
+          type="button"
+          aria-label="New chat"
+          onClick={newChat}
+          className={`w-12 h-12 flex items-center justify-center rounded-full hover:bg-button-hover transition-colors text-on-surface-variant motion-safe:animate-nudge-from-top ${
+            shouldShowNewChat ? '' : 'invisible'
+          }`}
+        >
+          <NewChatIcon />
+        </button>
+      </Tooltip>
     </aside>
   );
 }

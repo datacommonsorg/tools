@@ -215,7 +215,7 @@
         },
         "background": {
           "$ref": "#/$defs/hexColor",
-          "description": "Page background, and the surface of the header, composer, cards, chips and drawers (--theme-background → --color-surface)."
+          "description": "Page background, and the surface of the composer, cards, chips and drawers (--theme-background → --color-surface)."
         },
         "surface": {
           "$ref": "#/$defs/hexColor",
@@ -276,6 +276,14 @@
         "nav_active": {
           "$ref": "#/$defs/hexColor",
           "description": "Active header-tab label and underline (--theme-nav-active → --color-nav-active). Omitted, it follows `text`."
+        },
+        "chrome": {
+          "$ref": "#/$defs/hexColor",
+          "description": "App chrome: the header bar and the desktop sidebar rail (--theme-chrome → --color-chrome)."
+        },
+        "on_chrome": {
+          "$ref": "#/$defs/hexColor",
+          "description": "Header wordmark, the instance name beside the logo (--theme-on-chrome → --color-on-chrome)."
         }
       }
     },
