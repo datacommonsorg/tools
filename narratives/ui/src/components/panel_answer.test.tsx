@@ -37,6 +37,7 @@ import { EXIT_MS, VISIBLE_MS } from '@/src/components/toast';
 import { resetDebugModeCacheForTests } from '@/src/hooks/use_debug_mode';
 import type { ChartItem, ChatTurn } from '@/src/hooks/use_sse_chat';
 import { parseServerDebugReport } from '@/src/types/debug_report';
+import { downloadPdf } from '@/src/utils/download_pdf';
 import { calculateStreamDurationMs } from '@/src/utils/rehype_stream_words';
 
 vi.mock('@/src/utils/download_pdf', () => ({
@@ -65,15 +66,22 @@ const SCATTER_CHART: ChartItem = {
   childPlaceType: 'AdministrativeArea1',
 };
 
+/** A text block and the chart after it, for the pairing cases. */
+interface ChartAnswerBlockInput {
+  text: string;
+  chart: ChartItem;
+  standalone?: boolean;
+}
+
 /** How often the chart settle poll reads the component, in milliseconds. */
 const CHART_POLL_MS = 300;
 
 /**
- * Class that hides the body's non-text children, other than chart tiles,
- * while the text reveals.
+ * Class that hides the body's non-text children, other than chart tiles and
+ * paired stats rows, while the text reveals.
  */
 const HIDE_NON_TEXT_CLASS =
-  'motion-safe:[&>:not(.markdown-body,.dc-charts-container)]:opacity-0';
+  'motion-safe:[&>:not(.markdown-body,.dc-charts-container,.answer-pair)]:opacity-0';
 
 /** Builds a finished turn whose answer arrived as the given blocks. */
 const buildTurnWithBlocks = (
@@ -534,19 +542,415 @@ describe('AnswerPanel', () => {
     expect(screen.getByRole('button', followUp)).not.toBeNull();
   });
 
-  it('opens with the question as its h1, visible during the reveal', () => {
+  it('opens with the agent title as its h1, visible during the reveal', () => {
     // Test: Intro block.
-    // Situation: A streaming answer that has not finished revealing.
-    // Expectation: The question is the panel's level-one heading and is not
-    //   inside the content body the reveal hides.
-    const turn = buildTurnWithBlocks([
-      { index: 0, type: 'text', markdown: 'France has about 68 million.' },
-    ]);
+    // Situation: A streaming answer with an agent title that has not
+    //   finished revealing.
+    // Expectation: The title, not the question, is the panel's level-one
+    //   heading, and it is not inside the content body the reveal hides.
+    const turn = buildTurnWithBlocks(
+      [{ index: 0, type: 'text', markdown: 'France has about 68 million.' }],
+      { title: 'Population of France' },
+    );
     render(<AnswerPanel turn={turn} isStreaming />);
     const heading = screen.getByRole('heading', { level: 1 });
 
-    expect(heading.textContent).toBe(turn.userMessage);
+    expect(heading.textContent).toBe('Population of France');
     expect(heading.closest('[class*="opacity-0"]')).toBeNull();
+  });
+
+  it('labels the header with the citation count when the answer has data', () => {
+    // Test: Card header of an answer that presents data.
+    // Situation: Finished answers with data cite two sources, one source, and
+    //   none.
+    // Expectation: The header reads "Overview of available data" followed by
+    //   the citation count, in the singular for one, and alone with none;
+    //   the question does not appear in the header.
+    const blocks: ChatTurn['blocks'] = [
+      { index: 0, type: 'text', markdown: 'France has about 68 million.' },
+    ];
+    const source = (name: string) => ({ name, url: `https://${name}.org/` });
+    const readHeader = (provenance: ChatTurn['provenance']): string => {
+      const { container } = render(
+        <AnswerPanel
+          turn={buildTurnWithBlocks(blocks, { hasData: true, provenance })}
+          isStreaming={false}
+        />,
+      );
+      const text = container.querySelector('.print-heading')?.textContent;
+      cleanup();
+      return text ?? '';
+    };
+
+    expect(readHeader([source('insee'), source('worldbank')])).toBe(
+      'Overview of available data • 2 citations',
+    );
+    expect(readHeader([source('insee')])).toBe(
+      'Overview of available data • 1 citation',
+    );
+    expect(readHeader([])).toBe('Overview of available data');
+  });
+
+  it('labels the header when the answer found no matching data', () => {
+    // Test: Card header of an answer without data.
+    // Situation: A finished answer whose turn has `hasData` false.
+    // Expectation: The header reads "No matching data found" with no ghost
+    //   line, and the question is not repeated under the user's bubble.
+    const { container } = render(
+      <AnswerPanel
+        turn={buildTurnWithBlocks(
+          [{ index: 0, type: 'text', markdown: 'No data was found.' }],
+          { hasData: false },
+        )}
+        isStreaming={false}
+      />,
+    );
+    const header = container.querySelector('.print-heading');
+
+    expect(header?.textContent).toBe('No matching data found');
+    expect(header?.querySelector('[aria-hidden="true"]')).toBeNull();
+  });
+
+  it('labels the header when the search ended before finding data', () => {
+    // Test: Card header of an answer whose search ended early without data.
+    // Situation: A finished answer whose turn has `hasData` false and
+    //   `truncated` true.
+    // Expectation: The header reads "Search ended before finding data", not
+    //   "No matching data found".
+    const { container } = render(
+      <AnswerPanel
+        turn={buildTurnWithBlocks(
+          [{ index: 0, type: 'text', markdown: 'No data was found.' }],
+          { hasData: false, truncated: true },
+        )}
+        isStreaming={false}
+      />,
+    );
+    const header = container.querySelector('.print-heading');
+
+    expect(header?.textContent).toBe('Search ended before finding data');
+  });
+
+  it('leaves the header empty when the answer never reports data', () => {
+    // Test: Card header of an answer that reports no data status.
+    // Situation: A finished answer whose turn has no `hasData`, as a
+    //   clarifying question does.
+    // Expectation: The header holds no text and no ghost line.
+    const { container } = render(
+      <AnswerPanel
+        turn={buildTurnWithBlocks([
+          { index: 0, type: 'text', markdown: 'Did you mean the state?' },
+        ])}
+        isStreaming={false}
+      />,
+    );
+    const header = container.querySelector('.print-heading');
+
+    expect(header?.textContent).toBe('');
+    expect(header?.querySelector('[aria-hidden="true"]')).toBeNull();
+  });
+
+  it('renders no h1 when the answer has no title', () => {
+    // Test: Intro block of an answer without a title.
+    // Situation: A finished answer whose turn carries no `title`, as an
+    //   answer without data does.
+    // Expectation: No level-one heading renders, and the question is not
+    //   shown in its place.
+    render(
+      <AnswerPanel
+        turn={buildTurnWithBlocks([
+          { index: 0, type: 'text', markdown: 'No data was found.' },
+        ])}
+        isStreaming={false}
+      />,
+    );
+
+    expect(screen.queryByRole('heading', { level: 1 })).toBeNull();
+  });
+
+  it('offers no PDF export for an answer without data', () => {
+    // Test: Export controls of an answer that reports no data.
+    // Situation: A finished, settled answer whose turn has `hasData` false.
+    // Expectation: Neither the toolbar pill nor the in-content Export PDF
+    //   button renders.
+    render(
+      <AnswerPanel
+        turn={buildTurnWithBlocks(
+          [{ index: 0, type: 'text', markdown: 'No data was found.' }],
+          { hasData: false },
+        )}
+        isStreaming={false}
+      />,
+    );
+
+    expect(screen.queryAllByRole('button', { name: 'Export PDF' })).toEqual([]);
+  });
+
+  it('exports the PDF under the title, or the question without one', async () => {
+    // Test: Heading passed to the PDF export.
+    // Situation: The user exports an answer with a title, then one without.
+    // Expectation: The title is the PDF heading when present; otherwise the
+    //   question is.
+    const exportFirst = async () => {
+      await act(async () => {
+        fireEvent.click(
+          screen.getAllByRole('button', { name: 'Export PDF' })[0],
+        );
+      });
+    };
+    const blocks: ChatTurn['blocks'] = [
+      { index: 0, type: 'text', markdown: 'France has about 68 million.' },
+    ];
+    vi.mocked(downloadPdf).mockClear();
+
+    render(
+      <AnswerPanel
+        turn={buildTurnWithBlocks(blocks, { title: 'Population of France' })}
+        isStreaming={false}
+      />,
+    );
+    await exportFirst();
+    cleanup();
+    render(
+      <AnswerPanel turn={buildTurnWithBlocks(blocks)} isStreaming={false} />,
+    );
+    await exportFirst();
+
+    expect(vi.mocked(downloadPdf).mock.calls.map((call) => call[1])).toEqual([
+      'Population of France',
+      'What is the population of France?',
+    ]);
+  });
+
+  describe('stats and chart pairing', () => {
+    const BULLETS =
+      '- **Long-term trend:** Life expectancy rose 24.14% since 1960.\n' +
+      '- **Historical peak:** It peaked at 84.56 years in 2020.';
+    const TABLE =
+      '| Country | Infant mortality rate (2024) |\n' +
+      '| --- | --- |\n| Japan | 1.8 |\n| Italy | 2.3 |';
+    const MAP_CHART: ChartItem = {
+      vizType: 'map',
+      title: 'Unemployment rate across states',
+      variableDcids: ['UnemploymentRate_Person'],
+      parentPlace: 'country/USA',
+      childPlaceType: 'State',
+    };
+    const renderBlocks = (blocks: ChatTurn['blocks']) =>
+      render(
+        <AnswerPanel turn={buildTurnWithBlocks(blocks)} isStreaming={false} />,
+      ).container;
+
+    it.each([
+      ['a bullet list', BULLETS],
+      ['a table', TABLE],
+    ])('sets %s beside the chart that follows it', (_, markdown) => {
+      // Test: Pairing of a stats block with its chart.
+      // Situation: A headline paragraph, then a bullet list or a table
+      //   directly followed by one line chart.
+      // Expectation: The stats block and the chart render in one paired row,
+      //   stats first; the headline stays outside it, full width.
+      const container = renderBlocks([
+        { index: 0, type: 'text', markdown: 'Life expectancy reached 84.' },
+        { index: 1, type: 'text', markdown },
+        { index: 2, type: 'chart', chart: LINE_CHART },
+      ]);
+
+      const pairs = container.querySelectorAll('.answer-pair');
+      expect(pairs).toHaveLength(1);
+      expect(
+        Array.from(pairs[0].children).map((child) =>
+          child.classList.contains('markdown-body') ? 'text' : 'chart',
+        ),
+      ).toEqual(['text', 'chart']);
+      expect(pairs[0].textContent).not.toContain('Life expectancy reached 84.');
+      // The paired stats drop their bullet markers, and only bullet stats,
+      // not a table, sit lower than the chart's top edge.
+      expect(pairs[0].className).toContain('[&_ul]:list-none');
+      expect(pairs[0].className.includes('[&>:first-child]:pt-1')).toBe(
+        markdown === BULLETS,
+      );
+    });
+
+    it('opens the stats column of a bullet list with its lead-in line', () => {
+      // Test: A lead-in line joins its bullets in the paired row.
+      // Situation: A headline paragraph, a one-line lead-in ending with a
+      //   colon, then a bullet list directly followed by its chart.
+      // Expectation: The lead-in and the bullets share the row's first
+      //   column, lead-in first, and the column sits 4px below the chart's
+      //   top edge side by side; the headline stays outside the row.
+      const container = renderBlocks([
+        { index: 0, type: 'text', markdown: 'Life expectancy reached 84.' },
+        {
+          index: 1,
+          type: 'text',
+          markdown: 'Female life expectancy in Japan and France:',
+        },
+        { index: 2, type: 'text', markdown: BULLETS },
+        { index: 3, type: 'chart', chart: LINE_CHART },
+      ]);
+
+      const pairs = container.querySelectorAll('.answer-pair');
+      expect(pairs).toHaveLength(1);
+      const [column, chart] = Array.from(pairs[0].children);
+      expect(chart.classList.contains('dc-charts-container')).toBe(true);
+      expect(column.children[0].textContent).toBe(
+        'Female life expectancy in Japan and France:',
+      );
+      expect(column.children).toHaveLength(2);
+      expect(pairs[0].textContent).not.toContain('Life expectancy reached 84.');
+      expect(pairs[0].className).toContain('[&>:first-child]:pt-1');
+    });
+
+    it("keeps a table's lead-in line full width above the row", () => {
+      // Test: A table's card stays level with its chart's.
+      // Situation: A one-line lead-in ending with a colon, then a table
+      //   directly followed by its chart.
+      // Expectation: The lead-in renders outside the paired row, whose first
+      //   child is the table itself, with no top space.
+      const container = renderBlocks([
+        {
+          index: 0,
+          type: 'text',
+          markdown: 'The ten highest are Puerto Rico and nine states:',
+        },
+        { index: 1, type: 'text', markdown: TABLE },
+        { index: 2, type: 'chart', chart: LINE_CHART },
+      ]);
+
+      const pair = container.querySelector('.answer-pair');
+      expect(pair?.textContent).not.toContain('The ten highest are');
+      expect(pair?.children[0].classList.contains('markdown-body')).toBe(true);
+      expect(pair?.className).not.toContain('[&>:first-child]:pt-1');
+    });
+
+    it('leaves a paragraph that is not a lead-in line outside the row', () => {
+      // Test: Only a one-line lead-in ending with a colon joins the row.
+      // Situation: A sentence that ends with a full stop sits directly above
+      //   a bullet list and its chart.
+      // Expectation: The sentence renders full width, outside the paired row.
+      const container = renderBlocks([
+        { index: 0, type: 'text', markdown: 'Japan leads on both measures.' },
+        { index: 1, type: 'text', markdown: BULLETS },
+        { index: 2, type: 'chart', chart: LINE_CHART },
+      ]);
+
+      const pair = container.querySelector('.answer-pair');
+      expect(pair?.textContent).not.toContain('Japan leads on both measures.');
+      expect(pair?.children[0].classList.contains('markdown-body')).toBe(true);
+    });
+
+    it.each<[string, ChartAnswerBlockInput]>([
+      [
+        'prose rather than a list or table',
+        { text: 'France has about 68 million.', chart: LINE_CHART },
+      ],
+      ['a scatter chart', { text: BULLETS, chart: SCATTER_CHART }],
+      ['a map', { text: BULLETS, chart: MAP_CHART }],
+      [
+        'a chart the server supplied',
+        { text: BULLETS, chart: LINE_CHART, standalone: true },
+      ],
+    ])('keeps the chart full width after %s', (_, input) => {
+      // Test: Charts that are never paired.
+      // Situation: A chart follows prose, is a scatter or a map, or is a
+      //   default chart the server appended.
+      // Expectation: No paired row renders; the chart stands alone.
+      const container = renderBlocks([
+        { index: 0, type: 'text', markdown: input.text },
+        {
+          index: 1,
+          type: 'chart',
+          chart: input.chart,
+          ...(input.standalone ? { standalone: true } : {}),
+        },
+      ]);
+
+      expect(container.querySelector('.answer-pair')).toBeNull();
+      expect(container.querySelectorAll('.dc-charts-container')).toHaveLength(
+        1,
+      );
+    });
+
+    it('pairs a stats block with the first of two charts after it', () => {
+      // Test: A stats block followed by charts back to back.
+      // Situation: A table directly followed by two line charts.
+      // Expectation: The table pairs with the first chart, and the second
+      //   chart renders in its own tile after the paired row.
+      const container = renderBlocks([
+        { index: 0, type: 'text', markdown: TABLE },
+        { index: 1, type: 'chart', chart: LINE_CHART },
+        { index: 2, type: 'chart', chart: INCOME_CHART },
+      ]);
+
+      const pair = container.querySelector<HTMLElement>('.answer-pair');
+      expect(pair).not.toBeNull();
+      expect(readAnswerParts(pair as HTMLElement)[1]).toBe(
+        `chart:${LINE_CHART.title}`,
+      );
+      expect(readAnswerParts(container).at(-1)).toBe(
+        `chart:${INCOME_CHART.title}`,
+      );
+      expect(container.querySelectorAll('.dc-charts-container')).toHaveLength(
+        2,
+      );
+    });
+
+    it('keeps a paired chart mounted as later blocks stream in', () => {
+      // Test: Stability of a pair while the answer streams.
+      // Situation: A streaming turn holds a table and its line chart, then
+      //   receives a second chart and a closing paragraph.
+      // Expectation: The paired chart tile is the same DOM node before and
+      //   after the later blocks arrive, so its chart is not refetched.
+      const pairBlocks: ChatTurn['blocks'] = [
+        { index: 0, type: 'text', markdown: TABLE },
+        { index: 1, type: 'chart', chart: LINE_CHART },
+      ];
+      const { container, rerender } = render(
+        <AnswerPanel
+          turn={buildTurnWithBlocks(pairBlocks, { status: 'synthesis' })}
+          isStreaming
+        />,
+      );
+      const tile = container.querySelector('.answer-pair .dc-charts-container');
+
+      rerender(
+        <AnswerPanel
+          turn={buildTurnWithBlocks(
+            [
+              ...pairBlocks,
+              { index: 2, type: 'chart', chart: INCOME_CHART },
+              { index: 3, type: 'text', markdown: 'Figures are annual.' },
+            ],
+            { status: 'synthesis' },
+          )}
+          isStreaming
+        />,
+      );
+
+      expect(tile).not.toBeNull();
+      expect(container.querySelector('.answer-pair .dc-charts-container')).toBe(
+        tile,
+      );
+    });
+
+    it('pairs each stats block with its own chart down the answer', () => {
+      // Test: Several stats and chart pairs in one answer.
+      // Situation: Two tables, each directly followed by its line chart.
+      // Expectation: Two paired rows render, in order, each with its stats
+      //   before its chart.
+      const container = renderBlocks([
+        { index: 0, type: 'text', markdown: TABLE },
+        { index: 1, type: 'chart', chart: LINE_CHART },
+        { index: 2, type: 'text', markdown: BULLETS },
+        { index: 3, type: 'chart', chart: INCOME_CHART },
+      ]);
+
+      expect(container.querySelectorAll('.answer-pair')).toHaveLength(2);
+      expect(
+        readAnswerParts(container).map((part) => part.split(':')[0]),
+      ).toEqual(['text', 'chart', 'text', 'chart']);
+    });
   });
 
   it('places back-to-back charts in one shared tile', () => {

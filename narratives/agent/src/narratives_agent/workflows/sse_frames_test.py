@@ -47,6 +47,7 @@ from narratives_agent.workflows.sse_frames import (
     TerminalErrorFrame,
     TerminalRefusedFrame,
     ThoughtFrame,
+    TitleFrame,
     ToolCallFrame,
     serialize_source,
 )
@@ -185,6 +186,27 @@ _WINDOW_FIELD = (
             id="chart_block",
         ),
         pytest.param(
+            BlockContentFrame(
+                block=ChartBlock(
+                    index=2,
+                    chart=ResolvedLineChart(
+                        title="Population of France",
+                        variable_dcids=("Count_Person",),
+                        scope=PlaceList(("country/FRA",)),
+                    ),
+                    standalone=True,
+                )
+            ),
+            (
+                "content",
+                '{"block": {"index": 2, "type": "chart", "chart": '
+                '{"viz_type": "line", "title": "Population of France", '
+                '"variable_dcids": ["Count_Person"], '
+                '"place_dcids": ["country/FRA"]}, "standalone": true}}',
+            ),
+            id="standalone_chart_block",
+        ),
+        pytest.param(
             ToolCallFrame(
                 tool_call={
                     "name": "get_observations",
@@ -200,6 +222,11 @@ _WINDOW_FIELD = (
                 '"{\\"data\\": {}}", "status": "success"}}',
             ),
             id="tool_call",
+        ),
+        pytest.param(
+            TitleFrame(title="Population of France"),
+            ("content", '{"title": "Population of France"}'),
+            id="title",
         ),
         pytest.param(
             DataStatusFrame(data_status={"has_data": True, "truncated": False}),

@@ -60,7 +60,7 @@ export interface StreamNode {
  * concatenation is `text`. A citation marker and the non-whitespace attached
  * to it, as in `[1, 2].`, form one word run.
  */
-function splitStreamTokens(text: string): string[] {
+export function splitStreamTokens(text: string): string[] {
   // `match` with a global pattern scans from index 0 and resets `lastIndex`,
   // so the shared pattern carries no state between calls.
   return text.match(STREAM_TOKEN_PATTERN) ?? [];

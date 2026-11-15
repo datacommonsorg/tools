@@ -16,6 +16,7 @@ import {
   MAX_CARD_PAGE_FILL,
   pageBreak,
   stackChartsForPrint,
+  writePrintHeading,
 } from '@/src/utils/download_pdf';
 
 /** A4 content box at scale 2, roughly: 717px wide, 273mm tall. */
@@ -234,6 +235,27 @@ describe('flattenForPrint', () => {
     expect(line?.style.whiteSpace).toBe('normal');
     expect(table?.style.width).toBe('100%');
     expect(cell?.style.overflowWrap).toBe('anywhere');
+  });
+});
+
+describe('writePrintHeading', () => {
+  it('replaces the header row label with the heading and lets the row grow', () => {
+    // Test: The PDF heading.
+    // Situation: A header row whose label shows the on-screen data label.
+    // Expectation: The label's text becomes the heading, and its row's
+    //   one-line height is released so a wrapped heading fits.
+    const root = document.createElement('div');
+    root.innerHTML = `
+      <div class="header-row" style="height: 48px">
+        <span class="print-heading">Overview of available data • 2 citations</span>
+      </div>
+    `;
+
+    writePrintHeading(root, 'Life expectancy in Japan and Germany');
+
+    const label = root.querySelector<HTMLElement>('.print-heading');
+    expect(label?.textContent).toBe('Life expectancy in Japan and Germany');
+    expect(label?.parentElement?.style.height).toBe('auto');
   });
 });
 

@@ -185,6 +185,13 @@ export const OverviewTab = ({
                 valueClassName="font-medium"
               />
               <DebugField
+                label="Title"
+                value={
+                  serverReport.titleOutcome ?? DEBUG_PANEL_COPY.noneFallback
+                }
+                valueClassName="font-medium"
+              />
+              <DebugField
                 label="Total tokens"
                 value={serverReport.tokens.totalTokenCount.toLocaleString()}
                 valueClassName="font-medium"

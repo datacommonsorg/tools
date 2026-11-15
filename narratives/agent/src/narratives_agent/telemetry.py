@@ -82,6 +82,22 @@ class TerminalState(StrEnum):
     CANCELED = "canceled"
 
 
+class TitleOutcome(StrEnum):
+    """Whether a turn's answer carried a title, and why not when it did not.
+
+    `NOT_REQUESTED` covers every turn that never asked the synthesis model
+    for a title: turns without data, clarifications, refusals, and turns that
+    ended before the synthesis stream opened. `OMITTED` is a turn with data
+    whose model wrote no usable title line. Read `EMITTED` and `OMITTED` only
+    on turns that end `complete`: a synthesis that fails part-way records the
+    outcome reached when it stopped.
+    """
+
+    EMITTED = "emitted"
+    OMITTED = "omitted"
+    NOT_REQUESTED = "not_requested"
+
+
 class ErrorType(StrEnum):
     """Machine-readable reason codes for turns that end in an error frame."""
 
@@ -455,6 +471,9 @@ class TurnTelemetry:
         charts_emitted: Number of resolved chart blocks emitted during the turn.
         charts_rejected: Number of chart blocks dropped by the block splitter or
             chart resolver during the turn.
+        title_outcome: Whether the synthesis phase emitted an answer title,
+            the model omitted one the turn asked for, or the turn asked for
+            none.
     """
 
     turn_id: str = field(default_factory=lambda: uuid.uuid4().hex)
@@ -473,6 +492,7 @@ class TurnTelemetry:
     processing_retries: int = 0
     charts_emitted: int = 0
     charts_rejected: int = 0
+    title_outcome: TitleOutcome = TitleOutcome.NOT_REQUESTED
     _duration_ms: float | None = field(default=None, init=False, repr=False)
     _start: float = field(default_factory=time.monotonic)
     _span: trace.Span = field(
@@ -573,6 +593,7 @@ class TurnTelemetry:
             "processing_retries": self.processing_retries,
             "charts_emitted": self.charts_emitted,
             "charts_rejected": self.charts_rejected,
+            "title_outcome": self.title_outcome,
         }
         if self.pattern is not None and state != TerminalState.REFUSED:
             record["pattern"] = self.pattern
@@ -588,6 +609,7 @@ class TurnTelemetry:
             "narratives.processing_retries": self.processing_retries,
             "narratives.charts_emitted": self.charts_emitted,
             "narratives.charts_rejected": self.charts_rejected,
+            "narratives.title_outcome": self.title_outcome,
             **{
                 f"narratives.tokens.{key}": value
                 for key, value in tokens.items()
@@ -611,6 +633,7 @@ __all__ = [
     "SERVICE_NAME",
     "ErrorType",
     "TerminalState",
+    "TitleOutcome",
     "TokenCallRecord",
     "TokenCounts",
     "TokenUsage",

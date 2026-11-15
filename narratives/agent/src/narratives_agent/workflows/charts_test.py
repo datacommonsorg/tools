@@ -777,6 +777,48 @@ def test_find_chart_entry_returns_the_table_a_chart_draws(
 
 
 @pytest.mark.parametrize(
+    ("scale", "expected"),
+    [(None, "t2"), (1_000.0, "t2"), (100.0, None)],
+    ids=["fitted_scale", "per_thousand", "percentage"],
+)
+def test_a_per_capita_percentage_draws_no_chart(
+    scale: float | None, expected: str | None
+) -> None:
+    # Test: Chartability of a per-capita table by its scale.
+    # Situation: `s1` divides people below the poverty line (`t2`) by
+    #   population (`t1`) per capita with no scale, a scale of 1,000, or a
+    #   scale of 100, which gives a percentage.
+    # Expectation: The fitted and per-thousand tables draw their numerator,
+    #   while the percentage draws nothing, because the chart components
+    #   divide by population without a scale and would show per-person
+    #   fractions beside the percentages.
+    population = _make_table("t1")
+    poor = _make_table("t2", "Count_Person_BelowPovertyLevel", name="Poor")
+    derived = derive_observation_table(
+        poor.table,
+        population.table,
+        operation="per_capita",
+        scale=scale,
+        step_id="s1",
+    )
+    assert derived.table is not None
+    step: dict[str, object] = {
+        "step_id": "s1",
+        "script": "compute_derived_metric",
+        "left": "t2",
+        "right": "t1",
+        "operation": "per_capita",
+    }
+    if scale is not None:
+        step["scale"] = scale
+    cache = _make_cache(population, poor, CachedTable("s1", derived.table))
+
+    entry = find_chart_entry("s1", _make_spec(**step), cache)
+
+    assert (entry.table_id if entry is not None else None) == expected
+
+
+@pytest.mark.parametrize(
     ("fields", "expected"),
     [
         ({"date": "2023"}, None),
