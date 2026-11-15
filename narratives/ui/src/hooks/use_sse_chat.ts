@@ -208,17 +208,19 @@ function mapRawChartItem(raw: RawChartItem): ChartItem {
  */
 export type RawAnswerBlock =
   | { type: 'text'; markdown: string }
-  | { type: 'chart'; chart: RawChartItem };
+  | { type: 'chart'; chart: RawChartItem; standalone?: boolean };
 
 /**
  * One block of an answer in the UI's domain shape, rendered in order. `index`
  * is the block's position in the turn, which the answer panel uses as its key.
  * The position is assigned on arrival, so a dropped malformed block cannot
- * produce duplicate or invalid React keys.
+ * produce duplicate or invalid React keys. A `standalone` chart was supplied
+ * by the server, such as a default chart appended after the answer, and is
+ * never shown beside the text before it.
  */
 export type AnswerBlock =
   | { index: number; type: 'text'; markdown: string }
-  | { index: number; type: 'chart'; chart: ChartItem };
+  | { index: number; type: 'chart'; chart: ChartItem; standalone?: boolean };
 
 /** Returns the charts a turn renders: the charts of its chart blocks, in order. */
 export function getTurnCharts(turn: ChatTurn): ChartItem[] {
@@ -357,6 +359,12 @@ export interface ChatTurn {
   text: string;
   /** The answer's text and chart blocks in emission order. */
   blocks: AnswerBlock[];
+  /**
+   * The answer's title, written by the agent to label the data the answer
+   * presents. Only an answer with data has one; it arrives before the first
+   * block.
+   */
+  title?: string;
   provenance: ProvenanceItem[];
   /** Holds self-contained follow-up questions emitted by the agent after the terminal event. */
   followUps?: string[];
@@ -382,8 +390,9 @@ export interface ChatTurn {
   truncated?: boolean;
   /**
    * Whether the agent found data for the answer, from `data_status.has_data`.
-   * Undefined until the agent reports it. When false, the suggested questions
-   * are labelled as alternatives rather than follow-ups.
+   * Undefined until the agent reports it. It selects the card header's label;
+   * when false, the answer offers no PDF export and the suggested questions
+   * are labeled as alternatives rather than follow-ups.
    */
   hasData?: boolean;
   /** Holds the key sent with the turn's request, which the agent signs into the turn. */
@@ -419,12 +428,16 @@ type TerminalState = 'complete' | 'error' | 'refused' | 'canceled';
  */
 interface ContentPayload {
   block?: RawAnswerBlock;
+  /** The answer's title, sent once before its first block. */
+  title?: string;
   tool_call?: ToolCallEvent;
   sources?: ProvenanceItem[];
   /**
    * Reports the completeness of the data behind the answer: `truncated`
-   * raises the truncation warning, and `has_data` false labels the
-   * suggestions as alternative questions.
+   * raises the truncation warning, and `has_data` selects the card header's
+   * label and, when false, removes PDF export and labels the suggestions as
+   * alternative questions. Together they select the header for a search that
+   * ended before finding data.
    */
   data_status?: { truncated?: boolean; has_data?: boolean };
 }
@@ -1089,6 +1102,7 @@ function applyBlock(turn: ChatTurn, raw: RawAnswerBlock): ChatTurn {
       index,
       type: 'chart',
       chart: mapRawChartItem(raw.chart),
+      ...(raw.standalone === true ? { standalone: true } : {}),
     };
     return { ...turn, blocks: [...blocks, block] };
   }
@@ -1112,6 +1126,9 @@ function applyContent(turn: ChatTurn, content: ContentPayload): ChatTurn {
   let next = turn;
   if (content.block && typeof content.block === 'object') {
     next = applyBlock(next, content.block);
+  }
+  if (typeof content.title === 'string' && content.title.trim()) {
+    next = { ...next, title: content.title.trim() };
   }
   if (content.tool_call) {
     next = { ...next, toolCalls: [...next.toolCalls, content.tool_call] };

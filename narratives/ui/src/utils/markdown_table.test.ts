@@ -20,6 +20,7 @@ import {
   citationsIn,
   isBoldOnlyParagraph,
   type MarkdownNode,
+  splitHeaderTail,
   textOf,
 } from '@/src/utils/markdown_table';
 
@@ -108,7 +109,90 @@ describe('citationsIn', () => {
   });
 });
 
+describe('splitHeaderTail', () => {
+  it('keeps a short unit and year with the marker after it', () => {
+    // Test: The ending of a column header that wraps.
+    // Situation: A header ending in "($, 2024) [1]".
+    // Expectation: The parenthetical and its marker form the unbroken
+    //   ending; the words before it may wrap.
+    expect(splitHeaderTail('Median household income ($, 2024) [1]')).toEqual([
+      'Median household income ',
+      '($, 2024) [1]',
+    ]);
+  });
+
+  it('keeps only the last word of a long parenthetical with the marker', () => {
+    // Test: A parenthetical too long to hold on one line.
+    // Situation: "(deaths per 100,000 live births, 2020)" before a marker.
+    // Expectation: Only its last word stays with the marker, so a narrow
+    //   column is not forced wider.
+    expect(
+      splitHeaderTail(
+        'Maternal mortality (deaths per 100,000 live births, 2020) [3]',
+      ),
+    ).toEqual([
+      'Maternal mortality (deaths per 100,000 live births, ',
+      '2020) [3]',
+    ]);
+  });
+
+  it('keeps the last word with a composite marker', () => {
+    // Test: A header without a parenthetical.
+    // Situation: "Population 2024 [1, 2]".
+    // Expectation: The last word and the composite marker stay together.
+    expect(splitHeaderTail('Population 2024 [1, 2]')).toEqual([
+      'Population ',
+      '2024 [1, 2]',
+    ]);
+  });
+
+  it('leaves a one-word header whole', () => {
+    // Test: Nothing to split.
+    // Situation: The header "Rank".
+    // Expectation: The whole text, with an empty ending.
+    expect(splitHeaderTail('Rank')).toEqual(['Rank', '']);
+  });
+});
+
 describe('analyzeMarkdownTable', () => {
+  it('finds a column headed "Rank" so it can be centered', () => {
+    // Test: Detection of a rank column.
+    // Situation: A ranking table headed `rank`, `State`, and a value column,
+    //   the rank header in lower case.
+    // Expectation: Only the first column is a rank column.
+    const table = el('table', [
+      el('thead', [
+        el('tr', [
+          cell('th', 'rank'),
+          cell('th', 'State'),
+          cell('th', 'Unemployment rate (%, 2024) [1]'),
+        ]),
+      ]),
+      el('tbody', [
+        el('tr', [cell('td', '1'), cell('td', 'Nevada'), cell('td', '5.6')]),
+        el('tr', [
+          cell('td', '2'),
+          cell('td', 'California'),
+          cell('td', '5.4'),
+        ]),
+      ]),
+    ]);
+    const { rankColumns } = analyzeMarkdownTable(table);
+    expect([...rankColumns]).toEqual([0]);
+  });
+
+  it('finds no rank column in a table without one', () => {
+    // Test: Tables without a rank column.
+    // Situation: A two-column time series.
+    // Expectation: No rank column.
+    const { rankColumns } = analyzeMarkdownTable(
+      seriesTable([
+        ['2023', '84.04'],
+        ['2022', '83.99'],
+      ]),
+    );
+    expect(rankColumns.size).toBe(0);
+  });
   it('sets a column of measurements right', () => {
     // Test: Alignment of a value column.
     // Situation: A two-column time series.

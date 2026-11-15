@@ -22,6 +22,12 @@
 export type ServerDebugTerminalState = 'complete' | 'refused' | 'error';
 export type ServerSourceSelection = 'chosen' | 'server_default' | 'derived';
 export type ServerSpecificationOrigin = 'model' | 'default';
+/**
+ * Whether the answer carried a title: emitted, omitted by the model on a turn
+ * that asked for one, or not requested because the turn had no data or never
+ * reached synthesis.
+ */
+export type ServerTitleOutcome = 'emitted' | 'omitted' | 'not_requested';
 
 export interface ServerDebugTokenCall {
   readonly phase: string;
@@ -156,6 +162,8 @@ export interface ServerDebugReport {
   readonly processingRetries: number;
   readonly chartsEmitted: number;
   readonly chartsRejected: number;
+  /** `null` when the server predates the field or sends an unknown value. */
+  readonly titleOutcome: ServerTitleOutcome | null;
   readonly tokens: ServerDebugTokenUsage;
   readonly tables: readonly ServerDebugTable[];
   readonly thoughts: readonly ServerDebugThought[];
@@ -455,6 +463,14 @@ export const parseServerDebugReport = (
   const specificationOrigin: ServerSpecificationOrigin | null =
     rawOrigin === 'model' || rawOrigin === 'default' ? rawOrigin : null;
 
+  const rawTitleOutcome = raw.title_outcome;
+  const titleOutcome: ServerTitleOutcome | null =
+    rawTitleOutcome === 'emitted' ||
+    rawTitleOutcome === 'omitted' ||
+    rawTitleOutcome === 'not_requested'
+      ? rawTitleOutcome
+      : null;
+
   return {
     turnId,
     terminalState: terminalStateRaw,
@@ -469,6 +485,7 @@ export const parseServerDebugReport = (
     processingRetries: readNumber(raw.processing_retries),
     chartsEmitted: readNumber(raw.charts_emitted),
     chartsRejected: readNumber(raw.charts_rejected),
+    titleOutcome,
     tokens,
     tables,
     thoughts,

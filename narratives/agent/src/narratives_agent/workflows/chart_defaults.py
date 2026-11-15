@@ -27,6 +27,7 @@ from dataclasses import dataclass
 from typing import TypeIs
 
 from narratives_agent.analytics.digest import (
+    PERCENT_SCALE,
     AnalysisDigest,
     ScriptResult,
 )
@@ -39,6 +40,7 @@ from narratives_agent.analytics.metrics import (
 )
 from narratives_agent.analytics.tables import (
     WINDOW_DATE_SEPARATOR,
+    ObservationTable,
     clean_display_name,
     is_window_reference_date,
 )
@@ -233,6 +235,40 @@ class _ParentSeries:
     place_dcid: str
 
 
+def _is_parent_above_cohort(
+    parent_table: ObservationTable,
+    cohort_table: ObservationTable,
+    parent_place: str,
+) -> bool:
+    """Returns whether the parent's value tops the cohort on every shared date.
+
+    For non-negative values, a parent's total or count is the sum of its
+    places' values, so it exceeds the largest of them on every date once two
+    places hold values above zero, while a parent's rate, share, per-person
+    value, or average lies within their range, assuming the cohort table
+    holds the parent's child places on the shared dates; otherwise a
+    benchmark may be dropped, never a total added. A total of values that can be
+    negative, such as net migration, is not detected. Returns False when the
+    two tables share no date, since nothing then shows the parent to be a
+    total.
+    """
+    parent_values = {
+        row.date: row.value
+        for row in parent_table.rows
+        if row.place_dcid == parent_place
+    }
+    cohort_maxima: dict[str, float] = {}
+    for row in cohort_table.rows:
+        if row.place_dcid != parent_place:
+            cohort_maxima[row.date] = max(
+                row.value, cohort_maxima.get(row.date, row.value)
+            )
+    shared_dates = parent_values.keys() & cohort_maxima.keys()
+    return bool(shared_dates) and all(
+        parent_values[date] > cohort_maxima[date] for date in shared_dates
+    )
+
+
 def _find_parent_series(
     analysis: AnalysisSpecification,
     ranked_table_ids: Sequence[str],
@@ -243,7 +279,10 @@ def _find_parent_series(
     The ranked table must be one fetched cohort table. The parent series is
     another fetched table of the same variable that a step references and
     that has data for the cohort's parent place. A per-capita ranking gets
-    none, because a raw parent series cannot share its axis.
+    none, because a raw parent series cannot share its axis. A parent whose
+    value exceeds every cohort place's value on each shared date is a total
+    or count, which would flatten the places' lines, so it gets none either,
+    as "Charts" in `contracts/synthesis.md` asks.
     """
     if len(ranked_table_ids) != 1:
         return None
@@ -262,6 +301,9 @@ def _find_parent_series(
             and candidate.table.variable_dcid == entry.table.variable_dcid
             and cohort.parent_place in candidate.table.places_with_data
             and _is_chartable_table_id(analysis, table_id, tables)
+            and not _is_parent_above_cohort(
+                candidate.table, entry.table, cohort.parent_place
+            )
         ):
             return _ParentSeries(table_id, cohort.parent_place)
     return None
@@ -658,6 +700,25 @@ def _order_default_candidates(
     return sorted(results, key=_rank_default_candidate)
 
 
+def _list_percentage_numerators(
+    analysis: AnalysisSpecification,
+) -> frozenset[str]:
+    """Returns the tables a per-capita step divides into a percentage.
+
+    A per-capita table given as a percentage is not charted
+    (`find_chart_entry`), and "Charts" in `contracts/synthesis.md` keeps a
+    table it is derived from out of the chart in its place, so the floor
+    does not chart its numerator, the raw count, either.
+    """
+    return frozenset(
+        step.left
+        for step in analysis.steps
+        if isinstance(step, ComputeDerivedMetricStep)
+        and step.operation == "per_capita"
+        and step.scale == PERCENT_SCALE
+    )
+
+
 def _resolve_candidate_charts(
     candidate: ScriptResult, context: _FloorContext
 ) -> tuple[ResolvedChart, ...]:
@@ -671,7 +732,9 @@ def _resolve_candidate_charts(
     if step is None:
         return ()
     table_ids = _collect_chart_table_ids(analysis, step, context.cache)
-    if not table_ids:
+    if not table_ids or not _list_percentage_numerators(analysis).isdisjoint(
+        table_ids
+    ):
         return ()
     title = _build_default_title(candidate, table_ids, context)
     if not title:

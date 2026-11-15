@@ -139,7 +139,8 @@ class BlockContentFrame:
 
         Returns:
             A JSON object with `block` (`index`, `type`, and either `markdown`
-            or `chart`).
+            or `chart`), plus `standalone: true` on a chart the server
+            supplied.
         """
         if isinstance(self.block, TextBlock):
             return {
@@ -149,13 +150,36 @@ class BlockContentFrame:
                     "markdown": self.block.markdown,
                 }
             }
-        return {
-            "block": {
-                "index": self.block.index,
-                "type": "chart",
-                "chart": serialize_resolved_chart(self.block.chart),
-            }
+        block: JsonObject = {
+            "index": self.block.index,
+            "type": "chart",
+            "chart": serialize_resolved_chart(self.block.chart),
         }
+        if self.block.standalone:
+            block["standalone"] = True
+        return {"block": block}
+
+
+@dataclass(frozen=True, kw_only=True)
+class TitleFrame:
+    """Carries the answer's title, sent before its first block.
+
+    Only a turn with data has a title; see `workflows/title.py`.
+
+    Attributes:
+        title: The cleaned title the synthesis model wrote.
+    """
+
+    event: ClassVar[EventName] = "content"
+    title: str
+
+    def payload(self) -> JsonObject:
+        """Returns the `data` payload of the frame.
+
+        Returns:
+            A JSON object with `title`.
+        """
+        return {"title": self.title}
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -389,6 +413,7 @@ type SseFrame = (
     StatusFrame
     | ThoughtFrame
     | BlockContentFrame
+    | TitleFrame
     | ToolCallFrame
     | DataStatusFrame
     | SourcesFrame
@@ -414,6 +439,7 @@ __all__ = [
     "TerminalRefusedFrame",
     "ThoughtFrame",
     "ThoughtPhase",
+    "TitleFrame",
     "ToolCallFrame",
     "serialize_source",
 ]
