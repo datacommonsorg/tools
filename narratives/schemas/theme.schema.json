@@ -249,6 +249,10 @@
           "$ref": "#/$defs/hexColor",
           "description": "Tile behind a rendered narrative — response card and its skeleton (--theme-surface-narrative → --color-surface-narrative)."
         },
+        "surface_chip": {
+          "$ref": "#/$defs/hexColor",
+          "description": "Landing-view suggestion chips (--theme-surface-chip → --color-surface-chip)."
+        },
         "code_surface": {
           "$ref": "#/$defs/hexColor",
           "description": "Inline-code chip in the reasoning aside (--theme-code-surface → --color-code-surface)."

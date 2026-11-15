@@ -18,6 +18,7 @@
  * @fileoverview Tests for getInstanceConfig and sanitizeUrl.
  */
 
+import { readFileSync } from 'node:fs';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   DEFAULT_INSTANCE_CONFIG,
@@ -343,5 +344,18 @@ describe('sanitizeUrl', () => {
     const warn = spyOnWarn();
     expect(sanitizeUrl(value, '/fallback.svg')).toBe('/fallback.svg');
     expect(warn).not.toHaveBeenCalled();
+  });
+});
+
+describe('DEFAULT_INSTANCE_CONFIG drift', () => {
+  it.each([
+    '../defaults/theme.json',
+    '../schemas/theme.base-dc.example.json',
+  ])('suggestions match %s', (path) => {
+    // Test: Default suggestions stay in sync with the shipped theme JSON.
+    // Situation: The suggestions are duplicated in `instance_config.ts` and `path`.
+    // Expectation: Both lists are identical.
+    const theme = JSON.parse(readFileSync(path, 'utf8'));
+    expect(DEFAULT_INSTANCE_CONFIG.suggestions).toEqual(theme.suggestions);
   });
 });

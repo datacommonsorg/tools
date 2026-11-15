@@ -30,7 +30,7 @@ const CHIP_CLASSES = [
   // Layout & dimensions
   'flex w-full min-h-18 items-center justify-center px-4 py-3 sm:w-62.5 sm:justify-start',
   // Borders & background
-  'rounded-chip border border-border bg-surface-narrative',
+  'rounded-chip border border-border bg-surface-chip',
   // Typography & text alignment
   'text-left text-body-medium text-on-surface',
   // Shadow states
