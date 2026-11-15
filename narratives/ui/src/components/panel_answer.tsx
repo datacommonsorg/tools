@@ -40,6 +40,7 @@ import { ChartTile } from '@/src/components/tile_chart';
 import { Toast } from '@/src/components/toast';
 import { Tooltip } from '@/src/components/tooltip';
 import { formatAnswerHeader } from '@/src/config/copy_chat';
+import { IS_PDF_EXPORT_ENABLED } from '@/src/config/features';
 import { REDUCED_MOTION_QUERY } from '@/src/config/motion';
 import { useDebugMode } from '@/src/hooks/use_debug_mode';
 import {
@@ -59,7 +60,8 @@ import {
  *   • Outer: 1px border (--color-border), 16px radius
  *   • Toolbar header (16/16/0/0 radius, #F9F9F9 fill, padding 12 12 12 20):
  *       left  = data label (`formatAnswerHeader`): Title S, 14/20 Medium
- *       right = "Export PDF" outline pill (#F0F4F9 fill)
+ *       right = "Export PDF" outline pill (#F0F4F9 fill), hidden while
+ *               `IS_PDF_EXPORT_ENABLED` is false
  *   • Content body (#FFFFFF) hosts the existing sections.
  */
 
@@ -228,6 +230,13 @@ export function AnswerPanel({
     [citationNumbers, turnIndex],
   );
 
+  const isExportVisible =
+    IS_PDF_EXPORT_ENABLED &&
+    shouldOfferExport &&
+    turn.status === 'done' &&
+    isRevealed &&
+    areChartsSettled;
+
   const onExport = async () => {
     if (exporting) return;
     setExporting(true);
@@ -265,12 +274,9 @@ export function AnswerPanel({
             (isDebugEnabled || turn.serverReport !== undefined) && (
               <DebugPanel turn={turn} />
             )}
-          {shouldOfferExport &&
-            turn.status === 'done' &&
-            isRevealed &&
-            areChartsSettled && (
-              <ToolbarExportPdfPill onExport={onExport} busy={exporting} />
-            )}
+          {isExportVisible && (
+            <ToolbarExportPdfPill onExport={onExport} busy={exporting} />
+          )}
         </CardHeader>
 
         {/* Intro block: the agent's title for the answer, a short label for
@@ -334,12 +340,9 @@ export function AnswerPanel({
           {(hasCharts || hasCitations) && <DisclaimerNote />}
 
           {/* 5. Export PDF (filled, in-content) */}
-          {shouldOfferExport &&
-            turn.status === 'done' &&
-            isRevealed &&
-            areChartsSettled && (
-              <ExportPdfButton onExport={onExport} busy={exporting} />
-            )}
+          {isExportVisible && (
+            <ExportPdfButton onExport={onExport} busy={exporting} />
+          )}
         </div>
         {exportedAt !== null && (
           <Toast
