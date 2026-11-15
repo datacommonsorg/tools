@@ -67,13 +67,13 @@ describe('Header', () => {
   it('renders no navigation landmark for the built-in configuration', () => {
     // Test: Default Base Data Commons header.
     // Situation: The instance-config element is absent, so `navigation` is empty
-    //            and the wordmark is "Data Commons".
+    //            and the wordmark is "Data Commons by Google".
     // Expectation: No navigation landmark is rendered, the menu button and wordmark
     //              are rendered, and the logo image has an empty `alt` attribute.
     const { container } = renderHeader();
     expect(screen.queryByRole('navigation')).toBeNull();
     expect(screen.getByRole('button', { name: 'Open menu' })).toBeTruthy();
-    expect(screen.getByText('Data Commons')).toBeTruthy();
+    expect(screen.getByText('Data Commons by Google')).toBeTruthy();
     expect(getLogoAlt(container)).toBe('');
   });
 
@@ -123,7 +123,9 @@ describe('Header', () => {
     vi.stubGlobal('location', new URL(`https://datacommons.org${pathname}`));
     writeSlot(themeDocument);
     renderHeader();
-    const logoLink = screen.getByRole('link', { name: 'Data Commons' });
+    const logoLink = screen.getByRole('link', {
+      name: 'Data Commons by Google',
+    });
     expect(logoLink.getAttribute('href')).toBe(expectedHref);
     expect(logoLink.getAttribute('target')).toBe('_self');
   });
@@ -139,7 +141,7 @@ describe('Header', () => {
     vi.stubGlobal('location', new URL('https://datacommons.org/'));
     writeSlot(themeDocument);
     renderHeader();
-    expect(screen.getByText('Data Commons').closest('a')).toBeNull();
+    expect(screen.getByText('Data Commons by Google').closest('a')).toBeNull();
   });
 
   it('hides the wordmark when the theme document omits logo_text', () => {
@@ -178,7 +180,7 @@ describe('Header', () => {
     writeChatDisabledSlot();
     const { container } = renderHeader();
     expect(container.querySelector('img')).not.toBeNull();
-    expect(screen.getByText('Data Commons')).toBeTruthy();
+    expect(screen.getByText('Data Commons by Google')).toBeTruthy();
     expect(screen.queryByRole('button', { name: 'Open menu' })).toBeNull();
   });
 
