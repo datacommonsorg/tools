@@ -149,9 +149,9 @@ interface DebugPanelProps {
  *
  * `TurnView` wraps `AnswerPanel` in `motion-safe:animate-stream-in`
  * (`animation-fill-mode: both` on `opacity`), creating a permanent stacking
- * context that traps fixed descendants beneath the sticky header and prompt
- * bar (`z-[5]`). Rendering the scrim and dialog through `createPortal` into
- * `document.body` escapes that stacking context.
+ * context that traps fixed descendants beneath the sticky header (`z-5`) and
+ * prompt bar (`z-[5]`). Rendering the scrim and dialog through `createPortal`
+ * into `document.body` escapes that stacking context.
  */
 export const DebugPanel = ({ turn }: DebugPanelProps) => {
   const [isOpen, setIsOpen] = useState(false);

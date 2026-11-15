@@ -62,7 +62,7 @@ export function App() {
       <div className="flex h-dvh w-full bg-surface relative">
         <Sidebar />
         <MenuDrawer />
-        <main className="flex-1 flex flex-col relative min-w-0 overflow-y-auto overscroll-none">
+        <main className="flex-1 flex flex-col relative min-w-0 overflow-y-auto overscroll-none lg:pl-rail">
           <Header />
           {renderContent(view, isChatEnabled)}
         </main>
