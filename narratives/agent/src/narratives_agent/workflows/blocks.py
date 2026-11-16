@@ -57,7 +57,7 @@ _FENCE_LINE = re.compile(
 _STATS_LINE_START = re.compile(r"\s*(?:[-*+]\s|\d+[.)]\s|\|)")
 # Matches a lead-in line: one line, not a heading, quote, list item, or table
 # row, that ends with a colon, optionally inside bold or italics. The UI's
-# `LEAD_IN_LINE` in `panel_answer.tsx` matches the same lines.
+# `LEAD_IN_LINE` in `heading_section.tsx` matches the same lines.
 _LEAD_IN_LINE = re.compile(r"(?![#>|]|[-*+]\s|\d+[.)]\s).*:[*_]*")
 
 

@@ -548,6 +548,33 @@ def test_synthesis_contract_gives_related_measures_their_own_charts() -> None:
     assert "Skilled birth attendance:\n\n- **Latest:**" in example
 
 
+def test_synthesis_contract_writes_lead_in_lines_as_labels() -> None:
+    # Test: Lead-in lines read as the headings the app shows them as.
+    # Situation: The synthesis contract the model receives.
+    # Expectation: The contract says the app shows a lead-in line as a
+    #   heading and asks for a short label rather than a sentence, leaving
+    #   the line under the Data gaps label as written; no rule
+    #   still asks for a lead-in sentence; and the groups that share one
+    #   chart are introduced by such a lead-in line rather than by a short
+    #   sentence.
+    flattened = " ".join(load_prompt_contract("synthesis").split())
+
+    assert (
+        "The app shows a lead-in line, a paragraph of one line ending with a "
+        "colon, as the heading of the list or table and chart under it."
+    ) in flattened
+    assert (
+        "The line under `**Data gaps**` is part of that paragraph, not a "
+        "lead-in line, and keeps its wording."
+    ) in flattened
+    assert '("Population by sex:", "Skilled birth attendance:")' in flattened
+    assert "lead-in sentence" not in flattened
+    assert "introduce them with a lead-in line that names the breakdown" in (
+        flattened
+    )
+    assert "introduce them in one short sentence" not in flattened
+
+
 def test_prompts_carry_no_conflicting_instructions() -> None:
     # Test: The contradictions found in the prompt review stay resolved.
     # Situation: The synthesis contract and the pattern directives.
