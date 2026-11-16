@@ -50,9 +50,9 @@ def _get_safe_url(value: JsonValue) -> str:
     """Returns the trimmed `value` if it is a safe absolute http(s) URL, or "".
 
     A URL is safe when it parses to an `http` or `https` scheme with a
-    non-empty host and contains no backslash or ASCII control character.
-    These are the same rules that `classifyLinkHref` in the UI's `link.tsx`
-    applies.
+    non-empty host, has either no port or a port from 0 to 65535, and
+    contains no backslash or ASCII control character. These are the same
+    rules that `classifyLinkHref` in the UI's `link.tsx` applies.
     """
     if not isinstance(value, str):
         return ""
@@ -66,6 +66,10 @@ def _get_safe_url(value: JsonValue) -> str:
         return ""
     try:
         parts = urlsplit(url)
+        # Accessing `port` raises a `ValueError` when the port is not an
+        # integer from 0 to 65535. The UI's `new URL()` rejects such a URL
+        # as well.
+        parts.port  # noqa: B018
     except ValueError:
         return ""
     if parts.scheme.lower() not in _SAFE_URL_SCHEMES or not parts.hostname:

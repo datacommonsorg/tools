@@ -90,6 +90,8 @@ _UNSAFE_PROVENANCE_URLS = [
     pytest.param("https://", id="empty-host"),
     pytest.param("https://@", id="empty-host-with-userinfo"),
     pytest.param("https://:80", id="empty-host-with-port"),
+    pytest.param("https://www.bls.gov:lau/", id="non-numeric-port"),
+    pytest.param("https://www.bls.gov:99999/", id="out-of-range-port"),
 ]
 
 
@@ -99,8 +101,8 @@ def test_observation_metadata_with_unsafe_url_has_no_source(
 ) -> None:
     # Test: Scheme and form check on an inline `provenanceUrl`.
     # Situation: `sourceMetadata` names an import and carries a `provenanceUrl`
-    #   that is not an absolute http(s) URL with a host, or that holds a
-    #   backslash or an ASCII control character.
+    #   that is not an absolute http(s) URL with a host and a valid port, or
+    #   that holds a backslash or an ASCII control character.
     # Expectation: `get_source_from_observation_metadata` returns `None`.
     metadata: JsonObject = {
         "provenanceUrl": unsafe_url,
@@ -135,6 +137,15 @@ def test_uppercase_https_scheme_is_accepted() -> None:
     )
     assert facet is not None and facet.provenance is not None
     assert facet.provenance.url == url
+
+
+def test_url_with_valid_port_is_accepted() -> None:
+    # Test: Port check on a provenance URL.
+    # Situation: Inline metadata carries an https URL with port 8443.
+    # Expectation: The inline `Source` keeps the URL unchanged.
+    url = "https://www.bls.gov:8443/lau"
+    source = get_source_from_observation_metadata({"provenanceUrl": url})
+    assert source is not None and source.url == url
 
 
 def test_unsafe_url_falls_through_to_safe_description_url() -> None:
