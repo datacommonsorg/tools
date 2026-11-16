@@ -43,7 +43,7 @@ const LIST_SURFACE_CLASS =
  */
 const ROW_CLASS = [
   'answer-pair grid grid-cols-1 items-start gap-x-5 gap-y-2',
-  '[&_:is(ul,ol)]:pl-4 [&_:is(ul,ol)]:last-of-type:mb-0 [&_li]:pb-1 [&_li]:leading-6',
+  '[&_:is(ul,ol)]:list-none [&_:is(ul,ol)]:pl-0 [&_:is(ul,ol)]:last-of-type:mb-0 [&_li]:pb-1.5 [&_li]:leading-6',
   '@min-[41.5rem]:has-[>.dc-charts-container]:grid-cols-2',
 ].join(' ');
 
