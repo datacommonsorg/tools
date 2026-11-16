@@ -22,11 +22,18 @@ import { type ReactNode, useId } from 'react';
 import { SectionHeading } from '@/src/components/heading_section';
 
 /**
- * Classes of the section's own surface. The section is a size container, so
- * the row's breakpoint measures the width inside its padding.
+ * Classes of every section. The section is a size container, so the row's
+ * breakpoint measures its content box: inside the list surface's padding,
+ * and the full width for a table.
  */
-const SECTION_CLASS =
-  '@container answer-section flex flex-col gap-4 px-5 py-4 rounded-card bg-surface-section border border-border';
+const SECTION_CLASS = '@container answer-section flex flex-col gap-4';
+
+/**
+ * Surface of a list section. A table section has none: the table carries its
+ * own bordered card.
+ */
+const LIST_SURFACE_CLASS =
+  'rounded-card bg-surface-section border border-border px-5 py-4';
 
 /**
  * Classes of the stats and chart row. It stacks by default and splits into
@@ -41,20 +48,27 @@ const ROW_CLASS = [
 ].join(' ');
 
 /**
- * Extra class of a row whose stats are bullets: side by side, the bullets sit
- * 4px below the chart card's top edge, so the text does not touch the line.
- * A table keeps its own card edge level with the chart's.
+ * Extra class of a row whose stats are bullets: side by side, the stats
+ * column, with its heading when it has one, sits 4px below the chart card's
+ * top edge, so the text does not touch the line. A table keeps its own card
+ * edge level with the chart's.
  */
 const ROW_TOP_SPACE_CLASS =
-  '@min-[41.5rem]:has-[>.dc-charts-container]:[&>.markdown-body]:pt-1';
+  '@min-[41.5rem]:has-[>.dc-charts-container]:[&>:first-child]:pt-1';
+
+/** Classes of a list's stats column when its heading opens it. */
+const STATS_COLUMN_CLASS = 'flex flex-col gap-6 min-w-0';
 
 /**
- * Marker class of each section variant, by what sits beside the chart and
- * whether a lead-in heading opens it, so each variant can be styled on its
- * own.
+ * Classes of each section variant, by what sits beside the chart and whether
+ * a lead-in heading opens it: a marker class, so each variant can be styled
+ * on its own, plus the list surface for list sections.
  */
 const VARIANT_CLASS = {
-  list: { plain: 'answer-section-list', leadIn: 'answer-section-lead-in-list' },
+  list: {
+    plain: `answer-section-list ${LIST_SURFACE_CLASS}`,
+    leadIn: `answer-section-lead-in-list ${LIST_SURFACE_CLASS}`,
+  },
   table: {
     plain: 'answer-section-table',
     leadIn: 'answer-section-lead-in-table',
@@ -73,14 +87,15 @@ interface AnswerSectionProps {
 }
 
 /**
- * One section of an answer: its heading, when the model wrote a lead-in line,
- * across the full width, then the stats on the left and their chart on the
- * right, both from the top. The stats come first in the document too, so a
- * narrow answer stacks them above the chart and screen readers follow the
- * visual order. Two columns need two charts' minimum width of 320px plus the
- * 20px gap, so the row splits once the section's content box is 41.5rem
- * (664px) wide; when the chart drew nothing and the tile is gone, the stats take the
- * full width.
+ * One section of an answer: the stats on the left and their chart on the
+ * right, both from the top, under the heading when the model wrote a lead-in
+ * line. A list's heading opens its stats column; a table's spans the full
+ * width above the row, so the table's card stays level with the chart's. The
+ * stats come first in the document too, so a narrow answer stacks them above
+ * the chart and screen readers follow the visual order. Two columns need two
+ * charts' minimum width of 320px plus the 20px gap, so the row splits once
+ * the section's content box is 41.5rem (664px) wide; when the chart drew
+ * nothing and the tile is gone, the stats take the full width.
  */
 export function AnswerSection({
   leadIn,
@@ -93,18 +108,28 @@ export function AnswerSection({
     VARIANT_CLASS[isTable ? 'table' : 'list'][
       leadIn === undefined ? 'plain' : 'leadIn'
     ];
+  const heading =
+    leadIn === undefined ? null : (
+      <SectionHeading id={headingId} markdown={leadIn} />
+    );
+  const isHeadingInColumn = heading !== null && !isTable;
   return (
     <section
       className={`${SECTION_CLASS} ${variantClass}`}
-      aria-labelledby={leadIn === undefined ? undefined : headingId}
+      aria-labelledby={heading === null ? undefined : headingId}
     >
-      {leadIn !== undefined && (
-        <SectionHeading id={headingId} markdown={leadIn} />
-      )}
+      {!isHeadingInColumn && heading}
       <div
         className={isTable ? ROW_CLASS : `${ROW_CLASS} ${ROW_TOP_SPACE_CLASS}`}
       >
-        {stats}
+        {isHeadingInColumn ? (
+          <div className={STATS_COLUMN_CLASS}>
+            {heading}
+            {stats}
+          </div>
+        ) : (
+          stats
+        )}
         {chart}
       </div>
     </section>

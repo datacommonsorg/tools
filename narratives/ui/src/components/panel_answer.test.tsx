@@ -830,7 +830,7 @@ describe('AnswerPanel', () => {
       // With no lead-in line, the section has no heading.
       expect(container.querySelector('.answer-heading')).toBeNull();
       // Only bullet stats, not a table, sit lower than the chart's top edge.
-      expect(pairs[0].className.includes('[&>.markdown-body]:pt-1')).toBe(
+      expect(pairs[0].className.includes('[&>:first-child]:pt-1')).toBe(
         markdown === BULLETS,
       );
     });
@@ -843,10 +843,11 @@ describe('AnswerPanel', () => {
       // Situation: A headline paragraph, a one-line lead-in ending with a
       //   colon, then a bullet list or a table directly followed by its
       //   chart.
-      // Expectation: One section renders on the section surface, labeled by
-      //   an h2 that holds the lead-in without its colon, above the paired
-      //   row, whose children are the stats and the chart; the headline
-      //   stays outside it.
+      // Expectation: One section renders, on the section surface for a
+      //   bullet list and with no surface for a table, labeled by an h2
+      //   that holds the lead-in without its colon: at the top of a list's
+      //   stats column, or above a table's row. The row's children are the
+      //   stats and the chart; the headline stays outside the section.
       const container = renderBlocks([
         { index: 0, type: 'text', markdown: 'Life expectancy reached 84.' },
         { index: 1, type: 'text', markdown: '**Population by sex:**' },
@@ -856,21 +857,29 @@ describe('AnswerPanel', () => {
 
       const sections = container.querySelectorAll('section.answer-section');
       expect(sections).toHaveLength(1);
-      expect(sections[0].className).toContain('bg-surface-section');
+      expect(sections[0].className.includes('bg-surface-section')).toBe(
+        markdown === BULLETS,
+      );
       // The section is the size container the row's breakpoint measures,
-      // so its padding counts against the two columns' minimum width.
+      // so a list surface's padding counts against the two columns'
+      // minimum width.
       expect(sections[0].className).toContain('@container');
       const heading = sections[0].querySelector('h2');
       expect(heading?.textContent).toBe('Population by sex');
       expect(sections[0].getAttribute('aria-labelledby')).toBe(heading?.id);
-      // The heading opens the section, above the stats and chart row.
-      expect(sections[0].firstElementChild).toBe(heading);
+      // A list's heading opens its stats column, beside the chart; a
+      // table's spans the section above the row.
       const row = sections[0].querySelector('.answer-pair');
-      expect(
-        Array.from(row?.children ?? []).map((child) =>
-          child.classList.contains('markdown-body') ? 'text' : 'chart',
-        ),
-      ).toEqual(['text', 'chart']);
+      const [stats, chart] = Array.from(row?.children ?? []);
+      expect(row?.children).toHaveLength(2);
+      expect(chart.classList).toContain('dc-charts-container');
+      if (markdown === BULLETS) {
+        expect(stats.firstElementChild).toBe(heading);
+        expect(stats.lastElementChild?.classList).toContain('markdown-body');
+      } else {
+        expect(sections[0].firstElementChild).toBe(heading);
+        expect(stats.classList).toContain('markdown-body');
+      }
       expect(sections[0].textContent).not.toContain(
         'Life expectancy reached 84.',
       );
