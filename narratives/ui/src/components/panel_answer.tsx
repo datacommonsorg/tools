@@ -122,6 +122,19 @@ function getInitialPhase(
  */
 export const ANSWER_SETTLE_MAX_MS = 2000;
 
+/**
+ * Fade of the answer body's children other than text, chart tiles, section
+ * headings, and sections, which hold their place while the text reveals.
+ * Written out in full, here and in {@link HIDE_NON_TEXT_CLASS}, so Tailwind
+ * finds the classes.
+ */
+const REVEAL_TRANSITION_CLASS =
+  'motion-safe:[&>:not(.markdown-body,.dc-charts-container,.answer-heading,.answer-section)]:transition-opacity motion-safe:[&>:not(.markdown-body,.dc-charts-container,.answer-heading,.answer-section)]:duration-300';
+
+/** Hides the children {@link REVEAL_TRANSITION_CLASS} fades, until revealed. */
+export const HIDE_NON_TEXT_CLASS =
+  'motion-safe:[&>:not(.markdown-body,.dc-charts-container,.answer-heading,.answer-section)]:opacity-0';
+
 /** The full answer card: toolbar with export action, markdown body, charts, sources, and follow-ups. */
 export function AnswerPanel({
   turn,
@@ -294,7 +307,7 @@ export function AnswerPanel({
             className="px-4 pt-4 sm:px-6 sm:pt-6 bg-surface-narrative"
             data-non-print="true"
           >
-            <h1 className="text-title-large-emphasized text-on-surface wrap-break-word m-0 p-0">
+            <h1 className="text-title-large-emphasized text-on-surface wrap-break-word">
               {turn.title}
             </h1>
           </div>
@@ -305,10 +318,8 @@ export function AnswerPanel({
           section headings, and sections, which hold their space so no gap
           shows. */}
         <div
-          className={`@container flex flex-col gap-4 px-4 sm:px-6 pt-3 pb-6 bg-surface-narrative motion-safe:[&>:not(.markdown-body,.dc-charts-container,.answer-heading,.answer-section)]:transition-opacity motion-safe:[&>:not(.markdown-body,.dc-charts-container,.answer-heading,.answer-section)]:duration-300${
-            isRevealed
-              ? ''
-              : ' motion-safe:[&>:not(.markdown-body,.dc-charts-container,.answer-heading,.answer-section)]:opacity-0'
+          className={`@container flex flex-col gap-4 px-4 sm:px-6 pt-3 pb-6 bg-surface-narrative ${REVEAL_TRANSITION_CLASS}${
+            isRevealed ? '' : ` ${HIDE_NON_TEXT_CLASS}`
           }`}
         >
           {/* 1. The answer: text and chart blocks in emission order. */}

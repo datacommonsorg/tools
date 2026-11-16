@@ -59,22 +59,6 @@ const ROW_TOP_SPACE_CLASS =
 /** Classes of a list's stats column when its heading opens it. */
 const STATS_COLUMN_CLASS = 'flex flex-col gap-6 min-w-0';
 
-/**
- * Classes of each section variant, by what sits beside the chart and whether
- * a lead-in heading opens it: a marker class, so each variant can be styled
- * on its own, plus the list surface for list sections.
- */
-const VARIANT_CLASS = {
-  list: {
-    plain: `answer-section-list ${LIST_SURFACE_CLASS}`,
-    leadIn: `answer-section-lead-in-list ${LIST_SURFACE_CLASS}`,
-  },
-  table: {
-    plain: 'answer-section-table',
-    leadIn: 'answer-section-lead-in-table',
-  },
-} as const;
-
 interface AnswerSectionProps {
   /** The lead-in line that heads the section, as the model wrote it. */
   leadIn?: string;
@@ -104,10 +88,6 @@ export function AnswerSection({
   chart,
 }: AnswerSectionProps) {
   const headingId = useId();
-  const variantClass =
-    VARIANT_CLASS[isTable ? 'table' : 'list'][
-      leadIn === undefined ? 'plain' : 'leadIn'
-    ];
   const heading =
     leadIn === undefined ? null : (
       <SectionHeading id={headingId} markdown={leadIn} />
@@ -115,7 +95,9 @@ export function AnswerSection({
   const isHeadingInColumn = heading !== null && !isTable;
   return (
     <section
-      className={`${SECTION_CLASS} ${variantClass}`}
+      className={
+        isTable ? SECTION_CLASS : `${SECTION_CLASS} ${LIST_SURFACE_CLASS}`
+      }
       aria-labelledby={heading === null ? undefined : headingId}
     >
       {!isHeadingInColumn && heading}

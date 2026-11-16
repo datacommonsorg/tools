@@ -31,6 +31,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   ANSWER_SETTLE_MAX_MS,
   AnswerPanel,
+  HIDE_NON_TEXT_CLASS,
 } from '@/src/components/panel_answer';
 import { DEBUG_PANEL_COPY } from '@/src/components/panel_debug/copy_debug';
 import { EXIT_MS, VISIBLE_MS } from '@/src/components/toast';
@@ -84,13 +85,6 @@ interface ChartAnswerBlockInput {
 
 /** How often the chart settle poll reads the component, in milliseconds. */
 const CHART_POLL_MS = 300;
-
-/**
- * Class that hides the body's non-text children, other than chart tiles,
- * section headings, and sections, while the text reveals.
- */
-const HIDE_NON_TEXT_CLASS =
-  'motion-safe:[&>:not(.markdown-body,.dc-charts-container,.answer-heading,.answer-section)]:opacity-0';
 
 /** Builds a finished turn whose answer arrived as the given blocks. */
 const buildTurnWithBlocks = (
