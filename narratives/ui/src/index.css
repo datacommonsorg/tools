@@ -284,7 +284,7 @@
 
   --static-section-heading-font: var(--font-display, 'Google Sans');
   --static-section-heading-size: 18px;
-  --static-section-heading-line-height: 24px;
+  --static-section-heading-line-height: 22px;
 
   --static-wordmark-font: var(--font-display, 'Google Sans');
   --static-wordmark-size: 16px;
@@ -297,6 +297,10 @@
   --static-body-medium-font: var(--font-sans, 'Google Sans Text');
   --static-body-medium-size: 14px;
   --static-body-medium-line-height: 20px;
+
+  --static-body-regular-font: var(--font-sans, 'Google Sans Text');
+  --static-body-regular-size: 14px;
+  --static-body-regular-line-height: 21px;
 
   --static-label-large-font: var(--font-sans, 'Google Sans Text');
   --static-label-large-size: 14px;
@@ -475,7 +479,7 @@ select:not(:disabled) {
   font-size: var(--static-section-heading-size, 18px);
   font-style: normal;
   font-weight: 500;
-  line-height: var(--static-section-heading-line-height, 24px);
+  line-height: var(--static-section-heading-line-height, 22px);
   letter-spacing: 0;
 }
 
@@ -522,6 +526,24 @@ select:not(:disabled) {
   font-style: normal;
   font-weight: 500;
   line-height: var(--static-body-medium-line-height, 20px);
+  letter-spacing: 0;
+}
+
+.text-body-regular {
+  font-family: var(--static-body-regular-font, 'Google Sans Text');
+  font-size: var(--static-body-regular-size, 14px);
+  font-style: normal;
+  font-weight: 400;
+  line-height: var(--static-body-regular-line-height, 21px);
+  letter-spacing: 0;
+}
+
+.text-body-regular-emphasized {
+  font-family: var(--static-body-regular-font, 'Google Sans Text');
+  font-size: var(--static-body-regular-size, 14px);
+  font-style: normal;
+  font-weight: 500;
+  line-height: var(--static-body-regular-line-height, 21px);
   letter-spacing: 0;
 }
 
