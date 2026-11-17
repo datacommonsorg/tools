@@ -27,23 +27,32 @@ import { Link } from '@/src/components/link';
 export const COMPOSER_DISCLAIMER_TEXT =
   'This site is protected by reCAPTCHA. Data overviews are synthesized by Gemini. Gemini is AI and can make mistakes; please verify content against primary source data.';
 
+/** Google policies linked from the composer note. */
+export const POLICY_LINKS = {
+  privacy: {
+    label: 'Privacy Policy',
+    href: 'https://policies.google.com/privacy',
+  },
+  terms: {
+    label: 'Terms of Service',
+    href: 'https://policies.google.com/terms',
+  },
+} as const;
+
+/** Link styling; always underlined so links do not rely on color alone. */
+const POLICY_LINK_CLASS = 'text-theme-primary underline hover:no-underline';
+
 /** Disclaimer and Google policy links shown under the follow-up prompt box. */
 export function ComposerNote() {
   return (
     <div className="text-center text-caption text-muted max-w-prompt px-2">
       <span>{COMPOSER_DISCLAIMER_TEXT}</span> Google{' '}
-      <Link
-        href="https://policies.google.com/privacy"
-        className="text-theme-primary hover:underline"
-      >
-        Privacy Policy
+      <Link href={POLICY_LINKS.privacy.href} className={POLICY_LINK_CLASS}>
+        {POLICY_LINKS.privacy.label}
       </Link>{' '}
       and{' '}
-      <Link
-        href="https://policies.google.com/terms"
-        className="text-theme-primary hover:underline"
-      >
-        Terms of Service
+      <Link href={POLICY_LINKS.terms.href} className={POLICY_LINK_CLASS}>
+        {POLICY_LINKS.terms.label}
       </Link>
       .
     </div>

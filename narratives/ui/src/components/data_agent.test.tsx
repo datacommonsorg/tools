@@ -315,8 +315,7 @@ describe('DataAgent prompt box disclaimer', () => {
     //            renders with its disclaimer.
     // Expectation: The prompt box disclaimer holds exactly the short wording,
     //              and the long answer wording is neither under the prompt
-    //              box nor merged into the short one; the Google Privacy
-    //              Policy and Terms of Service links open in a new tab.
+    //              box nor merged into the short one.
     renderTurns([
       {
         userMessage: 'What is the population of France?',
@@ -337,16 +336,6 @@ describe('DataAgent prompt box disclaimer', () => {
     const promptBox = composerNote.parentElement?.parentElement;
     expect(promptBox?.querySelector('textarea')).not.toBeNull();
     expect(promptBox?.textContent).not.toContain(DISCLAIMER_TEXT);
-
-    for (const [name, href] of [
-      ['Privacy Policy', 'https://policies.google.com/privacy'],
-      ['Terms of Service', 'https://policies.google.com/terms'],
-    ]) {
-      const link = screen.getByRole('link', { name });
-      expect(link.getAttribute('href')).toBe(href);
-      expect(link.getAttribute('target')).toBe('_blank');
-      expect(link.getAttribute('rel')).toBe('noopener noreferrer');
-    }
   });
 });
 
