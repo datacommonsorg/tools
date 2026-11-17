@@ -45,6 +45,7 @@ export function ComposerNote() {
       >
         Terms of Service
       </Link>
+      .
     </div>
   );
 }
