@@ -1399,6 +1399,22 @@ def test_a_relation_supplies_each_table_its_date_and_the_by_tail() -> None:
     assert diabetes_bar["place_dcids"] == ["geoId/01", "geoId/02"]
 
 
+@pytest.mark.parametrize("tables", [["t1", "t2"], ["t2", "t1"]])
+def test_a_relation_sets_the_scatter_axes(tables: list[str]) -> None:
+    # Test: The axis order of a scatter of related variables.
+    # Situation: The digest relates diabetes (`target`) to income (`by`),
+    #   and the model lists the two tables in either order.
+    # Expectation: The chart lists diabetes first and income second, so
+    #   the component draws income, the variable the states were grouped
+    #   by, on the horizontal axis and diabetes on the vertical one.
+    cache, digest, analysis = _make_relation_cache()
+
+    chart = _resolve_chart_wire("scatter", tables, cache, digest, analysis)
+
+    assert chart is not None
+    assert chart["variable_dcids"] == ["Percent_Diabetes", "Median_Income"]
+
+
 def test_a_ranking_of_the_variable_slices_before_a_relation() -> None:
     # Test: The precedence of results for a ranked slice.
     # Situation: The digest holds the relation first and then a ranking of

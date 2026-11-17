@@ -1488,6 +1488,35 @@ def _require_two_variables(
             )
 
 
+def _order_scatter_axes(
+    variables: tuple[str, str],
+    tables: Sequence[_ResolvedTable],
+    context: _ChartContext,
+) -> tuple[str, str]:
+    """Returns a scatter's two variables in axis order: vertical, horizontal.
+
+    The Data Commons scatter component plots its first variable on the
+    vertical axis and its second on the horizontal one. When the digest
+    relates the two variables, the variable the places were grouped by
+    (`by`) goes on the horizontal axis and the variable compared across
+    those groups (`target`) on the vertical one, as a reader expects,
+    whatever order the model listed the tables in. The order comes from the
+    analysis, not from the model, as the figures do. Without such a
+    relation, the model's order stands.
+    """
+    for item in tables:
+        for result in _list_bound_results(
+            item.analysis_entry.table_id, context
+        ):
+            metrics = result.metrics
+            if isinstance(metrics, RelationMetrics) and {
+                metrics.target_variable_dcid,
+                metrics.by_variable_dcid,
+            } == set(variables):
+                return (metrics.target_variable_dcid, metrics.by_variable_dcid)
+    return variables
+
+
 def _require_variables(
     variable_dcids: Sequence[str],
 ) -> tuple[str, *tuple[str, ...]]:
@@ -1827,7 +1856,9 @@ def _resolve(spec: ChartSpecification, context: _ChartContext) -> ResolvedChart:
             return ResolvedScatterChart(
                 **shared,
                 date=date,
-                variable_dcids=_require_two_variables(kind, variables),
+                variable_dcids=_order_scatter_axes(
+                    _require_two_variables(kind, variables), tables, context
+                ),
                 cohort=_resolve_cohort(kind, tables),
             )
         case HighlightChartSpecification():

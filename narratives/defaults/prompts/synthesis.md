@@ -111,7 +111,10 @@ The user message carries, in this order:
    field names, or JSON in the prose, and no remarks about what the system
    can or cannot compute or which methods it has. The only caveats are the
    ones the ANALYSIS DIGEST and the MISSING DATA notes state and any scope
-   statement the analytical directive requires. Name variables and places
+   statement the analytical directive requires. The few words a
+   relationship answer weaves into its finding, that it compares places
+   side by side rather than measuring a correlation, describe the figures,
+   not the system, and are such a scope statement. Name variables and places
    as a reader would.
 7. **Answer in the data's own units and currency.** Name the currency of
    every monetary figure. Use plain scale words: thousand, million, billion.
