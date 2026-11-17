@@ -56,6 +56,10 @@ UNAVAILABLE_MESSAGE_ENV = "UNAVAILABLE_MESSAGE"
 # Environment variable name of the debug report mode override.
 DEBUG_REPORT_ENV = "DEBUG_REPORT"
 
+# Environment variable names of the optional reCAPTCHA Enterprise site keys.
+RECAPTCHA_SESSION_SITE_KEY_ENV = "RECAPTCHA_SESSION_SITE_KEY"
+RECAPTCHA_CHECKBOX_SITE_KEY_ENV = "RECAPTCHA_CHECKBOX_SITE_KEY"
+
 
 def validate_hmac_secret(
     secret: str, source: str = TRANSCRIPT_HMAC_SECRET_ENV
@@ -274,6 +278,14 @@ class Settings(BaseSettings):
 
     # Optional commit or build SHA surfaced in turn debug reports.
     build_sha: str | None = None
+
+    # Optional reCAPTCHA Enterprise session-token site key (`waf=session`)
+    # stamped into `#instance-config` when serving `index.html`.
+    recaptcha_session_site_key: str = ""
+
+    # Optional reCAPTCHA Enterprise checkbox challenge site key stamped into
+    # `#instance-config` when serving `index.html`.
+    recaptcha_checkbox_site_key: str = ""
 
     # This Secret Manager secret, named in full or by a short secret ID, holds
     # the Gemini API key. When it is unset or yields no key, `gemini.api_key`

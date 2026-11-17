@@ -33,6 +33,9 @@ Verifies that `Settings`:
     modes.
 11. Defaults `build_sha` to None, treating blank values as unset and
     stripping surrounding whitespace.
+12. Defaults `recaptcha_session_site_key` and `recaptcha_checkbox_site_key` to
+    empty strings, treating blank values as unset and stripping surrounding
+    whitespace.
 """
 
 from pathlib import Path
@@ -45,6 +48,8 @@ from narratives_agent.settings import (
     DEBUG_REPORT_ENV,
     ENABLE_CHAT_ENV,
     MIN_SECRET_BYTES,
+    RECAPTCHA_CHECKBOX_SITE_KEY_ENV,
+    RECAPTCHA_SESSION_SITE_KEY_ENV,
     TRANSCRIPT_HMAC_SECRET_ENV,
     TRANSCRIPT_HMAC_SECRET_NAME_ENV,
     UNAVAILABLE_MESSAGE_ENV,
@@ -484,3 +489,33 @@ def test_build_sha_defaults_to_none_and_strips_whitespace(
     assert settings_blank.build_sha is None
     settings_set = _read_settings(monkeypatch, {"BUILD_SHA": " 3b34f1c\n"})
     assert settings_set.build_sha == "3b34f1c"
+
+
+@pytest.mark.parametrize(
+    ("env_name", "field_name"),
+    [
+        pytest.param(
+            RECAPTCHA_SESSION_SITE_KEY_ENV,
+            "recaptcha_session_site_key",
+            id="session",
+        ),
+        pytest.param(
+            RECAPTCHA_CHECKBOX_SITE_KEY_ENV,
+            "recaptcha_checkbox_site_key",
+            id="checkbox",
+        ),
+    ],
+)
+def test_recaptcha_site_keys_default_to_empty_and_strip_whitespace(
+    monkeypatch: pytest.MonkeyPatch, env_name: str, field_name: str
+) -> None:
+    # Test: Default and whitespace stripping for reCAPTCHA site key settings.
+    # Situation: `RECAPTCHA_SESSION_SITE_KEY` or `RECAPTCHA_CHECKBOX_SITE_KEY`
+    #   is unset, blank, or exported with surrounding whitespace.
+    # Expectation: Unset and blank resolve to `""`; a non-empty key has its
+    #   surrounding whitespace stripped.
+    assert getattr(Settings(), field_name) == ""
+    blank_settings = _read_settings(monkeypatch, {env_name: " \t\n "})
+    assert getattr(blank_settings, field_name) == ""
+    configured = _read_settings(monkeypatch, {env_name: "  6Lc_site_key_01 \n"})
+    assert getattr(configured, field_name) == "6Lc_site_key_01"

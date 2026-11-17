@@ -26,10 +26,11 @@ Verifies that:
 5. Percent-encoded `..` segments cannot reach files outside the static root,
    and an unknown file or a missing static root returns 404.
 6. `/healthz` answers `ok`.
-7. The root `index.html` is served with the effective chat availability
-   stamped into `#runtime-config`, escaped for a `<script>` element, under a
-   SHA-256 `ETag` of the stamped bytes that changes with the chat settings,
-   without `Last-Modified`, and revalidated only through `If-None-Match`.
+7. The root `index.html` is served with the effective chat availability and
+   any configured reCAPTCHA site keys injected into `#runtime-config`, escaped
+   for a `<script>` element, under a SHA-256 `ETag` of the stamped bytes that
+   changes when chat or reCAPTCHA settings change, without `Last-Modified`,
+   and revalidated only through `If-None-Match`.
 """
 
 import hashlib
@@ -42,6 +43,8 @@ from fastapi.testclient import TestClient
 from narratives_agent.server.app import create_app
 from narratives_agent.settings import (
     ENABLE_CHAT_ENV,
+    RECAPTCHA_CHECKBOX_SITE_KEY_ENV,
+    RECAPTCHA_SESSION_SITE_KEY_ENV,
     UNAVAILABLE_MESSAGE_ENV,
     get_settings,
 )
@@ -490,3 +493,90 @@ def test_a_shell_without_the_slot_is_served_unchanged(
     assert response.headers["etag"] == (
         f'"{hashlib.sha256(_SHELL_HEAD).hexdigest()}"'
     )
+
+
+@pytest.mark.parametrize(
+    ("env", "expected_recaptcha"),
+    [
+        pytest.param(
+            {RECAPTCHA_SESSION_SITE_KEY_ENV: "6Lc_session_only"},
+            {"recaptcha_session_site_key": "6Lc_session_only"},
+            id="session-only",
+        ),
+        pytest.param(
+            {RECAPTCHA_CHECKBOX_SITE_KEY_ENV: "6Lc_checkbox_only"},
+            {"recaptcha_checkbox_site_key": "6Lc_checkbox_only"},
+            id="checkbox-only",
+        ),
+        pytest.param(
+            {
+                RECAPTCHA_SESSION_SITE_KEY_ENV: "6Lc_session_both",
+                RECAPTCHA_CHECKBOX_SITE_KEY_ENV: "6Lc_checkbox_both",
+            },
+            {
+                "recaptcha_session_site_key": "6Lc_session_both",
+                "recaptcha_checkbox_site_key": "6Lc_checkbox_both",
+            },
+            id="both-keys",
+        ),
+    ],
+)
+def test_recaptcha_keys_inject_into_runtime_config_and_update_etag(
+    client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+    env: dict[str, str],
+    expected_recaptcha: dict[str, str],
+) -> None:
+    # Test: Injecting configured reCAPTCHA site keys into `#runtime-config`.
+    # Situation: `index.html` is first served with no reCAPTCHA keys set, and
+    #   one or both reCAPTCHA site keys are then exported in the environment.
+    # Expectation: Only the non-empty site keys are added alongside
+    #   `enable_chat` and `unavailable_message` in `#runtime-config`, and the
+    #   shell `ETag` changes when the site keys change.
+    initial = client.get("/")
+    assert _read_runtime_config(initial.content) == {
+        "enable_chat": True,
+        "unavailable_message": (
+            "This Data Commons tool is temporarily unavailable due to high "
+            "traffic."
+        ),
+    }
+    old_etag = initial.headers["etag"]
+
+    for name, value in env.items():
+        _set_chat_env(monkeypatch, name, value)
+
+    updated = client.get("/", headers={"If-None-Match": old_etag})
+
+    assert updated.status_code == 200
+    assert _read_runtime_config(updated.content) == {
+        "enable_chat": True,
+        "unavailable_message": (
+            "This Data Commons tool is temporarily unavailable due to high "
+            "traffic."
+        ),
+        **expected_recaptcha,
+    }
+    assert updated.headers["etag"] != old_etag
+    assert updated.headers["cache-control"] == "no-cache"
+    assert updated.headers["x-content-type-options"] == "nosniff"
+
+
+def test_recaptcha_keys_cannot_break_out_of_the_runtime_config_script(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Test: HTML `<script>` escaping for injected reCAPTCHA site keys.
+    # Situation: `RECAPTCHA_SESSION_SITE_KEY` contains `</script><script>`, `&`,
+    #   U+2028, and U+2029.
+    # Expectation: Hazardous characters are escaped as `\u003c`, `\u003e`,
+    #   `\u0026`, `\u2028`, and `\u2029` so the page still contains only one
+    #   `</script>` tag, and decoding `#runtime-config` recovers the raw value.
+    tricky_key = "</script><script>alert(1)&\u2028\u2029key"
+    _set_chat_env(monkeypatch, RECAPTCHA_SESSION_SITE_KEY_ENV, tricky_key)
+
+    body = client.get("/").content
+
+    assert body.count(b"</script>") == 1
+    parsed = _read_runtime_config(body)
+    assert isinstance(parsed, dict)
+    assert parsed["recaptcha_session_site_key"] == tricky_key

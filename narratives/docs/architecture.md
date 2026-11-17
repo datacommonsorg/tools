@@ -444,8 +444,9 @@ directly into `ui/index.html` and read synchronously when the app starts:
   missing or invalid.
 
 When the agent server serves `index.html` (`server/routes/spa.py`), it also
-stamps the effective chat availability,
-`{"enable_chat": <bool>, "unavailable_message": "<str>"}`, into
+injects the effective chat availability (`enable_chat`, `unavailable_message`)
+and any configured public reCAPTCHA site keys (`recaptcha_session_site_key`,
+`recaptcha_checkbox_site_key`) into
 `<script id="runtime-config" type="application/json">`, escaping `<`, `>`,
 `&`, U+2028, and U+2029. The `ETag` hashes the stamped bytes and
 `Last-Modified` is omitted, so a browser revalidating the page receives the

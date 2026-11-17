@@ -19,7 +19,8 @@ UI build: `index.html`, the content-hashed files under `assets/` and
 `theme/`, and the bare files the UI loads from the root, such as
 `dc-logo.svg`. `config.json` lives under `agent_root`, outside the static
 root, so no file needs to be filtered by name or suffix. The root
-`index.html` is served with the effective chat availability stamped into its
+`index.html` is served with the effective chat availability and any configured
+reCAPTCHA site keys injected into its
 `<script id="runtime-config" type="application/json">` element.
 """
 
@@ -38,6 +39,7 @@ from starlette.datastructures import Headers
 from starlette.types import Scope
 
 from narratives_agent.config import get_chat_config
+from narratives_agent.settings import get_settings
 
 router = APIRouter()
 
@@ -91,17 +93,28 @@ async def healthz() -> PlainTextResponse:
 
 
 def _serialize_runtime_config() -> bytes:
-    """Returns the chat availability JSON, escaped for a `<script>` element.
+    """Returns the runtime shell JSON, escaped for a `<script>` element.
 
-    Only `enable_chat` and `unavailable_message` are serialized; nothing
-    else from the configuration reaches the page.
+    Serializes `enable_chat`, `unavailable_message`, and any non-empty public
+    reCAPTCHA site keys configured in `Settings`; nothing else from the
+    configuration reaches the page.
     """
     chat = get_chat_config()
+    settings = get_settings()
+    payload: dict[str, object] = {
+        "enable_chat": chat.enabled,
+        "unavailable_message": chat.unavailable_message,
+    }
+    if settings.recaptcha_session_site_key:
+        payload["recaptcha_session_site_key"] = (
+            settings.recaptcha_session_site_key
+        )
+    if settings.recaptcha_checkbox_site_key:
+        payload["recaptcha_checkbox_site_key"] = (
+            settings.recaptcha_checkbox_site_key
+        )
     serialized = json.dumps(
-        {
-            "enable_chat": chat.enabled,
-            "unavailable_message": chat.unavailable_message,
-        },
+        payload,
         ensure_ascii=False,
         separators=(",", ":"),
     )
@@ -109,11 +122,11 @@ def _serialize_runtime_config() -> bytes:
 
 
 def _render_shell(full_path: str) -> bytes:
-    """Returns the HTML shell with the runtime JSON stamped into its slot.
+    """Returns the HTML shell with runtime JSON injected into `#runtime-config`.
 
-    Reads the file, so callers run it off the event loop. A file without the
-    empty `#runtime-config` element is returned unchanged; only the first
-    occurrence is stamped.
+    Reads the file, so callers run it off the event loop. Injects chat
+    availability and any configured reCAPTCHA site keys into the first empty
+    `#runtime-config` element when present.
     """
     with open(full_path, "rb") as shell_file:
         template = shell_file.read()
