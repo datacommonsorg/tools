@@ -479,7 +479,7 @@ select:not(:disabled) {
   font-size: var(--static-section-heading-size, 18px);
   font-style: normal;
   font-weight: 500;
-  line-height: var(--static-section-heading-line-height, 24px);
+  line-height: var(--static-section-heading-line-height, 22px);
   letter-spacing: 0;
 }
 
