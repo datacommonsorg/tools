@@ -30,6 +30,7 @@ import {
 import { ReasoningBlock } from '@/src/components/block_reasoning';
 import { SkeletonCard } from '@/src/components/card_skeleton';
 import { PromptInput } from '@/src/components/input_prompt';
+import { ComposerNote } from '@/src/components/note_composer';
 import { ErrorNotice } from '@/src/components/notice_error';
 import { AnswerPanel } from '@/src/components/panel_answer';
 import { DebugPanel } from '@/src/components/panel_debug/panel_debug';
@@ -63,13 +64,6 @@ const PIN_HOLD_MS = 600;
 export const HANDOFF_MS = 400;
 /** Centered content column; <main> scrolls at full width. */
 const COLUMN = 'w-full max-w-4xl mx-auto px-3 sm:px-4 lg:px-8';
-/**
- * The AI-content wording under the prompt box. Each answer has its own wording
- * (DISCLAIMER_TEXT in note_disclaimer.tsx).
- */
-export const COMPOSER_DISCLAIMER_TEXT =
-  'Data Commons by Google. Data overviews are synthesized by Gemini. Gemini is AI and can make mistakes; please verify content against primary source data.';
-
 /**
  * The main chat surface: renders the empty-state view or the turn list, the
  * prompt input with send/stop controls, and pins each new question to the top.
@@ -237,9 +231,7 @@ export function DataAgent() {
             onStop={stop}
             textareaRef={promptTextareaRef}
           />
-          <div className="text-center text-caption text-muted max-w-xl">
-            {COMPOSER_DISCLAIMER_TEXT}
-          </div>
+          <ComposerNote />
         </div>
       </div>
     </div>

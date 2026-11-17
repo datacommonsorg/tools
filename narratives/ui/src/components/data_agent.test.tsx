@@ -29,12 +29,8 @@ import {
   waitFor,
 } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import {
-  COMPOSER_DISCLAIMER_TEXT,
-  DataAgent,
-  HANDOFF_MS,
-  TurnView,
-} from '@/src/components/data_agent';
+import { DataAgent, HANDOFF_MS, TurnView } from '@/src/components/data_agent';
+import { COMPOSER_DISCLAIMER_TEXT } from '@/src/components/note_composer';
 import { DISCLAIMER_TEXT } from '@/src/components/note_disclaimer';
 import { ANSWER_SETTLE_MAX_MS } from '@/src/components/panel_answer';
 import { DEBUG_PANEL_COPY } from '@/src/components/panel_debug/copy_debug';
