@@ -13,10 +13,12 @@
 # limitations under the License.
 """Tests for `execute_specification` in `processing`.
 
-Covers the dispatch of every step type, shared cohort alignment, refusal
-diagnostics with coverage and alternative sources, the enforced
-preconditions, the wall-clock budget and the isolation of a run that
-outlives it, derived-table replacement, and digest source numbering.
+This suite covers the dispatch of every step type, shared cohort
+alignment, refusal diagnostics with coverage and alternative sources,
+the enforced preconditions, the wall-clock budget and the isolation of a
+run that outlives its budget, the wiring of the pool size, derived-table
+replacement, keeping derived tables only from a digest, and digest
+source numbering.
 """
 
 import asyncio
@@ -575,6 +577,51 @@ async def test_a_refused_derived_metric_reports_both_tables_sources() -> None:
 
 
 @pytest.mark.asyncio
+async def test_a_refusal_after_a_derivation_stores_no_derived_table() -> None:
+    # Test: The derived tables of a run that ends with a step refusal.
+    # Situation: `s1` derives a table from `t1` and `t2`, and a ranking of
+    #   `s1` then refuses because one of four requested places has a value.
+    # Expectation: The outcome is a refusal diagnostic for `s2` that lists
+    #   the derived metric as completed, and the cache holds only the
+    #   fetched tables.
+    cache = _build_cache(
+        _build_table(
+            "t1",
+            {"a": 10.0},
+            variable_dcid="Count_Case",
+            source=_WDI,
+            requested=("a", "b", "c", "d"),
+        ),
+        _build_table(
+            "t2",
+            {"a": 1000.0},
+            variable_dcid="Count_Person",
+            source=_CENSUS,
+            requested=("a", "b", "c", "d"),
+        ),
+    )
+    specification = _build_specification(
+        {
+            "step_id": "s1",
+            "script": "compute_derived_metric",
+            "left": "t1",
+            "right": "t2",
+        },
+        {"step_id": "s2", "script": "rank_cohort", "table": "s1"},
+    )
+
+    diagnostic = await execute_specification(specification, cache)
+
+    assert isinstance(diagnostic, StepRefusalDiagnostic)
+    assert diagnostic.step_id == "s2"
+    assert diagnostic.refusal_reason == "insufficient_coverage"
+    assert [item.script for item in diagnostic.completed_results] == [
+        "compute_derived_metric"
+    ]
+    assert cache.table_ids == ("t1", "t2")
+
+
+@pytest.mark.asyncio
 async def test_a_derived_metric_of_mismatched_units_is_refused() -> None:
     # Test: A refusal the script reports before measuring coverage.
     # Situation: `t1` counts people and `t2` reports dollars, and the step
@@ -691,9 +738,9 @@ async def test_a_run_over_budget_ends_with_a_timeout_diagnostic(
         tables: dict[str, ObservationTable],
         cancel: threading.Event,
         timeout_seconds: float,
-    ) -> tuple[TimeoutDiagnostic, tuple[CachedTable, ...]]:
+    ) -> TimeoutDiagnostic:
         asyncio.run_coroutine_threadsafe(released.wait(), loop).result()
-        return processing._build_timeout_diagnostic(timeout_seconds), ()
+        return processing._build_timeout_diagnostic(timeout_seconds)
 
     monkeypatch.setattr(processing, "_run_specification", run_blocked)
     cache = _build_cache(
@@ -839,6 +886,18 @@ async def test_a_cancelled_run_stops_at_its_next_step_boundary(
 
     assert steps_run == ["s1"]
     assert cache.table_ids == ("t1", "t2")
+
+
+def test_the_executor_has_the_configured_number_of_workers() -> None:
+    # Test: The wiring of the pool size constant.
+    # Situation: The module has been imported, which builds its executor.
+    # Expectation: The executor has `_PROCESSING_MAX_WORKERS` workers.
+    # `ThreadPoolExecutor` has no public accessor for its size, so the test
+    # reads the private `_max_workers` attribute rather than inferring the
+    # size from the timing of concurrent runs.
+    assert (
+        processing._EXECUTOR._max_workers == processing._PROCESSING_MAX_WORKERS
+    )
 
 
 @pytest.mark.asyncio
