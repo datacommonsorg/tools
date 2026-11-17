@@ -190,18 +190,23 @@ function ReactMarkdownInner({
         <em className="italic">{renderWithCitations(children, sources)}</em>
       ),
       ul: ({ children }) => (
-        // biome-ignore lint/a11y/noRedundantRoles: WebKit drops the implicit list role from a list without markers, as in a paired stats row.
-        <ul role="list" className="list-disc pl-6 mb-3 space-y-1">
+        <ul
+          // biome-ignore lint/a11y/noRedundantRoles: WebKit drops the implicit list role from a list without markers, as in a paired stats row.
+          role="list"
+          className="text-body-regular list-disc pl-6 mb-3 space-y-1"
+        >
           {children}
         </ul>
       ),
       ol: ({ children }) => (
-        <ol className="list-decimal pl-6 mb-3 space-y-1">{children}</ol>
+        <ol className="text-body-regular list-decimal pl-6 mb-3 space-y-1">
+          {children}
+        </ol>
       ),
       // `style` on li, blockquote, table and hr carries their stream
       // delay, so a bullet or a rule waits for the text it belongs to.
       li: ({ children, style }) => (
-        <li className="leading-relaxed" style={style}>
+        <li style={style}>
           <NestedBlockContext.Provider value={true}>
             {renderWithCitations(children, sources)}
           </NestedBlockContext.Provider>
@@ -319,7 +324,7 @@ function MarkdownParagraph({
     );
   }
   return (
-    <p className="text-body-large mb-3 last:mb-0">
+    <p className="text-body-regular mb-3 last:mb-0">
       {renderWithCitations(children, sources)}
     </p>
   );
