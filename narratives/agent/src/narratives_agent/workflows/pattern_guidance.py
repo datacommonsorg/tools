@@ -133,12 +133,11 @@ _DIRECTIVES: Mapping[QueryPattern, Directive] = {
             "is in the table inventory and the indicator is a rate, share, "
             "per-person value, or average, never a total or count; for both "
             "ends, give each end its own table and chart. When the digest "
-            "relates a second variable to the ranking, state in plain words "
-            "the pattern between the two groups and any notable exception, "
-            "put each group's places and figures in a compact table, and "
-            "name the places the result reports as left out; chart a "
-            "`ranking` for each variable directly after its table, and "
-            "optionally relate the two in a `scatter`."
+            "relates a second variable to the ranking, write the answer as "
+            '"Relationships between two measures" describes instead: one '
+            "table per group with both measures and no chart beside it, "
+            "the places the result leaves out named once at the end, and "
+            "one `scatter` as the answer's last chart."
         ),
     ),
     "distribution": Directive(
@@ -217,16 +216,16 @@ _DIRECTIVES: Mapping[QueryPattern, Directive] = {
             "trajectories of one place."
         ),
         synthesis=(
-            "Pair the two tables in a `scatter` chart and write the answer "
-            'as "Relationships between two measures" describes. Describe '
-            "the relationship from the figures given: say in plain words how "
-            "the indicators move together and name the leading place, then "
-            "name the notable exception, or the place at the bottom when "
-            "nothing breaks the pattern, without naming any place's ranking "
-            "twice, and leave the exact figures to a compact table. Claim no "
-            "strength or direction of association beyond what those figures "
-            "show, and no cause. Open with that description, not with a "
-            "remark about what was or was not computed."
+            'Write the answer as "Relationships between two measures" '
+            "describes: the groups' medians in the opening, one table per "
+            "group with both measures, and the `scatter` as the answer's "
+            "last chart. Say in plain words what the figures show and name "
+            "the notable exception, without naming any place's ranking "
+            "twice, and say once, inside that finding, that it compares the "
+            "places side by side rather than measuring a correlation or "
+            "causal link. Claim no strength of association and no cause, "
+            "and never open with a remark about what was or was not "
+            "computed."
         ),
     ),
     "composition": Directive(
@@ -348,8 +347,11 @@ _NAMED_PLACE_CORRELATION_SYNTHESIS = (
     "tables and charts. Describe the relationship from the figures given: say "
     "in plain words how the indicators move together across the places and "
     "name the leading place, then name the notable exception, or the place "
-    "at the bottom when nothing breaks the pattern. Claim no strength or "
-    "direction of association beyond what those figures show, and no cause."
+    "at the bottom when nothing breaks the pattern. Name the source in the "
+    "opening, and say once, inside the finding, that it compares the places "
+    "side by side rather than measuring a correlation or causal link. Claim "
+    "no strength or direction of association beyond what those figures "
+    "show, and no cause."
 )
 
 # Appended when the query compares a few named places side by side.
