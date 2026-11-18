@@ -36,6 +36,10 @@ import {
 } from '@/src/components/heading_section';
 import { ExportIcon } from '@/src/components/icons';
 import { CitationsList } from '@/src/components/list_citations';
+import {
+  DATA_GAPS_LABEL,
+  DataGapsSection,
+} from '@/src/components/list_data_gaps';
 import { DisclaimerNote } from '@/src/components/note_disclaimer';
 import { DebugPanel } from '@/src/components/panel_debug/panel_debug';
 import { isTurnSettled } from '@/src/components/panel_debug/report_debug';
@@ -459,6 +463,15 @@ function AnswerBlocks({
           );
         }
         const block = group.block;
+        if (group.type === 'text' && DATA_GAPS_LABEL.test(block.markdown)) {
+          return (
+            <DataGapsSection
+              key={block.index}
+              id={`data-gaps-${block.index}`}
+              markdown={block.markdown}
+            />
+          );
+        }
         if (group.type === 'text') {
           // A lead-in line reads as a heading whether or not its section
           // has formed yet, so it does not change shape when its chart
@@ -601,7 +614,9 @@ function scheduleTextReveal(
   totalMs: number,
 ): Map<number, TextRevealWindow> {
   const wordCounts = blocks.map((block) =>
-    block.type === 'text' && !isLeadInHeading(block.markdown)
+    block.type === 'text' &&
+    !isLeadInHeading(block.markdown) &&
+    !DATA_GAPS_LABEL.test(block.markdown)
       ? countWords(block.markdown)
       : 0,
   );

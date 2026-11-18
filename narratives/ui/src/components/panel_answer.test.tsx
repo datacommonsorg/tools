@@ -879,6 +879,54 @@ describe('AnswerPanel', () => {
       );
     });
 
+    it('renders the data gaps block as a titled section', () => {
+      // Test: The closing `**Data gaps**` block renders as its own section.
+      // Situation: An answer ends with the Data gaps label, its intro line,
+      //   and a bulleted list of missing measures.
+      // Expectation: A section labeled by an h2 "Data gaps" holds the
+      //   intro and one list item per measure, and the bold label does not
+      //   render as text.
+      const container = renderBlocks([
+        { index: 0, type: 'text', markdown: 'Life expectancy reached 84.' },
+        {
+          index: 1,
+          type: 'text',
+          markdown:
+            '**Data gaps**\\\nThese measures are not available in Data Commons:\n- Antenatal care coverage',
+        },
+      ]);
+
+      const section = container.querySelector(
+        'section[aria-labelledby^="data-gaps-"]',
+      );
+      const heading = section?.querySelector('h2');
+      expect(heading?.textContent).toBe('Data gaps');
+      expect(section?.getAttribute('aria-labelledby')).toBe(heading?.id);
+      expect(section?.querySelector('p')?.textContent).toBe(
+        'These measures are not available in Data Commons:',
+      );
+      expect(section?.querySelector('li')?.textContent).toBe(
+        'Antenatal care coverage',
+      );
+      expect(section?.querySelector('strong')).toBeNull();
+    });
+
+    it('renders no list for a data gaps label without bullets', () => {
+      // Test: A data gaps block with no bullets yet.
+      // Situation: The block holds only the label, as while it streams or
+      //   when the model puts a blank line between the label and its list.
+      // Expectation: The section shows its heading and no empty list.
+      const container = renderBlocks([
+        { index: 0, type: 'text', markdown: '**Data gaps**' },
+      ]);
+
+      const section = container.querySelector(
+        'section[aria-labelledby^="data-gaps-"]',
+      );
+      expect(section?.querySelector('h2')?.textContent).toBe('Data gaps');
+      expect(section?.querySelector('ul')).toBeNull();
+    });
+
     it('shows a lead-in line as a heading before its section forms', () => {
       // Test: A lead-in line keeps its shape while the answer streams.
       // Situation: A streaming turn holds a lead-in line and the bullet list

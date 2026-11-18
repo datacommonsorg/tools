@@ -21,6 +21,9 @@
 
 import type { TurnStatus } from '@/src/hooks/use_sse_chat';
 
+/** Heading of the answer's closing list of measures Data Commons lacks. */
+export const DATA_GAPS_HEADING = 'Data gaps';
+
 /** Label of the inline button that resubmits a retryable failed turn's query. */
 export const RETRY_LABEL = 'Try again';
 
