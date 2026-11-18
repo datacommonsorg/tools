@@ -155,11 +155,11 @@ _CONTEXT_TAG = "conversation_context"
 _REQUEST_TAG = "current_request"
 _EVICTED_TURN_TAG = "evicted_turn"
 _EARLIER_SUMMARY_TAG = "earlier_summary"
-# `_DELIMITER_PATTERN` matches the opening or closing delimiter of each of
-# the four tags above in any letter case. Whitespace may appear before and
-# after the slash and before the closing bracket. For example,
-# `<evicted_turn>`, `</EVICTED_TURN>`, `< / evicted_turn >`, and
-# `<Evicted_Turn  >` all match, but `<evicted_turns>` does not.
+# `_DELIMITER_PATTERN` matches the opening, closing, self-closing, and
+# attribute-carrying forms of the four tags above in any letter case and
+# with any internal whitespace. For example, `<evicted_turn>`,
+# `</EVICTED_TURN/>`, `< / evicted_turn x >`, and `<Evicted_Turn id="2">`
+# all match, while `<evicted_turns>` does not.
 _DELIMITER_PATTERN = re.compile(
     r"<\s*(?:/\s*)?(?:"
     + "|".join(
@@ -171,7 +171,7 @@ _DELIMITER_PATTERN = re.compile(
             _EARLIER_SUMMARY_TAG,
         )
     )
-    + r")\s*>",
+    + r")(?:[\s/][^<>]*)?>",
     re.IGNORECASE,
 )
 
@@ -745,7 +745,8 @@ def _compaction_prompt(previous: str | None, evicted: Sequence[Turn]) -> str:
     that an earlier summary, question, or answer cannot close its block
     early and pose as instructions.
     """
-    summary = _without_tags(previous) if previous else "(none)"
+    cleaned_previous = _without_tags(previous).strip() if previous else ""
+    summary = cleaned_previous or "(none)"
     sections = [
         "Earlier summary:\n"
         f"<{_EARLIER_SUMMARY_TAG}>\n{summary}\n</{_EARLIER_SUMMARY_TAG}>"
@@ -801,9 +802,9 @@ async def _compact(
     """Folds the evicted turns into the summary of earlier turns.
 
     Returns:
-        The model's summary cut to `MAX_SUMMARY_CHARS`, or the structured
-        fallback summary when the model call fails, times out, or returns
-        no text.
+        The model's summary with any echoed delimiters stripped and cut to
+        `MAX_SUMMARY_CHARS`, or the structured fallback summary when the
+        model call fails, times out, or returns no summary text.
     """
     role = config.resolve_role_config(GeminiRole.COMPACTION)
     try:
@@ -852,7 +853,7 @@ async def _compact(
             type(error).__name__,
         )
         return _fallback_summary(previous, evicted)
-    summary = response.text.strip()
+    summary = _without_tags(response.text).strip()
     if not summary:
         logger.warning(
             "Compaction returned no summary text (finish reason: %s); using "

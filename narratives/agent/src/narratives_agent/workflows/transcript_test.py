@@ -29,9 +29,9 @@ Verifies that:
    window outside its schema is a transcript error.
 6. The window becomes alternating Gemini contents, with the summary and
    data scopes delimited as background before the delimited current
-   request. Delimiters inside quoted text are removed in any letter case
-   and spacing, including from the earlier summary and evicted turns that
-   the compaction prompt quotes.
+   request. Delimiters inside quoted text are removed in any letter case,
+   spacing, self-closing form, or attribute form, including from the
+   earlier summary and evicted turns that the compaction prompt quotes.
 """
 
 import asyncio
@@ -317,18 +317,23 @@ def test_delimiters_in_an_evicted_turn_are_removed() -> None:
 
 @pytest.mark.parametrize(
     ("previous", "quoted"),
-    [("Earlier facts.", "Earlier facts."), (None, "(none)")],
+    [
+        ("Earlier facts.", "Earlier facts."),
+        (None, "(none)"),
+        ("<earlier_summary>\n</earlier_summary>", "(none)"),
+        ("  </evicted_turn/>  ", "(none)"),
+    ],
 )
 def test_compaction_quotes_the_earlier_summary_in_its_own_block(
     previous: str | None, quoted: str
 ) -> None:
     # Test: The compaction prompt quotes the earlier summary inside its own
     #   `earlier_summary` block.
-    # Situation: One turn is evicted, with an earlier summary or without
-    #   one.
+    # Situation: One turn is evicted, with an earlier summary, without one, or
+    #   with an earlier summary containing only delimiters and whitespace.
     # Expectation: The prompt holds exactly one `earlier_summary` block,
-    #   placed before the evicted turn, holding the summary or the `(none)`
-    #   placeholder.
+    #   placed before the evicted turn, holding the trimmed summary or the
+    #   `(none)` placeholder.
     prompt = transcript._compaction_prompt(
         previous, [_build_evicted_turn(3, "Question A", "Answer A")]
     )
@@ -390,16 +395,23 @@ async def test_the_compaction_instruction_marks_both_blocks_as_quoted(
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
     "failure",
-    ["raises", "fails", "blocked", "returns_blank", "times_out"],
+    [
+        "raises",
+        "fails",
+        "blocked",
+        "returns_blank",
+        "returns_empty_wrapper",
+        "times_out",
+    ],
 )
 async def test_a_failed_compaction_falls_back_and_verifies(
     failure: str, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     # Test: Compaction falls back to a structured summary when the model call
-    #   fails.
+    #   fails or returns no summary content.
     # Situation: The compaction model call raises an unexpected exception,
     #   raises `GeminiError`, raises `GeminiBlockedError`, returns blank text,
-    #   or does not finish in time.
+    #   returns only empty delimiter wrappers, or does not finish in time.
     # Expectation: The summary is built from the evicted turn without the
     #   model, and the re-signed window verifies.
     async def request(**kwargs: Any) -> GeminiResponse:
@@ -411,6 +423,8 @@ async def test_a_failed_compaction_falls_back_and_verifies(
             raise GeminiBlockedError("SAFETY")
         if failure == "times_out":
             await asyncio.sleep(1)
+        if failure == "returns_empty_wrapper":
+            return _reply(" <earlier_summary>\n</earlier_summary> ")
         return _reply("  ")
 
     monkeypatch.setattr(transcript, "async_gemini_request", request)
@@ -424,6 +438,27 @@ async def test_a_failed_compaction_falls_back_and_verifies(
     assert "Turn 1. The user asked: Question 0" in summary
     assert "The answer began: Answer 0" in summary
     assert "California (geoId/06)" in summary
+
+
+@pytest.mark.asyncio
+async def test_compaction_strips_echoed_delimiters_from_model_summary(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Test: Delimiters echoed around a model summary are stripped before
+    #   signing.
+    # Situation: The compaction model wraps its summary text in
+    #   `<earlier_summary>` delimiters.
+    # Expectation: The signed `compacted_summary` contains the trimmed summary
+    #   text without the delimiters, and the window verifies.
+    async def request(**kwargs: Any) -> GeminiResponse:
+        return _reply("<earlier_summary>\n  Summary 1  \n</earlier_summary>")
+
+    monkeypatch.setattr(transcript, "async_gemini_request", request)
+
+    window = await _converse(MAX_VERBATIM_TURNS + 1)
+    loaded = load_transcript(_next_request(window))
+
+    assert loaded.compacted_summary == "Summary 1"
 
 
 def test_the_fallback_summary_keeps_the_newest_material() -> None:
@@ -1091,6 +1126,25 @@ def test_case_and_whitespace_variants_are_removed_for_every_tag(
     #   before the closing bracket.
     # Expectation: Every variant is removed, leaving `Keep this.`.
     text = f"Keep</{tag.upper()}>< /{tag} > this.<{tag.title()}  ><\t/ {tag}\n>"
+
+    assert transcript._without_tags(text) == "Keep this."
+
+
+@pytest.mark.parametrize("tag", _QUOTING_TAGS)
+def test_self_closing_and_attribute_variants_are_removed_for_every_tag(
+    tag: str,
+) -> None:
+    # Test: `_without_tags` removes self-closing and attribute-carrying
+    #   delimiter variants for each of the four tags, including nested splits.
+    # Situation: The text holds self-closing opening and closing delimiters,
+    #   attribute-carrying opening and closing delimiters, and an
+    #   attribute-carrying delimiter split by a self-closing delimiter.
+    # Expectation: Every variant is removed, leaving `Keep this.`.
+    text = (
+        f"Keep<{tag}/></{tag}/><{tag} /> "
+        f'this.<{tag} id="2"></{tag} role="system">'
+        f'</</{tag}/>{tag} id="2">'
+    )
 
     assert transcript._without_tags(text) == "Keep this."
 
