@@ -124,13 +124,14 @@ def test_provenance_with_unsafe_url_has_no_source(unsafe_url: str) -> None:
 
 
 def test_uppercase_https_scheme_is_accepted() -> None:
-    # Test: Case-insensitive scheme check.
-    # Situation: Inline metadata and a provenance node carry an `HTTPS://` URL.
-    # Expectation: The inline `Source` and the facet's provenance `Source`
-    #   both keep the URL unchanged.
+    # Test: Case-insensitive scheme check and hostname fallback normalization.
+    # Situation: Inline metadata and a provenance node carry an `HTTPS://` URL
+    #   with an uppercase `WWW.` host and no explicit source name.
+    # Expectation: Both sources keep the URL unchanged, and the inline source
+    #   falls back to the lowercase `"bls.gov"` hostname without `"www."`.
     url = "HTTPS://WWW.BLS.GOV/lau"
     inline = get_source_from_observation_metadata({"provenanceUrl": url})
-    assert inline is not None and inline.url == url
+    assert inline == Source(name="bls.gov", url=url)
     payload = _metadata_payload({"url": url, "isPartOf": "LAUS"})
     facet = get_variable_metadata_enrichment([payload]).facet(
         "Count_Person", "facet1"
@@ -140,12 +141,14 @@ def test_uppercase_https_scheme_is_accepted() -> None:
 
 
 def test_url_with_valid_port_is_accepted() -> None:
-    # Test: Port check on a provenance URL.
-    # Situation: Inline metadata carries an https URL with port 8443.
-    # Expectation: The inline `Source` keeps the URL unchanged.
+    # Test: Port check and hostname fallback on a provenance URL with a port.
+    # Situation: Inline metadata carries an https URL with port 8443 and no
+    #   explicit source name.
+    # Expectation: The inline `Source` keeps the URL unchanged and strips both
+    #   `www.` and `:8443` from the fallback display name.
     url = "https://www.bls.gov:8443/lau"
     source = get_source_from_observation_metadata({"provenanceUrl": url})
-    assert source is not None and source.url == url
+    assert source == Source(name="bls.gov", url=url)
 
 
 def test_unsafe_url_falls_through_to_safe_description_url() -> None:

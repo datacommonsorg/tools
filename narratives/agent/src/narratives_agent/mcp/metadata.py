@@ -21,7 +21,7 @@ observation `sourceMetadata` blocks.
 import math
 from collections.abc import Iterator, Mapping, Sequence
 from dataclasses import dataclass, field, replace
-from urllib.parse import urlparse, urlsplit
+from urllib.parse import urlsplit
 
 from narratives_agent.analytics.provenance import Source
 from narratives_agent.json_value import JsonObject, JsonValue
@@ -268,7 +268,7 @@ def get_source_from_observation_metadata(
         "source_name",
     )
     if not name:
-        name = urlparse(url).netloc.removeprefix("www.")
+        name = (urlsplit(url).hostname or "").removeprefix("www.")
     return Source(name=name or "Data Source", url=url)
 
 
