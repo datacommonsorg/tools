@@ -35,7 +35,6 @@ process and PR expectations: [`CONTRIBUTING.md`](../CONTRIBUTING.md).
 ## Layout
 
 - `ui/` — React + Vite SPA (workspace package managed with **pnpm**):
-  - `src/api/` — Data Commons REST callers.
   - `src/components/` — flat directory of presentational and feature
     components (does not use the layered `primitives / elements / scopes /
     foundations` structure from `dataweaver/`).
