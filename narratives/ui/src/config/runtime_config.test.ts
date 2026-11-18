@@ -180,10 +180,11 @@ describe('getRuntimeConfig', () => {
 
   it('parses and trims optional reCAPTCHA site keys and ignores non-strings without disabling chat', () => {
     // Test: Parsing `recaptcha_session_site_key` and `recaptcha_checkbox_site_key`.
-    // Situation: `#runtime-config` first supplies whitespace-padded site keys,
-    //            and after a reset supplies non-string values.
-    // Expectation: String keys are trimmed; non-strings warn and fall back to
-    //              empty strings while keeping `isChatEnabled: true`.
+    // Situation: `#runtime-config` supplies whitespace-padded site keys, then
+    //            `null` site keys, and finally non-string values.
+    // Expectation: String keys are trimmed; `null` resolves silently to `""`;
+    //              other non-strings warn and fall back to `""` while keeping
+    //              `isChatEnabled: true`.
     const warn = spyOnWarn();
     writeRuntimeConfigSlot(
       JSON.stringify({
@@ -198,6 +199,17 @@ describe('getRuntimeConfig', () => {
       recaptchaSessionSiteKey: '6Lc_session_key',
       recaptchaCheckboxSiteKey: '6Lc_checkbox_key',
     });
+    expect(warn).not.toHaveBeenCalled();
+
+    resetRuntimeConfigForTests();
+    writeRuntimeConfigSlot(
+      JSON.stringify({
+        enable_chat: true,
+        recaptcha_session_site_key: null,
+        recaptcha_checkbox_site_key: null,
+      }),
+    );
+    expect(getRuntimeConfig()).toEqual(DEFAULT_RUNTIME_CONFIG);
     expect(warn).not.toHaveBeenCalled();
 
     resetRuntimeConfigForTests();

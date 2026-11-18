@@ -72,8 +72,11 @@ export const COMPOSER_DISCLAIMER_TEXT =
   'Data Commons by Google. Data overviews are synthesized by Gemini. Gemini is AI and can make mistakes; please verify content against primary source data.';
 
 /**
- * Inline reCAPTCHA attribution appended to {@link COMPOSER_DISCLAIMER_TEXT}
- * when hiding the floating `.grecaptcha-badge` element.
+ * Inline Google Cloud reCAPTCHA Enterprise attribution appended to
+ * {@link COMPOSER_DISCLAIMER_TEXT} when hiding `.grecaptcha-badge`.
+ * Per https://cloud.google.com/recaptcha/docs/faq, Cloud reCAPTCHA Enterprise
+ * requires only "This site is protected by reCAPTCHA." (consumer Privacy
+ * Policy / Terms links apply only to legacy free reCAPTCHA on developers.google.com).
  */
 export const RECAPTCHA_ATTRIBUTION_TEXT =
   'This site is protected by reCAPTCHA.';

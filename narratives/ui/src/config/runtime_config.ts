@@ -99,11 +99,12 @@ const readUnavailableMessage = (value: unknown): string => {
 };
 
 /**
- * Returns the trimmed optional reCAPTCHA site key, or `""` when absent or
- * non-string (logging a warning on non-string values without disabling chat).
+ * Returns the trimmed optional reCAPTCHA site key, or `""` when absent,
+ * `null`, or non-string (logging a warning on non-string values without
+ * disabling chat).
  */
 const readOptionalSiteKey = (key: string, value: unknown): string => {
-  if (value === undefined) {
+  if (value === undefined || value === null) {
     return '';
   }
   if (typeof value === 'string') {
