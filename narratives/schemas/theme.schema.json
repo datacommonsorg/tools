@@ -19,12 +19,12 @@
     "assetUrl": {
       "type": "string",
       "description": "Same-origin path starting with a single '/' or an http(s) URL, the schemes and forms the UI accepts for an asset URL; any other value, such as 'assets/logo.png', a protocol-relative '//host' URL, or a 'javascript:' or 'data:' URL, is rejected.",
-      "pattern": "^(?:[Hh][Tt][Tt][Pp][Ss]?://[^/?#\\\\\\s][^\\\\\\s]*|/(?:[^/\\\\\\s][^\\\\\\s]*)?)$"
+      "pattern": "^(?:[Hh][Tt][Tt][Pp][Ss]?://(?![/?#])[\\u0021-\\u005b\\u005d-\\u007e]+|/(?:(?!/)[\\u0021-\\u005b\\u005d-\\u007e]+)?)(?![\\n\\r])$"
     },
     "linkHref": {
       "type": "string",
       "description": "Same-origin path starting with a single '/', an http(s) URL, or a '#' hash route, the schemes and forms the UI accepts for a link target; any other value, such as a relative path, a protocol-relative '//host' URL, or a 'javascript:' or 'data:' URL, is rejected.",
-      "pattern": "^(?:#[^\\\\\\s]*|[Hh][Tt][Tt][Pp][Ss]?://[^/?#\\\\\\s][^\\\\\\s]*|/(?:[^/\\\\\\s][^\\\\\\s]*)?)$"
+      "pattern": "^(?:#[\\u0021-\\u005b\\u005d-\\u007e]*|[Hh][Tt][Tt][Pp][Ss]?://(?![/?#])[\\u0021-\\u005b\\u005d-\\u007e]+|/(?:(?!/)[\\u0021-\\u005b\\u005d-\\u007e]+)?)(?![\\n\\r])$"
     },
     "link": {
       "type": "object",

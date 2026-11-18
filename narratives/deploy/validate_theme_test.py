@@ -181,26 +181,31 @@ def _build_theme_with_value(field: str, value: str) -> dict[str, Any]:
     """Returns a theme document that sets one URL field to `value`."""
     if field == "navigation":
         return {"navigation": [{"label": "Link", "href": value}]}
+    if field == "footer":
+        return {"footer": {"links": [{"label": "Link", "href": value}]}}
     if field in ("thinking_indicator", "done_indicator"):
         return {"splash_assets": {field: value}}
     return {field: value}
 
 
-_URL_FIELDS = [
-    "navigation",
-    "logo_href",
+_LINK_FIELDS = ["navigation", "logo_href", "footer"]
+_ASSET_FIELDS = [
     "logo",
     "favicon",
     "thinking_indicator",
     "done_indicator",
 ]
-_LINK_FIELDS = ["navigation", "logo_href"]
+_URL_FIELDS = [*_LINK_FIELDS, *_ASSET_FIELDS]
 _UNSAFE_URLS = [
     "javascript:alert(1)",
     "data:image/svg+xml,<svg/>",
     "vbscript:msgbox(1)",
     "//evil.example/logo.png",
     "assets/logo.png",
+    "/theme/logo\\evil.png",
+    "https://cdn.example/\x00logo.png",
+    "https://cdn.example/\x7flogo.png",
+    "https://cdn.example/logo.png\n",
 ]
 _SAFE_URLS = ["https://cdn.example/logo.png", "/theme/logo.png"]
 
@@ -266,7 +271,24 @@ def test_link_fields_accept_hash_routes(
     assert problems == []
 
 
-@pytest.mark.parametrize("field", ["logo", "favicon", "thinking_indicator"])
+@pytest.mark.parametrize("field", _LINK_FIELDS)
+@pytest.mark.parametrize("value", ["#/metrics\\evil", "#/metrics\x00"])
+@pytest.mark.usefixtures("run_under_each_validator")
+def test_link_fields_reject_malformed_hash_routes(
+    schema: dict[str, Any], field: str, value: str
+) -> None:
+    """Rejects hash routes containing backslashes or control characters."""
+    # Test: Malformed hash routes on link fields.
+    # Situation: A link field holds a `#` route containing a backslash or an
+    #   ASCII control character.
+    # Expectation: Validation reports a violation for the field.
+    problems = validate_theme.validate(
+        _build_theme_with_value(field, value), schema
+    )
+    assert problems != []
+
+
+@pytest.mark.parametrize("field", _ASSET_FIELDS)
 @pytest.mark.usefixtures("run_under_each_validator")
 def test_asset_fields_reject_hash_routes(
     schema: dict[str, Any], field: str

@@ -401,6 +401,57 @@ describe('metrics tiles', () => {
     expect(messages[1]).toContain('"apiroot"');
   });
 
+  it('drops allowlisted attributes whose values have the wrong type and warns', () => {
+    // Test: Value-type checks on allowlisted tile attributes.
+    // Situation: A ranking tile sets valid `variable`, `min`, and `sort` values
+    //            alongside a string boolean (`"showLowest": "false"`), a
+    //            non-integer `rankingCount`, a string `max`, an unknown `sort`
+    //            order on a second tile, and an array `places`.
+    // Expectation: Only attributes whose values match their schema types are
+    //              kept, and a warning names each dropped attribute.
+    const warn = spyOnWarn();
+    writeTiles([
+      {
+        type: 'ranking',
+        title: 'GDP',
+        variable: 'Amount_EconomicActivity_GrossDomesticProduction_Nominal',
+        min: 0,
+        sort: 'descending',
+        showLowest: 'false',
+        rankingCount: 2.5,
+        max: '100',
+        places: ['country/USA', 'country/FRA'],
+      },
+      {
+        type: 'ranking',
+        title: 'Population',
+        variable: 'Count_Person',
+        sort: 'random',
+      },
+    ]);
+    expect(getInstanceConfig().metrics.tabs[0].tiles).toEqual([
+      {
+        type: 'ranking',
+        title: 'GDP',
+        variable: 'Amount_EconomicActivity_GrossDomesticProduction_Nominal',
+        min: 0,
+        sort: 'descending',
+      },
+      {
+        type: 'ranking',
+        title: 'Population',
+        variable: 'Count_Person',
+      },
+    ]);
+    const messages = warn.mock.calls.map((call) => String(call[0]));
+    expect(messages).toHaveLength(5);
+    for (const key of ['showLowest', 'rankingCount', 'max', 'places', 'sort']) {
+      expect(messages.some((message) => message.includes(`"${key}"`))).toBe(
+        true,
+      );
+    }
+  });
+
   it('drops a tile of an unknown type and warns', () => {
     // Test: A tile whose `type` is not a chart type.
     // Situation: The tab holds a `donut` tile and a `bar` tile.
@@ -502,10 +553,11 @@ describe('DEFAULT_INSTANCE_CONFIG drift', () => {
 describe('theme schema URL patterns', () => {
   // Each row holds a value, whether the UI accepts the value as an asset URL,
   // and whether the UI accepts it as a link target. Both the schema patterns
-  // and the UI checks must match every row. The patterns match schemes and URL
-  // forms without parsing the URL, so they reject whitespace that `new URL`
-  // percent-encodes and accept some malformed hosts, such as an out-of-range
-  // port, that `new URL` rejects.
+  // and the UI checks must match every row. The schema patterns restrict theme
+  // URLs to printable ASCII characters (`0x21` to `0x7E` excluding `\`) without
+  // parsing the host, so spaces and unencoded non-ASCII characters fail schema
+  // validation while some malformed ports pass the schema and are rejected by
+  // `new URL` in the UI.
   const URL_CASES: [string, boolean, boolean][] = [
     ['/', true, true],
     ['/dc-logo.svg', true, true],
@@ -514,6 +566,8 @@ describe('theme schema URL patterns', () => {
     ['HTTP://CDN.EXAMPLE/A.SVG', true, true],
     ['#/metrics', false, true],
     ['#', false, true],
+    ['#/metrics\\evil', false, false],
+    ['#/metrics\u0000', false, false],
     ['javascript:alert(1)', false, false],
     ['JAVASCRIPT:alert(1)', false, false],
     ['data:image/svg+xml,<svg/>', false, false],
@@ -522,6 +576,9 @@ describe('theme schema URL patterns', () => {
     ['//evil.example/x.svg', false, false],
     ['/\\evil.example/x.svg', false, false],
     ['/assets\\logo.svg', false, false],
+    ['/dc-logo.svg\n', false, false],
+    ['https://cdn.example/\u0000a.svg', false, false],
+    ['https://cdn.example/\u007fa.svg', false, false],
     ['assets/logo.png', false, false],
     ['http:foo/bar.svg', false, false],
     ['https://', false, false],
