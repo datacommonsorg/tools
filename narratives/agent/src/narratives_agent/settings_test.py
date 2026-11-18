@@ -57,6 +57,7 @@ from narratives_agent.settings import (
     TRANSCRIPT_HMAC_SECRET_NAME_ENV,
     UNAVAILABLE_MESSAGE_ENV,
     Settings,
+    get_url_origin,
     validate_hmac_secret,
 )
 
@@ -553,6 +554,21 @@ def test_web_component_url_accepts_http_urls(
             "https://data.example.org:8443",
             id="uppercase",
         ),
+        pytest.param(
+            "https://datacommons.org:443",
+            "https://datacommons.org",
+            id="default-https-port",
+        ),
+        pytest.param(
+            "http://localhost:80",
+            "http://localhost",
+            id="default-http-port",
+        ),
+        pytest.param(
+            "http://localhost:443",
+            "http://localhost:443",
+            id="non-default-port-443-on-http",
+        ),
     ],
 )
 def test_web_component_api_root_accepts_http_origins(
@@ -560,13 +576,51 @@ def test_web_component_api_root_accepts_http_origins(
 ) -> None:
     # Test: Accepted `DC_WEB_COMPONENT_API_ROOT` overrides.
     # Situation: The variable is an https origin, an http origin on
-    #   localhost with a port, an origin with a trailing slash, or an origin
-    #   in upper case with a port.
-    # Expectation: The field holds the origin in lower case, with its port
-    #   and without a trailing slash.
+    #   localhost with a port, an origin with a trailing slash, an origin in
+    #   upper case with a non-default port, or an origin naming its scheme's
+    #   default port.
+    # Expectation: The field holds the normalized origin in lower case, with
+    #   any non-default port kept, any default port omitted, and no trailing
+    #   slash.
     settings = _read_settings(monkeypatch, {DC_WEB_COMPONENT_API_ROOT_ENV: raw})
 
     assert settings.dc_web_component_api_root == expected
+
+
+@pytest.mark.parametrize(
+    ("url", "expected"),
+    [
+        pytest.param(
+            "https://datacommons.org:443/datacommons.js",
+            "https://datacommons.org",
+            id="https-default-port",
+        ),
+        pytest.param(
+            "http://localhost:80/datacommons.js",
+            "http://localhost",
+            id="http-default-port",
+        ),
+        pytest.param(
+            "https://cdn.example.com:8443/dc/datacommons.js?v=2",
+            "https://cdn.example.com:8443",
+            id="https-custom-port",
+        ),
+        pytest.param(
+            "https://localhost:80/datacommons.js",
+            "https://localhost:80",
+            id="https-port-80",
+        ),
+    ],
+)
+def test_get_url_origin_normalizes_scheme_default_ports(
+    url: str, expected: str
+) -> None:
+    # Test: Origin normalization in `get_url_origin`.
+    # Situation: Script URLs carry a scheme's default port (`:443` on https,
+    #   `:80` on http) or a non-default port alongside a path and query.
+    # Expectation: Default scheme ports and URL paths/queries are stripped,
+    #   while non-default ports are retained.
+    assert get_url_origin(url) == expected
 
 
 # Values that neither chart host setting accepts.

@@ -73,6 +73,7 @@ DEFAULT_WEB_COMPONENT_API_ROOT = "https://datacommons.org"
 # separate header values and policy directives, so that each value is also a
 # valid source in the page's Content-Security-Policy header.
 _WEB_COMPONENT_URL_SCHEMES = frozenset({"http", "https"})
+_DEFAULT_SCHEME_PORTS = {"http": 80, "https": 443}
 _HEADER_UNSAFE_CHARACTERS = re.compile(r"[\s;,'\"\x00-\x1f\x7f]")
 # This pattern matches a hostname of dot-separated letter, digit, and hyphen
 # labels, in the lowercase form that `urlsplit` returns. It excludes wildcards
@@ -143,11 +144,16 @@ def get_url_origin(url: str) -> str:
         url: A URL that the chart host validation accepted.
 
     Returns:
-        The origin, built from the lowercased hostname and the port, so it
-        holds no user information or path.
+        The origin, built from the lowercased hostname and any non-default
+        port, with no user information or path.
     """
     parts = urlsplit(url)
-    port = "" if parts.port is None else f":{parts.port}"
+    default_port = _DEFAULT_SCHEME_PORTS.get(parts.scheme)
+    port = (
+        ""
+        if parts.port is None or parts.port == default_port
+        else f":{parts.port}"
+    )
     return f"{parts.scheme}://{parts.hostname}{port}"
 
 
