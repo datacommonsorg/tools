@@ -23,6 +23,8 @@ from narratives_agent.secret_manager import reset_secret_manager_client
 from narratives_agent.settings import (
     DC_API_KEY_ENV,
     DC_API_KEY_SECRET_ENV,
+    DC_WEB_COMPONENT_API_ROOT_ENV,
+    DC_WEB_COMPONENT_URL_ENV,
     DEBUG_REPORT_ENV,
     ENABLE_CHAT_ENV,
     MODEL_ARMOR_TEMPLATE_ENV,
@@ -46,6 +48,8 @@ def clear_settings_cache(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
     for var in (
         DC_API_KEY_ENV,
         DC_API_KEY_SECRET_ENV,
+        DC_WEB_COMPONENT_API_ROOT_ENV,
+        DC_WEB_COMPONENT_URL_ENV,
         DEBUG_REPORT_ENV,
         ENABLE_CHAT_ENV,
         "K_SERVICE",

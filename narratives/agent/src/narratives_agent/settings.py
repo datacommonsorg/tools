@@ -19,8 +19,10 @@ in one place and normalized the same way for every caller.
 """
 
 import functools
+import re
 from pathlib import Path
 from typing import Annotated, Any, Literal
+from urllib.parse import SplitResult, urlsplit
 
 from pydantic import (
     AfterValidator,
@@ -55,6 +57,133 @@ UNAVAILABLE_MESSAGE_ENV = "UNAVAILABLE_MESSAGE"
 
 # Environment variable name of the debug report mode override.
 DEBUG_REPORT_ENV = "DEBUG_REPORT"
+
+# Environment variable names of the browser-side chart hosts.
+DC_WEB_COMPONENT_URL_ENV = "DC_WEB_COMPONENT_URL"
+DC_WEB_COMPONENT_API_ROOT_ENV = "DC_WEB_COMPONENT_API_ROOT"
+
+# Public Data Commons serves the chart web components and the data they
+# fetch. The data comes from the website host, not `api.datacommons.org`,
+# which requires an API key that the browser cannot hold.
+DEFAULT_WEB_COMPONENT_URL = "https://datacommons.org/datacommons.js"
+DEFAULT_WEB_COMPONENT_API_ROOT = "https://datacommons.org"
+
+# The chart host settings must be http(s) URLs on an ASCII hostname. They must
+# not contain whitespace, quotes, control characters, or the `;` and `,` that
+# separate header values and policy directives, so that each value is also a
+# valid source in the page's Content-Security-Policy header.
+_WEB_COMPONENT_URL_SCHEMES = frozenset({"http", "https"})
+_DEFAULT_SCHEME_PORTS = {"http": 80, "https": 443}
+_HEADER_UNSAFE_CHARACTERS = re.compile(r"[\s;,'\"\x00-\x1f\x7f]")
+# This pattern matches a hostname of dot-separated letter, digit, and hyphen
+# labels, in the lowercase form that `urlsplit` returns. It excludes wildcards
+# (`*`), which would widen the policy to every matching host, and
+# percent-encoding and IPv6 literals, which a policy host source cannot carry.
+_HOSTNAME_PATTERN = re.compile(
+    r"[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)*"
+)
+
+
+def _try_split_url(value: str) -> SplitResult | None:
+    """Returns the parts of `value`, or `None` when it does not parse.
+
+    `urlsplit` raises `ValueError` on a malformed IPv6 host, and reading
+    `port` raises it on a port that is not a number from 0 to 65535.
+    """
+    try:
+        parts = urlsplit(value)
+        _ = parts.port
+    except ValueError:
+        return None
+    return parts
+
+
+def _split_web_component_url(value: str, variable: str) -> SplitResult:
+    """Splits `value`, rejecting anything but an http(s) URL with a host.
+
+    Args:
+        value: The variable's value, already stripped of surrounding
+            whitespace.
+        variable: The environment variable name, used in error messages.
+
+    Returns:
+        The parts of the URL.
+
+    Raises:
+        ValueError: `value` holds a character that cannot enter a header,
+            is not an absolute http or https URL on an ASCII hostname,
+            carries user information, or names an empty or invalid port.
+            The message names the variable and the rule.
+    """
+    if not value.isascii() or _HEADER_UNSAFE_CHARACTERS.search(value):
+        raise ValueError(
+            f"{variable} must be ASCII and must not contain whitespace, a "
+            "semicolon, a comma, a quote, or a control character."
+        )
+    parts = _try_split_url(value)
+    if (
+        parts is None
+        or parts.scheme not in _WEB_COMPONENT_URL_SCHEMES
+        or parts.hostname is None
+        or not _HOSTNAME_PATTERN.fullmatch(parts.hostname)
+        or parts.username is not None
+        or parts.netloc.endswith(":")
+    ):
+        raise ValueError(
+            f"{variable} must be an absolute http or https URL with a "
+            "hostname of letters, digits, hyphens, and dots, a valid port "
+            "if any, and no user information."
+        )
+    return parts
+
+
+def get_url_origin(url: str) -> str:
+    """Returns the `scheme://hostname[:port]` origin of `url`.
+
+    Args:
+        url: A URL that the chart host validation accepted.
+
+    Returns:
+        The origin, built from the lowercased hostname and any non-default
+        port, with no user information or path.
+    """
+    parts = urlsplit(url)
+    default_port = _DEFAULT_SCHEME_PORTS.get(parts.scheme)
+    port = (
+        ""
+        if parts.port is None or parts.port == default_port
+        else f":{parts.port}"
+    )
+    return f"{parts.scheme}://{parts.hostname}{port}"
+
+
+def _validate_web_component_url(value: str) -> str:
+    """Returns `value` when it is an http(s) URL that can enter a header.
+
+    Raises:
+        ValueError: See `_split_web_component_url`.
+    """
+    _split_web_component_url(value, DC_WEB_COMPONENT_URL_ENV)
+    return value
+
+
+def _normalize_web_component_api_root(value: str) -> str:
+    """Returns `value` as an http(s) origin without a trailing slash.
+
+    The components request `<apiroot>/api/...`, so the value must be an
+    origin, which consists of a scheme, a hostname, and an optional port.
+
+    Raises:
+        ValueError: `value` fails `_split_web_component_url`, or has a path
+            other than `/`, a query, or a fragment.
+    """
+    parts = _split_web_component_url(value, DC_WEB_COMPONENT_API_ROOT_ENV)
+    if parts.path not in ("", "/") or "?" in value or "#" in value:
+        raise ValueError(
+            f"{DC_WEB_COMPONENT_API_ROOT_ENV} must be an origin (scheme, "
+            "hostname, and optional port) with no path, query, or fragment."
+        )
+    return get_url_origin(value)
 
 
 def validate_hmac_secret(
@@ -274,6 +403,23 @@ class Settings(BaseSettings):
 
     # Optional commit or build SHA surfaced in turn debug reports.
     build_sha: str | None = None
+
+    # The browser loads the Data Commons chart web components
+    # (`datacommons.js`) from this absolute http(s) URL, and the page's
+    # Content-Security-Policy allows scripts from its origin.
+    dc_web_component_url: Annotated[
+        str, AfterValidator(_validate_web_component_url)
+    ] = DEFAULT_WEB_COMPONENT_URL
+
+    # The chart web components receive this http(s) origin as their
+    # `apiroot` and fetch their data from it, and the page's
+    # Content-Security-Policy allows connections to it. The validator
+    # lowercases the hostname and removes a trailing slash. For public Data
+    # Commons, the origin is the website host, and for a custom Data Commons,
+    # it is the instance's own host.
+    dc_web_component_api_root: Annotated[
+        str, AfterValidator(_normalize_web_component_api_root)
+    ] = DEFAULT_WEB_COMPONENT_API_ROOT
 
     # This Secret Manager secret, named in full or by a short secret ID, holds
     # the Gemini API key. When it is unset or yields no key, `gemini.api_key`

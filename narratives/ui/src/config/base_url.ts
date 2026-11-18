@@ -15,9 +15,8 @@
  */
 
 /**
- * @fileoverview Helpers for normalizing configured origin URLs
- * (`VITE_DC_API_ROOT`) and resolving application-relative paths against the
- * active document URL.
+ * @fileoverview Helpers for trimming trailing slashes from URLs and paths and
+ * resolving application-relative paths against the active document URL.
  */
 
 const LEADING_SLASHES_PATTERN = /^\/+/;

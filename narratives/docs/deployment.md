@@ -78,6 +78,8 @@ it. Do not place API keys or secrets in this file.
 | `ACCESS_MODE` | Yes | Access control mode: `public`, `iap`, or `private` (see [Access modes](#access-modes)) |
 | `AUTHORIZED_MEMBERS` | For `iap` & `private` | Comma-separated IAM principals granted access (for example, `user:alice@example.com,group:team@example.com`) |
 | `PUBLIC_DC_URL` | No | Data Commons API and MCP host used by the backend agent (defaults to `https://api.datacommons.org`) |
+| `DC_WEB_COMPONENT_URL` | No | Browser-side chart web component bundle URL (defaults to `https://datacommons.org/datacommons.js`) |
+| `DC_WEB_COMPONENT_API_ROOT` | No | Origin the chart web components fetch data from (defaults to `https://datacommons.org`) |
 
 ### Access modes
 
@@ -193,6 +195,12 @@ curl -s "$URL/agent/health" | jq
 # Private or IAM-gated deployment
 BEARER_TOKEN="$(gcloud auth print-identity-token)" bash deploy/smoke.sh "$URL"
 ```
+
+Among its checks, `deploy/smoke.sh` confirms that the HTML shell carries a
+`Content-Security-Policy` with `frame-ancestors` and with neither
+`'unsafe-inline'` nor `'unsafe-eval'` in `script-src`, and that `/agent/health`
+carries the HTTP security headers (see
+[architecture.md](architecture.md#http-security-headers)).
 
 In the `/agent/health` response, `mcp.support`,
 `mcp.supports_source_attribution`, and `mcp.missing_tools` report the upstream
@@ -394,6 +402,57 @@ git remote add upstream https://github.com/datacommonsorg/tools.git   # once
 git pull upstream main
 ./deploy.sh
 ```
+
+### Chart hosts (`DC_WEB_COMPONENT_URL` and `DC_WEB_COMPONENT_API_ROOT`)
+
+Charts are drawn in the browser by the Data Commons web components, which the
+browser loads and which fetch their own data, without passing through the
+agent. Two environment variables on the container set the hosts they use:
+
+| Variable | Default | Sets |
+| :--- | :--- | :--- |
+| `DC_WEB_COMPONENT_URL` | `https://datacommons.org/datacommons.js` | Script URL |
+| `DC_WEB_COMPONENT_API_ROOT` | `https://datacommons.org` | Data origin |
+
+`DC_WEB_COMPONENT_URL` is the full URL of `datacommons.js`.
+`DC_WEB_COMPONENT_API_ROOT` is the origin the charts fetch their data from,
+passed to each component as its `apiroot`. It must name a Data Commons website
+host, such as `https://datacommons.org`, not `https://api.datacommons.org`,
+which requires an API key that the browser cannot hold. A custom Data Commons
+that serves its own data sets it to the instance's own host.
+
+The server stamps both values into the page, so a change needs a restart but
+no UI rebuild. The page's `Content-Security-Policy` allows scripts from the
+origin of `DC_WEB_COMPONENT_URL` and connections to
+`DC_WEB_COMPONENT_API_ROOT`, so the browser blocks a chart host that these
+variables do not name.
+
+The server refuses to start when either value is malformed.
+`DC_WEB_COMPONENT_URL` must be an absolute `http` or `https` URL with a
+hostname. `DC_WEB_COMPONENT_API_ROOT` must be an `http` or `https` origin: a
+scheme, a hostname, and an optional port, with no path other than a trailing
+slash (which is removed), no query, and no fragment. In both, the hostname is
+ASCII letters, digits, hyphens, and dots (no wildcard, percent-encoding, or
+IPv6 literal), a port, when present, is a number, and the value contains no
+user information, whitespace, semicolon, comma, quote, or control character,
+so that it is also a valid source in a response header.
+
+The autopush and staging deployments must set both variables to their own
+hosts (for example `https://autopush.datacommons.org/datacommons.js` and
+`https://autopush.datacommons.org`) to show their own data; with the defaults,
+their charts show production data.
+
+- **Cloud Run:** set `DC_WEB_COMPONENT_URL` and `DC_WEB_COMPONENT_API_ROOT` in
+  `config/instance.env` and apply with `./deploy.sh --infra-only` (which passes
+  them into Terraform's `dc_web_component_url` and `dc_web_component_api_root`
+  variables). Out-of-band updates via `gcloud run services update` take effect
+  immediately, as with `ENABLE_CHAT` below, and are overwritten on the next
+  `./deploy.sh` run unless mirrored in `config/instance.env`.
+
+- **GKE (`datacommons-website`):** set the variables in the Narratives Helm
+  values for the environment.
+- **Local development:** set them in `.env.local` (see
+  `.env.local.example`).
 
 ### Disabling chat (emergency off switch)
 

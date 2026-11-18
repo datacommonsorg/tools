@@ -19,8 +19,10 @@ UI build: `index.html`, the content-hashed files under `assets/` and
 `theme/`, and the bare files the UI loads from the root, such as
 `dc-logo.svg`. `config.json` lives under `agent_root`, outside the static
 root, so no file needs to be filtered by name or suffix. The root
-`index.html` is served with the effective chat availability stamped into its
-`<script id="runtime-config" type="application/json">` element.
+`index.html` is served with the runtime settings (the effective chat
+availability and the chart hosts) stamped into its
+`<script id="runtime-config" type="application/json">` element, and with the
+page's Content-Security-Policy.
 """
 
 import hashlib
@@ -38,6 +40,7 @@ from starlette.datastructures import Headers
 from starlette.types import Scope
 
 from narratives_agent.config import get_chat_config
+from narratives_agent.settings import Settings, get_url_origin
 
 router = APIRouter()
 
@@ -75,6 +78,26 @@ _HTML_JSON_ESCAPES = str.maketrans(
 )
 
 
+_CONTENT_SECURITY_POLICY_HEADER = "Content-Security-Policy"
+
+# Sources of the HTML shell's Content-Security-Policy.
+_SELF_SOURCE = "'self'"
+_NONE_SOURCE = "'none'"
+# `datacommons.js` inserts `<style>` elements (Emotion and styled-components)
+# into each chart's shadow root, so styles cannot be limited to files.
+_UNSAFE_INLINE_SOURCE = "'unsafe-inline'"
+# The app stylesheet (`ui/src/index.css`) imports Google Fonts, and
+# `datacommons.js` adds `<link>` tags for Google Sans and Material Icons. Both
+# load stylesheets from the stylesheet host and font files from the file host.
+_GOOGLE_FONTS_STYLESHEET_ORIGIN = "https://fonts.googleapis.com"
+_GOOGLE_FONTS_FILE_ORIGIN = "https://fonts.gstatic.com"
+# Images come from provenance and theme hosts over HTTPS, and the PDF export
+# code draws `data:` and `blob:` images.
+_HTTPS_SOURCE = "https:"
+_DATA_SOURCE = "data:"
+_BLOB_SOURCE = "blob:"
+
+
 @router.api_route("/healthz", methods=["GET", "HEAD"])
 async def healthz() -> PlainTextResponse:
     """Reports liveness to the Cloud Run startup probe and the uptime check.
@@ -90,17 +113,74 @@ async def healthz() -> PlainTextResponse:
     return PlainTextResponse("ok\n")
 
 
-def _serialize_runtime_config() -> bytes:
-    """Returns the chat availability JSON, escaped for a `<script>` element.
+def build_content_security_policy(settings: Settings) -> str:
+    """Returns the Content-Security-Policy of the HTML shell.
 
-    Only `enable_chat` and `unavailable_message` are serialized; nothing
-    else from the configuration reaches the page.
+    `script-src` allows only the app's own files and the origin of
+    `DC_WEB_COMPONENT_URL`. It allows neither `'unsafe-inline'` nor
+    `'unsafe-eval'`, because the page's inline `<script>` elements hold
+    JSON, which browsers do not run. `connect-src` allows the agent API and
+    `DC_WEB_COMPONENT_API_ROOT`, where the charts fetch their data.
+    `base-uri 'none'` is safe because the app resolves paths from
+    `location.pathname`, and `form-action 'self'` does not affect the chat
+    input because the input submits through JavaScript.
+
+    Args:
+        settings: The validated settings, whose chart hosts contain no
+            character that could end a source or a directive.
+
+    Returns:
+        The policy, with directives separated by `; `.
+    """
+    directives: tuple[tuple[str, tuple[str, ...]], ...] = (
+        ("default-src", (_SELF_SOURCE,)),
+        (
+            "script-src",
+            (_SELF_SOURCE, get_url_origin(settings.dc_web_component_url)),
+        ),
+        (
+            "style-src",
+            (
+                _SELF_SOURCE,
+                _UNSAFE_INLINE_SOURCE,
+                _GOOGLE_FONTS_STYLESHEET_ORIGIN,
+            ),
+        ),
+        ("font-src", (_SELF_SOURCE, _GOOGLE_FONTS_FILE_ORIGIN, _DATA_SOURCE)),
+        (
+            "img-src",
+            (_SELF_SOURCE, _HTTPS_SOURCE, _DATA_SOURCE, _BLOB_SOURCE),
+        ),
+        ("connect-src", (_SELF_SOURCE, settings.dc_web_component_api_root)),
+        ("frame-src", (_SELF_SOURCE,)),
+        ("object-src", (_NONE_SOURCE,)),
+        ("base-uri", (_NONE_SOURCE,)),
+        ("form-action", (_SELF_SOURCE,)),
+        ("frame-ancestors", (_SELF_SOURCE,)),
+    )
+    return "; ".join(
+        f"{name} {' '.join(sources)}" for name, sources in directives
+    )
+
+
+def _serialize_runtime_config(settings: Settings) -> bytes:
+    """Returns the runtime settings JSON, escaped for a `<script>` element.
+
+    Only the chat availability (`enable_chat`, `unavailable_message`) and
+    the chart hosts (`web_component_url`, `web_component_api_root`) are
+    serialized, so nothing else from the configuration reaches the page.
+    The chart hosts come from `settings`, the `Settings` instance that the
+    application was built with, so they stay fixed for the life of the
+    process and match the Content-Security-Policy built from the same
+    instance.
     """
     chat = get_chat_config()
     serialized = json.dumps(
         {
             "enable_chat": chat.enabled,
             "unavailable_message": chat.unavailable_message,
+            "web_component_url": settings.dc_web_component_url,
+            "web_component_api_root": settings.dc_web_component_api_root,
         },
         ensure_ascii=False,
         separators=(",", ":"),
@@ -108,7 +188,7 @@ def _serialize_runtime_config() -> bytes:
     return serialized.translate(_HTML_JSON_ESCAPES).encode("utf-8")
 
 
-def _render_shell(full_path: str) -> bytes:
+def _render_shell(full_path: str, settings: Settings) -> bytes:
     """Returns the HTML shell with the runtime JSON stamped into its slot.
 
     Reads the file, so callers run it off the event loop. A file without the
@@ -121,7 +201,7 @@ def _render_shell(full_path: str) -> bytes:
         return template
     stamped_slot = (
         _RUNTIME_CONFIG_OPEN_TAG
-        + _serialize_runtime_config()
+        + _serialize_runtime_config(settings)
         + _SCRIPT_CLOSE_TAG
     )
     return template.replace(_RUNTIME_CONFIG_SLOT, stamped_slot, 1)
@@ -137,19 +217,25 @@ def _matches_if_none_match(if_none_match: str, etag: str) -> bool:
     return "*" in tags or etag in [tag.removeprefix("W/") for tag in tags]
 
 
-def _build_shell_response(body: bytes, scope: Scope) -> Response:
+def _build_shell_response(
+    body: bytes, scope: Scope, content_security_policy: str
+) -> Response:
     """Returns the stamped shell, or 304 when `If-None-Match` matches it.
 
-    The `ETag` hashes the stamped bytes, so a change to the chat settings
-    changes it. `Last-Modified` is omitted and `If-Modified-Since` ignored:
-    the file keeps its build time across restarts that change the stamped
-    JSON, so a date comparison would return a stale 304.
+    The 200 and 304 responses both carry `content_security_policy`, so a
+    page revalidated from the browser cache keeps its policy.
+
+    The `ETag` hashes the stamped bytes, so a change to the runtime
+    settings changes it. The response omits `Last-Modified` and ignores
+    `If-Modified-Since` because the file keeps its build time across
+    restarts that change the stamped JSON, so a date comparison would
+    return a stale 304.
     """
     etag = f'"{hashlib.sha256(body).hexdigest()}"'
     headers = {
         "Cache-Control": _REVALIDATE_CACHE_CONTROL,
+        _CONTENT_SECURITY_POLICY_HEADER: content_security_policy,
         "ETag": etag,
-        "X-Content-Type-Options": "nosniff",
     }
     if _matches_if_none_match(
         Headers(scope=scope).get("if-none-match", ""), etag
@@ -163,7 +249,34 @@ def _build_shell_response(body: bytes, scope: Scope) -> Response:
 
 
 class SpaStaticFiles(StaticFiles):
-    """Serves the UI build with cache-control and security headers."""
+    """Serves the UI build with cache and Content-Security-Policy headers.
+
+    The HTML shell carries the chart hosts from the `Settings` that this
+    instance is constructed with. The shell also carries the page's
+    Content-Security-Policy, which is built once from the same `Settings`,
+    so the hosts and the policy cannot disagree.
+    """
+
+    def __init__(
+        self,
+        *,
+        directory: str | os.PathLike[str],
+        html: bool,
+        check_dir: bool,
+        settings: Settings,
+    ) -> None:
+        """Configures `StaticFiles` for `directory` and stores `settings`.
+
+        Args:
+            directory: The static root.
+            html: Whether a directory path serves its `index.html`.
+            check_dir: Whether a missing `directory` raises at construction.
+            settings: The settings that supply the chart hosts stamped
+                into the shell and named in the shell's policy.
+        """
+        super().__init__(directory=directory, html=html, check_dir=check_dir)
+        self._settings = settings
+        self._content_security_policy = build_content_security_policy(settings)
 
     async def get_response(self, path: str, scope: Scope) -> Response:
         """Returns the stamped HTML shell for `/`, else the static file.
@@ -177,8 +290,12 @@ class SpaStaticFiles(StaticFiles):
                 self.lookup_path, _SHELL_FILE_NAME
             )
             if stat_result is not None and stat.S_ISREG(stat_result.st_mode):
-                body = await run_in_threadpool(_render_shell, full_path)
-                return _build_shell_response(body, scope)
+                body = await run_in_threadpool(
+                    _render_shell, full_path, self._settings
+                )
+                return _build_shell_response(
+                    body, scope, self._content_security_policy
+                )
         return await super().get_response(path, scope)
 
     def file_response(
@@ -188,7 +305,11 @@ class SpaStaticFiles(StaticFiles):
         scope: Scope,
         status_code: int = 200,
     ) -> Response:
-        """Returns a file or 304 response with cache and security headers."""
+        """Returns a file or 304 response with cache headers.
+
+        SVG files also carry `Content-Security-Policy: sandbox`. The other
+        security headers are set by `SecurityHeadersMiddleware`.
+        """
         response = super().file_response(
             full_path, stat_result, scope, status_code
         )
@@ -199,11 +320,10 @@ class SpaStaticFiles(StaticFiles):
         else:
             cache_control = _REVALIDATE_CACHE_CONTROL
         response.headers["Cache-Control"] = cache_control
-        response.headers["X-Content-Type-Options"] = "nosniff"
         if PurePath(full_path).suffix.lower() == ".svg":
             # Sandbox SVG responses so embedded scripts cannot execute in the
             # application's origin.
-            response.headers["Content-Security-Policy"] = "sandbox"
+            response.headers[_CONTENT_SECURITY_POLICY_HEADER] = "sandbox"
         return response
 
     async def check_config(self) -> None:

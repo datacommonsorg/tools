@@ -28,6 +28,7 @@ import {
   getDcComponentTag,
   splitChartRows,
 } from '@/src/components/tile_chart';
+import { resetRuntimeConfigForTests } from '@/src/config/runtime_config';
 import type { ChartItem } from '@/src/hooks/use_sse_chat';
 import type { DataCommonsComponentTagName } from '@/src/utils/datacommons_component';
 
@@ -131,6 +132,8 @@ const SINGLE_COLUMN_CLASS = 'grid-cols-1';
 afterEach(() => {
   cleanup();
   vi.useRealTimers();
+  document.getElementById('runtime-config')?.remove();
+  resetRuntimeConfigForTests();
 });
 
 describe('getDcComponentAttributes', () => {
@@ -405,6 +408,35 @@ describe('ChartTile', () => {
     const element = container.querySelector('datacommons-line');
     expect(element?.getAttribute('startDate')).toBe('2005');
     expect(element?.getAttribute('endDate')).toBe('2020');
+  });
+
+  it.each([
+    ['no runtime configuration', undefined, null],
+    [
+      'a configured API root',
+      'https://autopush.datacommons.org',
+      'https://autopush.datacommons.org',
+    ],
+  ])('sets chart apiroot with %s', (_, apiRoot, expected) => {
+    // Test: The `apiroot` the chart component fetches its data from.
+    // Situation: The page has no `#runtime-config`, or one that sets
+    //   `web_component_api_root` to autopush.
+    // Expectation: The mounted component omits `apiroot` when unconfigured
+    //   and sets it to the configured origin otherwise.
+    if (apiRoot !== undefined) {
+      const slot = document.createElement('script');
+      slot.id = 'runtime-config';
+      slot.type = 'application/json';
+      slot.textContent = JSON.stringify({ web_component_api_root: apiRoot });
+      document.head.appendChild(slot);
+    }
+    const { container } = render(
+      <ChartTile config={{ shouldRender: true, charts: [LINE_CHART] }} />,
+    );
+
+    expect(
+      container.querySelector('datacommons-line')?.getAttribute('apiroot'),
+    ).toBe(expected);
   });
 
   it('renders nothing for a chart without a place anchor', () => {

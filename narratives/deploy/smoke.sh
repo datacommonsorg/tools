@@ -94,7 +94,7 @@ check 2 c2
 #    plane that has to cold-start can take ~60s to answer.
 #
 #    This check also gates the chat check after it: both need the same data
-#    plane, so letting 3 block until it answers keeps check 5 from failing for a
+#    plane, so letting 3 block until it answers keeps check 6 from failing for a
 #    reason that has nothing to do with what it tests.
 WARMUP_SECS="${SMOKE_WARMUP_SECS:-120}"
 
@@ -149,9 +149,45 @@ c4() {
 }
 check 4 c4
 
-# 5. A real chat turn. The only check that exercises the model, so it is last
-#    and it is the slowest.
+# 5. Verify the security headers. The HTML shell must carry a
+#    Content-Security-Policy that has `frame-ancestors` and has neither
+#    `'unsafe-inline'` nor `'unsafe-eval'` in `script-src`, and /agent/health
+#    must carry the four headers that every response carries.
 c5() {
+    local shell_headers health_headers policy script_src header
+    shell_headers="$TMP/home.headers"
+    health_headers="$TMP/health.headers"
+    curl_cmd -sS -o /dev/null -D "$shell_headers" "$URL/" \
+        || { echo "cannot fetch the shell headers"; return 1; }
+    policy=$(grep -i '^content-security-policy:' "$shell_headers" | head -1 | tr -d '\r')
+    [ -n "$policy" ] || { echo "the shell has no Content-Security-Policy"; return 1; }
+    case "$policy" in
+        *frame-ancestors*) ;;
+        *) echo "the shell policy has no frame-ancestors"; return 1 ;;
+    esac
+    script_src=$(printf '%s\n' "${policy#*:}" | tr ';' '\n' | grep -i '^ *script-src' || true)
+    [ -n "$script_src" ] || { echo "the shell policy has no script-src"; return 1; }
+    case "$script_src" in
+        *"'unsafe-inline'"*) echo "script-src allows 'unsafe-inline'"; return 1 ;;
+        *"'unsafe-eval'"*) echo "script-src allows 'unsafe-eval'"; return 1 ;;
+    esac
+    curl_cmd -sS -o /dev/null -D "$health_headers" "$URL/agent/health" \
+        || { echo "cannot fetch the /agent/health headers"; return 1; }
+    for header in \
+        'x-content-type-options: nosniff' \
+        'x-frame-options: SAMEORIGIN' \
+        'referrer-policy: strict-origin-when-cross-origin' \
+        'cross-origin-opener-policy: same-origin-allow-popups'; do
+        tr -d '\r' < "$health_headers" | grep -qix "$header" \
+            || { echo "/agent/health lacks \"$header\""; return 1; }
+    done
+    echo "shell policy present; /agent/health carries the security headers"
+}
+check 5 c5
+
+# 6. A real chat turn. This is the only check that exercises the model, and
+#    it is the slowest, so it runs last.
+c6() {
     local out
     # Written to a file rather than piped from a variable: `grep -q` exits on
     # its first match, which SIGPIPEs the feeding echo, and under `pipefail`
@@ -167,7 +203,7 @@ c5() {
     grep -q '"hmac": "[0-9a-f]\{64\}"' "$out" || { echo "complete terminal event carries no transcript signature"; return 1; }
     echo "chat streamed $(grep -c '^id:' "$out") events"
 }
-check 5 c5
+check 6 c6
 
 echo
 echo "Pass: $PASS  Fail: $FAIL"
