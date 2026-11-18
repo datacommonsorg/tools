@@ -33,7 +33,11 @@ Verifies that `Settings`:
     modes.
 11. Defaults `build_sha` to None, treating blank values as unset and
     stripping surrounding whitespace.
-12. Defaults `recaptcha_session_site_key` and `recaptcha_checkbox_site_key` to
+12. Defaults the chart host settings to public Data Commons, accepts http(s)
+    overrides, trims a trailing slash from the API root, and rejects a value
+    that is not an http(s) URL on an ASCII hostname, an API root that is not
+    an origin, and a value with a character that cannot enter a header.
+13. Defaults `recaptcha_session_site_key` and `recaptcha_checkbox_site_key` to
     empty strings, treating blank values as unset and stripping surrounding
     whitespace.
 """
@@ -45,7 +49,11 @@ from pydantic import ValidationError
 
 from narratives_agent.settings import (
     DC_API_KEY_SECRET_ENV,
+    DC_WEB_COMPONENT_API_ROOT_ENV,
+    DC_WEB_COMPONENT_URL_ENV,
     DEBUG_REPORT_ENV,
+    DEFAULT_WEB_COMPONENT_API_ROOT,
+    DEFAULT_WEB_COMPONENT_URL,
     ENABLE_CHAT_ENV,
     MIN_SECRET_BYTES,
     RECAPTCHA_CHECKBOX_SITE_KEY_ENV,
@@ -54,6 +62,7 @@ from narratives_agent.settings import (
     TRANSCRIPT_HMAC_SECRET_NAME_ENV,
     UNAVAILABLE_MESSAGE_ENV,
     Settings,
+    get_url_origin,
     validate_hmac_secret,
 )
 
@@ -519,3 +528,206 @@ def test_recaptcha_site_keys_default_to_empty_and_strip_whitespace(
     assert getattr(blank_settings, field_name) == ""
     configured = _read_settings(monkeypatch, {env_name: "  6Lc_site_key_01 \n"})
     assert getattr(configured, field_name) == "6Lc_site_key_01"
+
+
+def test_chart_hosts_default_to_public_data_commons() -> None:
+    # Test: Defaults of `DC_WEB_COMPONENT_URL` and
+    #   `DC_WEB_COMPONENT_API_ROOT`.
+    # Situation: Neither variable is set.
+    # Expectation: The components load from datacommons.org and fetch their
+    #   data from the website host.
+    settings = Settings()
+
+    assert settings.dc_web_component_url == DEFAULT_WEB_COMPONENT_URL
+    assert DEFAULT_WEB_COMPONENT_URL == "https://datacommons.org/datacommons.js"
+    assert settings.dc_web_component_api_root == DEFAULT_WEB_COMPONENT_API_ROOT
+    assert DEFAULT_WEB_COMPONENT_API_ROOT == "https://datacommons.org"
+
+
+@pytest.mark.parametrize(
+    "raw",
+    [
+        pytest.param(
+            "https://autopush.datacommons.org/datacommons.js", id="autopush"
+        ),
+        pytest.param("http://localhost:8080/datacommons.js", id="localhost"),
+        pytest.param(
+            "https://cdn.example.com/dc/datacommons.js?v=2", id="query"
+        ),
+    ],
+)
+def test_web_component_url_accepts_http_urls(
+    monkeypatch: pytest.MonkeyPatch, raw: str
+) -> None:
+    # Test: Accepted `DC_WEB_COMPONENT_URL` overrides.
+    # Situation: The variable is an https URL on another host, an http URL
+    #   on localhost with a port, or a URL with a query.
+    # Expectation: The field holds the value unchanged.
+    settings = _read_settings(monkeypatch, {DC_WEB_COMPONENT_URL_ENV: raw})
+
+    assert settings.dc_web_component_url == raw
+
+
+@pytest.mark.parametrize(
+    ("raw", "expected"),
+    [
+        pytest.param(
+            "https://autopush.datacommons.org",
+            "https://autopush.datacommons.org",
+            id="autopush",
+        ),
+        pytest.param(
+            "http://localhost:8080", "http://localhost:8080", id="localhost"
+        ),
+        pytest.param(
+            "https://data.example.org/",
+            "https://data.example.org",
+            id="trailing-slash",
+        ),
+        pytest.param(
+            "HTTPS://Data.Example.org:8443",
+            "https://data.example.org:8443",
+            id="uppercase",
+        ),
+        pytest.param(
+            "https://datacommons.org:443",
+            "https://datacommons.org",
+            id="default-https-port",
+        ),
+        pytest.param(
+            "http://localhost:80",
+            "http://localhost",
+            id="default-http-port",
+        ),
+        pytest.param(
+            "http://localhost:443",
+            "http://localhost:443",
+            id="non-default-port-443-on-http",
+        ),
+    ],
+)
+def test_web_component_api_root_accepts_http_origins(
+    monkeypatch: pytest.MonkeyPatch, raw: str, expected: str
+) -> None:
+    # Test: Accepted `DC_WEB_COMPONENT_API_ROOT` overrides.
+    # Situation: The variable is an https origin, an http origin on
+    #   localhost with a port, an origin with a trailing slash, an origin in
+    #   upper case with a non-default port, or an origin naming its scheme's
+    #   default port.
+    # Expectation: The field holds the normalized origin in lower case, with
+    #   any non-default port kept, any default port omitted, and no trailing
+    #   slash.
+    settings = _read_settings(monkeypatch, {DC_WEB_COMPONENT_API_ROOT_ENV: raw})
+
+    assert settings.dc_web_component_api_root == expected
+
+
+@pytest.mark.parametrize(
+    ("url", "expected"),
+    [
+        pytest.param(
+            "https://datacommons.org:443/datacommons.js",
+            "https://datacommons.org",
+            id="https-default-port",
+        ),
+        pytest.param(
+            "http://localhost:80/datacommons.js",
+            "http://localhost",
+            id="http-default-port",
+        ),
+        pytest.param(
+            "https://cdn.example.com:8443/dc/datacommons.js?v=2",
+            "https://cdn.example.com:8443",
+            id="https-custom-port",
+        ),
+        pytest.param(
+            "https://localhost:80/datacommons.js",
+            "https://localhost:80",
+            id="https-port-80",
+        ),
+    ],
+)
+def test_get_url_origin_normalizes_scheme_default_ports(
+    url: str, expected: str
+) -> None:
+    # Test: Origin normalization in `get_url_origin`.
+    # Situation: Script URLs carry a scheme's default port (`:443` on https,
+    #   `:80` on http) or a non-default port alongside a path and query.
+    # Expectation: Default scheme ports and URL paths/queries are stripped,
+    #   while non-default ports are retained.
+    assert get_url_origin(url) == expected
+
+
+# Values that neither chart host setting accepts.
+_INVALID_CHART_HOST_VALUES = [
+    pytest.param("datacommons.org/datacommons.js", id="relative"),
+    pytest.param("//datacommons.org/datacommons.js", id="scheme-relative"),
+    pytest.param("javascript:alert(1)", id="javascript"),
+    pytest.param("ftp://datacommons.org/datacommons.js", id="ftp"),
+    pytest.param("https://", id="no-host"),
+    pytest.param("https://@", id="userinfo-without-host"),
+    pytest.param("https://user@datacommons.org", id="userinfo"),
+    pytest.param("https://datacommons.org:99999", id="port-out-of-range"),
+    pytest.param("https://[::1", id="malformed-ipv6"),
+    pytest.param(
+        "https://datacommons.org; script-src *", id="semicolon-and-space"
+    ),
+    pytest.param("https://datacommons.org;script-src", id="semicolon"),
+    pytest.param("https://datacommons.org,https://evil.example", id="comma"),
+    pytest.param(
+        "https://datacommons.org/data;commons.js", id="path-semicolon"
+    ),
+    pytest.param("https://datacommons.org/data,commons.js", id="path-comma"),
+    pytest.param("https://datacommons.org'", id="single-quote"),
+    pytest.param('https://datacommons.org"', id="double-quote"),
+    pytest.param("https://data\tcommons.org", id="tab"),
+    pytest.param("https://datacommons.org\x7f", id="delete"),
+    pytest.param("https://*/datacommons.js", id="wildcard-host"),
+    pytest.param("https://*.example.org", id="wildcard-subdomain"),
+    pytest.param("https://\u4f8b\u3048.jp/datacommons.js", id="non-ascii-host"),
+    pytest.param("https://datacommons.org:", id="empty-port"),
+    pytest.param("https://exa%41mple.org", id="percent-encoded-host"),
+    pytest.param("https://[::1]:8080", id="ipv6-literal"),
+]
+
+
+@pytest.mark.parametrize("raw", _INVALID_CHART_HOST_VALUES)
+@pytest.mark.parametrize(
+    "variable", [DC_WEB_COMPONENT_URL_ENV, DC_WEB_COMPONENT_API_ROOT_ENV]
+)
+def test_chart_host_settings_reject_invalid_values(
+    monkeypatch: pytest.MonkeyPatch, variable: str, raw: str
+) -> None:
+    # Test: Rejection of invalid chart host settings.
+    # Situation: `DC_WEB_COMPONENT_URL` or `DC_WEB_COMPONENT_API_ROOT` is not
+    #   an absolute http(s) URL with a hostname, has a wildcard,
+    #   percent-encoded, non-ASCII, or IPv6 host, carries user information or
+    #   an empty or invalid port, or holds a semicolon, comma, quote,
+    #   whitespace, or control character.
+    # Expectation: Reading the settings raises `ValidationError` naming the
+    #   variable, so the server does not start.
+    with pytest.raises(ValidationError, match=variable):
+        _read_settings(monkeypatch, {variable: raw})
+
+
+@pytest.mark.parametrize(
+    "raw",
+    [
+        pytest.param("https://datacommons.org/api", id="path"),
+        pytest.param("https://datacommons.org//", id="double-slash"),
+        pytest.param("https://datacommons.org?x=1", id="query"),
+        pytest.param("https://datacommons.org/?", id="empty-query"),
+        pytest.param("https://datacommons.org#top", id="fragment"),
+    ],
+)
+def test_web_component_api_root_rejects_more_than_an_origin(
+    monkeypatch: pytest.MonkeyPatch, raw: str
+) -> None:
+    # Test: Rejection of an API root that is more than an origin.
+    # Situation: The variable carries a path, a query (even an empty one),
+    #   or a fragment.
+    # Expectation: Reading the settings raises `ValidationError` naming the
+    #   variable, because the components build `<apiroot>/api/...` and a
+    #   policy source with a path matches only that path.
+    with pytest.raises(ValidationError, match=DC_WEB_COMPONENT_API_ROOT_ENV):
+        _read_settings(monkeypatch, {DC_WEB_COMPONENT_API_ROOT_ENV: raw})

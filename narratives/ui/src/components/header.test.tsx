@@ -22,7 +22,11 @@
 import { cleanup, render, screen, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { Header } from '@/src/components/header';
-import { resetInstanceConfigForTests } from '@/src/config/instance_config';
+import * as instanceConfig from '@/src/config/instance_config';
+import {
+  DEFAULT_INSTANCE_CONFIG,
+  resetInstanceConfigForTests,
+} from '@/src/config/instance_config';
 import { resetRuntimeConfigForTests } from '@/src/config/runtime_config';
 import { ChatSessionProvider } from '@/src/hooks/chat_session_context';
 
@@ -56,6 +60,7 @@ const getLogoAlt = (container: HTMLElement): string | null =>
 
 afterEach(() => {
   vi.unstubAllGlobals();
+  vi.restoreAllMocks();
   cleanup();
   document.getElementById('instance-config')?.remove();
   document.getElementById('runtime-config')?.remove();
@@ -98,6 +103,61 @@ describe('Header', () => {
     ]);
     expect(links[0].getAttribute('aria-current')).toBe('page');
     expect(links[1].getAttribute('aria-current')).toBeNull();
+  });
+
+  it('opens every navigation link in the current tab', () => {
+    // Test: Tab behavior of header navigation links.
+    // Situation: The theme document declares a hash route, a root-relative
+    //            path, and an https URL.
+    // Expectation: Every link has target="_self", and only the https link
+    //              carries rel="noopener noreferrer".
+    writeSlot({
+      navigation: [
+        { label: 'Dashboards', href: '#/metrics' },
+        { label: 'Download', href: '/download' },
+        { label: 'Docs', href: 'https://docs.datacommons.org/' },
+      ],
+    });
+    renderHeader();
+    const nav = screen.getByRole('navigation', { name: 'Primary' });
+    const links = within(nav).getAllByRole('link');
+    expect(links.map((link) => link.getAttribute('target'))).toEqual([
+      '_self',
+      '_self',
+      '_self',
+    ]);
+    expect(links.map((link) => link.getAttribute('rel'))).toEqual([
+      null,
+      null,
+      'noopener noreferrer',
+    ]);
+  });
+
+  it.each([
+    ['javascript:', 'javascript:alert(1)'],
+    ['data:', 'data:text/html,x'],
+    ['vbscript:', 'vbscript:msgbox(1)'],
+    ['relative', 'relative/path'],
+  ])('renders a %s navigation href as plain text without hover styling', (_, href) => {
+    // Test: Header navigation entry with an unsafe href.
+    // Situation: The instance configuration is stubbed so that a navigation
+    //            entry carries a script, data, or relative URL, which
+    //            `getInstanceConfig` would otherwise discard.
+    // Expectation: The entry renders its label on a fallback span that keeps
+    //              layout visibility classes and omits interactive hover
+    //              classes.
+    vi.spyOn(instanceConfig, 'getInstanceConfig').mockReturnValue({
+      ...DEFAULT_INSTANCE_CONFIG,
+      navigation: [{ label: 'Evil', href }],
+    });
+    renderHeader();
+    const nav = screen.getByRole('navigation', { name: 'Primary' });
+    expect(within(nav).queryByRole('link')).toBeNull();
+    const fallback = within(nav).getByText('Evil');
+    expect(fallback.tagName).toBe('SPAN');
+    expect(fallback.classList.contains('hidden')).toBe(true);
+    expect(fallback.classList.contains('lg:block')).toBe(true);
+    expect(fallback.classList.contains('hover:text-on-surface')).toBe(false);
   });
 
   it.each([

@@ -47,6 +47,58 @@ serves both the frontend and backend from one origin:
 2. **Agent API (`/agent/*`)** — handles chat streaming (`/agent/chat/stream`)
    and health checks (`/agent/health`).
 
+### HTTP security headers
+
+`SecurityHeadersMiddleware` (`server/security_headers.py`) adds these headers
+to every response, including the static files, `/agent/*`, 404 responses, and
+CORS preflight responses, unless the response already sets them:
+
+| Header | Value |
+| :--- | :--- |
+| `X-Content-Type-Options` | `nosniff` |
+| `X-Frame-Options` | `SAMEORIGIN` |
+| `Referrer-Policy` | `strict-origin-when-cross-origin` |
+| `Cross-Origin-Opener-Policy` | `same-origin-allow-popups` |
+
+The middleware is plain ASGI rather than Starlette's `BaseHTTPMiddleware`: it
+edits only the response start message and forwards each body chunk as it is
+sent, so the chat stream is never buffered. It sets no
+`Content-Security-Policy`; `.svg` files carry `Content-Security-Policy:
+sandbox` from `server/routes/spa.py`. The one response without the headers is
+the plain-text 500 that Starlette's `ServerErrorMiddleware` sends for an
+unhandled exception, because that middleware wraps every user middleware.
+
+The HTML shell (`/` and `/index.html`, on 200 and 304 responses) also carries
+the page's `Content-Security-Policy`, which `build_content_security_policy` in
+`server/routes/spa.py` builds once at startup from the chart host settings:
+
+```text
+default-src 'self';
+script-src 'self' <origin of DC_WEB_COMPONENT_URL>;
+style-src 'self' 'unsafe-inline' https://fonts.googleapis.com;
+font-src 'self' https://fonts.gstatic.com data:;
+img-src 'self' https: data: blob:;
+connect-src 'self' <DC_WEB_COMPONENT_API_ROOT>;
+frame-src 'self';
+object-src 'none';
+base-uri 'none';
+form-action 'self';
+frame-ancestors 'self'
+```
+
+`script-src` allows no inline or evaluated script: the shell's two inline
+`<script>` elements are JSON data blocks, which browsers do not run, and the
+loader that adds `datacommons.js` is part of the app's own bundle. The app
+stylesheet (`ui/src/index.css`) and `datacommons.js` both load Google Fonts, so
+`style-src` allows `fonts.googleapis.com` and `font-src` allows
+`fonts.gstatic.com`. The Emotion and styled-components code in
+`datacommons.js` inserts `<style>` elements into each chart's shadow root, so
+`style-src` keeps `'unsafe-inline'`. The PDF export code draws `data:` and
+`blob:` images. `base-uri 'none'` breaks nothing because the app resolves paths
+from `location.pathname`, and `form-action 'self'` does not affect the chat
+input, which submits through JavaScript. Static files other than the shell and
+`/agent/*` responses carry no page policy.
+
 ## How Narratives connects to Data Commons
 
 Narratives talks to Data Commons in two ways — one for the Python agent and one
@@ -62,9 +114,16 @@ functions (`workflows/fetch.py`).
 ### 2. Browser chart requests
 
 When an answer includes a chart, the UI renders Data Commons web components
-(such as `<datacommons-line>` or `<datacommons-bar>`). Those components fetch
-their own chart data and place names directly from Data Commons
-(`datacommons.org` or the same-origin Data Commons website host).
+(such as `<datacommons-line>` or `<datacommons-bar>`). The browser loads them
+from `DC_WEB_COMPONENT_URL` (default
+`https://datacommons.org/datacommons.js`), and they fetch their own chart data
+and place names directly from `DC_WEB_COMPONENT_API_ROOT` (default
+`https://datacommons.org`), passed to each component as its `apiroot`. Both are
+agent settings that the server stamps into `#runtime-config` (see
+[UI theme & instance branding](#ui-theme--instance-branding)), so they change
+without a UI rebuild. The API root is a Data Commons website host, not
+`api.datacommons.org`, which requires an API key that the browser cannot
+hold.
 
 Prose figures come from the digest while charts are drawn by the Data Commons
 web components from their own fetch, pinned by `facet_ids`, so the reference
@@ -361,6 +420,12 @@ the **6 most recent turns** in full:
   the server summarizes the oldest turn into `compacted_summary`, removes that
   turn from the list, and re-signs the remaining 6 turns. The browser replaces
   its stored history with the updated `window` returned in the `terminal` event.
+  The summarization prompt quotes the earlier summary inside an
+  `<earlier_summary>` block and each evicted turn inside its own
+  `<evicted_turn>` block, removes every conversation delimiter (including case,
+  whitespace, self-closing, and attribute variants) from the quoted text, and
+  tells the model that the blocks hold material to summarize, not instructions
+  to follow.
 - **Remembering context (`state_slots`):** Each turn records the places,
   variables, and dates used in that turn inside `state_slots`. This helps the
   agent resolve follow-up questions like *"How about Germany?"* or *"What about
@@ -441,24 +506,38 @@ directly into `ui/index.html` and read synchronously when the app starts:
   `getInstanceConfig()` in `ui/src/config/instance_config.ts`. This helper
   reads `<script id="instance-config" type="application/json">`, validates each
   field, and falls back to `DEFAULT_INSTANCE_CONFIG` for any field that is
-  missing or invalid.
+  missing or invalid. A Key Metrics tile keeps only the attributes that
+  `metricsTile` lists in `schemas/theme.schema.json`, and a tile whose `type`
+  is not one of its chart types is dropped, so a theme cannot set an arbitrary
+  attribute on a chart element.
 
 When the agent server serves `index.html` (`server/routes/spa.py`), it also
-injects the effective chat availability (`enable_chat`, `unavailable_message`)
-and any configured public reCAPTCHA site keys (`recaptcha_session_site_key`,
-`recaptcha_checkbox_site_key`) into
-`<script id="runtime-config" type="application/json">`, escaping `<`, `>`,
-`&`, U+2028, and U+2029. The `ETag` hashes the stamped bytes and
-`Last-Modified` is omitted, so a browser revalidating the page receives the
-current value after a restart that changes it. `getRuntimeConfig()` in
-`ui/src/config/runtime_config.ts` reads `#runtime-config` synchronously at
-startup. When `enable_chat` is `false`, `App` renders `UnavailableView`
+injects the runtime settings — the effective chat availability, the chart
+hosts, and any configured public reCAPTCHA site keys — into
+`<script id="runtime-config" type="application/json">`:
+
+```json
+{
+  "enable_chat": true,
+  "unavailable_message": "<str>",
+  "web_component_url": "<str>",
+  "web_component_api_root": "<str>",
+  "recaptcha_session_site_key": "<str, omitted when unset>",
+  "recaptcha_checkbox_site_key": "<str, omitted when unset>"
+}
+```
+
+`getRuntimeConfig()` in `ui/src/config/runtime_config.ts` reads
+`#runtime-config` synchronously at startup; missing or invalid chart hosts
+resolve to `""` without affecting chat, so no script or chart data loads from
+an unintended origin. When `web_component_url` is non-empty, `ui/src/main.tsx`
+appends one `<script>` before the first render
+(`ui/src/utils/load_web_components.ts`), and chart components wait for each
+custom element with `customElements.whenDefined`. When `enable_chat` is
+`false`, `App` renders `UnavailableView`
 (`ui/src/components/view_unavailable.tsx`) with the unavailable message on the
 Data Agent route instead of the chat, keeps `Header` and `MetricsPage`
-available, and hides the "New chat" controls. Under `pnpm dev:ui`, the Vite
-dev server fetches the shell from the agent at `AGENT_URL` on every page load
-and copies its `#runtime-config` (`copyAgentRuntimeConfig` in
-`ui/src/config/runtime_config_dev.ts`, which only `vite.config.ts` imports),
-parsing and re-escaping the value. The shell is fetched from the `AGENT_URL`
-path without following redirects; when the agent cannot be read, the element
-stays empty and Vite logs a warning with the reason.
+available, and hides the "New chat" controls. Under `pnpm dev:ui`, the Vite dev
+server copies `#runtime-config` from the agent at `AGENT_URL` on page load
+(`ui/src/config/runtime_config_dev.ts`), leaving the element empty with a
+warning when the agent shell cannot be read.

@@ -1,8 +1,9 @@
 /**
  * @fileoverview Declares TypeScript types for the Data Commons custom elements used in JSX.
  *
- * Type declarations for Data Commons web components loaded via
- * https://datacommons.org/datacommons.js.
+ * These declarations cover the Data Commons web components loaded from
+ * `datacommons.js` (`DC_WEB_COMPONENT_URL`, by default
+ * https://datacommons.org/datacommons.js).
  *
  * At runtime these are plain HTMLElements. We augment React's existing JSX
  * namespace so TypeScript allows the documented attribute set without
