@@ -129,7 +129,7 @@ describe('copyAgentRuntimeConfig', () => {
     );
     const stamped = await copyAgentRuntimeConfig(EMPTY_SLOT, SHELL_URL);
     expect(stamped).toBe(
-      `<script id="runtime-config" type="application/json">{"enable_chat":${isChatEnabled},"unavailable_message":"Paused","web_component_url":"https://datacommons.org/datacommons.js","web_component_api_root":"https://datacommons.org"}</script>`,
+      `<script id="runtime-config" type="application/json">{"enable_chat":${isChatEnabled},"unavailable_message":"Paused"}</script>`,
     );
     expect(vi.mocked(fetch).mock.calls[0][0]).toBe(SHELL_URL);
   });
@@ -181,7 +181,7 @@ describe('copyAgentRuntimeConfig', () => {
     stubShellResponse(buildAgentShell('{"enable_chat": '));
     const stamped = await copyAgentRuntimeConfig(EMPTY_SLOT, SHELL_URL);
     expect(stamped).toBe(
-      `<script id="runtime-config" type="application/json">{"enable_chat":false,"unavailable_message":"${DEFAULT_UNAVAILABLE_MESSAGE}","web_component_url":"https://datacommons.org/datacommons.js","web_component_api_root":"https://datacommons.org"}</script>`,
+      `<script id="runtime-config" type="application/json">{"enable_chat":false,"unavailable_message":"${DEFAULT_UNAVAILABLE_MESSAGE}"}</script>`,
     );
     expect(warn).toHaveBeenCalledTimes(1);
   });

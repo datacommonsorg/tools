@@ -29,45 +29,39 @@
 export const DEFAULT_UNAVAILABLE_MESSAGE =
   'This Data Commons tool is temporarily unavailable due to high traffic.';
 
-/**
- * URL of `datacommons.js` when none is configured. It matches
- * `DEFAULT_WEB_COMPONENT_URL` in the agent's `settings.py`.
- */
-export const DEFAULT_WEB_COMPONENT_URL =
-  'https://datacommons.org/datacommons.js';
-
-/**
- * Origin the chart web components fetch their data from when none is
- * configured. It matches `DEFAULT_WEB_COMPONENT_API_ROOT` in the agent's
- * `settings.py`.
- */
-export const DEFAULT_WEB_COMPONENT_API_ROOT = 'https://datacommons.org';
-
 export interface RuntimeConfig {
   /** Whether the interactive Data Agent chat surface is active. */
   isChatEnabled: boolean;
   /** Message displayed when chat is disabled. */
   unavailableMessage: string;
-  /** URL that `datacommons.js` is loaded from (`DC_WEB_COMPONENT_URL`). */
+  /**
+   * URL that `datacommons.js` is loaded from (`DC_WEB_COMPONENT_URL`), or
+   * `""` when unconfigured or invalid.
+   */
   webComponentUrl: string;
   /**
    * Origin the chart web components fetch their data from, passed as their
-   * `apiroot` (`DC_WEB_COMPONENT_API_ROOT`).
+   * `apiroot` (`DC_WEB_COMPONENT_API_ROOT`), or `""` when unconfigured or
+   * invalid.
    */
   webComponentApiRoot: string;
 }
 
-/** Settings used when the page carries no runtime configuration. */
+/**
+ * Settings used when the page carries no runtime configuration. Chart hosts
+ * remain empty until stamped by the agent so no script or chart data loads
+ * from an unconfigured origin.
+ */
 export const DEFAULT_RUNTIME_CONFIG: Readonly<RuntimeConfig> = Object.freeze({
   isChatEnabled: true,
   unavailableMessage: DEFAULT_UNAVAILABLE_MESSAGE,
-  webComponentUrl: DEFAULT_WEB_COMPONENT_URL,
-  webComponentApiRoot: DEFAULT_WEB_COMPONENT_API_ROOT,
+  webComponentUrl: '',
+  webComponentApiRoot: '',
 });
 
 /**
  * Settings used when a runtime configuration is present but malformed. Chat
- * is disabled, and the charts keep their default hosts.
+ * is disabled and chart hosts remain empty.
  */
 const DISABLED_RUNTIME_CONFIG: Readonly<RuntimeConfig> = Object.freeze({
   ...DEFAULT_RUNTIME_CONFIG,
@@ -117,98 +111,77 @@ const readUnavailableMessage = (value: unknown): string => {
   return DEFAULT_UNAVAILABLE_MESSAGE;
 };
 
-/**
- * Matches an absolute `http:` or `https:` URL, in any case, and captures its
- * authority: the text between `//` and the first `/`, `?`, or `#`.
- */
-const HTTP_URL_AUTHORITY_PATTERN = /^https?:\/\/([^/?#]*)/i;
-
-/**
- * Matches an authority the agent accepts for a chart host: a hostname of
- * dot-separated letter, digit, and hyphen labels with an optional numeric
- * port. It excludes user information, wildcards (`*`), percent-encoding,
- * IPv6 literals, non-ASCII hosts, and an empty port.
- */
-const CHART_HOST_AUTHORITY_PATTERN =
-  /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)*(?::\d+)?$/i;
-
-/** Matches the `?` or `#` that starts a query or a fragment. */
+const HTTP_SCHEME_PREFIX = /^https?:\/\//i;
+const WHITESPACE_PATTERN = /\s/;
 const QUERY_OR_FRAGMENT_PATTERN = /[?#]/;
+const MAX_ASCII_C0_CODE = 0x1f;
+const ASCII_DEL_CODE = 0x7f;
+
+const hasAsciiControlChar = (value: string): boolean => {
+  for (let index = 0; index < value.length; index += 1) {
+    const code = value.charCodeAt(index);
+    if (code <= MAX_ASCII_C0_CODE || code === ASCII_DEL_CODE) {
+      return true;
+    }
+  }
+  return false;
+};
 
 /**
- * Matches characters that the agent rejects in a chart host because the
- * value enters a response header: whitespace, `;`, `,`, and quotes. Control
- * and non-ASCII characters are checked by code point in {@link isHeaderSafe}.
- */
-const HEADER_UNSAFE_CHARACTER_PATTERN = /[\s;,'"]/;
-
-/** Highest code point of the C0 control characters. */
-const LAST_C0_CONTROL_CODE_POINT = 0x1f;
-/** Code point of DEL, the control character after the printable ASCII. */
-const DELETE_CODE_POINT = 0x7f;
-
-/**
- * Returns whether `value` is printable ASCII without a character that cannot
- * enter a header.
- */
-const isHeaderSafe = (value: string): boolean =>
-  !HEADER_UNSAFE_CHARACTER_PATTERN.test(value) &&
-  [...value].every((character) => {
-    const codePoint = character.codePointAt(0) ?? 0;
-    return (
-      codePoint > LAST_C0_CONTROL_CODE_POINT && codePoint < DELETE_CODE_POINT
-    );
-  });
-
-/**
- * Parses `value` as a chart host URL by the agent's rules, or returns
- * `null`. A valid value is an absolute http(s) URL on a hostname of letters,
- * digits, hyphens, and dots, with a valid port if it has one.
+ * Parses `value` as an absolute `http:` or `https:` URL without credentials,
+ * whitespace, backslashes, or ASCII control characters, or returns `null`.
  */
 const parseWebComponentUrl = (value: string): URL | null => {
-  const authority = HTTP_URL_AUTHORITY_PATTERN.exec(value)?.[1];
   if (
-    authority === undefined ||
-    !CHART_HOST_AUTHORITY_PATTERN.test(authority) ||
-    !isHeaderSafe(value)
+    !HTTP_SCHEME_PREFIX.test(value) ||
+    value.includes('\\') ||
+    WHITESPACE_PATTERN.test(value) ||
+    hasAsciiControlChar(value)
   ) {
     return null;
   }
   try {
-    return new URL(value);
+    const parsed = new URL(value);
+    if (
+      (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') ||
+      parsed.username !== '' ||
+      parsed.password !== ''
+    ) {
+      return null;
+    }
+    return parsed;
   } catch {
-    // A port above 65535 fails to parse.
+    // new URL throws TypeError on unparseable URLs or out-of-range ports.
     return null;
   }
 };
 
 /**
- * Returns `web_component_url` when it is an absolute http(s) URL. Otherwise
- * returns the default, with a warning when the value is invalid and without
- * one when the value is absent.
+ * Returns `web_component_url` when it is an absolute http(s) URL without
+ * credentials. Otherwise returns `""`, logging a warning when a value was
+ * provided.
  */
 const readWebComponentUrl = (value: unknown): string => {
   if (value === undefined) {
-    return DEFAULT_WEB_COMPONENT_URL;
+    return '';
   }
   if (typeof value === 'string' && parseWebComponentUrl(value) !== null) {
     return value;
   }
   console.warn(
-    `${RUNTIME_CONFIG_LOG_PREFIX} "web_component_url" is not an http(s) URL; using the default.`,
+    `${RUNTIME_CONFIG_LOG_PREFIX} "web_component_url" is not a valid http(s) URL; disabling chart script loading.`,
   );
-  return DEFAULT_WEB_COMPONENT_URL;
+  return '';
 };
 
 /**
- * Returns `web_component_api_root` as an origin when it is an http(s) origin
- * with no path other than a trailing slash and no query or fragment.
- * Otherwise returns the default, with a warning when the value is invalid
- * and without one when the value is absent.
+ * Returns `web_component_api_root` normalized to its origin when it is an
+ * http(s) origin without credentials, path, query, or fragment. Otherwise
+ * returns `""`, logging a warning when a value was provided.
  */
 const readWebComponentApiRoot = (value: unknown): string => {
   if (value === undefined) {
-    return DEFAULT_WEB_COMPONENT_API_ROOT;
+    return '';
   }
   const url =
     typeof value === 'string' && !QUERY_OR_FRAGMENT_PATTERN.test(value)
@@ -218,16 +191,16 @@ const readWebComponentApiRoot = (value: unknown): string => {
     return url.origin;
   }
   console.warn(
-    `${RUNTIME_CONFIG_LOG_PREFIX} "web_component_api_root" is not an http(s) origin; using the default.`,
+    `${RUNTIME_CONFIG_LOG_PREFIX} "web_component_api_root" is not a valid http(s) origin; omitting chart apiroot.`,
   );
-  return DEFAULT_WEB_COMPONENT_API_ROOT;
+  return '';
 };
 
 /**
  * Parses the text of `#runtime-config`. Empty or absent text gives
  * {@link DEFAULT_RUNTIME_CONFIG}; text that is not a JSON object, or an
- * `enable_chat` that is not a boolean, disables chat. A missing or invalid
- * chart host takes its default and leaves chat unaffected.
+ * `enable_chat` that is not a boolean, disables chat. Missing or invalid
+ * chart hosts resolve to `""` without affecting chat.
  */
 export const parseRuntimeConfigText = (
   text: string | undefined,

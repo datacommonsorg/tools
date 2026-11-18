@@ -130,7 +130,7 @@ function TilesGrid({ tiles }: TilesGridProps) {
           <Tile key={index} title={title}>
             <DataCommonsComponent
               tag={`datacommons-${type}` as DataCommonsComponentTagName}
-              apiroot={getRuntimeConfig().webComponentApiRoot}
+              apiroot={getRuntimeConfig().webComponentApiRoot || undefined}
               {...(attrs as DataCommonsComponentAttributes)}
             />
           </Tile>

@@ -308,7 +308,7 @@ function ChartCard({
       <div aria-busy={isLoading}>
         <DataCommonsComponent
           tag={tag}
-          apiroot={getRuntimeConfig().webComponentApiRoot}
+          apiroot={getRuntimeConfig().webComponentApiRoot || undefined}
           {...attrs}
         />
       </div>

@@ -24,18 +24,18 @@
 export const WEB_COMPONENTS_SCRIPT_ID = 'datacommons-web-components';
 
 /**
- * Appends one `<script src={url} defer>` to `document.head`. A later call
- * adds nothing, so the components are loaded once. An inserted script runs
- * asynchronously once loaded, possibly after the first render, so chart code
- * waits for each element with `customElements.whenDefined`.
+ * Appends one `<script src={url}>` to `document.head` when `url` is non-empty.
+ * Subsequent calls once the script element exists are no-ops, so the
+ * components load at most once. Dynamically inserted scripts execute
+ * asynchronously once loaded, so chart code waits for each custom element
+ * with `customElements.whenDefined`.
  */
 export const loadWebComponents = (url: string): void => {
-  if (document.getElementById(WEB_COMPONENTS_SCRIPT_ID)) {
+  if (!url || document.getElementById(WEB_COMPONENTS_SCRIPT_ID)) {
     return;
   }
   const script = document.createElement('script');
   script.id = WEB_COMPONENTS_SCRIPT_ID;
   script.src = url;
-  script.defer = true;
   document.head.appendChild(script);
 };

@@ -411,18 +411,18 @@ describe('ChartTile', () => {
   });
 
   it.each([
-    ['no runtime configuration', undefined, 'https://datacommons.org'],
+    ['no runtime configuration', undefined, null],
     [
       'a configured API root',
       'https://autopush.datacommons.org',
       'https://autopush.datacommons.org',
     ],
-  ])('fetches chart data from the API root with %s', (_, apiRoot, expected) => {
+  ])('sets chart apiroot with %s', (_, apiRoot, expected) => {
     // Test: The `apiroot` the chart component fetches its data from.
     // Situation: The page has no `#runtime-config`, or one that sets
     //   `web_component_api_root` to autopush.
-    // Expectation: The mounted component's `apiroot` is datacommons.org by
-    //   default and the configured origin otherwise.
+    // Expectation: The mounted component omits `apiroot` when unconfigured
+    //   and sets it to the configured origin otherwise.
     if (apiRoot !== undefined) {
       const slot = document.createElement('script');
       slot.id = 'runtime-config';

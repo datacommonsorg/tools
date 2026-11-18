@@ -107,6 +107,9 @@ describe('MetricsPage', () => {
     expect(tabs[1].getAttribute('aria-selected')).toBe('true');
     expect(container.querySelector('datacommons-highlight')).toBeNull();
     expect(container.querySelector('datacommons-line')).not.toBeNull();
+    expect(
+      container.querySelector('datacommons-line')?.getAttribute('apiroot'),
+    ).toBeNull();
   });
 
   it('passes the configured API root to every tile', () => {

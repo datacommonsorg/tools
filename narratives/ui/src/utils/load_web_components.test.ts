@@ -52,18 +52,32 @@ afterEach(() => {
 });
 
 describe('loadWebComponents', () => {
-  it('appends one deferred script for the configured URL', () => {
+  it('appends nothing when the URL is empty', () => {
+    // Test: Unconfigured or invalid chart script URL.
+    // Situation: `loadWebComponents` receives an empty string, then a valid
+    //   URL on a subsequent call.
+    // Expectation: The empty call appends no script, and a later call with a
+    //   configured URL still loads the bundle.
+    loadWebComponents('');
+    expect(getHeadScripts()).toHaveLength(0);
+
+    loadWebComponents(AUTOPUSH_URL);
+    const scripts = getHeadScripts();
+    expect(scripts).toHaveLength(1);
+    expect(scripts[0].getAttribute('src')).toBe(AUTOPUSH_URL);
+  });
+
+  it('appends one script for the configured URL', () => {
     // Test: First load of the chart web components.
     // Situation: The head holds no web components script, and the
     //   configured URL names autopush.
-    // Expectation: The head gains one deferred script whose source is the
-    //   configured URL.
+    // Expectation: The head gains one script whose source is the configured
+    //   URL.
     loadWebComponents(AUTOPUSH_URL);
 
     const scripts = getHeadScripts();
     expect(scripts).toHaveLength(1);
     expect(scripts[0].getAttribute('src')).toBe(AUTOPUSH_URL);
-    expect(scripts[0].defer).toBe(true);
   });
 
   it('adds no second script when called again', () => {

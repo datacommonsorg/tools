@@ -99,21 +99,27 @@ export const extractRuntimeConfigText = (html: string): string | undefined => {
 };
 
 /**
- * Serializes `config` to the wire JSON that the agent stamps, with the keys
- * `enable_chat`, `unavailable_message`, `web_component_url`, and
- * `web_component_api_root` in the agent's order, escaped for a `<script>`
+ * Serializes `config` to the wire JSON that the agent stamps, with
+ * `enable_chat`, `unavailable_message`, and any non-empty `web_component_url`
+ * and `web_component_api_root` in the agent's order, escaped for a `<script>`
  * element.
  */
-const serializeRuntimeConfig = (config: Readonly<RuntimeConfig>): string =>
-  JSON.stringify({
+const serializeRuntimeConfig = (config: Readonly<RuntimeConfig>): string => {
+  const payload: Record<string, boolean | string> = {
     enable_chat: config.isChatEnabled,
     unavailable_message: config.unavailableMessage,
-    web_component_url: config.webComponentUrl,
-    web_component_api_root: config.webComponentApiRoot,
-  }).replace(
+  };
+  if (config.webComponentUrl !== '') {
+    payload.web_component_url = config.webComponentUrl;
+  }
+  if (config.webComponentApiRoot !== '') {
+    payload.web_component_api_root = config.webComponentApiRoot;
+  }
+  return JSON.stringify(payload).replace(
     HTML_JSON_ESCAPE_PATTERN,
     (character) => HTML_JSON_ESCAPES[character],
   );
+};
 
 /**
  * Returns `html` with `config` stamped into the first empty
