@@ -35,12 +35,12 @@ styles.
   Components read the chat availability (`isChatEnabled`,
   `unavailableMessage`) and the chart hosts (`webComponentUrl`,
   `webComponentApiRoot`) synchronously via `getRuntimeConfig()` in
-  `src/config/runtime_config.ts`, which falls back to chat enabled and the
-  datacommons.org chart hosts when the tag is empty, disables chat when its
-  JSON is malformed, and replaces a missing or invalid chart host with its
-  default without affecting chat. Under `pnpm dev:ui`, the Vite dev server
-  copies the element from the agent at `AGENT_URL`, so the agent is the only
-  source of the values.
+  `src/config/runtime_config.ts`, which defaults chat to enabled and chart
+  hosts to `""` when the tag is empty, disables chat when its JSON is
+  malformed, and resolves a missing or invalid chart host to `""` without
+  affecting chat. Under `pnpm dev:ui`, the Vite dev server copies the element
+  from the agent at `AGENT_URL`, so the agent is the only source of the
+  values.
 - **Variants and state are expressed as conditional utility classes**, the
   Tailwind idiom — not `data-*` attributes, which belong to a stylesheet-driven
   stack. Lift any condition more complex than a single ternary out of the JSX

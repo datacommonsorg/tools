@@ -518,24 +518,17 @@ hosts, into `<script id="runtime-config" type="application/json">`:
 }
 ```
 
-The JSON is written on one line with `<`, `>`, `&`, U+2028, and U+2029
-escaped. The chart hosts are the ones the server starts with. The `ETag`
-hashes the stamped bytes and `Last-Modified` is omitted, so a browser
-revalidating the page receives the current values after a restart that
-changes them. `getRuntimeConfig()` in `ui/src/config/runtime_config.ts` reads
-`#runtime-config` synchronously at startup; a missing or invalid chart host
-takes its default without affecting chat. Before the first render,
-`ui/src/main.tsx` appends one `<script>` for `web_component_url`
-(`ui/src/utils/load_web_components.ts`). The script runs asynchronously once
-loaded, so chart code waits for each component with
-`customElements.whenDefined`. When `enable_chat` is `false`, `App` renders
-`UnavailableView` (`ui/src/components/view_unavailable.tsx`) with the
-unavailable message on the Data Agent route instead of the chat, keeps
-`Header` and `MetricsPage` available, and hides the "New chat" controls. Under
-`pnpm dev:ui`, the Vite dev server fetches the shell from the agent at
-`AGENT_URL` on every page load and copies its `#runtime-config`
-(`copyAgentRuntimeConfig` in `ui/src/config/runtime_config_dev.ts`, which only
-`vite.config.ts` imports), parsing and re-escaping the values. The shell is
-fetched from the `AGENT_URL` path without following redirects; when the agent
-cannot be read, the element stays empty and Vite logs a warning with the
-reason.
+`getRuntimeConfig()` in `ui/src/config/runtime_config.ts` reads
+`#runtime-config` synchronously at startup; missing or invalid chart hosts
+resolve to `""` without affecting chat, so no script or chart data loads from
+an unintended origin. When `web_component_url` is non-empty, `ui/src/main.tsx`
+appends one `<script>` before the first render
+(`ui/src/utils/load_web_components.ts`), and chart components wait for each
+custom element with `customElements.whenDefined`. When `enable_chat` is
+`false`, `App` renders `UnavailableView`
+(`ui/src/components/view_unavailable.tsx`) with the unavailable message on the
+Data Agent route instead of the chat, keeps `Header` and `MetricsPage`
+available, and hides the "New chat" controls. Under `pnpm dev:ui`, the Vite dev
+server copies `#runtime-config` from the agent at `AGENT_URL` on page load
+(`ui/src/config/runtime_config_dev.ts`), leaving the element empty with a
+warning when the agent shell cannot be read.

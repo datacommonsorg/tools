@@ -78,6 +78,8 @@ it. Do not place API keys or secrets in this file.
 | `ACCESS_MODE` | Yes | Access control mode: `public`, `iap`, or `private` (see [Access modes](#access-modes)) |
 | `AUTHORIZED_MEMBERS` | For `iap` & `private` | Comma-separated IAM principals granted access (for example, `user:alice@example.com,group:team@example.com`) |
 | `PUBLIC_DC_URL` | No | Data Commons API and MCP host used by the backend agent (defaults to `https://api.datacommons.org`) |
+| `DC_WEB_COMPONENT_URL` | No | Browser-side chart web component bundle URL (defaults to `https://datacommons.org/datacommons.js`) |
+| `DC_WEB_COMPONENT_API_ROOT` | No | Origin the chart web components fetch data from (defaults to `https://datacommons.org`) |
 
 ### Access modes
 
@@ -195,9 +197,10 @@ BEARER_TOKEN="$(gcloud auth print-identity-token)" bash deploy/smoke.sh "$URL"
 ```
 
 Among its checks, `deploy/smoke.sh` confirms that the HTML shell carries a
-`Content-Security-Policy` with `frame-ancestors` and without `'unsafe-inline'`
-in `script-src`, and that `/agent/health` carries the HTTP security headers
-(see [architecture.md](architecture.md#http-security-headers)).
+`Content-Security-Policy` with `frame-ancestors` and with neither
+`'unsafe-inline'` nor `'unsafe-eval'` in `script-src`, and that `/agent/health`
+carries the HTTP security headers (see
+[architecture.md](architecture.md#http-security-headers)).
 
 In the `/agent/health` response, `mcp.support`,
 `mcp.supports_source_attribution`, and `mcp.missing_tools` report the upstream
@@ -439,13 +442,12 @@ hosts (for example `https://autopush.datacommons.org/datacommons.js` and
 `https://autopush.datacommons.org`) to show their own data; with the defaults,
 their charts show production data.
 
-- **Cloud Run:** set the Terraform module variables `dc_web_component_url` and
-  `dc_web_component_api_root`, or update the service directly:
-
-  ```sh
-  gcloud run services update <instance>-app --region=<region> \
-    --update-env-vars=DC_WEB_COMPONENT_API_ROOT=https://data.example.org
-  ```
+- **Cloud Run:** set `DC_WEB_COMPONENT_URL` and `DC_WEB_COMPONENT_API_ROOT` in
+  `config/instance.env` and apply with `./deploy.sh --infra-only` (which passes
+  them into Terraform's `dc_web_component_url` and `dc_web_component_api_root`
+  variables). Out-of-band updates via `gcloud run services update` take effect
+  immediately, as with `ENABLE_CHAT` below, and are overwritten on the next
+  `./deploy.sh` run unless mirrored in `config/instance.env`.
 
 - **GKE (`datacommons-website`):** set the variables in the Narratives Helm
   values for the environment.
