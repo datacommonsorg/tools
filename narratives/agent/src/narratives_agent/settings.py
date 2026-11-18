@@ -333,11 +333,6 @@ class Settings(BaseSettings):
     # empty outside Kubernetes.
     kubernetes_service_host: str = ""
 
-    # "off", compared case-insensitively, stops credentials from being attached
-    # to MCP requests; any other value, like the default "auto", chooses them by
-    # target host.
-    data_plane_auth: str = "auto"
-
     # The agent sends this API key as `X-API-Key` to public Data Commons hosts.
     dc_api_key: str = ""
 
