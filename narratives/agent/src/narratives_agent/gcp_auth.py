@@ -12,7 +12,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-"""Credentials for Data Commons data-plane and Google Cloud API calls.
+"""Credentials for Data Commons MCP and Google Cloud API calls.
 
 `attach_auth` picks the credential by target host: the `DC_API_KEY` API key
 for public Data Commons hosts, and nothing for any other host.
@@ -189,10 +189,6 @@ def attach_auth(headers: dict[str, str], target_url: str) -> None:
     Mutates `headers` in place. No-ops for http:// and for localhost, so a
     co-located sidecar deployment is unaffected.
     """
-    settings = get_settings()
-    if settings.data_plane_auth.lower() == "off":
-        return
-
     parsed = urlparse(target_url)
     if parsed.scheme != "https":
         return
