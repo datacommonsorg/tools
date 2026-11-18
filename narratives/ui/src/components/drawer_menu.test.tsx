@@ -149,12 +149,13 @@ describe('MenuDrawer', () => {
     ['data:', 'data:text/html,x'],
     ['vbscript:', 'vbscript:msgbox(1)'],
     ['relative', 'relative/path'],
-  ])('renders a %s section href as plain text', (_, href) => {
+  ])('renders a %s section href as plain text without pointer styling', (_, href) => {
     // Test: Drawer section entry with an unsafe href.
     // Situation: The instance configuration is stubbed so that a navigation
     //            entry carries a script, data, or relative URL, which
     //            `getInstanceConfig` would otherwise discard.
-    // Expectation: The entry renders its label without a link.
+    // Expectation: The entry renders its label inside a fallback span that
+    //              keeps layout classes and omits pointer and hover classes.
     vi.spyOn(instanceConfig, 'getInstanceConfig').mockReturnValue({
       ...DEFAULT_INSTANCE_CONFIG,
       navigation: [{ label: 'Evil', href }],
@@ -162,7 +163,12 @@ describe('MenuDrawer', () => {
     renderOpenDrawer();
     const nav = screen.getByRole('navigation', { name: 'Sections' });
     expect(within(nav).queryByRole('link')).toBeNull();
-    expect(nav.textContent).toContain('Evil');
+    const row = nav.firstElementChild;
+    expect(row?.tagName).toBe('SPAN');
+    expect(row?.textContent).toContain('Evil');
+    expect(row?.classList.contains('w-full')).toBe(true);
+    expect(row?.classList.contains('cursor-pointer')).toBe(false);
+    expect(row?.classList.contains('hover:bg-surface-soft')).toBe(false);
   });
 
   it('offers a new chat and no way to reopen an old one', () => {

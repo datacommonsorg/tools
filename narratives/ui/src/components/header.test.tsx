@@ -138,12 +138,14 @@ describe('Header', () => {
     ['data:', 'data:text/html,x'],
     ['vbscript:', 'vbscript:msgbox(1)'],
     ['relative', 'relative/path'],
-  ])('renders a %s navigation href as plain text', (_, href) => {
+  ])('renders a %s navigation href as plain text without hover styling', (_, href) => {
     // Test: Header navigation entry with an unsafe href.
     // Situation: The instance configuration is stubbed so that a navigation
     //            entry carries a script, data, or relative URL, which
     //            `getInstanceConfig` would otherwise discard.
-    // Expectation: The entry renders its label without a link.
+    // Expectation: The entry renders its label on a fallback span that keeps
+    //              layout visibility classes and omits interactive hover
+    //              classes.
     vi.spyOn(instanceConfig, 'getInstanceConfig').mockReturnValue({
       ...DEFAULT_INSTANCE_CONFIG,
       navigation: [{ label: 'Evil', href }],
@@ -151,7 +153,11 @@ describe('Header', () => {
     renderHeader();
     const nav = screen.getByRole('navigation', { name: 'Primary' });
     expect(within(nav).queryByRole('link')).toBeNull();
-    expect(nav.textContent).toContain('Evil');
+    const fallback = within(nav).getByText('Evil');
+    expect(fallback.tagName).toBe('SPAN');
+    expect(fallback.classList.contains('hidden')).toBe(true);
+    expect(fallback.classList.contains('lg:block')).toBe(true);
+    expect(fallback.classList.contains('hover:text-on-surface')).toBe(false);
   });
 
   it.each([
