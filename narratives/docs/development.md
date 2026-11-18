@@ -258,7 +258,6 @@ narratives/
 │       └── gemini/            Gemini SDK client and Pydantic schemas
 ├── ui/                        React 19 + Vite frontend (managed with pnpm)
 │   └── src/
-│       ├── api/               Data Commons REST API callers
 │       ├── components/        React UI components
 │       ├── config/            Instance, runtime, nav, and chat copy config
 │       ├── hooks/             Session state, SSE streaming, and routing hooks
