@@ -29,6 +29,14 @@ import { getRuntimeConfig } from '@/src/config/runtime_config';
 import { useChatSession } from '@/src/hooks/chat_session_context';
 import { useHashRoute } from '@/src/hooks/use_hash_route';
 
+/** Returns the state classes for a header navigation tab. */
+function getNavTabStateClass(isActive: boolean, isSafe: boolean): string {
+  if (isActive) {
+    return 'font-medium text-nav-active';
+  }
+  return isSafe ? 'hover:text-on-surface' : '';
+}
+
 /** Renders the instance logo, wordmark, and primary navigation links. */
 export function Header() {
   const [route] = useHashRoute();
@@ -48,8 +56,10 @@ export function Header() {
     : logoAlt || `${instanceName || 'Data Commons'} logo`;
   // At the site root, a same-origin logo link would reload the app and drop
   // the current chat, so the logo stays plain unless it leaves the app.
+  const logoHrefKind = classifyLinkHref(logoHref);
   const isLogoLinked =
-    getBasePath() !== '' || classifyLinkHref(logoHref) === 'external';
+    logoHrefKind === 'external' ||
+    (logoHrefKind === 'internal' && getBasePath() !== '');
   const logo = (
     <>
       <img
@@ -91,26 +101,27 @@ export function Header() {
         >
           {navItems.map((item) => {
             const isActive = item.id === activeId;
+            const isSafe = classifyLinkHref(item.href) !== 'unsafe';
             // Use the href as the React key because multiple external links
             // share the same empty derived route ID.
             // Hide header navigation links below the lg breakpoint because the
             // mobile drawer provides primary navigation on narrow viewports.
             return (
-              <a
+              <Link
                 key={item.href}
                 href={item.href}
+                target="_self"
                 aria-current={isActive ? 'page' : undefined}
-                className={`relative py-1 shrink-0 transition-colors hidden lg:block ${
-                  isActive
-                    ? 'font-medium text-nav-active'
-                    : 'hover:text-on-surface'
-                }`}
+                className={`relative py-1 shrink-0 transition-colors hidden lg:block ${getNavTabStateClass(
+                  isActive,
+                  isSafe,
+                )}`.trimEnd()}
               >
                 {item.label}
                 {isActive && (
                   <span className="absolute top-0 left-0 w-full h-0.5 rounded-b-sm bg-nav-active" />
                 )}
-              </a>
+              </Link>
             );
           })}
         </nav>

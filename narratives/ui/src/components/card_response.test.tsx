@@ -440,6 +440,58 @@ describe('ResponseCard streaming composite citations', () => {
   });
 });
 
+describe('ResponseCard links', () => {
+  it('opens an http(s) link in a new tab with noopener noreferrer', () => {
+    // Test: A markdown link to an external page.
+    // Situation: The answer links to an https URL.
+    // Expectation: The link opens in a new tab with rel="noopener noreferrer".
+    renderMarkdown('[WDI](https://worldbank.org/wdi)');
+    const link = screen.getByRole('link', { name: 'WDI' });
+    expect(link.getAttribute('href')).toBe('https://worldbank.org/wdi');
+    expect(link.getAttribute('target')).toBe('_blank');
+    expect(link.getAttribute('rel')).toBe('noopener noreferrer');
+  });
+
+  it.each([
+    ['same-origin path', '/about'],
+    ['fragment', '#section'],
+    ['mailto:', 'mailto:info@example.org'],
+    ['javascript:', 'javascript:alert(1)'],
+    ['data:', 'data:text/html,x'],
+    ['vbscript:', 'vbscript:msgbox(1)'],
+    ['relative', 'relative/path'],
+  ])('renders a %s link as plain text without link styling', (_, href) => {
+    // Test: Non-external markdown links in an answer.
+    // Situation: The answer links to a same-origin path, a hash fragment, a
+    //   non-http(s) scheme, or a relative URL.
+    // Expectation: No anchor renders, the link text stays visible, and no
+    //   element carries link color or hover underline classes.
+    const { container } = renderMarkdown(`[Click here](${href})`);
+    expect(screen.queryByRole('link')).toBeNull();
+    const label = screen.getByText('Click here');
+    expect(label.tagName).toBe('SPAN');
+    expect(label.className).toBe('');
+    expect(container.querySelector('.text-theme-primary')).toBeNull();
+    expect(container.querySelector('.hover\\:underline')).toBeNull();
+  });
+
+  it.each([
+    ['https', 'https://evil.example/pixel.png'],
+    ['protocol-relative', '//evil.example/pixel.png'],
+    ['relative', 'assets/logo.png'],
+    ['javascript:', 'javascript:alert(1)'],
+  ])('suppresses a %s markdown image and keeps its alt text', (_, src) => {
+    // Test: Markdown image syntax in an answer.
+    // Situation: The answer contains `![Chart alt](...)` and `![](...)`.
+    // Expectation: Neither an `<img>` element nor an image preload `<link>` is
+    //   rendered, and non-empty alternative text remains visible.
+    const { container } = renderMarkdown(`![Chart alt](${src}) ![](${src})`);
+    expect(container.querySelector('img')).toBeNull();
+    expect(document.head.querySelector('link[rel="preload"]')).toBeNull();
+    expect(container.textContent).toContain('Chart alt');
+  });
+});
+
 describe('ResponseCard headings', () => {
   it('ranks markdown headings one level below the intro h1', () => {
     // Test: Heading levels.

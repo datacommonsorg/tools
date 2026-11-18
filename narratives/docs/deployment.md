@@ -175,7 +175,7 @@ automatically reference the existing secrets.
 | Run preflight validation checks | `./deploy.sh --preflight` |
 | Preview the Terraform plan | `./deploy.sh --plan` |
 | Full build and deployment | `./deploy.sh` |
-| Update configuration only (`branding.json`, `agent-config.json`, `prompts/`) | `./deploy.sh --config-only --restart` |
+| Update configuration only (`theme.json`, `agent-config.json`, `prompts/`) | `./deploy.sh --config-only --restart` |
 | Rebuild and deploy committed code changes (`agent/` and `ui/`) | `./deploy.sh --agent-only` |
 | Apply Terraform infrastructure changes only | `./deploy.sh --infra-only` |
 | Deploy over a renamed service (its URL changes) | `./deploy.sh --accept-service-rename` |
@@ -226,26 +226,26 @@ All visual and behavioral customization lives in `config/`:
 ```
 config/
 ├── instance.env        Required: GCP project, region, instance, access mode
-├── branding.json       Optional: UI identity, theme colors, nav, metrics
+├── theme.json          Optional: UI identity, theme colors, nav, metrics
 ├── agent-config.json   Optional: Gemini models, thinking, template vars, chat
 ├── prompts/            Optional: Prompt overrides (classify, discovery, ...)
 └── assets/             Optional: Custom logos, favicons, and static assets
 ```
 
-Both `branding.json` and `agent-config.json` are validated against
-`schemas/branding.schema.json` and `schemas/agent-config.schema.json` with
+Both `theme.json` and `agent-config.json` are validated against
+`schemas/theme.schema.json` and `schemas/agent-config.schema.json` with
 `additionalProperties: false`, so unrecognized or misspelled keys fail
 validation immediately during `./deploy.sh`.
 
-### Branding and UI configuration (`config/branding.json`)
+### Branding and UI configuration (`config/theme.json`)
 
 You only need to include the keys you want to override in
-`config/branding.json`; omitted keys inherit from `defaults/branding.json`:
+`config/theme.json`; omitted keys inherit from `defaults/theme.json`:
 
 ```json
 {
   "instance_name": "Acme Data Commons",
-  "logo": "assets/acme.svg",
+  "logo": "https://acme.example/acme.svg",
   "colors": { "primary": "#0B6E8F" }
 }
 ```
@@ -257,23 +257,28 @@ You only need to include the keys you want to override in
 | **Content** | `suggestions` (landing page starter prompts), `footer` (text and links) |
 | **Structure** | `navigation` (header links), `metrics.tabs` (Key Metrics dashboard tiles), `analytics.ga_tag_id` |
 
+`logo`, `favicon`, and the `splash_assets` indicators take a same-origin path
+starting with a single `/` or an http(s) URL. `navigation` and `footer` link
+targets and `logo_href` also accept a `#` route. Validation during
+`./deploy.sh` rejects any other value, such as `assets/logo.png`.
+
 `logo_href` sets where the header logo links, `/` by default. When the app is
 served at the site root, the logo links only to an http(s) URL, since a
 same-origin link would reload the app and clear the current chat.
 
 Starter templates are available in `schemas/`:
 
-- `schemas/branding.neutral.example.json` — Neutral color palette
-- `schemas/branding.base-dc.example.json` — Base Data Commons theme
-- `schemas/branding.example.json` — Reference listing all supported fields
+- `schemas/theme.neutral.example.json`: Neutral color palette
+- `schemas/theme.base-dc.example.json`: Base Data Commons theme
+- `schemas/theme.example.json`: Reference listing all supported fields
 
 #### Header navigation (`navigation`)
 
 The `navigation` key supports three distinct states:
 
-| Value in `config/branding.json` | Behavior |
+| Value in `config/theme.json` | Behavior |
 | :--- | :--- |
-| Key omitted | Inherits the default navigation links from `defaults/branding.json` |
+| Key omitted | Inherits the default navigation links from `defaults/theme.json` |
 | `[]` (empty array) | Hides the header navigation menu completely |
 | `[{"label": "...", "href": "..."}, ...]` | Renders the specified navigation links |
 
@@ -570,7 +575,7 @@ and the service URL changes. Run `./deploy.sh --plan` to see the plan, then
 re-run with `./deploy.sh --accept-service-rename` once the new URL is
 acceptable.
 
-**Changes to `branding.json`, `agent-config.json`, or `prompts/` do not appear**
+**Changes to `theme.json`, `agent-config.json`, or `prompts/` do not appear**
 
 The agent reads configuration only once at container startup. Run
 `./deploy.sh --config-only --restart` so Cloud Run starts a new revision with
@@ -584,7 +589,7 @@ changes reuse the existing image tag. Commit your changes first, then re-run
 
 **Header navigation tabs are missing**
 
-`navigation` is set to `[]` in `config/branding.json`, which hides the header
+`navigation` is set to `[]` in `config/theme.json`, which hides the header
 menu. Remove the `navigation` key to restore the default links, or provide an
 array of `{"label": "...", "href": "..."}` objects.
 

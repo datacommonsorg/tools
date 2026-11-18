@@ -14,8 +14,9 @@
  * permissions and limitations under the License.
  */
 
-import { isValidElement, type ReactNode } from 'react';
-import { describe, expect, it } from 'vitest';
+import { cleanup, render, screen } from '@testing-library/react';
+import { createElement, isValidElement, type ReactNode } from 'react';
+import { afterEach, describe, expect, it } from 'vitest';
 import {
   CitationChip,
   citationAnchorId,
@@ -211,5 +212,46 @@ describe('splitWithCitations', () => {
     expect(splitWithCitations('see [a] and [1, b]', SOURCES)).toEqual([
       'see [a] and [1, b]',
     ]);
+  });
+});
+
+describe('CitationChip', () => {
+  afterEach(() => {
+    cleanup();
+  });
+
+  it('jumps to its citation row in the same tab', () => {
+    // Test: The chip link target.
+    // Situation: A chip for source 1 of turn 0 renders.
+    // Expectation: The chip links to the row's in-page anchor without a
+    //   target or rel, so the link opens in the current tab.
+    render(createElement(CitationChip, { n: 1, sources: SOURCES }));
+    const link = screen.getByRole('link', {
+      name: 'Source 1: World Development Indicators',
+    });
+    expect(link.getAttribute('href')).toBe(`#${citationAnchorId(0, 1)}`);
+    expect(link.getAttribute('target')).toBeNull();
+    expect(link.getAttribute('rel')).toBeNull();
+  });
+
+  it.each([
+    ['javascript:', 'javascript:alert(1)'],
+    ['data:', 'data:text/html,x'],
+    ['vbscript:', 'vbscript:msgbox(1)'],
+    ['relative', 'relative/path'],
+  ])('links to the in-page anchor when the source URL is %s', (_, url) => {
+    // Test: A chip whose source carries an unsafe URL.
+    // Situation: Source 1 carries a script, data, or relative URL.
+    // Expectation: The chip still links only to the in-page anchor, and no
+    //   element carries the source URL as its href. Because the chip builds
+    //   its href from the anchor id alone, these cases guard against a change
+    //   that links the chip to `source.url`.
+    const { container } = render(
+      createElement(CitationChip, { n: 1, sources: [{ name: 'Evil', url }] }),
+    );
+    expect(screen.getByRole('link').getAttribute('href')).toBe(
+      `#${citationAnchorId(0, 1)}`,
+    );
+    expect(container.querySelector(`[href="${url}"]`)).toBeNull();
   });
 });

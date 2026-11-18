@@ -24,6 +24,7 @@ import {
   displayCitationNumber,
   getCitationVariableLabel,
 } from '@/src/components/chip_citation';
+import { classifyLinkHref, Link } from '@/src/components/link';
 import type { ProvenanceItem } from '@/src/hooks/use_sse_chat';
 
 /**
@@ -95,6 +96,9 @@ export function CitationsList({
         {sources.map((source, index) => {
           const shown = displayCitationNumber(index + 1, numbers);
           const lead = citationLead(source);
+          // Only an absolute http(s) URL renders as a link. Any other value,
+          // including a same-origin path, renders as plain text.
+          const isExternalUrl = classifyLinkHref(source.url) === 'external';
           return (
             <li
               key={`${source.url}-${index}`}
@@ -107,14 +111,17 @@ export function CitationsList({
                   shrink below its content width instead of overflowing. */}
               <span className="min-w-0 wrap-anywhere leading-5">
                 {lead && `${lead}${CITATION_ITEM_SEPARATOR}`}
-                <a
-                  href={source.url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-theme-primary underline"
-                >
-                  {source.url}
-                </a>
+                {isExternalUrl ? (
+                  <Link
+                    href={source.url}
+                    target="_blank"
+                    className="text-theme-primary underline"
+                  >
+                    {source.url}
+                  </Link>
+                ) : (
+                  source.url
+                )}
                 {CITATION_ITEM_SEPARATOR}
                 {PROCESSING_NOTE}
               </span>
