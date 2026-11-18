@@ -33,18 +33,26 @@ export interface RuntimeConfig {
   isChatEnabled: boolean;
   /** Message displayed when chat is disabled. */
   unavailableMessage: string;
+  /** Optional reCAPTCHA Enterprise session-token site key (`waf=session`). */
+  recaptchaSessionSiteKey: string;
+  /** Optional reCAPTCHA Enterprise checkbox challenge site key. */
+  recaptchaCheckboxSiteKey: string;
 }
 
 /** Availability used when the page carries no runtime configuration. */
 export const DEFAULT_RUNTIME_CONFIG: Readonly<RuntimeConfig> = Object.freeze({
   isChatEnabled: true,
   unavailableMessage: DEFAULT_UNAVAILABLE_MESSAGE,
+  recaptchaSessionSiteKey: '',
+  recaptchaCheckboxSiteKey: '',
 });
 
 /** Availability used when a runtime configuration is present but malformed. */
 const DISABLED_RUNTIME_CONFIG: Readonly<RuntimeConfig> = Object.freeze({
   isChatEnabled: false,
   unavailableMessage: DEFAULT_UNAVAILABLE_MESSAGE,
+  recaptchaSessionSiteKey: '',
+  recaptchaCheckboxSiteKey: '',
 });
 
 /** The id of the `<script>` element that carries the runtime JSON. */
@@ -91,6 +99,23 @@ const readUnavailableMessage = (value: unknown): string => {
 };
 
 /**
+ * Returns the trimmed optional reCAPTCHA site key, or `""` when absent or
+ * non-string (logging a warning on non-string values without disabling chat).
+ */
+const readOptionalSiteKey = (key: string, value: unknown): string => {
+  if (value === undefined) {
+    return '';
+  }
+  if (typeof value === 'string') {
+    return value.trim();
+  }
+  console.warn(
+    `${RUNTIME_CONFIG_LOG_PREFIX} "${key}" is not a string; ignoring.`,
+  );
+  return '';
+};
+
+/**
  * Parses the text of `#runtime-config`. Empty or absent text gives
  * {@link DEFAULT_RUNTIME_CONFIG}; text that is not a JSON object, or an
  * `enable_chat` that is not a boolean, disables chat.
@@ -120,6 +145,14 @@ export const parseRuntimeConfigText = (
   return Object.freeze({
     isChatEnabled: readEnabled(parsed.enable_chat),
     unavailableMessage: readUnavailableMessage(parsed.unavailable_message),
+    recaptchaSessionSiteKey: readOptionalSiteKey(
+      'recaptcha_session_site_key',
+      parsed.recaptcha_session_site_key,
+    ),
+    recaptchaCheckboxSiteKey: readOptionalSiteKey(
+      'recaptcha_checkbox_site_key',
+      parsed.recaptcha_checkbox_site_key,
+    ),
   });
 };
 

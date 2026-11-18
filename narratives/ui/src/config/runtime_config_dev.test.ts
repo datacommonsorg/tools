@@ -275,6 +275,8 @@ describe('stampRuntimeConfigHtml', () => {
       stampRuntimeConfigHtml(html, {
         isChatEnabled: false,
         unavailableMessage: 'Paused',
+        recaptchaSessionSiteKey: '',
+        recaptchaCheckboxSiteKey: '',
       }),
     ).toBe(
       '<head><script id="runtime-config" type="application/json">{"enable_chat":false,"unavailable_message":"Paused"}</script></head>',
@@ -290,6 +292,8 @@ describe('stampRuntimeConfigHtml', () => {
     const stamped = stampRuntimeConfigHtml(EMPTY_SLOT, {
       isChatEnabled: false,
       unavailableMessage: message,
+      recaptchaSessionSiteKey: '',
+      recaptchaCheckboxSiteKey: '',
     });
     expect(stamped).toContain(
       '"unavailable_message":"\\u003c/script\\u003e\\u003cb\\u003e\\u0026\\u2028\\u2029"',
@@ -307,6 +311,8 @@ describe('stampRuntimeConfigHtml', () => {
     const stamped = stampRuntimeConfigHtml(EMPTY_SLOT, {
       isChatEnabled: false,
       unavailableMessage: "Costs $$ and $` and $'",
+      recaptchaSessionSiteKey: '',
+      recaptchaCheckboxSiteKey: '',
     });
     expect(stamped).toContain(
       '"unavailable_message":"Costs $$ and $` and $\'"',
@@ -336,5 +342,80 @@ describe('stampRuntimeConfigHtml', () => {
     // Situation: The HTML lacks the slot, or its slot already holds JSON.
     // Expectation: The HTML is returned unchanged.
     expect(stampRuntimeConfigHtml(html, DEFAULT_RUNTIME_CONFIG)).toBe(html);
+  });
+
+  it('includes non-empty reCAPTCHA site keys in stamped #runtime-config', () => {
+    // Test: Serializing non-empty reCAPTCHA site keys into `#runtime-config`.
+    // Situation: `RuntimeConfig` holds a session key and a checkbox key.
+    // Expectation: Both snake_case keys appear in `#runtime-config`.
+    const stamped = stampRuntimeConfigHtml(EMPTY_SLOT, {
+      ...DEFAULT_RUNTIME_CONFIG,
+      recaptchaSessionSiteKey: '6Lc_session',
+      recaptchaCheckboxSiteKey: '6Lc_checkbox',
+    });
+    const payload = stamped
+      .replace('<script id="runtime-config" type="application/json">', '')
+      .replace(/<\/script>$/, '');
+    expect(JSON.parse(payload)).toEqual({
+      enable_chat: true,
+      unavailable_message: DEFAULT_UNAVAILABLE_MESSAGE,
+      recaptcha_session_site_key: '6Lc_session',
+      recaptcha_checkbox_site_key: '6Lc_checkbox',
+    });
+  });
+});
+
+describe('copyAgentRuntimeConfig with fallback dev reCAPTCHA keys', () => {
+  const SHELL_URL = 'http://127.0.0.1:5011/';
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('preserves agent-stamped keys and fills missing ones from .env.local fallback', async () => {
+    // Test: Merging agent `#runtime-config` with `.env.local` fallback keys.
+    // Situation: Agent shell sets `recaptcha_session_site_key`, while fallback
+    //            provides both `sessionSiteKey` and `checkboxSiteKey`.
+    // Expectation: Agent's session key wins, and fallback's checkbox key fills in.
+    vi.stubGlobal(
+      'fetch',
+      vi
+        .fn()
+        .mockResolvedValue(
+          new Response(
+            `<head><script id="runtime-config" type="application/json">${JSON.stringify({ enable_chat: true, recaptcha_session_site_key: 'agent_session' })}</script></head>`,
+          ),
+        ),
+    );
+    const stamped = await copyAgentRuntimeConfig(EMPTY_SLOT, SHELL_URL, {
+      sessionSiteKey: 'env_session',
+      checkboxSiteKey: ' env_checkbox ',
+    });
+    const payload = stamped
+      .replace('<script id="runtime-config" type="application/json">', '')
+      .replace(/<\/script>$/, '');
+    expect(JSON.parse(payload)).toEqual({
+      enable_chat: true,
+      unavailable_message: DEFAULT_UNAVAILABLE_MESSAGE,
+      recaptcha_session_site_key: 'agent_session',
+      recaptcha_checkbox_site_key: 'env_checkbox',
+    });
+  });
+
+  it('stamps fallback .env.local keys even when the local agent is offline', async () => {
+    // Test: UI-only `pnpm dev:ui` run without `pnpm dev:agent` running.
+    // Situation: Fetching `shellUrl` rejects, and `.env.local` sets a session key.
+    // Expectation: Warns once about the unreachable agent and still stamps the
+    //              local reCAPTCHA key into `#runtime-config`.
+    const warn = spyOnWarn();
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockRejectedValue(new Error('ECONNREFUSED')),
+    );
+    const stamped = await copyAgentRuntimeConfig(EMPTY_SLOT, SHELL_URL, {
+      sessionSiteKey: ' 6Lc_ui_only ',
+    });
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(stamped).toContain('"recaptcha_session_site_key":"6Lc_ui_only"');
   });
 });

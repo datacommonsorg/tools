@@ -39,6 +39,12 @@ const RUNTIME_CONFIG_OPEN_TAG = `<script id="${RUNTIME_CONFIG_ELEMENT_ID}" type=
 const SCRIPT_CLOSE_TAG = '</script>';
 const RUNTIME_CONFIG_SLOT = `${RUNTIME_CONFIG_OPEN_TAG}${SCRIPT_CLOSE_TAG}`;
 
+/** Optional reCAPTCHA Enterprise public site keys read from `.env.local` in dev. */
+export interface DevRecaptchaKeys {
+  sessionSiteKey?: string;
+  checkboxSiteKey?: string;
+}
+
 /**
  * Escapes for JSON embedded in a `<script>` element, matching
  * `_HTML_JSON_ESCAPES` in the agent's `spa.py`: `<`, `>`, and `&` cannot close
@@ -98,18 +104,26 @@ export const extractRuntimeConfigText = (html: string): string | undefined => {
 };
 
 /**
- * Serializes `config` to the wire JSON that the agent stamps,
- * `{"enable_chat":<bool>,"unavailable_message":"<str>"}`, escaped for a
- * `<script>` element.
+ * Serializes `config` to the wire JSON that the agent injects into
+ * `#runtime-config` (`enable_chat`, `unavailable_message`, and any non-empty
+ * reCAPTCHA site keys), escaped for a `<script>` element.
  */
-const serializeRuntimeConfig = (config: Readonly<RuntimeConfig>): string =>
-  JSON.stringify({
+const serializeRuntimeConfig = (config: Readonly<RuntimeConfig>): string => {
+  const payload: Record<string, unknown> = {
     enable_chat: config.isChatEnabled,
     unavailable_message: config.unavailableMessage,
-  }).replace(
+  };
+  if (config.recaptchaSessionSiteKey !== '') {
+    payload.recaptcha_session_site_key = config.recaptchaSessionSiteKey;
+  }
+  if (config.recaptchaCheckboxSiteKey !== '') {
+    payload.recaptcha_checkbox_site_key = config.recaptchaCheckboxSiteKey;
+  }
+  return JSON.stringify(payload).replace(
     HTML_JSON_ESCAPE_PATTERN,
     (character) => HTML_JSON_ESCAPES[character],
   );
+};
 
 /**
  * Returns `html` with `config` stamped into the first empty
@@ -191,17 +205,44 @@ const fetchAgentRuntimeConfigText = async (
   return text;
 };
 
+const withFallbackRecaptchaKeys = (
+  base: Readonly<RuntimeConfig>,
+  fallback?: Readonly<DevRecaptchaKeys>,
+): Readonly<RuntimeConfig> => {
+  const fallbackSession = fallback?.sessionSiteKey?.trim() ?? '';
+  const fallbackCheckbox = fallback?.checkboxSiteKey?.trim() ?? '';
+  const recaptchaSessionSiteKey =
+    base.recaptchaSessionSiteKey !== ''
+      ? base.recaptchaSessionSiteKey
+      : fallbackSession;
+  const recaptchaCheckboxSiteKey =
+    base.recaptchaCheckboxSiteKey !== ''
+      ? base.recaptchaCheckboxSiteKey
+      : fallbackCheckbox;
+  if (
+    recaptchaSessionSiteKey === base.recaptchaSessionSiteKey &&
+    recaptchaCheckboxSiteKey === base.recaptchaCheckboxSiteKey
+  ) {
+    return base;
+  }
+  return Object.freeze({
+    ...base,
+    recaptchaSessionSiteKey,
+    recaptchaCheckboxSiteKey,
+  });
+};
+
 /**
- * Returns `html` with the chat availability of the agent whose HTML shell is
- * at `shellUrl` stamped into its empty `#runtime-config`, so the Vite dev
- * server shows the same availability as the agent. The copied text is parsed
- * with {@link parseRuntimeConfigText} and re-serialized, so a malformed
- * payload disables chat and escaping is always applied here. When the shell
- * cannot be read, `html` is returned unchanged with one warning.
+ * Returns `html` with the runtime configuration of the agent whose HTML shell
+ * is at `shellUrl` injected into its empty `#runtime-config`, filling in any
+ * local `fallbackRecaptchaKeys` from `.env.local` when the agent omits them or
+ * cannot be reached. When the shell cannot be read and no local keys are set,
+ * `html` is returned unchanged with one warning.
  */
 export const copyAgentRuntimeConfig = async (
   html: string,
   shellUrl: string,
+  fallbackRecaptchaKeys?: Readonly<DevRecaptchaKeys>,
 ): Promise<string> => {
   const result = await fetchAgentRuntimeConfigText(shellUrl);
   if (typeof result !== 'string') {
@@ -210,7 +251,29 @@ export const copyAgentRuntimeConfig = async (
         `${shellUrl}: ${result.reason}. ${result.hint} ` +
         `Leaving #${RUNTIME_CONFIG_ELEMENT_ID} empty.`,
     );
-    return html;
+    const fallbackConfig = withFallbackRecaptchaKeys(
+      {
+        isChatEnabled: true,
+        unavailableMessage:
+          'This Data Commons tool is temporarily unavailable due to high traffic.',
+        recaptchaSessionSiteKey: '',
+        recaptchaCheckboxSiteKey: '',
+      },
+      fallbackRecaptchaKeys,
+    );
+    if (
+      fallbackConfig.recaptchaSessionSiteKey === '' &&
+      fallbackConfig.recaptchaCheckboxSiteKey === ''
+    ) {
+      return html;
+    }
+    return stampRuntimeConfigHtml(html, fallbackConfig);
   }
-  return stampRuntimeConfigHtml(html, parseRuntimeConfigText(result));
+  return stampRuntimeConfigHtml(
+    html,
+    withFallbackRecaptchaKeys(
+      parseRuntimeConfigText(result),
+      fallbackRecaptchaKeys,
+    ),
+  );
 };

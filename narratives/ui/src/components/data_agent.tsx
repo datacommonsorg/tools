@@ -40,6 +40,7 @@ import {
   REDUCED_MOTION_QUERY,
   SCROLL_PIN_OFFSET_PX,
 } from '@/src/config/motion';
+import { getRuntimeConfig } from '@/src/config/runtime_config';
 import { useChatSession } from '@/src/hooks/chat_session_context';
 import { useDebugMode } from '@/src/hooks/use_debug_mode';
 import {
@@ -69,6 +70,22 @@ const COLUMN = 'w-full max-w-4xl mx-auto px-3 sm:px-4 lg:px-8';
  */
 export const COMPOSER_DISCLAIMER_TEXT =
   'Data Commons by Google. Data overviews are synthesized by Gemini. Gemini is AI and can make mistakes; please verify content against primary source data.';
+
+/**
+ * Inline reCAPTCHA attribution appended to {@link COMPOSER_DISCLAIMER_TEXT}
+ * when hiding the floating `.grecaptcha-badge` element.
+ */
+export const RECAPTCHA_ATTRIBUTION_TEXT =
+  'This site is protected by reCAPTCHA.';
+
+const getComposerDisclaimerText = (): string => {
+  const { recaptchaSessionSiteKey, recaptchaCheckboxSiteKey } =
+    getRuntimeConfig();
+  if (recaptchaSessionSiteKey === '' && recaptchaCheckboxSiteKey === '') {
+    return COMPOSER_DISCLAIMER_TEXT;
+  }
+  return `${COMPOSER_DISCLAIMER_TEXT} ${RECAPTCHA_ATTRIBUTION_TEXT}`;
+};
 
 /**
  * The main chat surface: renders the empty-state view or the turn list, the
@@ -238,7 +255,7 @@ export function DataAgent() {
             textareaRef={promptTextareaRef}
           />
           <div className="text-center text-caption text-muted max-w-xl">
-            {COMPOSER_DISCLAIMER_TEXT}
+            {getComposerDisclaimerText()}
           </div>
         </div>
       </div>

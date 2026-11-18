@@ -31,6 +31,7 @@ import {
   useChatSession,
 } from '@/src/hooks/chat_session_context';
 import { useHashRoute } from '@/src/hooks/use_hash_route';
+import { ensureRecaptchaScript } from '@/src/utils/recaptcha_loader';
 
 /** The main views; every route other than `metrics` shows the Data Agent. */
 type View = 'agent' | 'metrics';
@@ -54,7 +55,17 @@ function renderContent(view: View, isChatEnabled: boolean) {
 export function App() {
   const [route] = useHashRoute();
   const view = getView(route);
-  const { isChatEnabled } = getRuntimeConfig();
+  const { isChatEnabled, recaptchaSessionSiteKey } = getRuntimeConfig();
+
+  useEffect(() => {
+    if (recaptchaSessionSiteKey === '') {
+      return;
+    }
+    void ensureRecaptchaScript(recaptchaSessionSiteKey).catch(() => {
+      // Ignore script load failures (for example, content blockers) so
+      // background session-token minting never raises an unhandled rejection.
+    });
+  }, [recaptchaSessionSiteKey]);
 
   return (
     <ChatSessionProvider>
