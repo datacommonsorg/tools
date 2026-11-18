@@ -28,6 +28,7 @@ import {
 import ReactMarkdown, { type Components } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { ChevronDownIcon } from '@/src/components/icons';
+import { classifyLinkHref, Link } from '@/src/components/link';
 import {
   CLOSE_REASONING_LABEL,
   REASONING_DEFAULT_PHASE_LABEL,
@@ -116,16 +117,24 @@ const REASONING_COMPONENTS: Components = {
       {children}
     </code>
   ),
-  a: ({ children, href }) => (
-    <a
-      href={href}
-      target="_blank"
-      rel="noopener noreferrer"
-      className="text-theme-primary hover:underline"
-    >
-      {children}
-    </a>
-  ),
+  // Only external http(s) URLs render as links, and Markdown images render only
+  // their alternative text so untrusted image sources never fire requests.
+  a: ({ children, href }) => {
+    const targetHref = href ?? '';
+    if (classifyLinkHref(targetHref) !== 'external') {
+      return <span>{children}</span>;
+    }
+    return (
+      <Link
+        href={targetHref}
+        target="_blank"
+        className="text-theme-primary hover:underline"
+      >
+        {children}
+      </Link>
+    );
+  },
+  img: ({ alt }) => (alt ? <span>{alt}</span> : null),
 };
 
 interface ReasoningBlockProps {

@@ -53,6 +53,8 @@ process and PR expectations: [`CONTRIBUTING.md`](../CONTRIBUTING.md).
     `gemini/`, `analytics/`).
     - `server/app.py` — the FastAPI application
       (`uvicorn narratives_agent.server.app:app` in production).
+    - `server/security_headers.py`: the ASGI middleware that adds the HTTP
+      security headers to every response without buffering a streamed body.
     - `workflows/`: agent loop orchestration (`chat_pipeline.py`), the
       admission pre-filter, query classification, and pattern guidance
       (`prefilter.py`, `classify.py`, `pattern_guidance.py`), the code-owned

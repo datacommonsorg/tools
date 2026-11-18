@@ -52,11 +52,11 @@ def test_get_source_from_observation_metadata_extracts_named_or_domain() -> (
 ):
     # Test: Inline observation `sourceMetadata` parsing into `Source`.
     # Situation: Observation metadata blocks carry an explicit `importName`,
-    #   a URL with a `www.` host and no name, a URL without a hostname, and
-    #   no URL at all.
+    #   a URL with a `www.` host and no name, a URL whose host is only
+    #   `www.`, and no URL at all.
     # Expectation: `get_source_from_observation_metadata` returns a `Source`
-    #   with the explicit name, the bare hostname, `"Data Source"`, and `None`
-    #   respectively.
+    #   with the explicit name, a `Source` with the bare hostname, a `Source`
+    #   named `"Data Source"`, and `None` respectively.
     named = get_source_from_observation_metadata(
         {"provenanceUrl": "https://www.bls.gov/", "importName": "BLS_LAUS"}
     )
@@ -69,12 +69,109 @@ def test_get_source_from_observation_metadata_extracts_named_or_domain() -> (
         name="example.org", url="https://www.example.org/x"
     )
 
-    hostless = get_source_from_observation_metadata(
-        {"provenanceUrl": "urn:datacommons:source"}
+    bare_www = get_source_from_observation_metadata(
+        {"provenanceUrl": "https://www./"}
     )
-    assert hostless == Source(name="Data Source", url="urn:datacommons:source")
+    assert bare_www == Source(name="Data Source", url="https://www./")
 
     assert get_source_from_observation_metadata({"sourceId": "f1"}) is None
+
+
+_UNSAFE_PROVENANCE_URLS = [
+    pytest.param("javascript:alert(1)", id="javascript"),
+    pytest.param("javascript://evil.example/%0Aalert(1)", id="javascript-host"),
+    pytest.param("data:text/html,<script>alert(1)</script>", id="data"),
+    pytest.param("vbscript:msgbox(1)", id="vbscript"),
+    pytest.param("//evil.example/path", id="protocol-relative"),
+    pytest.param("/datasets/wdi", id="relative-path"),
+    pytest.param("https://trusted.example\\@evil.example", id="backslash"),
+    pytest.param("https://trusted.example/\x00path", id="control-character"),
+    pytest.param("urn:datacommons:source", id="hostless"),
+    pytest.param("https://", id="empty-host"),
+    pytest.param("https://@", id="empty-host-with-userinfo"),
+    pytest.param("https://:80", id="empty-host-with-port"),
+    pytest.param("https://www.bls.gov:lau/", id="non-numeric-port"),
+    pytest.param("https://www.bls.gov:99999/", id="out-of-range-port"),
+]
+
+
+@pytest.mark.parametrize("unsafe_url", _UNSAFE_PROVENANCE_URLS)
+def test_observation_metadata_with_unsafe_url_has_no_source(
+    unsafe_url: str,
+) -> None:
+    # Test: Scheme and form check on an inline `provenanceUrl`.
+    # Situation: `sourceMetadata` names an import and carries a `provenanceUrl`
+    #   that is not an absolute http(s) URL with a host and a valid port, or
+    #   that holds a backslash or an ASCII control character.
+    # Expectation: `get_source_from_observation_metadata` returns `None`.
+    metadata: JsonObject = {
+        "provenanceUrl": unsafe_url,
+        "importName": "BLS_LAUS",
+    }
+    assert get_source_from_observation_metadata(metadata) is None
+
+
+@pytest.mark.parametrize("unsafe_url", _UNSAFE_PROVENANCE_URLS)
+def test_provenance_with_unsafe_url_has_no_source(unsafe_url: str) -> None:
+    # Test: Scheme and form check on a provenance node's `url`.
+    # Situation: The provenance node's only URL is unsafe.
+    # Expectation: The facet carries no provenance `Source`.
+    payload = _metadata_payload({"url": unsafe_url, "isPartOf": "WDI"})
+    facet = get_variable_metadata_enrichment([payload]).facet(
+        "Count_Person", "facet1"
+    )
+    assert facet is not None and facet.provenance is None
+
+
+def test_uppercase_https_scheme_is_accepted() -> None:
+    # Test: Case-insensitive scheme check and hostname fallback normalization.
+    # Situation: Inline metadata and a provenance node carry an `HTTPS://` URL
+    #   with an uppercase `WWW.` host and no explicit source name.
+    # Expectation: Both sources keep the URL unchanged, and the inline source
+    #   falls back to the lowercase `"bls.gov"` hostname without `"www."`.
+    url = "HTTPS://WWW.BLS.GOV/lau"
+    inline = get_source_from_observation_metadata({"provenanceUrl": url})
+    assert inline == Source(name="bls.gov", url=url)
+    payload = _metadata_payload({"url": url, "isPartOf": "LAUS"})
+    facet = get_variable_metadata_enrichment([payload]).facet(
+        "Count_Person", "facet1"
+    )
+    assert facet is not None and facet.provenance is not None
+    assert facet.provenance.url == url
+
+
+def test_url_with_valid_port_is_accepted() -> None:
+    # Test: Port check and hostname fallback on a provenance URL with a port.
+    # Situation: Inline metadata carries an https URL with port 8443 and no
+    #   explicit source name.
+    # Expectation: The inline `Source` keeps the URL unchanged and strips both
+    #   `www.` and `:8443` from the fallback display name.
+    url = "https://www.bls.gov:8443/lau"
+    source = get_source_from_observation_metadata({"provenanceUrl": url})
+    assert source == Source(name="bls.gov", url=url)
+
+
+def test_unsafe_url_falls_through_to_safe_description_url() -> None:
+    # Test: Fallthrough from an unsafe `url` to `descriptionUrl`.
+    # Situation: The provenance node's `url` is a `javascript:` URL, and its
+    #   `descriptionUrl` list holds a `data:` URL and then an https URL.
+    # Expectation: The facet's provenance `Source` uses the https URL from
+    #   `descriptionUrl`.
+    payload = _metadata_payload(
+        {
+            "url": "javascript:alert(1)",
+            "descriptionUrl": [
+                "data:text/html,x",
+                "https://data.worldbank.org/indicator",
+            ],
+            "isPartOf": "WDI",
+        }
+    )
+    facet = get_variable_metadata_enrichment([payload]).facet(
+        "Count_Person", "facet1"
+    )
+    assert facet is not None and facet.provenance is not None
+    assert facet.provenance.url == "https://data.worldbank.org/indicator"
 
 
 def test_facet_enrichment_extracts_provenance_unit_scaling_and_period() -> None:

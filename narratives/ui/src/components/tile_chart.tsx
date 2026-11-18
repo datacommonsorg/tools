@@ -19,10 +19,9 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-
+import { getRuntimeConfig } from '@/src/config/runtime_config';
 import type { ChartConfig, ChartItem } from '@/src/hooks/use_sse_chat';
 import {
-  API_ROOT,
   DataCommonsComponent,
   type DataCommonsComponentAttributes,
   type DataCommonsComponentTagName,
@@ -307,7 +306,11 @@ function ChartCard({
           the chart's own load, not the held skeleton: the overlay is
           aria-hidden, so a drawn chart is readable beneath it. */}
       <div aria-busy={isLoading}>
-        <DataCommonsComponent tag={tag} apiroot={API_ROOT} {...attrs} />
+        <DataCommonsComponent
+          tag={tag}
+          apiroot={getRuntimeConfig().webComponentApiRoot || undefined}
+          {...attrs}
+        />
       </div>
       {isLoading && (
         <span role="status" className="sr-only">

@@ -48,6 +48,11 @@ authorized_members = [REPLACE_AUTHORIZED_MEMBERS]
 # Public Data Commons origin serving the versioned REST API and /mcp.
 public_dc_url = "REPLACE_PUBLIC_DC_URL"
 
+# Browser-side chart web component bundle URL and data API origin. Empty leaves
+# the agent's built-in defaults in effect.
+dc_web_component_url      = "REPLACE_DC_WEB_COMPONENT_URL"
+dc_web_component_api_root = "REPLACE_DC_WEB_COMPONENT_API_ROOT"
+
 # How the app plane is exposed:
 #   "public"   allUsers can reach it
 #   "iap"      Google sign-in; needs an OAuth consent screen in the project

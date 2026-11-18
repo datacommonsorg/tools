@@ -20,8 +20,13 @@
  * `<script id="instance-config">` on the first call to {@link getInstanceConfig}.
  */
 
+import { classifyLinkHref } from '@/src/components/link';
 import { withBaseUrl } from '@/src/config/base_url';
-import type { MetricsConfig, MetricsTab } from '@/src/types/metrics';
+import type {
+  MetricsConfig,
+  MetricsTile,
+  MetricsTileType,
+} from '@/src/types/metrics';
 
 export interface NavLink {
   label: string;
@@ -95,26 +100,12 @@ const isStringArray = (value: unknown): value is string[] =>
   Array.isArray(value) && value.every(isString);
 
 /**
- * Returns true if `value` is an `http(s)` URL or a root-relative path on the
- * current origin.
+ * Returns true if `value` is a safe `http(s)` URL or a single-slash
+ * root-relative path.
  */
 const isSafeUrl = (value: string): boolean => {
-  if (value.includes('\\')) {
-    return false;
-  }
-  let parsed: URL;
-  try {
-    parsed = new URL(value, window.location.origin);
-  } catch {
-    return false;
-  }
-  if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
-    return false;
-  }
-  if (/^https?:\/\//i.test(value)) {
-    return true;
-  }
-  return value.startsWith('/') && parsed.origin === window.location.origin;
+  const kind = classifyLinkHref(value);
+  return kind === 'external' || (kind === 'internal' && !value.startsWith('#'));
 };
 
 /**
@@ -135,7 +126,7 @@ export const sanitizeUrl = (value: unknown, fallback: string): string => {
 };
 
 const isNavHref = (value: unknown): value is string =>
-  isString(value) && (value.startsWith('#') || isSafeUrl(value));
+  isString(value) && classifyLinkHref(value) !== 'unsafe';
 
 const isNavLink = (value: unknown): value is NavLink =>
   isRecord(value) && isString(value.label) && isNavHref(value.href);
@@ -143,21 +134,176 @@ const isNavLink = (value: unknown): value is NavLink =>
 const isNavLinkArray = (value: unknown): value is NavLink[] =>
   Array.isArray(value) && value.every(isNavLink);
 
-// Validate only the fields that MetricsPage reads; remaining tile attributes are
-// forwarded directly to the Data Commons web component.
-const isMetricsTab = (value: unknown): value is MetricsTab =>
+/**
+ * The chart types that a Key Metrics tile can render. The set matches the
+ * `metricsTile.type` enum in `theme.schema.json`.
+ */
+const METRICS_TILE_TYPES: ReadonlySet<string> = new Set<MetricsTileType>([
+  'line',
+  'bar',
+  'map',
+  'ranking',
+  'highlight',
+  'scatter',
+  'pie',
+  'gauge',
+  'slider',
+]);
+
+type MetricsTileAttributeName = Exclude<keyof MetricsTile, 'type' | 'title'>;
+
+const METRICS_SORT_ORDERS: ReadonlySet<string> = new Set<
+  NonNullable<MetricsTile['sort']>
+>(['ascending', 'descending', 'ascendingPopulation', 'descendingPopulation']);
+
+const isBoolean = (value: unknown): value is boolean =>
+  typeof value === 'boolean';
+
+const isInteger = (value: unknown): value is number =>
+  typeof value === 'number' && Number.isInteger(value);
+
+const isFiniteNumber = (value: unknown): value is number =>
+  typeof value === 'number' && Number.isFinite(value);
+
+const isMetricsSortOrder = (
+  value: unknown,
+): value is NonNullable<MetricsTile['sort']> =>
+  isString(value) && METRICS_SORT_ORDERS.has(value);
+
+const METRICS_TILE_ATTRIBUTE_VALIDATORS: {
+  readonly [K in MetricsTileAttributeName]: (
+    value: unknown,
+  ) => value is NonNullable<MetricsTile[K]>;
+} = {
+  header: isString,
+  variable: isString,
+  variables: isString,
+  place: isString,
+  places: isString,
+  parentPlace: isString,
+  childPlaceType: isString,
+  date: isString,
+  rankingCount: isInteger,
+  showHighestLowest: isBoolean,
+  showLowest: isBoolean,
+  showPlaceLabels: isBoolean,
+  sort: isMetricsSortOrder,
+  colors: isString,
+  unit: isString,
+  min: isFiniteNumber,
+  max: isFiniteNumber,
+  startDate: isString,
+  endDate: isString,
+};
+
+/**
+ * The tile keys that are forwarded as attributes to the tile's
+ * `<datacommons-*>` element. The list matches `metricsTile.properties` in
+ * `theme.schema.json`, except for `type` and `title`. Every other key or
+ * mismatched value type is dropped so that a theme cannot set an arbitrary or
+ * malformed attribute, such as `onclick` or `"showLowest": "false"`, on the
+ * chart element.
+ */
+export const METRICS_TILE_ATTRIBUTE_NAMES = Object.keys(
+  METRICS_TILE_ATTRIBUTE_VALIDATORS,
+) as readonly MetricsTileAttributeName[];
+
+const METRICS_TILE_ATTRIBUTE_NAME_SET: ReadonlySet<string> = new Set<string>(
+  METRICS_TILE_ATTRIBUTE_NAMES,
+);
+
+const isMetricsTileAttributeName = (
+  name: string,
+): name is MetricsTileAttributeName =>
+  METRICS_TILE_ATTRIBUTE_NAME_SET.has(name);
+
+const setValidTileAttribute = <K extends MetricsTileAttributeName>(
+  target: MetricsTile,
+  name: K,
+  value: unknown,
+): boolean => {
+  const validator = METRICS_TILE_ATTRIBUTE_VALIDATORS[name];
+  if (!validator(value)) {
+    return false;
+  }
+  target[name] = value;
+  return true;
+};
+
+/** A tile as read from the theme, before its type and keys are checked. */
+interface RawMetricsTile {
+  type: string;
+  title: string;
+  [name: string]: unknown;
+}
+
+interface RawMetricsTab {
+  id: string;
+  label: string;
+  tiles: RawMetricsTile[];
+}
+
+interface RawMetricsConfig {
+  tabs: RawMetricsTab[];
+}
+
+const isRawMetricsTile = (value: unknown): value is RawMetricsTile =>
+  isRecord(value) && isString(value.type) && isString(value.title);
+
+const isRawMetricsTab = (value: unknown): value is RawMetricsTab =>
   isRecord(value) &&
   isString(value.id) &&
   isString(value.label) &&
   Array.isArray(value.tiles) &&
-  value.tiles.every(
-    (tile) => isRecord(tile) && isString(tile.type) && isString(tile.title),
-  );
+  value.tiles.every(isRawMetricsTile);
 
-const isMetricsConfig = (value: unknown): value is MetricsConfig =>
+const isRawMetricsConfig = (value: unknown): value is RawMetricsConfig =>
   isRecord(value) &&
   Array.isArray(value.tabs) &&
-  value.tabs.every(isMetricsTab);
+  value.tabs.every(isRawMetricsTab);
+
+const isMetricsTileType = (value: string): value is MetricsTileType =>
+  METRICS_TILE_TYPES.has(value);
+
+/**
+ * Returns a copy of `tile` that keeps only allowlisted attributes whose values
+ * match their schema types, or `null` when `tile.type` is not a known chart
+ * type. Logs a warning for each dropped key, invalid value, and dropped tile.
+ */
+const toMetricsTile = (tile: RawMetricsTile): MetricsTile | null => {
+  const { type, title, ...attributes } = tile;
+  if (!isMetricsTileType(type)) {
+    console.warn(
+      `${LOG_PREFIX} ignoring metrics tile ${JSON.stringify(title)}: unknown type ${JSON.stringify(type)}.`,
+    );
+    return null;
+  }
+  const validatedTile: MetricsTile = { type, title };
+  for (const [name, value] of Object.entries(attributes)) {
+    if (!isMetricsTileAttributeName(name)) {
+      console.warn(
+        `${LOG_PREFIX} ignoring attribute ${JSON.stringify(name)} of metrics tile ${JSON.stringify(title)}.`,
+      );
+      continue;
+    }
+    if (!setValidTileAttribute(validatedTile, name, value)) {
+      console.warn(
+        `${LOG_PREFIX} ignoring attribute ${JSON.stringify(name)} of metrics tile ${JSON.stringify(title)}: invalid value ${JSON.stringify(value)}.`,
+      );
+    }
+  }
+  return validatedTile;
+};
+
+const toMetricsConfig = (raw: RawMetricsConfig): MetricsConfig => ({
+  tabs: raw.tabs.map((tab) => ({
+    id: tab.id,
+    label: tab.label,
+    tiles: tab.tiles
+      .map(toMetricsTile)
+      .filter((tile): tile is MetricsTile => tile !== null),
+  })),
+});
 
 const pick = <T>(
   key: string,
@@ -182,6 +328,12 @@ const mergeOverrides = (raw: Record<string, unknown>): InstanceConfig => {
   const splashAssets = pick('splash_assets', raw.splash_assets, isRecord, {});
   const hasCustomIdentity =
     raw.logo !== undefined || raw.instance_name !== undefined;
+  const rawMetrics = pick<RawMetricsConfig | null>(
+    'metrics',
+    raw.metrics,
+    isRawMetricsConfig,
+    null,
+  );
   return {
     instanceName: pick(
       'instance_name',
@@ -241,7 +393,8 @@ const mergeOverrides = (raw: Record<string, unknown>): InstanceConfig => {
       isStringArray,
       defaults.suggestions,
     ),
-    metrics: pick('metrics', raw.metrics, isMetricsConfig, defaults.metrics),
+    metrics:
+      rawMetrics === null ? defaults.metrics : toMetricsConfig(rawMetrics),
   };
 };
 

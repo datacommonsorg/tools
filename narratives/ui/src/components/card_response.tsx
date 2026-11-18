@@ -36,6 +36,7 @@ import {
   HideCitationsProvider,
   renderWithCitations,
 } from '@/src/components/chip_citation';
+import { classifyLinkHref, Link } from '@/src/components/link';
 import type { ProvenanceItem } from '@/src/hooks/use_sse_chat';
 import {
   analyzeMarkdownTable,
@@ -212,18 +213,30 @@ function ReactMarkdownInner({
           </NestedBlockContext.Provider>
         </li>
       ),
-      a: ({ children, href }) => (
-        <a
-          href={href}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="text-theme-primary hover:underline"
-        >
+      // Only external http(s) URLs render as links; internal routes and unsafe
+      // URLs stay plain text, and Markdown images are suppressed so untrusted
+      // image sources cannot fire automatic network requests.
+      a: ({ children, href }) => {
+        const targetHref = href ?? '';
+        const plain = (
           <PlainTextContext.Provider value={true}>
             {children}
           </PlainTextContext.Provider>
-        </a>
-      ),
+        );
+        if (classifyLinkHref(targetHref) !== 'external') {
+          return <span>{plain}</span>;
+        }
+        return (
+          <Link
+            href={targetHref}
+            target="_blank"
+            className="text-theme-primary hover:underline"
+          >
+            {plain}
+          </Link>
+        );
+      },
+      img: ({ alt }) => (alt ? <span>{alt}</span> : null),
       code: ({ children, ...props }) => {
         const inline = !(
           'className' in (props as Record<string, unknown>) &&
