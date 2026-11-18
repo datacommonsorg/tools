@@ -175,7 +175,7 @@ automatically reference the existing secrets.
 | Run preflight validation checks | `./deploy.sh --preflight` |
 | Preview the Terraform plan | `./deploy.sh --plan` |
 | Full build and deployment | `./deploy.sh` |
-| Update configuration only (`branding.json`, `agent-config.json`, `prompts/`) | `./deploy.sh --config-only --restart` |
+| Update configuration only (`theme.json`, `agent-config.json`, `prompts/`) | `./deploy.sh --config-only --restart` |
 | Rebuild and deploy committed code changes (`agent/` and `ui/`) | `./deploy.sh --agent-only` |
 | Apply Terraform infrastructure changes only | `./deploy.sh --infra-only` |
 | Deploy over a renamed service (its URL changes) | `./deploy.sh --accept-service-rename` |
@@ -226,14 +226,14 @@ All visual and behavioral customization lives in `config/`:
 ```
 config/
 ├── instance.env        Required: GCP project, region, instance, access mode
-├── branding.json       Optional: UI identity, theme colors, nav, metrics
+├── theme.json          Optional: UI identity, theme colors, nav, metrics
 ├── agent-config.json   Optional: Gemini models, thinking, template vars, chat
 ├── prompts/            Optional: Prompt overrides (classify, discovery, ...)
 └── assets/             Optional: Custom logos, favicons, and static assets
 ```
 
-Both `branding.json` and `agent-config.json` are validated against
-`schemas/branding.schema.json` and `schemas/agent-config.schema.json` with
+Both `theme.json` and `agent-config.json` are validated against
+`schemas/theme.schema.json` and `schemas/agent-config.schema.json` with
 `additionalProperties: false`, so unrecognized or misspelled keys fail
 validation immediately during `./deploy.sh`.
 
@@ -575,7 +575,7 @@ and the service URL changes. Run `./deploy.sh --plan` to see the plan, then
 re-run with `./deploy.sh --accept-service-rename` once the new URL is
 acceptable.
 
-**Changes to `branding.json`, `agent-config.json`, or `prompts/` do not appear**
+**Changes to `theme.json`, `agent-config.json`, or `prompts/` do not appear**
 
 The agent reads configuration only once at container startup. Run
 `./deploy.sh --config-only --restart` so Cloud Run starts a new revision with
@@ -589,7 +589,7 @@ changes reuse the existing image tag. Commit your changes first, then re-run
 
 **Header navigation tabs are missing**
 
-`navigation` is set to `[]` in `config/branding.json`, which hides the header
+`navigation` is set to `[]` in `config/theme.json`, which hides the header
 menu. Remove the `navigation` key to restore the default links, or provide an
 array of `{"label": "...", "href": "..."}` objects.
 
