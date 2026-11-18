@@ -280,11 +280,11 @@ class Settings(BaseSettings):
     build_sha: str | None = None
 
     # Optional reCAPTCHA Enterprise session-token site key (`waf=session`)
-    # stamped into `#instance-config` when serving `index.html`.
+    # injected into `#runtime-config` when serving `index.html`.
     recaptcha_session_site_key: str = ""
 
-    # Optional reCAPTCHA Enterprise checkbox challenge site key stamped into
-    # `#instance-config` when serving `index.html`.
+    # Optional reCAPTCHA Enterprise checkbox challenge site key injected into
+    # `#runtime-config` when serving `index.html`.
     recaptcha_checkbox_site_key: str = ""
 
     # This Secret Manager secret, named in full or by a short secret ID, holds
