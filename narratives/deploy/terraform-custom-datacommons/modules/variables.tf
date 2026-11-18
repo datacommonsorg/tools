@@ -147,15 +147,15 @@ variable "public_dc_url" {
 }
 
 variable "dc_web_component_url" {
-  description = "Full URL of datacommons.js, the Data Commons chart web components the browser loads. The page's Content-Security-Policy allows scripts from its origin."
+  description = "Full URL of datacommons.js, the Data Commons chart web components the browser loads. Empty leaves the agent's default in effect. The page's Content-Security-Policy allows scripts from its origin."
   type        = string
-  default     = "https://datacommons.org/datacommons.js"
+  default     = ""
 }
 
 variable "dc_web_component_api_root" {
-  description = "Origin (no path) the chart web components fetch their data from. Use the Data Commons website host, not api.datacommons.org, which needs an API key the browser cannot hold; a custom Data Commons uses its own host."
+  description = "Origin (no path) the chart web components fetch their data from. Empty leaves the agent's default in effect. Use the Data Commons website host, not api.datacommons.org, which needs an API key the browser cannot hold; a custom Data Commons uses its own host."
   type        = string
-  default     = "https://datacommons.org"
+  default     = ""
 }
 
 variable "access_mode" {

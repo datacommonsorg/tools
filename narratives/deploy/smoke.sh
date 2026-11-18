@@ -150,9 +150,9 @@ c4() {
 check 4 c4
 
 # 5. Verify the security headers. The HTML shell must carry a
-#    Content-Security-Policy that has `frame-ancestors` and has no
-#    `'unsafe-inline'` in `script-src`, and /agent/health must carry the four
-#    headers that every response carries.
+#    Content-Security-Policy that has `frame-ancestors` and has neither
+#    `'unsafe-inline'` nor `'unsafe-eval'` in `script-src`, and /agent/health
+#    must carry the four headers that every response carries.
 c5() {
     local shell_headers health_headers policy script_src header
     shell_headers="$TMP/home.headers"
@@ -169,6 +169,7 @@ c5() {
     [ -n "$script_src" ] || { echo "the shell policy has no script-src"; return 1; }
     case "$script_src" in
         *"'unsafe-inline'"*) echo "script-src allows 'unsafe-inline'"; return 1 ;;
+        *"'unsafe-eval'"*) echo "script-src allows 'unsafe-eval'"; return 1 ;;
     esac
     curl_cmd -sS -o /dev/null -D "$health_headers" "$URL/agent/health" \
         || { echo "cannot fetch the /agent/health headers"; return 1; }
