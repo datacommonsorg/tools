@@ -16,35 +16,19 @@
 
 import { cleanup, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it } from 'vitest';
-import {
-  COMPOSER_DISCLAIMER_TEXT,
-  ComposerNote,
-  POLICY_CONJUNCTION_TEXT,
-  POLICY_LINKS,
-  POLICY_OWNER_TEXT,
-  POLICY_SUFFIX_TEXT,
-  RECAPTCHA_NOTICE_TEXT,
-} from '@/src/components/note_composer';
+import { ComposerNote, POLICY_LINKS } from '@/src/components/note_composer';
 
 afterEach(cleanup);
 
 describe('ComposerNote', () => {
-  it('joins the fragments into one spaced sentence', () => {
+  it('renders the full note as one sentence', () => {
     // Test: Assembly of the note from its text constants.
     // Situation: The note renders.
-    // Expectation: Every fragment appears once, in order, separated by
-    //   single spaces.
+    // Expectation: The rendered text matches the approved copy exactly,
+    //   so a typo, missing period, or stray space in any fragment fails.
     const { container } = render(<ComposerNote />);
     expect(container.textContent).toBe(
-      [
-        COMPOSER_DISCLAIMER_TEXT,
-        POLICY_OWNER_TEXT,
-        POLICY_LINKS.privacy.label,
-        POLICY_CONJUNCTION_TEXT,
-        POLICY_LINKS.terms.label,
-        POLICY_SUFFIX_TEXT,
-        RECAPTCHA_NOTICE_TEXT,
-      ].join(' '),
+      'Data overviews are synthesized by Gemini. Gemini is AI and can make mistakes; please verify content against primary source data. Google Privacy Policy and Terms of Service apply. This site is protected by reCAPTCHA.',
     );
   });
 

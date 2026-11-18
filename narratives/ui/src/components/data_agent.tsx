@@ -64,6 +64,7 @@ const PIN_HOLD_MS = 600;
 export const HANDOFF_MS = 400;
 /** Centered content column; <main> scrolls at full width. */
 const COLUMN = 'w-full max-w-4xl mx-auto px-3 sm:px-4 lg:px-8';
+
 /**
  * The main chat surface: renders the empty-state view or the turn list, the
  * prompt input with send/stop controls, and pins each new question to the top.

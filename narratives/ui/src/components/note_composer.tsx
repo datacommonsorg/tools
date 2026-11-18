@@ -29,16 +29,16 @@ export const COMPOSER_DISCLAIMER_TEXT =
   'Data overviews are synthesized by Gemini. Gemini is AI and can make mistakes; please verify content against primary source data.';
 
 /** Owner of the linked policies, read before the first policy link. */
-export const POLICY_OWNER_TEXT = 'Google';
+const POLICY_OWNER_TEXT = 'Google';
 
 /** Joins the two policy links. */
-export const POLICY_CONJUNCTION_TEXT = 'and';
+const POLICY_CONJUNCTION_TEXT = 'and';
 
 /** Closes the policy sentence after the second link. */
-export const POLICY_SUFFIX_TEXT = 'apply.';
+const POLICY_SUFFIX_TEXT = 'apply.';
 
 /** reCAPTCHA notice that ends the note. */
-export const RECAPTCHA_NOTICE_TEXT = 'This site is protected by reCAPTCHA.';
+const RECAPTCHA_NOTICE_TEXT = 'This site is protected by reCAPTCHA.';
 
 /** Google policies linked from the composer note. */
 export const POLICY_LINKS = {
@@ -52,8 +52,11 @@ export const POLICY_LINKS = {
   },
 } as const;
 
-/** Link styling; always underlined so links do not rely on color alone. */
-const POLICY_LINK_CLASS = 'text-theme-primary underline hover:no-underline';
+/**
+ * Link styling; always underlined so links do not rely on color alone. The
+ * vertical padding enlarges the tap target without changing line spacing.
+ */
+const POLICY_LINK_CLASS = 'text-theme-primary underline py-1.5';
 
 /**
  * Disclaimer, Google policy links, and reCAPTCHA notice shown under the
@@ -61,8 +64,8 @@ const POLICY_LINK_CLASS = 'text-theme-primary underline hover:no-underline';
  */
 export function ComposerNote() {
   return (
-    <div className="text-center text-caption text-muted max-w-prompt px-2">
-      <span>{COMPOSER_DISCLAIMER_TEXT}</span> {POLICY_OWNER_TEXT}{' '}
+    <p className="text-center text-caption text-muted max-w-prompt px-2">
+      {COMPOSER_DISCLAIMER_TEXT} {POLICY_OWNER_TEXT}{' '}
       <Link href={POLICY_LINKS.privacy.href} className={POLICY_LINK_CLASS}>
         {POLICY_LINKS.privacy.label}
       </Link>{' '}
@@ -71,6 +74,6 @@ export function ComposerNote() {
         {POLICY_LINKS.terms.label}
       </Link>{' '}
       {POLICY_SUFFIX_TEXT} {RECAPTCHA_NOTICE_TEXT}
-    </div>
+    </p>
   );
 }

@@ -313,9 +313,9 @@ describe('DataAgent prompt box disclaimer', () => {
     // Test: The disclaimer under the follow-up prompt box.
     // Situation: The chat holds an answered turn, so the sticky prompt box
     //            renders with its disclaimer.
-    // Expectation: The prompt box disclaimer holds exactly the short wording,
-    //              and the long answer wording is neither under the prompt
-    //              box nor merged into the short one.
+    // Expectation: The prompt box holds the short wording, and the long
+    //              answer wording is neither under the prompt box nor merged
+    //              into the short one.
     renderTurns([
       {
         userMessage: 'What is the population of France?',
@@ -328,13 +328,13 @@ describe('DataAgent prompt box disclaimer', () => {
       },
     ]);
 
-    const composerNote = screen.getByText(COMPOSER_DISCLAIMER_TEXT);
-    expect(composerNote.textContent).toBe(COMPOSER_DISCLAIMER_TEXT);
     expect(COMPOSER_DISCLAIMER_TEXT).not.toContain(DISCLAIMER_TEXT);
     expect(DISCLAIMER_TEXT).not.toContain(COMPOSER_DISCLAIMER_TEXT);
-    // span -> ComposerNote div -> prompt column holding the input.
-    const promptBox = composerNote.parentElement?.parentElement;
-    expect(promptBox?.querySelector('textarea')).not.toBeNull();
+    // The prompt column: the parent of the input's form.
+    const promptBox = screen
+      .getByRole('textbox', { name: 'Ask a follow-up question' })
+      .closest('form')?.parentElement;
+    expect(promptBox?.textContent).toContain(COMPOSER_DISCLAIMER_TEXT);
     expect(promptBox?.textContent).not.toContain(DISCLAIMER_TEXT);
   });
 });
