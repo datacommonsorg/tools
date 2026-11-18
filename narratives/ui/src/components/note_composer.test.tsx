@@ -19,18 +19,33 @@ import { afterEach, describe, expect, it } from 'vitest';
 import {
   COMPOSER_DISCLAIMER_TEXT,
   ComposerNote,
+  POLICY_CONJUNCTION_TEXT,
   POLICY_LINKS,
+  POLICY_OWNER_TEXT,
+  POLICY_SUFFIX_TEXT,
+  RECAPTCHA_NOTICE_TEXT,
 } from '@/src/components/note_composer';
 
 afterEach(cleanup);
 
 describe('ComposerNote', () => {
-  it('shows the disclaimer wording', () => {
-    // Test: The disclaimer text under the prompt box.
+  it('joins the fragments into one spaced sentence', () => {
+    // Test: Assembly of the note from its text constants.
     // Situation: The note renders.
-    // Expectation: The approved wording is present.
+    // Expectation: Every fragment appears once, in order, separated by
+    //   single spaces.
     const { container } = render(<ComposerNote />);
-    expect(container.textContent).toContain(COMPOSER_DISCLAIMER_TEXT);
+    expect(container.textContent).toBe(
+      [
+        COMPOSER_DISCLAIMER_TEXT,
+        POLICY_OWNER_TEXT,
+        POLICY_LINKS.privacy.label,
+        POLICY_CONJUNCTION_TEXT,
+        POLICY_LINKS.terms.label,
+        POLICY_SUFFIX_TEXT,
+        RECAPTCHA_NOTICE_TEXT,
+      ].join(' '),
+    );
   });
 
   it.each(

@@ -15,7 +15,8 @@
  */
 
 /**
- * @fileoverview Renders the disclaimer and policy links under the prompt box.
+ * @fileoverview Renders the disclaimer, policy links, and reCAPTCHA notice
+ * under the prompt box.
  */
 
 import { Link } from '@/src/components/link';
@@ -25,7 +26,19 @@ import { Link } from '@/src/components/link';
  * (DISCLAIMER_TEXT in note_disclaimer.tsx).
  */
 export const COMPOSER_DISCLAIMER_TEXT =
-  'This site is protected by reCAPTCHA. Data overviews are synthesized by Gemini. Gemini is AI and can make mistakes; please verify content against primary source data.';
+  'Data overviews are synthesized by Gemini. Gemini is AI and can make mistakes; please verify content against primary source data.';
+
+/** Owner of the linked policies, read before the first policy link. */
+export const POLICY_OWNER_TEXT = 'Google';
+
+/** Joins the two policy links. */
+export const POLICY_CONJUNCTION_TEXT = 'and';
+
+/** Closes the policy sentence after the second link. */
+export const POLICY_SUFFIX_TEXT = 'apply.';
+
+/** reCAPTCHA notice that ends the note. */
+export const RECAPTCHA_NOTICE_TEXT = 'This site is protected by reCAPTCHA.';
 
 /** Google policies linked from the composer note. */
 export const POLICY_LINKS = {
@@ -42,19 +55,22 @@ export const POLICY_LINKS = {
 /** Link styling; always underlined so links do not rely on color alone. */
 const POLICY_LINK_CLASS = 'text-theme-primary underline hover:no-underline';
 
-/** Disclaimer and Google policy links shown under the follow-up prompt box. */
+/**
+ * Disclaimer, Google policy links, and reCAPTCHA notice shown under the
+ * follow-up prompt box.
+ */
 export function ComposerNote() {
   return (
     <div className="text-center text-caption text-muted max-w-prompt px-2">
-      <span>{COMPOSER_DISCLAIMER_TEXT}</span> Google{' '}
+      <span>{COMPOSER_DISCLAIMER_TEXT}</span> {POLICY_OWNER_TEXT}{' '}
       <Link href={POLICY_LINKS.privacy.href} className={POLICY_LINK_CLASS}>
         {POLICY_LINKS.privacy.label}
       </Link>{' '}
-      and{' '}
+      {POLICY_CONJUNCTION_TEXT}{' '}
       <Link href={POLICY_LINKS.terms.href} className={POLICY_LINK_CLASS}>
         {POLICY_LINKS.terms.label}
-      </Link>
-      .
+      </Link>{' '}
+      {POLICY_SUFFIX_TEXT} {RECAPTCHA_NOTICE_TEXT}
     </div>
   );
 }
