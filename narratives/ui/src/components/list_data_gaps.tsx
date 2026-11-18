@@ -24,9 +24,11 @@ import { DATA_GAPS_HEADING } from '@/src/config/copy_chat';
 
 /**
  * Matches the `**Data gaps**\` label that opens the block. Keep it in sync
- * with the label the synthesis contract prescribes.
+ * with the label the synthesis contract prescribes. Spaces or tabs around
+ * the backslash are allowed, so a Markdown hard break of two trailing spaces
+ * matches too; `[ \t]` rather than `\s`, so the match never crosses a line.
  */
-export const DATA_GAPS_LABEL = /^\*\*Data gaps\*\*\\?(?:\n|$)/;
+export const DATA_GAPS_LABEL = /^\*\*Data gaps\*\*[ \t]*\\?[ \t]*(?:\n|$)/;
 
 /**
  * Matches a `-`, `*`, or `+` bullet's marker. The contract asks for a

@@ -927,6 +927,31 @@ describe('AnswerPanel', () => {
       expect(section?.querySelector('ul')).toBeNull();
     });
 
+    it.each([
+      ['a space before the backslash', '**Data gaps** \\\n'],
+      ['a space after the backslash', '**Data gaps**\\ \n'],
+      ['a two-space hard break', '**Data gaps**  \n'],
+    ])('reads a data gaps label with %s', (_, label) => {
+      // Test: Whitespace on the label line.
+      // Situation: The model writes the label with spaces around the
+      //   backslash, or ends it with a Markdown hard break instead.
+      // Expectation: The block still renders as the data gaps section.
+      const container = renderBlocks([
+        {
+          index: 0,
+          type: 'text',
+          markdown: `${label}These measures are not available:\n- Antenatal care coverage`,
+        },
+      ]);
+
+      const section = container.querySelector(
+        'section[aria-labelledby^="data-gaps-"]',
+      );
+      expect(section?.querySelector('li')?.textContent).toBe(
+        'Antenatal care coverage',
+      );
+    });
+
     it('shows a lead-in line as a heading before its section forms', () => {
       // Test: A lead-in line keeps its shape while the answer streams.
       // Situation: A streaming turn holds a lead-in line and the bullet list
