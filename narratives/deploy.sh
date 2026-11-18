@@ -457,9 +457,11 @@ V_IMAGE_TAG="$IMAGE_TAG" \
 V_AUTHORIZED_MEMBERS="${AUTHORIZED_MEMBERS:-}" \
 V_CONFIG_BUCKET="$CONFIG_BUCKET" \
 V_PUBLIC_DC_URL="${PUBLIC_DC_URL:-https://api.datacommons.org}" \
+V_DC_WEB_COMPONENT_URL="${DC_WEB_COMPONENT_URL:-}" \
+V_DC_WEB_COMPONENT_API_ROOT="${DC_WEB_COMPONENT_API_ROOT:-}" \
 V_ACCESS_MODE="$ACCESS_MODE" \
 python3 - <<'PY'
-import os, re, sys
+import json, os, re, sys
 
 content = open(os.environ["TPL_SRC"]).read()
 replacements = {
@@ -479,6 +481,12 @@ replacements = {
     ),
     "REPLACE_CONFIG_BUCKET":  os.environ["V_CONFIG_BUCKET"],
     "REPLACE_PUBLIC_DC_URL":  os.environ["V_PUBLIC_DC_URL"],
+    "REPLACE_DC_WEB_COMPONENT_URL": json.dumps(
+        os.environ["V_DC_WEB_COMPONENT_URL"].strip()
+    )[1:-1],
+    "REPLACE_DC_WEB_COMPONENT_API_ROOT": json.dumps(
+        os.environ["V_DC_WEB_COMPONENT_API_ROOT"].strip()
+    )[1:-1],
     "REPLACE_ACCESS_MODE":    os.environ["V_ACCESS_MODE"],
 }
 for k, v in replacements.items():

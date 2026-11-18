@@ -16,6 +16,16 @@
       "description": "CSS length (e.g. '16px', '1rem').",
       "pattern": "^[0-9]+(\\.[0-9]+)?(px|rem|em|%)$"
     },
+    "assetUrl": {
+      "type": "string",
+      "description": "Same-origin path starting with a single '/' or an http(s) URL, the schemes and forms the UI accepts for an asset URL; any other value, such as 'assets/logo.png', a protocol-relative '//host' URL, or a 'javascript:' or 'data:' URL, is rejected.",
+      "pattern": "^(?:[Hh][Tt][Tt][Pp][Ss]?://(?![/?#])[\\u0021-\\u005b\\u005d-\\u007e]+|/(?:(?!/)[\\u0021-\\u005b\\u005d-\\u007e]+)?)(?![\\n\\r])$"
+    },
+    "linkHref": {
+      "type": "string",
+      "description": "Same-origin path starting with a single '/', an http(s) URL, or a '#' hash route, the schemes and forms the UI accepts for a link target; any other value, such as a relative path, a protocol-relative '//host' URL, or a 'javascript:' or 'data:' URL, is rejected.",
+      "pattern": "^(?:#[\\u0021-\\u005b\\u005d-\\u007e]*|[Hh][Tt][Tt][Pp][Ss]?://(?![/?#])[\\u0021-\\u005b\\u005d-\\u007e]+|/(?:(?!/)[\\u0021-\\u005b\\u005d-\\u007e]+)?)(?![\\n\\r])$"
+    },
     "link": {
       "type": "object",
       "additionalProperties": false,
@@ -28,7 +38,7 @@
           "type": "string"
         },
         "href": {
-          "type": "string"
+          "$ref": "#/$defs/linkHref"
         }
       }
     },
@@ -173,8 +183,8 @@
       "type": "string"
     },
     "logo": {
-      "description": "Same-origin path starting with '/' (e.g. '/dc-logo.svg'), http(s) URL, or config-bucket-relative path (e.g. 'assets/logo.png', rewritten by the deploy-time injection step) to the instance logo.",
-      "type": "string"
+      "$ref": "#/$defs/assetUrl",
+      "description": "Same-origin path starting with '/' (e.g. '/dc-logo.svg') or http(s) URL of the instance logo."
     },
     "logo_height": {
       "$ref": "#/$defs/cssLength",
@@ -190,11 +200,11 @@
     },
     "logo_href": {
       "description": "Link target of the header logo: a same-origin path starting with '/', an http(s) URL, or a '#' hash route. Defaults to '/', the site root; an empty or unsafe value falls back to it. When the app is served at the site root, the logo links only to an http(s) URL, since a same-origin link would reload the app.",
-      "type": "string"
+      "$ref": "#/$defs/linkHref"
     },
     "favicon": {
-      "description": "Same-origin path starting with '/' (e.g. '/dc-logo.svg'), http(s) URL, or config-bucket-relative path (e.g. 'assets/logo.png', rewritten by the deploy-time injection step) to the favicon.",
-      "type": "string"
+      "$ref": "#/$defs/assetUrl",
+      "description": "Same-origin path starting with '/' (e.g. '/dc-logo.svg') or http(s) URL of the favicon."
     },
     "colors": {
       "type": "object",
@@ -379,14 +389,14 @@
     "splash_assets": {
       "type": "object",
       "additionalProperties": false,
-      "description": "Same-origin paths starting with '/', http(s) URLs, or config-bucket-relative paths (rewritten by the deploy-time injection step) for the turn-state indicator marks.",
+      "description": "Same-origin paths starting with '/' or http(s) URLs for the turn-state indicator marks.",
       "properties": {
         "thinking_indicator": {
-          "type": "string",
+          "$ref": "#/$defs/assetUrl",
           "description": "Path or URL of the animated mark shown while a turn is streaming."
         },
         "done_indicator": {
-          "type": "string",
+          "$ref": "#/$defs/assetUrl",
           "description": "Path or URL of the mark shown once a turn has finished."
         }
       }

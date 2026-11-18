@@ -111,6 +111,23 @@ resource "google_cloud_run_v2_service" "dc_app_service" {
         name  = "TIMEZONE"
         value = var.timezone
       }
+      # Optional overrides for where the browser loads the chart web
+      # components and where the components fetch their data. When empty, the
+      # variables are omitted so the agent's built-in defaults apply.
+      dynamic "env" {
+        for_each = var.dc_web_component_url != "" ? [var.dc_web_component_url] : []
+        content {
+          name  = "DC_WEB_COMPONENT_URL"
+          value = env.value
+        }
+      }
+      dynamic "env" {
+        for_each = var.dc_web_component_api_root != "" ? [var.dc_web_component_api_root] : []
+        content {
+          name  = "DC_WEB_COMPONENT_API_ROOT"
+          value = env.value
+        }
+      }
       env {
         name  = "ALLOWED_ORIGIN"
         value = var.allowed_origin

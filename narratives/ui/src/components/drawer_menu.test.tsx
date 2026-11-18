@@ -31,7 +31,11 @@ import type { PropsWithChildren } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { MenuDrawer } from '@/src/components/drawer_menu';
 import { Header } from '@/src/components/header';
-import { resetInstanceConfigForTests } from '@/src/config/instance_config';
+import * as instanceConfig from '@/src/config/instance_config';
+import {
+  DEFAULT_INSTANCE_CONFIG,
+  resetInstanceConfigForTests,
+} from '@/src/config/instance_config';
 import { resetRuntimeConfigForTests } from '@/src/config/runtime_config';
 import {
   ChatSessionProvider,
@@ -69,6 +73,7 @@ const renderOpenDrawer = (): void => {
 afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
+  vi.restoreAllMocks();
   document.getElementById('instance-config')?.remove();
   document.getElementById('runtime-config')?.remove();
   resetInstanceConfigForTests();
@@ -107,6 +112,63 @@ describe('MenuDrawer', () => {
     ]);
     expect(links[0].getAttribute('aria-current')).toBe('page');
     expect(links[1].getAttribute('aria-current')).toBeNull();
+  });
+
+  it('opens every section link in the current tab and closes the drawer', () => {
+    // Test: Tab behavior of the drawer's section links.
+    // Situation: The theme document declares a hash route, a root-relative
+    //            path, and an https URL, and the user clicks the first link.
+    // Expectation: Every link has target="_self", only the https link carries
+    //              rel="noopener noreferrer", and the click closes the drawer.
+    writeSlot({
+      navigation: [
+        { label: 'Dashboards', href: '#/metrics' },
+        { label: 'Download', href: '/download' },
+        { label: 'Docs', href: 'https://docs.datacommons.org/' },
+      ],
+    });
+    renderOpenDrawer();
+    const nav = screen.getByRole('navigation', { name: 'Sections' });
+    const links = within(nav).getAllByRole('link');
+    expect(links.map((link) => link.getAttribute('target'))).toEqual([
+      '_self',
+      '_self',
+      '_self',
+    ]);
+    expect(links.map((link) => link.getAttribute('rel'))).toEqual([
+      null,
+      null,
+      'noopener noreferrer',
+    ]);
+    fireEvent.click(links[0]);
+    expect(screen.queryByRole('complementary', { name: 'Menu' })).toBeNull();
+  });
+
+  it.each([
+    ['javascript:', 'javascript:alert(1)'],
+    ['data:', 'data:text/html,x'],
+    ['vbscript:', 'vbscript:msgbox(1)'],
+    ['relative', 'relative/path'],
+  ])('renders a %s section href as plain text without pointer styling', (_, href) => {
+    // Test: Drawer section entry with an unsafe href.
+    // Situation: The instance configuration is stubbed so that a navigation
+    //            entry carries a script, data, or relative URL, which
+    //            `getInstanceConfig` would otherwise discard.
+    // Expectation: The entry renders its label inside a fallback span that
+    //              keeps layout classes and omits pointer and hover classes.
+    vi.spyOn(instanceConfig, 'getInstanceConfig').mockReturnValue({
+      ...DEFAULT_INSTANCE_CONFIG,
+      navigation: [{ label: 'Evil', href }],
+    });
+    renderOpenDrawer();
+    const nav = screen.getByRole('navigation', { name: 'Sections' });
+    expect(within(nav).queryByRole('link')).toBeNull();
+    const row = nav.firstElementChild;
+    expect(row?.tagName).toBe('SPAN');
+    expect(row?.textContent).toContain('Evil');
+    expect(row?.classList.contains('w-full')).toBe(true);
+    expect(row?.classList.contains('cursor-pointer')).toBe(false);
+    expect(row?.classList.contains('hover:bg-surface-soft')).toBe(false);
   });
 
   it('offers a new chat and no way to reopen an old one', () => {

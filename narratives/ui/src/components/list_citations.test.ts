@@ -157,4 +157,19 @@ describe('CitationsList', () => {
     expect(rows[0].textContent).toContain('GDP (current US$)');
     expect(rows[1].textContent).toContain('GDP per capita');
   });
+
+  it.each([
+    ['javascript:', 'javascript:alert(1)'],
+    ['data:', 'data:text/html,x'],
+    ['vbscript:', 'vbscript:msgbox(1)'],
+    ['relative', '/datasets/wdi'],
+  ])('renders a %s source URL as plain text', (_, url) => {
+    // Test: A citation whose URL is not an absolute http(s) URL.
+    // Situation: The source carries a script, data, or same-origin path URL.
+    // Expectation: No link renders, and the row still shows the URL as text.
+    render(createElement(CitationsList, { sources: [{ ...FULL, url }] }));
+
+    expect(screen.queryByRole('link')).toBeNull();
+    expect(screen.getByRole('listitem').textContent).toContain(url);
+  });
 });

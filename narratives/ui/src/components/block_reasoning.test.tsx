@@ -77,6 +77,65 @@ afterEach(() => {
   resetInstanceConfigForTests();
 });
 
+describe('ReasoningBlock links', () => {
+  const renderThought = (text: string) =>
+    render(
+      <ReasoningBlock thoughts={[{ text, phase: 'discovery' }]} defaultOpen />,
+    );
+
+  it('opens an http(s) link in a new tab with noopener noreferrer', () => {
+    // Test: A markdown link to an external page in a thought.
+    // Situation: The thought links to an https URL.
+    // Expectation: The link opens in a new tab with rel="noopener noreferrer".
+    const { getByRole } = renderThought('[WDI](https://worldbank.org/wdi)');
+    const link = getByRole('link', { name: 'WDI' });
+    expect(link.getAttribute('href')).toBe('https://worldbank.org/wdi');
+    expect(link.getAttribute('target')).toBe('_blank');
+    expect(link.getAttribute('rel')).toBe('noopener noreferrer');
+  });
+
+  it.each([
+    ['same-origin path', '/about'],
+    ['fragment', '#section'],
+    ['mailto:', 'mailto:info@example.org'],
+    ['javascript:', 'javascript:alert(1)'],
+    ['data:', 'data:text/html,x'],
+    ['vbscript:', 'vbscript:msgbox(1)'],
+    ['relative', 'relative/path'],
+  ])('renders a %s link as plain text without link styling', (_, href) => {
+    // Test: Non-external markdown links in a thought.
+    // Situation: The thought links to a same-origin path, a hash fragment, a
+    //   non-http(s) scheme, or a relative URL.
+    // Expectation: No anchor renders, the link text stays visible, and no
+    //   element in the thought body carries link color or hover underline
+    //   classes.
+    const { container, queryByRole } = renderThought(`[Click here](${href})`);
+    const body = container.querySelector('.reasoning-markdown');
+    expect(queryByRole('link')).toBeNull();
+    expect(body?.textContent).toContain('Click here');
+    expect(body?.querySelector('.text-theme-primary')).toBeNull();
+    expect(body?.querySelector('.hover\\:underline')).toBeNull();
+  });
+
+  it.each([
+    ['https', 'https://evil.example/pixel.png'],
+    ['protocol-relative', '//evil.example/pixel.png'],
+    ['relative', 'assets/logo.png'],
+    ['javascript:', 'javascript:alert(1)'],
+  ])('suppresses a %s markdown image in a thought and keeps its alt text', (_, src) => {
+    // Test: Markdown image syntax in a thought.
+    // Situation: The thought contains `![Chart alt](...)` and `![](...)`.
+    // Expectation: Neither an `<img>` inside the thought body nor an image
+    //   preload `<link>` is rendered, and non-empty alternative text stays
+    //   visible.
+    const { container } = renderThought(`![Chart alt](${src}) ![](${src})`);
+    const body = container.querySelector('.reasoning-markdown');
+    expect(body?.querySelector('img')).toBeNull();
+    expect(document.head.querySelector('link[rel="preload"]')).toBeNull();
+    expect(body?.textContent).toContain('Chart alt');
+  });
+});
+
 describe('ReasoningBlock', () => {
   it('renders the built-in thinking and done indicators by default', () => {
     // Test: Default indicator assets in ReasoningBlock.

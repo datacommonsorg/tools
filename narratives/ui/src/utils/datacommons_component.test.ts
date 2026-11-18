@@ -233,7 +233,8 @@ describe('DataCommonsComponent shadow styles', () => {
   });
 
   it('adds the override when the component is defined after mount', async () => {
-    // datacommons.js loads deferred, so React can mount the element first.
+    // datacommons.js loads asynchronously, so React can mount the element
+    // first.
     const { container } = render(
       createElement(DataCommonsComponent, { tag: 'datacommons-pie' }),
     );

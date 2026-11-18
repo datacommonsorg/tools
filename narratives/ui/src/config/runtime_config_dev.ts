@@ -15,16 +15,18 @@
  */
 
 /**
- * @fileoverview Vite dev-server helpers that copy the agent's chat
- * availability into the page the dev server serves. Only `vite.config.ts`
- * and this module's tests import it. `vite.config.ts` loads it in Node before
- * the `@/` alias exists, so its imports are relative (`biome.json` exempts
- * this file from the relative-import rule), and the modules it imports,
- * `runtime_config.ts` and `base_url.ts`, have no `@/` imports.
+ * @fileoverview Vite dev-server helpers that copy the agent's runtime
+ * settings (chat availability and chart hosts) into the page the dev server
+ * serves. Only `vite.config.ts` and this module's tests import it.
+ * `vite.config.ts` loads it in Node before the `@/` alias exists, so its
+ * imports are relative (`biome.json` exempts this file from the
+ * relative-import rule), and the modules it imports, `runtime_config.ts` and
+ * `base_url.ts`, have no `@/` imports.
  */
 
 import { trimTrailingSlashes } from './base_url';
 import {
+  DEFAULT_RUNTIME_CONFIG,
   parseRuntimeConfigText,
   RUNTIME_CONFIG_ELEMENT_ID,
   RUNTIME_CONFIG_LOG_PREFIX,
@@ -106,13 +108,20 @@ export const extractRuntimeConfigText = (html: string): string | undefined => {
 /**
  * Serializes `config` to the wire JSON that the agent injects into
  * `#runtime-config` (`enable_chat`, `unavailable_message`, and any non-empty
- * reCAPTCHA site keys), escaped for a `<script>` element.
+ * chart hosts and reCAPTCHA site keys in the agent's order), escaped for a
+ * `<script>` element.
  */
 const serializeRuntimeConfig = (config: Readonly<RuntimeConfig>): string => {
-  const payload: Record<string, unknown> = {
+  const payload: Record<string, boolean | string> = {
     enable_chat: config.isChatEnabled,
     unavailable_message: config.unavailableMessage,
   };
+  if (config.webComponentUrl !== '') {
+    payload.web_component_url = config.webComponentUrl;
+  }
+  if (config.webComponentApiRoot !== '') {
+    payload.web_component_api_root = config.webComponentApiRoot;
+  }
   if (config.recaptchaSessionSiteKey !== '') {
     payload.recaptcha_session_site_key = config.recaptchaSessionSiteKey;
   }
@@ -233,11 +242,14 @@ const withFallbackRecaptchaKeys = (
 };
 
 /**
- * Returns `html` with the runtime configuration of the agent whose HTML shell
- * is at `shellUrl` injected into its empty `#runtime-config`, filling in any
+ * Returns `html` with the runtime settings of the agent whose HTML shell is
+ * at `shellUrl` injected into its empty `#runtime-config`, filling in any
  * local `fallbackRecaptchaKeys` from `.env.local` when the agent omits them or
- * cannot be reached. When the shell cannot be read and no local keys are set,
- * `html` is returned unchanged with one warning.
+ * cannot be reached. The copied text is parsed with
+ * {@link parseRuntimeConfigText} and re-serialized, so a malformed payload
+ * disables chat and escaping is always applied here. When the shell cannot be
+ * read and no local keys are set, `html` is returned unchanged with one
+ * warning.
  */
 export const copyAgentRuntimeConfig = async (
   html: string,
@@ -247,18 +259,12 @@ export const copyAgentRuntimeConfig = async (
   const result = await fetchAgentRuntimeConfigText(shellUrl);
   if (typeof result !== 'string') {
     console.warn(
-      `${RUNTIME_CONFIG_LOG_PREFIX} cannot read chat availability from ` +
+      `${RUNTIME_CONFIG_LOG_PREFIX} cannot read the runtime settings from ` +
         `${shellUrl}: ${result.reason}. ${result.hint} ` +
         `Leaving #${RUNTIME_CONFIG_ELEMENT_ID} empty.`,
     );
     const fallbackConfig = withFallbackRecaptchaKeys(
-      {
-        isChatEnabled: true,
-        unavailableMessage:
-          'This Data Commons tool is temporarily unavailable due to high traffic.',
-        recaptchaSessionSiteKey: '',
-        recaptchaCheckboxSiteKey: '',
-      },
+      DEFAULT_RUNTIME_CONFIG,
       fallbackRecaptchaKeys,
     );
     if (

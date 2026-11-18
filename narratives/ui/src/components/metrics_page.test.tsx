@@ -28,6 +28,7 @@ import {
 import { afterEach, describe, expect, it } from 'vitest';
 import { MetricsPage } from '@/src/components/metrics_page';
 import { resetInstanceConfigForTests } from '@/src/config/instance_config';
+import { resetRuntimeConfigForTests } from '@/src/config/runtime_config';
 
 const writeSlot = (themeDocument: Record<string, unknown>): void => {
   const slot = document.createElement('script');
@@ -41,7 +42,9 @@ const writeSlot = (themeDocument: Record<string, unknown>): void => {
 afterEach(() => {
   cleanup();
   document.getElementById('instance-config')?.remove();
+  document.getElementById('runtime-config')?.remove();
   resetInstanceConfigForTests();
+  resetRuntimeConfigForTests();
 });
 
 describe('MetricsPage', () => {
@@ -104,5 +107,39 @@ describe('MetricsPage', () => {
     expect(tabs[1].getAttribute('aria-selected')).toBe('true');
     expect(container.querySelector('datacommons-highlight')).toBeNull();
     expect(container.querySelector('datacommons-line')).not.toBeNull();
+    expect(
+      container.querySelector('datacommons-line')?.getAttribute('apiroot'),
+    ).toBeNull();
+  });
+
+  it('passes the configured API root to every tile', () => {
+    // Test: The `apiroot` of a Key Metrics tile.
+    // Situation: The theme configures one line tile, and `#runtime-config`
+    //   sets `web_component_api_root` to autopush.
+    // Expectation: The mounted tile fetches its data from autopush.
+    writeSlot({
+      metrics: {
+        tabs: [
+          {
+            id: 'economy',
+            label: 'Economy',
+            tiles: [{ type: 'line', title: 'GDP over time' }],
+          },
+        ],
+      },
+    });
+    const runtimeSlot = document.createElement('script');
+    runtimeSlot.id = 'runtime-config';
+    runtimeSlot.type = 'application/json';
+    runtimeSlot.textContent = JSON.stringify({
+      web_component_api_root: 'https://autopush.datacommons.org',
+    });
+    document.head.appendChild(runtimeSlot);
+
+    const { container } = render(<MetricsPage />);
+
+    expect(
+      container.querySelector('datacommons-line')?.getAttribute('apiroot'),
+    ).toBe('https://autopush.datacommons.org');
   });
 });

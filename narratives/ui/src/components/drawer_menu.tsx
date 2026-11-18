@@ -21,6 +21,7 @@
 import { ArrowRight, X } from 'lucide-react';
 import { type ReactNode, useEffect } from 'react';
 import { NewChatIcon } from '@/src/components/icons';
+import { classifyLinkHref, Link } from '@/src/components/link';
 import { Tooltip } from '@/src/components/tooltip';
 import { getInstanceConfig } from '@/src/config/instance_config';
 import { resolveNavItems } from '@/src/config/nav_config';
@@ -113,13 +114,18 @@ export function MenuDrawer() {
             <nav className="flex flex-col py-2 shrink-0" aria-label="Sections">
               {navItems.map((item) => {
                 const active = item.id === activeId;
+                const interactiveClasses =
+                  classifyLinkHref(item.href) === 'unsafe'
+                    ? ''
+                    : ' cursor-pointer hover:bg-surface-soft transition-colors';
                 return (
-                  <a
+                  <Link
                     key={item.href}
                     href={item.href}
+                    target="_self"
                     aria-current={active ? 'page' : undefined}
                     onClick={closeDrawer}
-                    className="w-full flex items-center gap-3 px-4 py-3 no-underline bg-transparent cursor-pointer hover:bg-surface-soft transition-colors"
+                    className={`w-full flex items-center gap-3 px-4 py-3 no-underline bg-transparent${interactiveClasses}`}
                   >
                     <span
                       aria-hidden="true"
@@ -134,7 +140,7 @@ export function MenuDrawer() {
                     >
                       {item.label}
                     </span>
-                  </a>
+                  </Link>
                 );
               })}
             </nav>

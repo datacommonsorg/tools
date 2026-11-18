@@ -19,10 +19,9 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-
+import { getRuntimeConfig } from '@/src/config/runtime_config';
 import type { ChartConfig, ChartItem } from '@/src/hooks/use_sse_chat';
 import {
-  API_ROOT,
   DataCommonsComponent,
   type DataCommonsComponentAttributes,
   type DataCommonsComponentTagName,
@@ -30,20 +29,9 @@ import {
 } from '@/src/utils/datacommons_component';
 
 /**
- * Chart renderer for chat answers.
- *
- * Charts are rendered via Data Commons web components (datacommons-line /
- * -bar / -ranking / -map / -highlight). Each component owns its own
- * data fetch, source attribution, "Source: X • About this data • API
- * code" footer, and metadata modal — wired to the actual DCIDs the agent
- * returned, so the modal that pops up over an India chart shows India
- * metadata (not USA, which was the bug in the previous Recharts impl
- * that defaulted missing placeDcids to country/USA).
- *
- * The surrounding card chrome from Figma is kept (rounded border, max charts
- * cap, charts side by side in a row grid, with each scatter chart on a row of
- * its own), but the chart interior is no longer custom.
- * This matches the Key Metrics dashboard's approach to chart rendering.
+ * Props for {@link ChartTile}, which renders each chart as a Data Commons web
+ * component. Each component fetches its own data, source footer, and metadata
+ * modal for the DCIDs the agent returned.
  */
 interface ChartTileProps {
   config: ChartConfig;
@@ -307,7 +295,11 @@ function ChartCard({
           the chart's own load, not the held skeleton: the overlay is
           aria-hidden, so a drawn chart is readable beneath it. */}
       <div aria-busy={isLoading}>
-        <DataCommonsComponent tag={tag} apiroot={API_ROOT} {...attrs} />
+        <DataCommonsComponent
+          tag={tag}
+          apiroot={getRuntimeConfig().webComponentApiRoot || undefined}
+          {...attrs}
+        />
       </div>
       {isLoading && (
         <span role="status" className="sr-only">

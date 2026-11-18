@@ -19,6 +19,7 @@
  */
 
 import { createContext, type ReactNode, useContext } from 'react';
+import { Link } from '@/src/components/link';
 import { Tooltip } from '@/src/components/tooltip';
 import { renderNumbers } from '@/src/components/value_numeric';
 import type { ProvenanceItem } from '@/src/hooks/use_sse_chat';
@@ -149,7 +150,7 @@ export function CitationChip({
   return (
     <sup className={CHIP_TEXT_CLASS}>
       <Tooltip label={label}>
-        <a
+        <Link
           href={`#${anchor}`}
           onClick={(e) => {
             // Smooth scroll instead of jumping abruptly
@@ -167,7 +168,7 @@ export function CitationChip({
           aria-label={citationAriaLabel(n, shown, sources)}
         >
           [{shown}]
-        </a>
+        </Link>
       </Tooltip>
     </sup>
   );

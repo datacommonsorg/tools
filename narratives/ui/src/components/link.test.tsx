@@ -180,6 +180,22 @@ describe('Link', () => {
     expect(sameTabInternal.getAttribute('rel')).toBeNull();
   });
 
+  it('adds noopener noreferrer to an internal link that opens a new tab', () => {
+    // Test: New-tab internal link.
+    // Situation: Link receives a root-relative path and target="_blank".
+    // Expectation: The anchor opens in _blank with rel="noopener noreferrer".
+    render(
+      <Link href="/about" target="_blank">
+        About
+      </Link>,
+    );
+
+    const link = screen.getByRole('link', { name: 'About' });
+    expect(link.getAttribute('href')).toBe('/about');
+    expect(link.getAttribute('target')).toBe('_blank');
+    expect(link.getAttribute('rel')).toBe('noopener noreferrer');
+  });
+
   it('falls back to an inert span when the URL is unsafe', () => {
     // Test: Unsafe URL fallback rendering.
     // Situation: Link receives a javascript: URL and an onClick handler.

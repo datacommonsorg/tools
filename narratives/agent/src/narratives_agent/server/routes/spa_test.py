@@ -19,28 +19,45 @@ static mount's options are set.
 Verifies that:
 1. `SpaStaticFiles` sets `Cache-Control` by kind of file: immutable for files
    under `assets/` and `theme/`, and `no-cache` for every other file.
-2. Every static response carries `X-Content-Type-Options: nosniff`, and every
-   SVG, and only an SVG, carries `Content-Security-Policy: sandbox`.
+2. Every static response, the shell included, carries the security headers,
+   with or without `BASE_PATH`. Every SVG carries
+   `Content-Security-Policy: sandbox`, and no other static file except the
+   shell carries a policy.
 3. A revalidation that returns 304 carries the same cache and security headers.
 4. HEAD returns the headers and an empty body.
 5. Percent-encoded `..` segments cannot reach files outside the static root,
    and an unknown file or a missing static root returns 404.
 6. `/healthz` answers `ok`.
-7. The root `index.html` is served with the effective chat availability
-   stamped into `#runtime-config`, escaped for a `<script>` element, under a
-   SHA-256 `ETag` of the stamped bytes that changes with the chat settings,
-   without `Last-Modified`, and revalidated only through `If-None-Match`.
+7. The root `index.html` is served with the effective chat availability and
+   the chart hosts stamped into `#runtime-config`, escaped for a `<script>`
+   element, under a SHA-256 `ETag` of the stamped bytes that changes with the
+   chat settings, without `Last-Modified`, and revalidated only through
+   `If-None-Match`. The stamped chart hosts are the ones the app starts
+   with.
+8. The shell carries the page's Content-Security-Policy on 200 and 304
+   responses, with or without `BASE_PATH`. The policy allows no inline or
+   evaluated script, names the configured chart hosts, and is absent from
+   the other static files and `/agent/*`. The source `ui/index.html` holds
+   no inline script that a browser would run.
 """
 
 import hashlib
 import json
+from collections.abc import Mapping
+from html.parser import HTMLParser
 from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
 
+from narratives_agent.config_model import DEFAULT_UNAVAILABLE_MESSAGE
+from narratives_agent.mcp.capabilities import Capabilities
 from narratives_agent.server.app import create_app
+from narratives_agent.server.routes import system
+from narratives_agent.server.security_headers import SECURITY_HEADERS
 from narratives_agent.settings import (
+    DC_WEB_COMPONENT_API_ROOT_ENV,
+    DC_WEB_COMPONENT_URL_ENV,
     ENABLE_CHAT_ENV,
     UNAVAILABLE_MESSAGE_ENV,
     get_settings,
@@ -49,19 +66,56 @@ from narratives_agent.settings import (
 _SHELL_HEAD = b"<!doctype html><title>Narratives</title>"
 _RUNTIME_OPEN = b'<script id="runtime-config" type="application/json">'
 _INDEX = _SHELL_HEAD + _RUNTIME_OPEN + b"</script>"
-# `_INDEX` as served when chat is enabled with the default message.
+# `_INDEX` as served when chat is enabled with the default message and the
+# chart hosts are the defaults.
 _STAMPED_INDEX = (
     _SHELL_HEAD
     + _RUNTIME_OPEN
     + b'{"enable_chat":true,"unavailable_message":"This Data Commons tool '
-    + b'is temporarily unavailable due to high traffic."}</script>'
+    + b'is temporarily unavailable due to high traffic.",'
+    + b'"web_component_url":"https://datacommons.org/datacommons.js",'
+    + b'"web_component_api_root":"https://datacommons.org"}</script>'
 )
+# The chart host entries of `#runtime-config` when no override is set.
+_DEFAULT_CHART_HOSTS = {
+    "web_component_url": "https://datacommons.org/datacommons.js",
+    "web_component_api_root": "https://datacommons.org",
+}
 _BUNDLE = b"console.log('narratives');"
 _LOGO = b"\x89PNG\r\n\x1a\n"
 _SVG = b"<svg xmlns='http://www.w3.org/2000/svg'/>"
 _CONFIG = b'{"mcp": {"server_url": "http://mcp.test/mcp"}}'
 
 _IMMUTABLE = "public, max-age=31536000, immutable"
+
+# The page's Content-Security-Policy when the chart hosts are the defaults.
+_DEFAULT_PAGE_POLICY = (
+    "default-src 'self'; "
+    "script-src 'self' https://datacommons.org; "
+    "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
+    "font-src 'self' https://fonts.gstatic.com data:; "
+    "img-src 'self' https: data: blob:; "
+    "connect-src 'self' https://datacommons.org; "
+    "frame-src 'self'; "
+    "object-src 'none'; "
+    "base-uri 'none'; "
+    "form-action 'self'; "
+    "frame-ancestors 'self'"
+)
+
+# The path of the source HTML shell, `narratives/ui/index.html`, resolved
+# from this file in `narratives/agent/src/narratives_agent/server/routes/`.
+_SOURCE_SHELL = Path(__file__).resolve().parents[5] / "ui" / "index.html"
+
+# A `<script>` without `src` may appear in the shell only with this `type`,
+# because browsers do not run JSON data blocks.
+_DATA_BLOCK_TYPE = "application/json"
+
+
+def _assert_has_security_headers(headers: Mapping[str, str]) -> None:
+    """Asserts that `headers` carries every header in `SECURITY_HEADERS`."""
+    for name, value in SECURITY_HEADERS:
+        assert headers[name.lower()] == value
 
 
 @pytest.fixture
@@ -119,22 +173,25 @@ def test_cache_control_follows_the_kind_of_file(
     "path",
     [
         "/",
+        "/index.html",
         "/assets/index-a1b2c3d4.js",
         "/theme/logo-e5f6a7b8.svg",
         "/logo.png",
         "/dc-logo.svg",
     ],
 )
-def test_every_static_response_forbids_content_sniffing(
+def test_every_static_response_carries_the_security_headers(
     path: str, client: TestClient
 ) -> None:
-    # Test: `X-Content-Type-Options` header on static responses.
-    # Situation: A client requests HTML, JavaScript, PNG, and SVG files.
-    # Expectation: Every response includes `X-Content-Type-Options: nosniff`.
+    # Test: Security headers on static responses.
+    # Situation: A client requests the HTML shell and JavaScript, PNG, and
+    #   SVG files.
+    # Expectation: Every response carries every header in
+    #   `SECURITY_HEADERS`.
     response = client.get(path)
 
     assert response.status_code == 200
-    assert response.headers["x-content-type-options"] == "nosniff"
+    _assert_has_security_headers(response.headers)
 
 
 @pytest.mark.parametrize(
@@ -142,8 +199,6 @@ def test_every_static_response_forbids_content_sniffing(
     [
         ("/dc-logo.svg", True),
         ("/theme/logo-e5f6a7b8.svg", True),
-        ("/", False),
-        ("/index.html", False),
         ("/assets/index-a1b2c3d4.js", False),
         ("/logo.png", False),
     ],
@@ -152,7 +207,8 @@ def test_only_svg_files_are_sandboxed(
     path: str, is_sandboxed: bool, client: TestClient
 ) -> None:
     # Test: `Content-Security-Policy` header on SVG and non-SVG static files.
-    # Situation: A client requests SVG files and non-SVG files.
+    # Situation: A client requests SVG files and non-SVG files other than
+    #   the HTML shell.
     # Expectation: SVG responses include `Content-Security-Policy: sandbox`,
     #   and non-SVG responses omit the header.
     response = client.get(path)
@@ -167,7 +223,6 @@ def test_only_svg_files_are_sandboxed(
 @pytest.mark.parametrize(
     ("path", "cache_control", "csp"),
     [
-        ("/", "no-cache", None),
         ("/assets/index-a1b2c3d4.js", _IMMUTABLE, None),
         ("/theme/logo-e5f6a7b8.svg", _IMMUTABLE, "sandbox"),
         ("/logo.png", "no-cache", None),
@@ -190,7 +245,7 @@ def test_revalidation_returns_304_with_the_same_headers(
 
     assert response.status_code == 304
     assert response.headers["cache-control"] == cache_control
-    assert response.headers["x-content-type-options"] == "nosniff"
+    _assert_has_security_headers(response.headers)
     assert response.headers.get("content-security-policy") == csp
 
 
@@ -281,8 +336,9 @@ def test_static_files_serve_under_base_path(
     # Situation: `BASE_PATH` is a single- or multi-segment subpath and a client
     #   requests the SPA shell, a hashed bundle under `assets/`, and an SVG
     #   asset under `<base_path>/*`, as well as paths outside `<base_path>`.
-    # Expectation: Subpath requests return the expected content and cache
-    #   headers, while `/` and parent prefixes outside `<base_path>` return 404.
+    # Expectation: Subpath requests return the expected content, cache
+    #   headers, and security headers, while `/` and parent prefixes outside
+    #   `<base_path>` return 404.
     agent_root = tmp_path / "agent"
     static_root = agent_root / "static"
     (static_root / "assets").mkdir(parents=True)
@@ -299,6 +355,7 @@ def test_static_files_serve_under_base_path(
     assert response.status_code == 200
     assert response.content == body
     assert response.headers["cache-control"] == cache_control
+    _assert_has_security_headers(response.headers)
     assert subpath_client.get("/").status_code == 404
     assert subpath_client.get("/labs").status_code == 404
 
@@ -351,13 +408,18 @@ def test_the_shell_carries_a_hash_of_the_stamped_bytes(
                     "This Data Commons tool is temporarily unavailable due "
                     "to high traffic."
                 ),
+                **_DEFAULT_CHART_HOSTS,
             },
             id="ENABLE_CHAT",
         ),
         pytest.param(
             UNAVAILABLE_MESSAGE_ENV,
             "Back at noon.",
-            {"enable_chat": True, "unavailable_message": "Back at noon."},
+            {
+                "enable_chat": True,
+                "unavailable_message": "Back at noon.",
+                **_DEFAULT_CHART_HOSTS,
+            },
             id="UNAVAILABLE_MESSAGE",
         ),
     ],
@@ -390,7 +452,7 @@ def test_a_chat_setting_change_invalidates_the_shell_etag(
     assert revalidated.status_code == 304
     assert revalidated.headers["etag"] == new_etag
     assert revalidated.headers["cache-control"] == "no-cache"
-    assert revalidated.headers["x-content-type-options"] == "nosniff"
+    _assert_has_security_headers(revalidated.headers)
 
 
 @pytest.mark.parametrize(
@@ -469,6 +531,7 @@ def test_the_unavailable_message_cannot_break_out_of_the_script(
     assert _read_runtime_config(body) == {
         "enable_chat": True,
         "unavailable_message": message,
+        **_DEFAULT_CHART_HOSTS,
     }
 
 
@@ -490,3 +553,240 @@ def test_a_shell_without_the_slot_is_served_unchanged(
     assert response.headers["etag"] == (
         f'"{hashlib.sha256(_SHELL_HEAD).hexdigest()}"'
     )
+
+
+def _create_shell_client(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> TestClient:
+    """Returns a test client for an app whose static root holds `_INDEX`."""
+    static_root = tmp_path / "agent" / "static"
+    static_root.mkdir(parents=True)
+    (static_root / "index.html").write_bytes(_INDEX)
+    monkeypatch.setenv("AGENT_ROOT", str(tmp_path / "agent"))
+    monkeypatch.setenv("STATIC_ROOT", str(static_root))
+    return TestClient(create_app())
+
+
+def test_the_shell_carries_the_configured_chart_hosts(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Test: Chart host settings in the stamped `#runtime-config`.
+    # Situation: When the app starts, `DC_WEB_COMPONENT_URL` and
+    #   `DC_WEB_COMPONENT_API_ROOT` name autopush, and the API root ends with
+    #   a trailing slash.
+    # Expectation: `#runtime-config` carries both hosts, with the trailing
+    #   slash removed from the API root, alongside the default chat
+    #   availability.
+    monkeypatch.setenv(
+        DC_WEB_COMPONENT_URL_ENV,
+        "https://autopush.datacommons.org/datacommons.js",
+    )
+    monkeypatch.setenv(
+        DC_WEB_COMPONENT_API_ROOT_ENV, "https://autopush.datacommons.org/"
+    )
+
+    body = _create_shell_client(tmp_path, monkeypatch).get("/").content
+
+    assert _read_runtime_config(body) == {
+        "enable_chat": True,
+        "unavailable_message": DEFAULT_UNAVAILABLE_MESSAGE,
+        "web_component_url": "https://autopush.datacommons.org/datacommons.js",
+        "web_component_api_root": "https://autopush.datacommons.org",
+    }
+
+
+def test_the_chart_hosts_are_fixed_when_the_app_starts(
+    monkeypatch: pytest.MonkeyPatch, client: TestClient
+) -> None:
+    # Test: Chart host settings changed after the app is built.
+    # Situation: The app starts with the default chart hosts. Then
+    #   `DC_WEB_COMPONENT_API_ROOT` changes, and the cached settings are
+    #   cleared.
+    # Expectation: The stamped chart hosts and the page policy both keep the
+    #   defaults the app was built with, so they cannot disagree.
+    monkeypatch.setenv(
+        DC_WEB_COMPONENT_API_ROOT_ENV, "https://autopush.datacommons.org"
+    )
+    get_settings.cache_clear()
+
+    response = client.get("/")
+
+    assert _read_runtime_config(response.content) == {
+        "enable_chat": True,
+        "unavailable_message": DEFAULT_UNAVAILABLE_MESSAGE,
+        **_DEFAULT_CHART_HOSTS,
+    }
+    assert response.headers["content-security-policy"] == _DEFAULT_PAGE_POLICY
+
+
+def _read_policy_directives(policy: str) -> dict[str, list[str]]:
+    """Returns each directive of `policy` mapped to its sources."""
+    directives: dict[str, list[str]] = {}
+    for directive in policy.split(";"):
+        name, *sources = directive.split()
+        directives[name] = sources
+    return directives
+
+
+@pytest.mark.parametrize("base_path", ["", "/labs/discover"])
+@pytest.mark.parametrize("subpath", ["/", "/index.html"])
+def test_the_shell_carries_the_page_policy_on_200_and_304(
+    base_path: str,
+    subpath: str,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Test: The page's Content-Security-Policy on the HTML shell.
+    # Situation: `BASE_PATH` is unset or a subpath, the chart hosts are the
+    #   defaults, and a client requests `/` or `/index.html`, then
+    #   revalidates it with its `ETag`.
+    # Expectation: The 200 response and the 304 response both carry the
+    #   default page policy and every header in `SECURITY_HEADERS`, so a page
+    #   revalidated from the browser cache keeps its policy.
+    if base_path:
+        monkeypatch.setenv("BASE_PATH", base_path)
+    client = _create_shell_client(tmp_path, monkeypatch)
+    path = f"{base_path}{subpath}"
+
+    response = client.get(path)
+    revalidated = client.get(
+        path, headers={"If-None-Match": response.headers["etag"]}
+    )
+
+    assert response.status_code == 200
+    assert response.headers["content-security-policy"] == _DEFAULT_PAGE_POLICY
+    _assert_has_security_headers(response.headers)
+    assert revalidated.status_code == 304
+    assert (
+        revalidated.headers["content-security-policy"] == _DEFAULT_PAGE_POLICY
+    )
+    _assert_has_security_headers(revalidated.headers)
+
+
+def test_the_page_policy_allows_no_inline_or_evaluated_script(
+    client: TestClient,
+) -> None:
+    # Test: `script-src`, `form-action`, and `frame-ancestors` of the page
+    #   policy.
+    # Situation: A client requests the shell with the default chart hosts.
+    # Expectation: `script-src` allows the app's own files and the web
+    #   component origin, but neither `'unsafe-inline'` nor `'unsafe-eval'`.
+    #   `form-action` and `frame-ancestors` allow only the app's origin.
+    directives = _read_policy_directives(
+        client.get("/").headers["content-security-policy"]
+    )
+
+    assert directives["script-src"] == ["'self'", "https://datacommons.org"]
+    assert "'unsafe-inline'" not in directives["script-src"]
+    assert "'unsafe-eval'" not in directives["script-src"]
+    assert directives["form-action"] == ["'self'"]
+    assert directives["frame-ancestors"] == ["'self'"]
+
+
+def test_the_page_policy_names_the_configured_chart_hosts(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Test: Chart host settings in the page policy.
+    # Situation: `DC_WEB_COMPONENT_URL` names a script on a CDN host with a
+    #   port, and `DC_WEB_COMPONENT_API_ROOT` names autopush.
+    # Expectation: `script-src` names the origin of the script URL, without
+    #   its path, and `connect-src` names the API root.
+    monkeypatch.setenv(
+        DC_WEB_COMPONENT_URL_ENV,
+        "https://cdn.example.com:8443/dc/datacommons.js",
+    )
+    monkeypatch.setenv(
+        DC_WEB_COMPONENT_API_ROOT_ENV, "https://autopush.datacommons.org"
+    )
+
+    response = _create_shell_client(tmp_path, monkeypatch).get("/")
+
+    directives = _read_policy_directives(
+        response.headers["content-security-policy"]
+    )
+    assert directives["script-src"] == [
+        "'self'",
+        "https://cdn.example.com:8443",
+    ]
+    assert directives["connect-src"] == [
+        "'self'",
+        "https://autopush.datacommons.org",
+    ]
+
+
+@pytest.mark.parametrize(
+    ("path", "expected_policy"),
+    [
+        ("/assets/index-a1b2c3d4.js", None),
+        ("/logo.png", None),
+        ("/dc-logo.svg", "sandbox"),
+        ("/agent/health", None),
+        ("/healthz", None),
+    ],
+)
+def test_only_the_shell_carries_the_page_policy(
+    path: str,
+    expected_policy: str | None,
+    monkeypatch: pytest.MonkeyPatch,
+    client: TestClient,
+) -> None:
+    # Test: Responses other than the HTML shell.
+    # Situation: A client requests a script, an image, an SVG, the health
+    #   report, and the liveness route. The MCP lookups are stubbed.
+    # Expectation: No response carries the page policy. The SVG keeps
+    #   `sandbox`, and the others carry no `Content-Security-Policy`.
+    monkeypatch.setattr(system, "mcp_url", lambda: "http://mcp.test/mcp")
+    monkeypatch.setattr(system, "mcp_capabilities", lambda: Capabilities())
+
+    response = client.get(path)
+
+    assert response.status_code == 200
+    assert response.headers.get("content-security-policy") == expected_policy
+
+
+class _InlineScriptFinder(HTMLParser):
+    """Collects the inline script forms that the page policy blocks.
+
+    The parser records the `type` of every `<script>` element without `src`,
+    and every event handler attribute (`on*`) or `javascript:` attribute
+    value.
+    """
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.inline_script_types: list[str] = []
+        self.inline_handlers: list[str] = []
+
+    def handle_starttag(
+        self, tag: str, attrs: list[tuple[str, str | None]]
+    ) -> None:
+        """Records the inline script forms of one start tag."""
+        attributes = dict(attrs)
+        if tag == "script" and "src" not in attributes:
+            self.inline_script_types.append(attributes.get("type") or "")
+        for name, value in attrs:
+            is_handler = name.startswith("on")
+            is_script_url = (
+                (value or "").strip().lower().startswith("javascript:")
+            )
+            if is_handler or is_script_url:
+                self.inline_handlers.append(f"<{tag} {name}>")
+
+
+def test_the_source_shell_holds_no_runnable_inline_script() -> None:
+    # Test: Inline scripts in `ui/index.html`, which the page policy blocks.
+    # Situation: The source HTML shell is parsed. The agent tests run
+    #   without a UI build, so the source file stands in for the built shell,
+    #   which adds only `<script>` elements with `src`.
+    # Expectation: Every `<script>` without `src` is a JSON data block, which
+    #   browsers do not run, the shell holds at least one such block, and no
+    #   element carries an event handler attribute or a `javascript:` URL.
+    finder = _InlineScriptFinder()
+    finder.feed(_SOURCE_SHELL.read_text(encoding="utf-8"))
+
+    assert finder.inline_script_types
+    assert all(
+        script_type == _DATA_BLOCK_TYPE
+        for script_type in finder.inline_script_types
+    )
+    assert finder.inline_handlers == []

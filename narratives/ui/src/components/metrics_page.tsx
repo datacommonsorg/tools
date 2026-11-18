@@ -21,9 +21,9 @@
 
 import { type ReactNode, useState } from 'react';
 import { getInstanceConfig } from '@/src/config/instance_config';
+import { getRuntimeConfig } from '@/src/config/runtime_config';
 import type { MetricsTab, MetricsTile } from '@/src/types/metrics';
 import {
-  API_ROOT,
   DataCommonsComponent,
   type DataCommonsComponentAttributes,
   type DataCommonsComponentTagName,
@@ -130,7 +130,7 @@ function TilesGrid({ tiles }: TilesGridProps) {
           <Tile key={index} title={title}>
             <DataCommonsComponent
               tag={`datacommons-${type}` as DataCommonsComponentTagName}
-              apiroot={API_ROOT}
+              apiroot={getRuntimeConfig().webComponentApiRoot || undefined}
               {...(attrs as DataCommonsComponentAttributes)}
             />
           </Tile>

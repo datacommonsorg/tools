@@ -134,6 +134,27 @@ describe('copyAgentRuntimeConfig', () => {
     expect(vi.mocked(fetch).mock.calls[0][0]).toBe(SHELL_URL);
   });
 
+  it('copies the chart hosts from the agent shell', async () => {
+    // Test: Agent that overrides both chart host settings.
+    // Situation: The agent shell is stamped with autopush chart hosts.
+    // Expectation: The Vite page carries both hosts unchanged, so the dev
+    //   server shows the agent's charts.
+    stubShellResponse(
+      buildAgentShell(
+        JSON.stringify({
+          enable_chat: true,
+          unavailable_message: 'Paused',
+          web_component_url: 'https://autopush.datacommons.org/datacommons.js',
+          web_component_api_root: 'https://autopush.datacommons.org',
+        }),
+      ),
+    );
+    const stamped = await copyAgentRuntimeConfig(EMPTY_SLOT, SHELL_URL);
+    expect(stamped).toBe(
+      '<script id="runtime-config" type="application/json">{"enable_chat":true,"unavailable_message":"Paused","web_component_url":"https://autopush.datacommons.org/datacommons.js","web_component_api_root":"https://autopush.datacommons.org"}</script>',
+    );
+  });
+
   it('re-escapes the copied message', async () => {
     // Test: Message with markup and line separator characters.
     // Situation: The agent shell carries a message holding `<`, `>`, `&`,
@@ -268,18 +289,21 @@ describe('copyAgentRuntimeConfig', () => {
 describe('stampRuntimeConfigHtml', () => {
   it('stamps the wire JSON into the empty slot', () => {
     // Test: Stamping the HTML shell.
-    // Situation: The HTML holds the empty slot and chat is disabled.
-    // Expectation: The slot holds the compact wire JSON with snake_case keys.
+    // Situation: The HTML holds the empty slot, chat is disabled, and the
+    //   chart hosts name autopush.
+    // Expectation: The slot holds the compact wire JSON with snake_case keys,
+    //   the chart hosts included.
     const html = `<head>${EMPTY_SLOT}</head>`;
     expect(
       stampRuntimeConfigHtml(html, {
+        ...DEFAULT_RUNTIME_CONFIG,
         isChatEnabled: false,
         unavailableMessage: 'Paused',
-        recaptchaSessionSiteKey: '',
-        recaptchaCheckboxSiteKey: '',
+        webComponentUrl: 'https://autopush.datacommons.org/datacommons.js',
+        webComponentApiRoot: 'https://autopush.datacommons.org',
       }),
     ).toBe(
-      '<head><script id="runtime-config" type="application/json">{"enable_chat":false,"unavailable_message":"Paused"}</script></head>',
+      '<head><script id="runtime-config" type="application/json">{"enable_chat":false,"unavailable_message":"Paused","web_component_url":"https://autopush.datacommons.org/datacommons.js","web_component_api_root":"https://autopush.datacommons.org"}</script></head>',
     );
   });
 
@@ -290,6 +314,7 @@ describe('stampRuntimeConfigHtml', () => {
     //   parses back to the original message.
     const message = '</script><b>&\u2028\u2029';
     const stamped = stampRuntimeConfigHtml(EMPTY_SLOT, {
+      ...DEFAULT_RUNTIME_CONFIG,
       isChatEnabled: false,
       unavailableMessage: message,
       recaptchaSessionSiteKey: '',
@@ -309,6 +334,7 @@ describe('stampRuntimeConfigHtml', () => {
     // Situation: The message holds `$$`, `` $` ``, and `$'`.
     // Expectation: The sequences appear verbatim in the stamped JSON.
     const stamped = stampRuntimeConfigHtml(EMPTY_SLOT, {
+      ...DEFAULT_RUNTIME_CONFIG,
       isChatEnabled: false,
       unavailableMessage: "Costs $$ and $` and $'",
       recaptchaSessionSiteKey: '',
