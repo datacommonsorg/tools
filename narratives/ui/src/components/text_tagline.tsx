@@ -55,7 +55,7 @@ export function TaglineText({ tagline, link }: TaglineTextProps) {
           tagline color to mark the link on its own (WCAG 1.4.1). */}
       <button
         type="button"
-        className="text-theme-primary underline cursor-pointer"
+        className="text-theme-primary underline"
         aria-haspopup="dialog"
         onClick={() => dialogRef.current?.showModal()}
       >
@@ -110,7 +110,7 @@ export function TaglineText({ tagline, link }: TaglineTextProps) {
             )}
             <button
               type="button"
-              className="h-14 px-6 rounded-full text-body-large-emphasized bg-theme-primary text-white hover:opacity-90 transition-opacity cursor-pointer"
+              className="h-14 px-6 rounded-full text-body-large-emphasized bg-theme-primary text-white hover:opacity-90 transition-opacity"
               onClick={() => dialogRef.current?.close()}
             >
               {TAGLINE_DIALOG_DISMISS_LABEL}
