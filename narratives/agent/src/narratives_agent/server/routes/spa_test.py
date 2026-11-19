@@ -28,17 +28,18 @@ Verifies that:
 5. Percent-encoded `..` segments cannot reach files outside the static root,
    and an unknown file or a missing static root returns 404.
 6. `/healthz` answers `ok`.
-7. The root `index.html` is served with the effective chat availability and
-   the chart hosts stamped into `#runtime-config`, escaped for a `<script>`
-   element, under a SHA-256 `ETag` of the stamped bytes that changes with the
-   chat settings, without `Last-Modified`, and revalidated only through
-   `If-None-Match`. The stamped chart hosts are the ones the app starts
-   with.
+7. The root `index.html` is served with the effective chat availability, the
+   chart hosts, and any configured reCAPTCHA site keys injected into
+   `#runtime-config`, escaped for a `<script>` element, under a SHA-256 `ETag`
+   of the stamped bytes that changes when runtime settings change, without
+   `Last-Modified`, and revalidated only through `If-None-Match`. The stamped
+   chart hosts and reCAPTCHA site keys are the ones the app starts with.
 8. The shell carries the page's Content-Security-Policy on 200 and 304
    responses, with or without `BASE_PATH`. The policy allows no inline or
-   evaluated script, names the configured chart hosts, and is absent from
-   the other static files and `/agent/*`. The source `ui/index.html` holds
-   no inline script that a browser would run.
+   evaluated script, names the configured chart hosts (and reCAPTCHA endpoints
+   when a site key is set), and is absent from the other static files and
+   `/agent/*`. The source `ui/index.html` holds no inline script that a
+   browser would run.
 """
 
 import hashlib
@@ -59,6 +60,8 @@ from narratives_agent.settings import (
     DC_WEB_COMPONENT_API_ROOT_ENV,
     DC_WEB_COMPONENT_URL_ENV,
     ENABLE_CHAT_ENV,
+    RECAPTCHA_CHECKBOX_SITE_KEY_ENV,
+    RECAPTCHA_SESSION_SITE_KEY_ENV,
     UNAVAILABLE_MESSAGE_ENV,
     get_settings,
 )
@@ -560,11 +563,120 @@ def _create_shell_client(
 ) -> TestClient:
     """Returns a test client for an app whose static root holds `_INDEX`."""
     static_root = tmp_path / "agent" / "static"
-    static_root.mkdir(parents=True)
+    static_root.mkdir(parents=True, exist_ok=True)
     (static_root / "index.html").write_bytes(_INDEX)
     monkeypatch.setenv("AGENT_ROOT", str(tmp_path / "agent"))
     monkeypatch.setenv("STATIC_ROOT", str(static_root))
     return TestClient(create_app())
+
+
+@pytest.mark.parametrize(
+    ("env", "expected_recaptcha"),
+    [
+        pytest.param(
+            {RECAPTCHA_SESSION_SITE_KEY_ENV: "6Lc_session_only"},
+            {"recaptcha_session_site_key": "6Lc_session_only"},
+            id="session-only",
+        ),
+        pytest.param(
+            {RECAPTCHA_CHECKBOX_SITE_KEY_ENV: "6Lc_checkbox_only"},
+            {"recaptcha_checkbox_site_key": "6Lc_checkbox_only"},
+            id="checkbox-only",
+        ),
+        pytest.param(
+            {
+                RECAPTCHA_SESSION_SITE_KEY_ENV: "6Lc_session_both",
+                RECAPTCHA_CHECKBOX_SITE_KEY_ENV: "6Lc_checkbox_both",
+            },
+            {
+                "recaptcha_session_site_key": "6Lc_session_both",
+                "recaptcha_checkbox_site_key": "6Lc_checkbox_both",
+            },
+            id="both-keys",
+        ),
+    ],
+)
+def test_recaptcha_keys_inject_into_runtime_config_and_policy(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    env: dict[str, str],
+    expected_recaptcha: dict[str, str],
+) -> None:
+    # Test: Injecting configured reCAPTCHA site keys into `#runtime-config` and
+    #   allowing reCAPTCHA endpoints in the shell's Content-Security-Policy.
+    # Situation: `index.html` is first served with no reCAPTCHA keys set, and
+    #   a restarted app then starts with one or both reCAPTCHA site keys set.
+    # Expectation: Only the non-empty site keys are added alongside
+    #   `enable_chat`, `unavailable_message`, and the chart hosts; the `ETag`
+    #   changes; and `script-src`, `connect-src`, and `frame-src` add Google's
+    #   reCAPTCHA endpoints.
+    initial = _create_shell_client(tmp_path, monkeypatch).get("/")
+    assert _read_runtime_config(initial.content) == {
+        "enable_chat": True,
+        "unavailable_message": DEFAULT_UNAVAILABLE_MESSAGE,
+        **_DEFAULT_CHART_HOSTS,
+    }
+    assert initial.headers["content-security-policy"] == _DEFAULT_PAGE_POLICY
+    old_etag = initial.headers["etag"]
+
+    for name, value in env.items():
+        _set_chat_env(monkeypatch, name, value)
+
+    updated = _create_shell_client(tmp_path, monkeypatch).get(
+        "/", headers={"If-None-Match": old_etag}
+    )
+
+    assert updated.status_code == 200
+    assert _read_runtime_config(updated.content) == {
+        "enable_chat": True,
+        "unavailable_message": DEFAULT_UNAVAILABLE_MESSAGE,
+        **_DEFAULT_CHART_HOSTS,
+        **expected_recaptcha,
+    }
+    assert updated.headers["etag"] != old_etag
+    assert updated.headers["cache-control"] == "no-cache"
+    _assert_has_security_headers(updated.headers)
+    directives = _read_policy_directives(
+        updated.headers["content-security-policy"]
+    )
+    assert directives["script-src"] == [
+        "'self'",
+        "https://datacommons.org",
+        "https://www.google.com/recaptcha/",
+        "https://www.gstatic.com/recaptcha/",
+    ]
+    assert directives["connect-src"] == [
+        "'self'",
+        "https://datacommons.org",
+        "https://www.google.com/recaptcha/",
+        "https://www.gstatic.com/recaptcha/",
+        "https://recaptcha.google.com/recaptcha/",
+    ]
+    assert directives["frame-src"] == [
+        "'self'",
+        "https://www.google.com/recaptcha/",
+        "https://recaptcha.google.com/recaptcha/",
+    ]
+
+
+def test_recaptcha_keys_cannot_break_out_of_the_runtime_config_script(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Test: HTML `<script>` escaping for injected reCAPTCHA site keys.
+    # Situation: `RECAPTCHA_SESSION_SITE_KEY` contains `</script><script>`, `&`,
+    #   U+2028, and U+2029.
+    # Expectation: Hazardous characters are escaped as `\u003c`, `\u003e`,
+    #   `\u0026`, `\u2028`, and `\u2029` so the page still contains only one
+    #   `</script>` tag, and decoding `#runtime-config` recovers the raw value.
+    tricky_key = "</script><script>alert(1)&\u2028\u2029key"
+    _set_chat_env(monkeypatch, RECAPTCHA_SESSION_SITE_KEY_ENV, tricky_key)
+
+    body = _create_shell_client(tmp_path, monkeypatch).get("/").content
+
+    assert body.count(b"</script>") == 1
+    parsed = _read_runtime_config(body)
+    assert isinstance(parsed, dict)
+    assert parsed["recaptcha_session_site_key"] == tricky_key
 
 
 def test_the_shell_carries_the_configured_chart_hosts(
@@ -595,18 +707,21 @@ def test_the_shell_carries_the_configured_chart_hosts(
     }
 
 
-def test_the_chart_hosts_are_fixed_when_the_app_starts(
+def test_chart_hosts_and_recaptcha_keys_are_fixed_when_the_app_starts(
     monkeypatch: pytest.MonkeyPatch, client: TestClient
 ) -> None:
-    # Test: Chart host settings changed after the app is built.
-    # Situation: The app starts with the default chart hosts. Then
-    #   `DC_WEB_COMPONENT_API_ROOT` changes, and the cached settings are
-    #   cleared.
-    # Expectation: The stamped chart hosts and the page policy both keep the
-    #   defaults the app was built with, so they cannot disagree.
+    # Test: Chart host and reCAPTCHA settings changed after the app is built.
+    # Situation: The app starts with the default chart hosts and no reCAPTCHA
+    #   site keys. Then `DC_WEB_COMPONENT_API_ROOT`,
+    #   `RECAPTCHA_SESSION_SITE_KEY`, and `RECAPTCHA_CHECKBOX_SITE_KEY` change,
+    #   and the cached settings are cleared.
+    # Expectation: The stamped `#runtime-config` and the page policy both keep
+    #   the defaults the app was built with, so they cannot disagree.
     monkeypatch.setenv(
         DC_WEB_COMPONENT_API_ROOT_ENV, "https://autopush.datacommons.org"
     )
+    monkeypatch.setenv(RECAPTCHA_SESSION_SITE_KEY_ENV, "6Lc_session_late")
+    monkeypatch.setenv(RECAPTCHA_CHECKBOX_SITE_KEY_ENV, "6Lc_checkbox_late")
     get_settings.cache_clear()
 
     response = client.get("/")
