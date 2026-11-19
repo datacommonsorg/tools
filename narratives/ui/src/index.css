@@ -1,6 +1,9 @@
 @import url('https://fonts.googleapis.com/css2?family=Google+Sans:wght@400;500;700&family=Google+Sans+Text:wght@400;500;700&family=Roboto:wght@400;500;700&family=Inter:wght@400;500;600;700&display=swap');
 @import 'tailwindcss';
 
+/* Viewports at least 480px tall: room to dock UI to the bottom edge. */
+@custom-variant tall (@media (min-height: 480px));
+
 /*
  * Design tokens for the application.
  *
@@ -35,8 +38,6 @@
     --theme-on-container,
     var(--color-theme-primary)
   );
-  --color-theme-gradient-start: var(--theme-gradient-start, #0b57d0);
-  --color-theme-gradient-end: var(--theme-gradient-end, #0b57d0);
 
   /* Prompt input glow ring gradient */
   --color-theme-gradient-border-stop-1: var(
@@ -72,6 +73,11 @@
   --color-surface-section: var(--theme-surface-section, #ffffff);
   /* Landing-view suggestion chips. */
   --color-surface-chip: var(--theme-surface-chip, #f5faff);
+  /* Modal dialogs: the surface and the fade over its bottom 40%. Consumed as
+     `dialog-surface`. */
+  --color-surface-dialog: #f9fafa;
+  --color-dialog-fade-start: rgb(244 250 255 / 0.01);
+  --color-dialog-fade-end: #ecf4fd;
   --color-skeleton-bar: var(--theme-skeleton-bar, #efeded);
   /* Inline-code chip behind `code` in the reasoning aside. */
   --color-code-surface: var(--theme-code-surface, #f2f2f2);
@@ -93,6 +99,8 @@
      Fixed rather than theme-driven because it follows from that height, and
      consumed as `rounded-pill`. */
   --radius-pill: 28px;
+  /* Modal dialogs. Consumed as `rounded-dialog`. */
+  --radius-dialog: 42px;
 
   /* Widths. Tailwind v4 turns the --container-* namespace into `max-w-*`
      utilities, so this is consumed as `max-w-prompt`. */
@@ -148,6 +156,8 @@
   /* Neutral 40: the color of the AI disclaimer under each answer. */
   --color-ai-disclaimer: #5e5e5e;
   --color-subtle: #747775;
+  /* Landing-view heading. */
+  --color-headline: #303030;
   --color-placeholder: #8e918f;
 
   /* Text — table */
@@ -157,7 +167,7 @@
 
   /* Motion — content entering the page: a short fade up on the M3 standard
      decelerate curve. Consumed as `animate-enter`, gated with `motion-safe:`. */
-  --animate-enter: enter 300ms cubic-bezier(0, 0, 0, 1);
+  --animate-enter: enter var(--duration-enter) var(--ease-decelerate);
 
   @keyframes enter {
     from {
@@ -168,7 +178,7 @@
 
   /* Motion — content leaving: the reverse of `enter`, on the M3 standard
      accelerate curve. Must match EXIT_MS in components/toast.tsx. */
-  --animate-exit: exit 200ms cubic-bezier(0.3, 0, 1, 1) both;
+  --animate-exit: exit var(--duration-exit) var(--ease-accelerate) both;
 
   @keyframes exit {
     to {
@@ -274,9 +284,26 @@
 :root {
   --logo-height: var(--theme-logo-height, 28px);
 
+  /* Motion: M3 standard decelerate (entering) and accelerate (leaving)
+     curves, and the enter and exit durations shared by `animate-enter`,
+     `animate-exit`, and `dialog-motion`. `--duration-exit` must match EXIT_MS
+     in components/toast.tsx. */
+  --ease-decelerate: cubic-bezier(0, 0, 0, 1);
+  --ease-accelerate: cubic-bezier(0.3, 0, 1, 1);
+  --duration-enter: 300ms;
+  --duration-exit: 200ms;
+
   --static-display-small-font: var(--font-display, 'Google Sans');
   --static-display-small-size: 32px;
   --static-display-small-line-height: 36px;
+
+  --static-display-medium-font: var(--font-display, 'Google Sans');
+  --static-display-medium-size: 45px;
+  --static-display-medium-line-height: 52px;
+
+  --static-headline-small-font: var(--font-display, 'Google Sans');
+  --static-headline-small-size: 24px;
+  --static-headline-small-line-height: 32px;
 
   --static-title-large-font: var(--font-display, 'Google Sans');
   --static-title-large-size: 22px;
@@ -368,6 +395,68 @@ select:not(:disabled) {
   }
 }
 
+/* Dialog surface: a fade over the bottom 40%, layered on the solid surface so
+   it paints behind the content. */
+@utility dialog-surface {
+  background:
+    linear-gradient(
+      180deg,
+      var(--color-dialog-fade-start) 29.58%,
+      var(--color-dialog-fade-end) 86.67%
+    )
+    bottom / 100% 40% no-repeat,
+    var(--color-surface-dialog);
+}
+
+/* Modal dialog motion: the `enter` fade up on open and the reverse on
+   close, on the shared enter and exit timing, with the backdrop fading
+   alongside. `display` and `overlay` transition discretely so the dialog
+   stays rendered in the top layer until the close finishes; browsers without
+   `overlay` support close instantly. Reduced motion skips it all. */
+@utility dialog-motion {
+  @media (prefers-reduced-motion: no-preference) {
+    opacity: 0;
+    transform: translateY(8px);
+    transition:
+      opacity var(--duration-exit) var(--ease-accelerate),
+      transform var(--duration-exit) var(--ease-accelerate),
+      overlay var(--duration-exit) allow-discrete,
+      display var(--duration-exit) allow-discrete;
+
+    &::backdrop {
+      opacity: 0;
+      transition:
+        opacity var(--duration-exit) var(--ease-accelerate),
+        overlay var(--duration-exit) allow-discrete,
+        display var(--duration-exit) allow-discrete;
+    }
+
+    &[open] {
+      opacity: 1;
+      transform: none;
+      transition-duration: var(--duration-enter);
+      transition-timing-function: var(--ease-decelerate);
+    }
+
+    &[open]::backdrop {
+      opacity: 1;
+      transition-duration: var(--duration-enter);
+      transition-timing-function: var(--ease-decelerate);
+    }
+
+    @starting-style {
+      &[open],
+      &[open]::backdrop {
+        opacity: 0;
+      }
+
+      &[open] {
+        transform: translateY(8px);
+      }
+    }
+  }
+}
+
 @utility glow-ring {
   position: relative;
   overflow: clip;
@@ -453,6 +542,24 @@ select:not(:disabled) {
       )
       transparent;
   }
+}
+
+.text-display-medium {
+  font-family: var(--static-display-medium-font, 'Google Sans');
+  font-size: var(--static-display-medium-size, 45px);
+  font-style: normal;
+  font-weight: 400;
+  line-height: var(--static-display-medium-line-height, 52px);
+  letter-spacing: 0;
+}
+
+.text-headline-small-emphasized {
+  font-family: var(--static-headline-small-font, 'Google Sans');
+  font-size: var(--static-headline-small-size, 24px);
+  font-style: normal;
+  font-weight: 500;
+  line-height: var(--static-headline-small-line-height, 32px);
+  letter-spacing: 0;
 }
 
 .text-display-small {
@@ -590,24 +697,6 @@ select:not(:disabled) {
   font-weight: 400;
   line-height: var(--static-caption-line-height, 16px);
   letter-spacing: 0;
-}
-
-.text-display-small-gradient {
-  font-family: var(--static-display-small-font, 'Google Sans');
-  font-size: var(--static-display-small-size, 32px);
-  font-style: normal;
-  font-weight: 500;
-  line-height: var(--static-display-small-line-height, 36px);
-  letter-spacing: 0;
-  background: linear-gradient(
-    4deg,
-    var(--color-theme-gradient-start) 0%,
-    var(--color-theme-gradient-end) 100%
-  );
-  -webkit-background-clip: text;
-  background-clip: text;
-  -webkit-text-fill-color: transparent;
-  color: transparent;
 }
 
 /* ────────────────────────────────────────────────────────────────────
