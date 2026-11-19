@@ -131,6 +131,18 @@ describe('InitialView intro', () => {
   });
 });
 
+describe('InitialView reCAPTCHA notice', () => {
+  it('shows the reCAPTCHA notice below the suggestions', () => {
+    // Test: reCAPTCHA notice on the landing view.
+    // Situation: The landing view renders, before any conversation starts.
+    // Expectation: The notice renders with the approved copy exactly.
+    renderSearchBox('');
+    expect(
+      screen.getByText('This site is protected by reCAPTCHA.'),
+    ).toBeTruthy();
+  });
+});
+
 describe('InitialView instance configuration', () => {
   it('renders headline, tagline, and suggestions from #instance-config', () => {
     // Test: Custom instance configuration in index.html.

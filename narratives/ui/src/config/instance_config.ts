@@ -73,7 +73,7 @@ export const DEFAULT_INSTANCE_CONFIG: Readonly<InstanceConfig> = {
   navigation: [],
   suggestions: [
     'How has renewable energy adoption changed in Spain?',
-    'Compare infant mortality rates between Kenya and Ghana',
+    'Compare infant mortality rates between Kenya and Ghana?',
     'How has agricultural land area changed in the USA?',
   ],
   metrics: { tabs: [] },
