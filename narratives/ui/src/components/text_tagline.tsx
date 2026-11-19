@@ -51,11 +51,12 @@ export function TaglineText({ tagline, link }: TaglineTextProps) {
   return (
     <>
       {tagline.slice(0, start)}
-      {/* Underlined, not only colored: the link color is too close to the
-          tagline color to mark the link on its own (WCAG 1.4.1). */}
+      {/* The phrase keeps the tagline color; the highlight marks it as a
+          link. The 50% applies to the background only, so the text keeps its
+          contrast. */}
       <button
         type="button"
-        className="text-theme-primary underline"
+        className="hover:text-theme-primary text-subtle bg-tagline-link/50 rounded-sm px-1"
         aria-haspopup="dialog"
         onClick={() => dialogRef.current?.showModal()}
       >
