@@ -20,9 +20,9 @@ UI build: `index.html`, the content-hashed files under `assets/` and
 `dc-logo.svg`. `config.json` lives under `agent_root`, outside the static
 root, so no file needs to be filtered by name or suffix. The root
 `index.html` is served with the runtime settings (the effective chat
-availability and the chart hosts) stamped into its
-`<script id="runtime-config" type="application/json">` element, and with the
-page's Content-Security-Policy.
+availability, the chart hosts, and any configured reCAPTCHA site keys) injected
+into its `<script id="runtime-config" type="application/json">` element, and
+with the page's Content-Security-Policy.
 """
 
 import hashlib
@@ -96,6 +96,11 @@ _GOOGLE_FONTS_FILE_ORIGIN = "https://fonts.gstatic.com"
 _HTTPS_SOURCE = "https:"
 _DATA_SOURCE = "data:"
 _BLOB_SOURCE = "blob:"
+# Google Cloud reCAPTCHA Enterprise endpoints, added to the shell's policy only
+# when a reCAPTCHA site key is configured.
+_RECAPTCHA_GOOGLE_SOURCE = "https://www.google.com/recaptcha/"
+_RECAPTCHA_GSTATIC_SOURCE = "https://www.gstatic.com/recaptcha/"
+_RECAPTCHA_FRAME_SOURCE = "https://recaptcha.google.com/recaptcha/"
 
 
 @router.api_route("/healthz", methods=["GET", "HEAD"])
@@ -116,11 +121,12 @@ async def healthz() -> PlainTextResponse:
 def build_content_security_policy(settings: Settings) -> str:
     """Returns the Content-Security-Policy of the HTML shell.
 
-    `script-src` allows only the app's own files and the origin of
-    `DC_WEB_COMPONENT_URL`. It allows neither `'unsafe-inline'` nor
+    `script-src` allows only the app's own files, the origin of
+    `DC_WEB_COMPONENT_URL`, and — when a reCAPTCHA site key is configured —
+    Google's reCAPTCHA script origins. It allows neither `'unsafe-inline'` nor
     `'unsafe-eval'`, because the page's inline `<script>` elements hold
-    JSON, which browsers do not run. `connect-src` allows the agent API and
-    `DC_WEB_COMPONENT_API_ROOT`, where the charts fetch their data.
+    JSON, which browsers do not run. `connect-src` allows the agent API,
+    `DC_WEB_COMPONENT_API_ROOT`, and reCAPTCHA endpoints when configured.
     `base-uri 'none'` is safe because the app resolves paths from
     `location.pathname`, and `form-action 'self'` does not affect the chat
     input because the input submits through JavaScript.
@@ -132,12 +138,43 @@ def build_content_security_policy(settings: Settings) -> str:
     Returns:
         The policy, with directives separated by `; `.
     """
+    has_recaptcha = bool(
+        settings.recaptcha_session_site_key
+        or settings.recaptcha_checkbox_site_key
+    )
+    script_sources: tuple[str, ...] = (
+        _SELF_SOURCE,
+        get_url_origin(settings.dc_web_component_url),
+        *(
+            (_RECAPTCHA_GOOGLE_SOURCE, _RECAPTCHA_GSTATIC_SOURCE)
+            if has_recaptcha
+            else ()
+        ),
+    )
+    connect_sources: tuple[str, ...] = (
+        _SELF_SOURCE,
+        settings.dc_web_component_api_root,
+        *(
+            (
+                _RECAPTCHA_GOOGLE_SOURCE,
+                _RECAPTCHA_GSTATIC_SOURCE,
+                _RECAPTCHA_FRAME_SOURCE,
+            )
+            if has_recaptcha
+            else ()
+        ),
+    )
+    frame_sources: tuple[str, ...] = (
+        _SELF_SOURCE,
+        *(
+            (_RECAPTCHA_GOOGLE_SOURCE, _RECAPTCHA_FRAME_SOURCE)
+            if has_recaptcha
+            else ()
+        ),
+    )
     directives: tuple[tuple[str, tuple[str, ...]], ...] = (
         ("default-src", (_SELF_SOURCE,)),
-        (
-            "script-src",
-            (_SELF_SOURCE, get_url_origin(settings.dc_web_component_url)),
-        ),
+        ("script-src", script_sources),
         (
             "style-src",
             (
@@ -151,8 +188,8 @@ def build_content_security_policy(settings: Settings) -> str:
             "img-src",
             (_SELF_SOURCE, _HTTPS_SOURCE, _DATA_SOURCE, _BLOB_SOURCE),
         ),
-        ("connect-src", (_SELF_SOURCE, settings.dc_web_component_api_root)),
-        ("frame-src", (_SELF_SOURCE,)),
+        ("connect-src", connect_sources),
+        ("frame-src", frame_sources),
         ("object-src", (_NONE_SOURCE,)),
         ("base-uri", (_NONE_SOURCE,)),
         ("form-action", (_SELF_SOURCE,)),
@@ -166,22 +203,32 @@ def build_content_security_policy(settings: Settings) -> str:
 def _serialize_runtime_config(settings: Settings) -> bytes:
     """Returns the runtime settings JSON, escaped for a `<script>` element.
 
-    Only the chat availability (`enable_chat`, `unavailable_message`) and
-    the chart hosts (`web_component_url`, `web_component_api_root`) are
-    serialized, so nothing else from the configuration reaches the page.
-    The chart hosts come from `settings`, the `Settings` instance that the
-    application was built with, so they stay fixed for the life of the
-    process and match the Content-Security-Policy built from the same
-    instance.
+    Serializes the chat availability (`enable_chat`, `unavailable_message`),
+    the chart hosts (`web_component_url`, `web_component_api_root`), and any
+    non-empty public reCAPTCHA site keys (`recaptcha_session_site_key`,
+    `recaptcha_checkbox_site_key`); nothing else from the configuration reaches
+    the page. The chart hosts and reCAPTCHA keys come from `settings`, the
+    `Settings` instance that the application was built with, so they stay fixed
+    for the life of the process and match the Content-Security-Policy built
+    from the same instance.
     """
     chat = get_chat_config()
+    payload: dict[str, object] = {
+        "enable_chat": chat.enabled,
+        "unavailable_message": chat.unavailable_message,
+        "web_component_url": settings.dc_web_component_url,
+        "web_component_api_root": settings.dc_web_component_api_root,
+    }
+    if settings.recaptcha_session_site_key:
+        payload["recaptcha_session_site_key"] = (
+            settings.recaptcha_session_site_key
+        )
+    if settings.recaptcha_checkbox_site_key:
+        payload["recaptcha_checkbox_site_key"] = (
+            settings.recaptcha_checkbox_site_key
+        )
     serialized = json.dumps(
-        {
-            "enable_chat": chat.enabled,
-            "unavailable_message": chat.unavailable_message,
-            "web_component_url": settings.dc_web_component_url,
-            "web_component_api_root": settings.dc_web_component_api_root,
-        },
+        payload,
         ensure_ascii=False,
         separators=(",", ":"),
     )
@@ -189,11 +236,11 @@ def _serialize_runtime_config(settings: Settings) -> bytes:
 
 
 def _render_shell(full_path: str, settings: Settings) -> bytes:
-    """Returns the HTML shell with the runtime JSON stamped into its slot.
+    """Returns the HTML shell with runtime JSON injected into `#runtime-config`.
 
-    Reads the file, so callers run it off the event loop. A file without the
-    empty `#runtime-config` element is returned unchanged; only the first
-    occurrence is stamped.
+    Reads the file, so callers run it off the event loop. Replaces only the
+    first empty `#runtime-config` element with `_serialize_runtime_config`,
+    and returns a file without that element unchanged.
     """
     with open(full_path, "rb") as shell_file:
         template = shell_file.read()
@@ -251,10 +298,10 @@ def _build_shell_response(
 class SpaStaticFiles(StaticFiles):
     """Serves the UI build with cache and Content-Security-Policy headers.
 
-    The HTML shell carries the chart hosts from the `Settings` that this
-    instance is constructed with. The shell also carries the page's
-    Content-Security-Policy, which is built once from the same `Settings`,
-    so the hosts and the policy cannot disagree.
+    The HTML shell carries the chart hosts and any configured reCAPTCHA site
+    keys from the `Settings` that this instance is constructed with. The shell
+    also carries the page's Content-Security-Policy, which is built once from
+    the same `Settings`, so the stamped config and the policy cannot disagree.
     """
 
     def __init__(
@@ -271,8 +318,9 @@ class SpaStaticFiles(StaticFiles):
             directory: The static root.
             html: Whether a directory path serves its `index.html`.
             check_dir: Whether a missing `directory` raises at construction.
-            settings: The settings that supply the chart hosts stamped
-                into the shell and named in the shell's policy.
+            settings: The settings that supply the chart hosts and reCAPTCHA
+                site keys stamped into the shell and named in the shell's
+                policy.
         """
         super().__init__(directory=directory, html=html, check_dir=check_dir)
         self._settings = settings
