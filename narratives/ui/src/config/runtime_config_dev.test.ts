@@ -317,8 +317,6 @@ describe('stampRuntimeConfigHtml', () => {
       ...DEFAULT_RUNTIME_CONFIG,
       isChatEnabled: false,
       unavailableMessage: message,
-      recaptchaSessionSiteKey: '',
-      recaptchaCheckboxSiteKey: '',
     });
     expect(stamped).toContain(
       '"unavailable_message":"\\u003c/script\\u003e\\u003cb\\u003e\\u0026\\u2028\\u2029"',
@@ -337,8 +335,6 @@ describe('stampRuntimeConfigHtml', () => {
       ...DEFAULT_RUNTIME_CONFIG,
       isChatEnabled: false,
       unavailableMessage: "Costs $$ and $` and $'",
-      recaptchaSessionSiteKey: '',
-      recaptchaCheckboxSiteKey: '',
     });
     expect(stamped).toContain(
       '"unavailable_message":"Costs $$ and $` and $\'"',
@@ -431,8 +427,9 @@ describe('copyAgentRuntimeConfig with fallback dev reCAPTCHA keys', () => {
   it('stamps fallback .env.local keys even when the local agent is offline', async () => {
     // Test: UI-only `pnpm dev:ui` run without `pnpm dev:agent` running.
     // Situation: Fetching `shellUrl` rejects, and `.env.local` sets a session key.
-    // Expectation: Warns once about the unreachable agent and still stamps the
-    //              local reCAPTCHA key into `#runtime-config`.
+    // Expectation: Warns once that local reCAPTCHA keys are being stamped (not
+    //              that the slot is left empty) and stamps the key into
+    //              `#runtime-config`.
     const warn = spyOnWarn();
     vi.stubGlobal(
       'fetch',
@@ -442,6 +439,60 @@ describe('copyAgentRuntimeConfig with fallback dev reCAPTCHA keys', () => {
       sessionSiteKey: ' 6Lc_ui_only ',
     });
     expect(warn).toHaveBeenCalledTimes(1);
+    const message = String(warn.mock.calls[0][0]);
+    expect(message).toContain(
+      'Stamping default settings with local reCAPTCHA keys into #runtime-config.',
+    );
+    expect(message).not.toContain('Leaving #runtime-config empty.');
     expect(stamped).toContain('"recaptcha_session_site_key":"6Lc_ui_only"');
+  });
+
+  it('leaves #runtime-config untouched when offline and fallback keys are blank', async () => {
+    // Test: Offline agent with whitespace-only `.env.local` reCAPTCHA keys.
+    // Situation: Fetching `shellUrl` rejects, and fallback keys hold only
+    //            whitespace.
+    // Expectation: Logs that `#runtime-config` is left empty and returns the
+    //              input HTML unchanged.
+    const warn = spyOnWarn();
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockRejectedValue(new Error('ECONNREFUSED')),
+    );
+    const stamped = await copyAgentRuntimeConfig(EMPTY_SLOT, SHELL_URL, {
+      sessionSiteKey: '   ',
+      checkboxSiteKey: '\t\n',
+    });
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(String(warn.mock.calls[0][0])).toContain(
+      'Leaving #runtime-config empty.',
+    );
+    expect(stamped).toBe(EMPTY_SLOT);
+  });
+
+  it('keeps fail-closed empty keys when the agent payload is malformed', async () => {
+    // Test: Malformed agent `#runtime-config` with `.env.local` fallback keys.
+    // Situation: The agent returns invalid JSON in `#runtime-config` while
+    //            `.env.local` provides reCAPTCHA site keys.
+    // Expectation: Fails closed with chat disabled and does not overlay local
+    //              reCAPTCHA keys onto the disabled config.
+    const warn = spyOnWarn();
+    vi.stubGlobal(
+      'fetch',
+      vi
+        .fn()
+        .mockResolvedValue(
+          new Response(
+            '<head><script id="runtime-config" type="application/json">{"enable_chat":</script></head>',
+          ),
+        ),
+    );
+    const stamped = await copyAgentRuntimeConfig(EMPTY_SLOT, SHELL_URL, {
+      sessionSiteKey: '6Lc_env_session',
+      checkboxSiteKey: '6Lc_env_checkbox',
+    });
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(stamped).toBe(
+      `<script id="runtime-config" type="application/json">{"enable_chat":false,"unavailable_message":"${DEFAULT_UNAVAILABLE_MESSAGE}"}</script>`,
+    );
   });
 });

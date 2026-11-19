@@ -35,7 +35,7 @@ import {
   resetInstanceConfigForTests,
 } from '@/src/config/instance_config';
 import { resetRuntimeConfigForTests } from '@/src/config/runtime_config';
-import * as recaptchaLoader from '@/src/utils/recaptcha_loader';
+import * as recaptchaLoader from '@/src/utils/load_recaptcha';
 
 vi.mock('motion/react', async (importOriginal) => ({
   ...(await importOriginal<typeof import('motion/react')>()),
@@ -92,7 +92,7 @@ afterEach(() => {
   window.location.hash = '';
   document.getElementById('runtime-config')?.remove();
   document.getElementById('instance-config')?.remove();
-  recaptchaLoader.resetRecaptchaLoaderForTest();
+  recaptchaLoader.resetRecaptchaLoaderForTests();
   resetRuntimeConfigForTests();
   resetInstanceConfigForTests();
 });
@@ -233,20 +233,42 @@ describe('App with chat disabled', () => {
 });
 
 describe('App reCAPTCHA session bootstrap', () => {
+  const writeRuntimeConfigSlot = (payload: Record<string, unknown>): void => {
+    document.getElementById('runtime-config')?.remove();
+    const slot = document.createElement('script');
+    slot.id = 'runtime-config';
+    slot.type = 'application/json';
+    slot.textContent = JSON.stringify(payload);
+    document.head.appendChild(slot);
+    resetRuntimeConfigForTests();
+  };
+
   it('does not load the reCAPTCHA script when recaptchaSessionSiteKey is empty', () => {
     // Test: Mount behavior without a configured reCAPTCHA session site key.
     // Situation: `#runtime-config` sets only a checkbox key.
     // Expectation: `ensureRecaptchaScript` is never invoked on mount.
     const spy = vi.spyOn(recaptchaLoader, 'ensureRecaptchaScript');
-    const slot = document.createElement('script');
-    slot.id = 'runtime-config';
-    slot.type = 'application/json';
-    slot.textContent = JSON.stringify({
+    writeRuntimeConfigSlot({
       enable_chat: true,
       recaptcha_checkbox_site_key: '6Lc_checkbox_only',
     });
-    document.head.appendChild(slot);
-    resetRuntimeConfigForTests();
+
+    render(<App />);
+
+    expect(spy).not.toHaveBeenCalled();
+  });
+
+  it('does not load the reCAPTCHA script when chat is disabled', () => {
+    // Test: Mount behavior while the chat off-switch is active.
+    // Situation: `#runtime-config` sets `enable_chat: false` alongside a
+    //   configured `recaptcha_session_site_key`.
+    // Expectation: `ensureRecaptchaScript` is never invoked while chat is
+    //   disabled.
+    const spy = vi.spyOn(recaptchaLoader, 'ensureRecaptchaScript');
+    writeRuntimeConfigSlot({
+      enable_chat: false,
+      recaptcha_session_site_key: '6Lc_disabled_chat',
+    });
 
     render(<App />);
 
@@ -263,27 +285,23 @@ describe('App reCAPTCHA session bootstrap', () => {
       .spyOn(recaptchaLoader, 'ensureRecaptchaScript')
       .mockRejectedValue(new Error('Blocked by extension'));
     const unhandled = vi.fn();
-    window.addEventListener('unhandledrejection', unhandled);
-
-    const slot = document.createElement('script');
-    slot.id = 'runtime-config';
-    slot.type = 'application/json';
-    slot.textContent = JSON.stringify({
+    process.on('unhandledRejection', unhandled);
+    writeRuntimeConfigSlot({
       enable_chat: true,
       recaptcha_session_site_key: '6Lc_session_boot',
     });
-    document.head.appendChild(slot);
-    resetRuntimeConfigForTests();
 
     try {
       render(<App />);
       expect(spy).toHaveBeenCalledWith('6Lc_session_boot');
       await act(async () => {
-        await Promise.resolve();
+        await new Promise<void>((resolve) => {
+          setTimeout(resolve, 0);
+        });
       });
       expect(unhandled).not.toHaveBeenCalled();
     } finally {
-      window.removeEventListener('unhandledrejection', unhandled);
+      process.off('unhandledRejection', unhandled);
     }
   });
 });

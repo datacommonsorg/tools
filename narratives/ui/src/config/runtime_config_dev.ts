@@ -16,8 +16,9 @@
 
 /**
  * @fileoverview Vite dev-server helpers that copy the agent's runtime
- * settings (chat availability and chart hosts) into the page the dev server
- * serves. Only `vite.config.ts` and this module's tests import it.
+ * settings (chat availability, chart hosts, and reCAPTCHA site keys) into the
+ * page the dev server serves. Only `vite.config.ts` and this module's tests
+ * import it.
  * `vite.config.ts` loads it in Node before the `@/` alias exists, so its
  * imports are relative (`biome.json` exempts this file from the
  * relative-import rule), and the modules it imports, `runtime_config.ts` and
@@ -232,6 +233,35 @@ const withFallbackRecaptchaKeys = (
       base.recaptchaCheckboxSiteKey || fallback?.checkboxSiteKey?.trim() || '',
   });
 
+const hasRecaptchaKeys = (config: Readonly<RuntimeConfig>): boolean =>
+  config.recaptchaSessionSiteKey !== '' ||
+  config.recaptchaCheckboxSiteKey !== '';
+
+/**
+ * Warns that the agent shell could not be read and stamps local `.env.local`
+ * reCAPTCHA keys into `html` when present, or leaves `#runtime-config` empty.
+ */
+const applyOfflineFallback = (
+  html: string,
+  shellUrl: string,
+  failure: ShellReadFailure,
+  fallbackRecaptchaKeys?: Readonly<DevRecaptchaKeys>,
+): string => {
+  const fallbackConfig = withFallbackRecaptchaKeys(
+    DEFAULT_RUNTIME_CONFIG,
+    fallbackRecaptchaKeys,
+  );
+  const hasLocalKeys = hasRecaptchaKeys(fallbackConfig);
+  const action = hasLocalKeys
+    ? `Stamping default settings with local reCAPTCHA keys into #${RUNTIME_CONFIG_ELEMENT_ID}.`
+    : `Leaving #${RUNTIME_CONFIG_ELEMENT_ID} empty.`;
+  console.warn(
+    `${RUNTIME_CONFIG_LOG_PREFIX} cannot read the runtime settings from ` +
+      `${shellUrl}: ${failure.reason}. ${failure.hint} ${action}`,
+  );
+  return hasLocalKeys ? stampRuntimeConfigHtml(html, fallbackConfig) : html;
+};
+
 /**
  * Returns `html` with the runtime settings of the agent whose HTML shell is
  * at `shellUrl` injected into its empty `#runtime-config`, filling in any
@@ -249,30 +279,13 @@ export const copyAgentRuntimeConfig = async (
 ): Promise<string> => {
   const result = await fetchAgentRuntimeConfigText(shellUrl);
   if (typeof result !== 'string') {
-    console.warn(
-      `${RUNTIME_CONFIG_LOG_PREFIX} cannot read the runtime settings from ` +
-        `${shellUrl}: ${result.reason}. ${result.hint} ` +
-        `Leaving #${RUNTIME_CONFIG_ELEMENT_ID} empty.`,
-    );
-    // If the local Python agent is offline (such as UI-only `pnpm dev:ui`),
-    // still inject any `.env.local` reCAPTCHA keys; otherwise leave the empty
-    // `#runtime-config` slot untouched.
-    const fallbackConfig = withFallbackRecaptchaKeys(
-      DEFAULT_RUNTIME_CONFIG,
-      fallbackRecaptchaKeys,
-    );
-    const hasLocalRecaptchaKeys =
-      Boolean(fallbackConfig.recaptchaSessionSiteKey) ||
-      Boolean(fallbackConfig.recaptchaCheckboxSiteKey);
-    return hasLocalRecaptchaKeys
-      ? stampRuntimeConfigHtml(html, fallbackConfig)
-      : html;
+    return applyOfflineFallback(html, shellUrl, result, fallbackRecaptchaKeys);
   }
+  const parsed = parseRuntimeConfigText(result);
   return stampRuntimeConfigHtml(
     html,
-    withFallbackRecaptchaKeys(
-      parseRuntimeConfigText(result),
-      fallbackRecaptchaKeys,
-    ),
+    parsed.isChatEnabled
+      ? withFallbackRecaptchaKeys(parsed, fallbackRecaptchaKeys)
+      : parsed,
   );
 };

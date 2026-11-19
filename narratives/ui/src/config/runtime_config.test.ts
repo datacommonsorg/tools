@@ -185,11 +185,12 @@ describe('getRuntimeConfig', () => {
 
   it('parses and trims optional reCAPTCHA site keys and ignores non-strings without disabling chat', () => {
     // Test: Parsing `recaptcha_session_site_key` and `recaptcha_checkbox_site_key`.
-    // Situation: `#runtime-config` supplies whitespace-padded site keys, then
-    //            `null` site keys, and finally non-string values.
-    // Expectation: String keys are trimmed; `null` resolves silently to `""`;
-    //              other non-strings warn and fall back to `""` while keeping
-    //              `isChatEnabled: true`.
+    // Situation: `#runtime-config` supplies whitespace-padded site keys,
+    //            whitespace-only site keys, `null` site keys, and finally
+    //            non-string values.
+    // Expectation: String keys are trimmed; whitespace-only strings and `null`
+    //              resolve silently to `""`; other non-strings warn naming each
+    //              key and fall back to `""` while keeping `isChatEnabled: true`.
     const warn = spyOnWarn();
     writeRuntimeConfigSlot(
       JSON.stringify({
@@ -203,6 +204,17 @@ describe('getRuntimeConfig', () => {
       recaptchaSessionSiteKey: '6Lc_session_key',
       recaptchaCheckboxSiteKey: '6Lc_checkbox_key',
     });
+    expect(warn).not.toHaveBeenCalled();
+
+    resetRuntimeConfigForTests();
+    writeRuntimeConfigSlot(
+      JSON.stringify({
+        enable_chat: true,
+        recaptcha_session_site_key: '   ',
+        recaptcha_checkbox_site_key: '\t\n',
+      }),
+    );
+    expect(getRuntimeConfig()).toEqual(DEFAULT_RUNTIME_CONFIG);
     expect(warn).not.toHaveBeenCalled();
 
     resetRuntimeConfigForTests();
@@ -226,6 +238,12 @@ describe('getRuntimeConfig', () => {
     );
     expect(getRuntimeConfig()).toEqual(DEFAULT_RUNTIME_CONFIG);
     expect(warn).toHaveBeenCalledTimes(2);
+    expect(String(warn.mock.calls[0][0])).toContain(
+      '"recaptcha_session_site_key"',
+    );
+    expect(String(warn.mock.calls[1][0])).toContain(
+      '"recaptcha_checkbox_site_key"',
+    );
   });
 
   it('caches the first resolution until reset', () => {

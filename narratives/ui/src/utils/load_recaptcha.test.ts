@@ -15,20 +15,23 @@
  */
 
 /**
- * @fileoverview Tests for ensureRecaptchaScript and resetRecaptchaLoaderForTest.
+ * @fileoverview Tests for ensureRecaptchaScript and resetRecaptchaLoaderForTests.
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { GrecaptchaEnterprise } from '@/src/types/grecaptcha';
 import {
   ensureRecaptchaScript,
-  resetRecaptchaLoaderForTest,
-} from '@/src/utils/recaptcha_loader';
+  RECAPTCHA_READY_TIMEOUT_MS,
+  resetRecaptchaLoaderForTests,
+} from '@/src/utils/load_recaptcha';
 
-const createMockEnterprise = (): GrecaptchaEnterprise => ({
-  ready: vi.fn((callback: () => void) => {
+const createMockEnterprise = (
+  ready: GrecaptchaEnterprise['ready'] = (callback) => {
     callback();
-  }),
+  },
+): GrecaptchaEnterprise => ({
+  ready: vi.fn(ready),
   render: vi.fn(() => 0),
   reset: vi.fn(),
 });
@@ -58,11 +61,11 @@ beforeEach(() => {
 });
 
 afterEach(() => {
-  resetRecaptchaLoaderForTest();
+  vi.useRealTimers();
+  resetRecaptchaLoaderForTests();
   appendedScripts.length = 0;
   document.head.innerHTML = '';
   delete window.grecaptcha;
-  vi.unstubAllGlobals();
   vi.restoreAllMocks();
 });
 
@@ -207,5 +210,119 @@ describe('ensureRecaptchaScript', () => {
     retryScript.dispatchEvent(new Event('load'));
 
     await expect(retryAttempt).resolves.toBe(enterprise);
+  });
+
+  it('rejects, cleans up, and allows retry when enterprise.ready throws on script load', async () => {
+    // Test: Synchronous throw from `enterprise.ready` inside the `load` handler.
+    // Situation: The script loads and defines a broken `grecaptcha.enterprise`
+    //   whose `ready` throws synchronously, then a retry loads a healthy client.
+    // Expectation: The first promise rejects with the thrown error, the failed
+    //   `<script>` is removed, and the retry appends a new script and resolves.
+    const brokenEnterprise = createMockEnterprise(() => {
+      throw new Error('ready failed');
+    });
+    const firstAttempt = ensureRecaptchaScript('6Lc_session');
+    const [firstScript] = appendedScripts;
+    window.grecaptcha = { enterprise: brokenEnterprise };
+    firstScript.dispatchEvent(new Event('load'));
+
+    await expect(firstAttempt).rejects.toThrow('ready failed');
+    expect(appendedScripts).toHaveLength(0);
+
+    const healthyEnterprise = createMockEnterprise();
+    delete window.grecaptcha;
+    const retryAttempt = ensureRecaptchaScript('6Lc_session');
+    const [retryScript] = appendedScripts;
+    window.grecaptcha = { enterprise: healthyEnterprise };
+    retryScript.dispatchEvent(new Event('load'));
+
+    await expect(retryAttempt).resolves.toBe(healthyEnterprise);
+  });
+
+  it('clears the cached promise when pre-existing enterprise.ready throws', async () => {
+    // Test: Synchronous throw from a pre-existing `window.grecaptcha.enterprise`.
+    // Situation: `window.grecaptcha.enterprise.ready` throws on the first call
+    //   and succeeds on the next call.
+    // Expectation: The first call rejects and clears `loadPromise` so the next
+    //   call re-invokes `ready` and resolves instead of returning a cached error.
+    let shouldThrow = true;
+    const enterprise = createMockEnterprise((callback) => {
+      if (shouldThrow) {
+        throw new Error('pre-existing ready failed');
+      }
+      callback();
+    });
+    window.grecaptcha = { enterprise };
+
+    await expect(ensureRecaptchaScript('6Lc_session')).rejects.toThrow(
+      'pre-existing ready failed',
+    );
+
+    shouldThrow = false;
+    await expect(ensureRecaptchaScript('6Lc_session')).resolves.toBe(
+      enterprise,
+    );
+    expect(enterprise.ready).toHaveBeenCalledTimes(2);
+  });
+
+  it('rejects and cleans up when enterprise.ready does not fire before the timeout', async () => {
+    // Test: Hung `enterprise.ready` (for example, blocked `gstatic.com` script).
+    // Situation: `enterprise.js` fires `load` and installs a `ready` stub that
+    //   never invokes its callback before `RECAPTCHA_READY_TIMEOUT_MS`.
+    // Expectation: The promise rejects with a timeout error, the `<script>` is
+    //   removed, and `loadPromise` is cleared so callers are not wedged forever.
+    vi.useFakeTimers();
+    const hungEnterprise = createMockEnterprise(() => undefined);
+
+    const firstAttempt = ensureRecaptchaScript('6Lc_session');
+    const [firstScript] = appendedScripts;
+    window.grecaptcha = { enterprise: hungEnterprise };
+    firstScript.dispatchEvent(new Event('load'));
+
+    const rejection = expect(firstAttempt).rejects.toThrow(
+      /Timed out after \d+ms waiting for window\.grecaptcha\.enterprise\.ready/,
+    );
+    await vi.advanceTimersByTimeAsync(RECAPTCHA_READY_TIMEOUT_MS);
+    await rejection;
+    expect(appendedScripts).toHaveLength(0);
+
+    delete window.grecaptcha;
+    const healthyEnterprise = createMockEnterprise();
+    const retryAttempt = ensureRecaptchaScript('6Lc_session');
+    const [retryScript] = appendedScripts;
+    window.grecaptcha = { enterprise: healthyEnterprise };
+    retryScript.dispatchEvent(new Event('load'));
+
+    await expect(retryAttempt).resolves.toBe(healthyEnterprise);
+  });
+
+  it('does not let a stale script error clear a newer in-flight loadPromise', async () => {
+    // Test: Late event from a superseded `<script>` after reset and restart.
+    // Situation: Load 1 starts, `resetRecaptchaLoaderForTests()` resets state,
+    //   Load 2 starts, and then Load 1's detached `<script>` dispatches `error`.
+    // Expectation: Load 2's cached `loadPromise` stays intact (deduplicating a
+    //   concurrent caller) and resolves cleanly when Load 2's script loads.
+    const firstAttempt = ensureRecaptchaScript('6Lc_first');
+    const [staleScript] = appendedScripts;
+
+    resetRecaptchaLoaderForTests();
+
+    const secondAttempt = ensureRecaptchaScript('6Lc_second');
+    const [activeScript] = appendedScripts;
+
+    staleScript.dispatchEvent(new Event('error'));
+    await expect(firstAttempt).rejects.toThrow(
+      /Failed to load reCAPTCHA Enterprise SDK/,
+    );
+
+    // Load 2 must still be cached in `loadPromise`.
+    expect(ensureRecaptchaScript('6Lc_second')).toBe(secondAttempt);
+    expect(appendedScripts).toEqual([activeScript]);
+
+    const enterprise = createMockEnterprise();
+    window.grecaptcha = { enterprise };
+    activeScript.dispatchEvent(new Event('load'));
+
+    await expect(secondAttempt).resolves.toBe(enterprise);
   });
 });

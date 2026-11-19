@@ -46,13 +46,15 @@ describe('vite.config', () => {
 
   it('passes dev reCAPTCHA env keys to the serve-only narratives-runtime-config plugin', async () => {
     // Test: Dev-only `#runtime-config` reCAPTCHA fallback wiring in `vite.config.ts`.
-    // Situation: `RECAPTCHA_SESSION_SITE_KEY` is set in the environment and the
-    //            local Python agent is unreachable during `pnpm dev:ui`.
+    // Situation: `RECAPTCHA_SESSION_SITE_KEY` and `RECAPTCHA_CHECKBOX_SITE_KEY`
+    //            are set in the environment and the local Python agent is
+    //            unreachable during `pnpm dev:ui`.
     // Expectation: `narratives-runtime-config` has `apply: "serve"` and injects
-    //              the fallback session key into `#runtime-config`.
+    //              both fallback keys into `#runtime-config`.
     const warn = vi.spyOn(console, 'warn').mockReturnValue(undefined);
     vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('offline')));
     vi.stubEnv('RECAPTCHA_SESSION_SITE_KEY', '6Lc_dev_session');
+    vi.stubEnv('RECAPTCHA_CHECKBOX_SITE_KEY', '6Lc_dev_checkbox');
     try {
       const config = viteConfig({ command: 'serve', mode: 'development' });
       const plugin = (config.plugins ?? [])
@@ -75,6 +77,9 @@ describe('vite.config', () => {
         { path: '/index.html', filename: '/index.html' },
       );
       expect(html).toContain('"recaptcha_session_site_key":"6Lc_dev_session"');
+      expect(html).toContain(
+        '"recaptcha_checkbox_site_key":"6Lc_dev_checkbox"',
+      );
       expect(warn).toHaveBeenCalledTimes(1);
     } finally {
       vi.unstubAllGlobals();

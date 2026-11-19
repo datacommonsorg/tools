@@ -15,11 +15,12 @@
  */
 
 /**
- * @fileoverview Runtime settings: the chat availability and the hosts of the
- * Data Commons chart web components. {@link getRuntimeConfig} reads the JSON
- * that the agent server stamps into `<script id="runtime-config">`.
- * `runtime_config_dev.ts` imports this module, and `vite.config.ts` loads that
- * module in Node before the `@/` alias exists, so this module has no imports.
+ * @fileoverview Runtime settings: chat availability, Data Commons chart web
+ * component hosts, and optional reCAPTCHA Enterprise site keys.
+ * {@link getRuntimeConfig} reads the JSON that the agent server stamps into
+ * `<script id="runtime-config">`. `runtime_config_dev.ts` imports this module,
+ * and `vite.config.ts` loads that module in Node before the `@/` alias exists,
+ * so this module has no imports.
  */
 
 /**
@@ -224,7 +225,7 @@ const readOptionalSiteKey = (key: string, value: unknown): string => {
  * Parses the text of `#runtime-config`. Empty or absent text gives
  * {@link DEFAULT_RUNTIME_CONFIG}; text that is not a JSON object, or an
  * `enable_chat` that is not a boolean, disables chat. Missing or invalid
- * chart hosts resolve to `""` without affecting chat.
+ * chart hosts and reCAPTCHA site keys resolve to `""` without affecting chat.
  */
 export const parseRuntimeConfigText = (
   text: string | undefined,
