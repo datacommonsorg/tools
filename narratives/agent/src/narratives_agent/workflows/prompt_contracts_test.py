@@ -1016,6 +1016,41 @@ def test_synthesis_contract_keeps_names_sources_and_headings_consistent() -> (
     assert "as a short label of a few words, in sentence case" in flattened
 
 
+def test_synthesis_contract_keeps_no_data_answers_free_of_headings() -> None:
+    # Test: The no-data answer introduces related statistics in its prose.
+    # Situation: The synthesis contract's section for a digest with no data.
+    # Expectation: The section asks for the exact-match opening that ends
+    #   with a period rather than a colon and never addresses the reader,
+    #   names search terms in plain words rather than identifiers, forbids a
+    #   label line above the related statistics and a Data gaps section, and
+    #   closes with the dataset intake form instead of the old data request
+    #   link.
+    contract = load_prompt_contract("synthesis")
+    start = contract.index("### When the digest holds no data")
+    end = contract.index("### Example", start)
+    section = " ".join(contract[start:end].split())
+
+    assert (
+        '"Searching for [topic] (along with related terms like [term 1], '
+        "[term 2], and [term 3]) did not return an exact match in Data "
+        'Commons. These related statistics are available instead."'
+    ) in section
+    assert 'Never address the reader as "you" or "your".' in section
+    assert "Never write an identifier, such as a variable DCID" in section
+    assert "with a period, never a colon" in section
+    assert "Never write a separate label line" in section
+    assert "Write no `**Data gaps**` section" in section
+    assert (
+        "Know of a public dataset to add to the Data Commons Knowledge "
+        "Graph? [Suggest a dataset](https://docs.google.com/forms/d/e/"
+        "1FAIpQLScC8MMm1PXchOwBiVJv7gG08M3pEL21-4-xa6IELU0toh7iWQ/"
+        'viewform?usp=dialog)"'
+    ) in section
+    assert " we " not in section
+    assert "submit a data request" not in contract
+    assert "docs.datacommons.org/contributing" not in contract
+
+
 def test_prompts_carry_no_conflicting_instructions() -> None:
     # Test: The contradictions found in the prompt review stay resolved.
     # Situation: The synthesis contract and the pattern directives.
