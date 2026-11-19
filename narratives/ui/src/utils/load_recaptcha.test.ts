@@ -71,13 +71,9 @@ afterEach(() => {
 
 describe('ensureRecaptchaScript', () => {
   it('loads the WAF session URL when a non-empty session site key is provided', async () => {
-    // Test: Session-key script URL construction and resolution via `ready`.
-    // Situation: `ensureRecaptchaScript` is called with a padded session site
-    //   key containing URL-encoded characters, and the injected `<script>`
-    //   populates `window.grecaptcha.enterprise` before firing `load`.
-    // Expectation: One async `<script>` with `?render=<encoded>&waf=session` is
-    //   appended to `document.head`, and the promise resolves with the
-    //   `GrecaptchaEnterprise` instance once `ready` runs.
+    // Test: Session-key script URL and resolution via `ready`.
+    // Situation: Called with a padded key needing URL encoding.
+    // Expectation: Appends async `?render=<encoded>&waf=session` and resolves.
     const enterprise = createMockEnterprise();
     const pending = ensureRecaptchaScript('  6Lc+key/1  ');
 
@@ -99,11 +95,9 @@ describe('ensureRecaptchaScript', () => {
     ['empty', ''],
     ['whitespace-only', '   \t\n '],
   ])('loads the explicit render URL when the session site key is %s', async (_, key) => {
-    // Test: Explicit fallback URL when no session site key is configured.
-    // Situation: `ensureRecaptchaScript` is called with `undefined`, `""`, or
-    //   whitespace-only input.
-    // Expectation: The `<script>` URL uses `?render=explicit` without
-    //   `waf=session`, and resolves once `ready` fires.
+    // Test: Explicit fallback URL without a session site key.
+    // Situation: Called with `undefined`, `""`, or whitespace-only input.
+    // Expectation: Uses `?render=explicit` (no `waf=session`) and resolves.
     const enterprise = createMockEnterprise();
     const pending = ensureRecaptchaScript(key);
 
@@ -119,11 +113,9 @@ describe('ensureRecaptchaScript', () => {
   });
 
   it('deduplicates concurrent callers onto a single in-flight script load', async () => {
-    // Test: Concurrent caller deduplication.
-    // Situation: Two callers invoke `ensureRecaptchaScript` before the `<script>`
-    //   element finishes loading, followed by a third caller after resolution.
-    // Expectation: All callers receive the same promise and resolved enterprise
-    //   client, and only one `<script>` element is appended to `document.head`.
+    // Test: Concurrent and post-load caller deduplication.
+    // Situation: Two calls overlap before `load`; a third runs after resolution.
+    // Expectation: All callers share one promise and one `<script>` tag.
     const enterprise = createMockEnterprise();
     const first = ensureRecaptchaScript('6Lc_session');
     const second = ensureRecaptchaScript();
@@ -144,11 +136,9 @@ describe('ensureRecaptchaScript', () => {
   });
 
   it('resolves directly via ready when window.grecaptcha.enterprise already exists', async () => {
-    // Test: Pre-existing `window.grecaptcha.enterprise` on `window`.
-    // Situation: `window.grecaptcha.enterprise` is already present before
-    //   `ensureRecaptchaScript` is called.
-    // Expectation: No `<script>` element is appended, `enterprise.ready` is
-    //   invoked, and the promise resolves with the existing instance.
+    // Test: Pre-existing `window.grecaptcha.enterprise`.
+    // Situation: `window.grecaptcha.enterprise` is set before calling the loader.
+    // Expectation: Appends no `<script>`, invokes `ready`, and resolves.
     const enterprise = createMockEnterprise();
     window.grecaptcha = { enterprise };
 
@@ -160,13 +150,9 @@ describe('ensureRecaptchaScript', () => {
   });
 
   it('clears the cached promise, removes the failed script, and retries after a script error', async () => {
-    // Test: Recovery and retry after a network or content-blocker script error.
-    // Situation: The first `<script>` dispatches `error` (for example, blocked
-    //   by a browser extension), and a subsequent caller invokes
-    //   `ensureRecaptchaScript` again.
-    // Expectation: The first promise rejects with a descriptive Error, the
-    //   failed `<script>` is removed from `document.head`, and the retry
-    //   appends a fresh `<script>` that resolves cleanly on `load`.
+    // Test: Retry after a script load error.
+    // Situation: First `<script>` fires `error`, then a caller retries.
+    // Expectation: Rejects, removes the failed tag, and resolves on retry.
     const firstAttempt = ensureRecaptchaScript('6Lc_session');
     const [failedScript] = appendedScripts;
     failedScript.dispatchEvent(new Event('error'));
@@ -189,11 +175,9 @@ describe('ensureRecaptchaScript', () => {
   });
 
   it('rejects, cleans up, and allows retry when load fires without grecaptcha.enterprise', async () => {
-    // Test: `load` event without `window.grecaptcha.enterprise` defined.
-    // Situation: The `<script>` fires `load`, but `window.grecaptcha` is still
-    //   undefined (for example, stubbed out by a privacy extension).
-    // Expectation: The promise rejects with a descriptive Error, the `<script>`
-    //   is removed from `document.head`, and a later call can retry cleanly.
+    // Test: `load` fires without defining `window.grecaptcha.enterprise`.
+    // Situation: `<script>` fires `load` while `window.grecaptcha` is unset.
+    // Expectation: Rejects, removes the tag, and allows a clean retry.
     const firstAttempt = ensureRecaptchaScript();
     const [firstScript] = appendedScripts;
     firstScript.dispatchEvent(new Event('load'));
@@ -213,11 +197,9 @@ describe('ensureRecaptchaScript', () => {
   });
 
   it('rejects, cleans up, and allows retry when enterprise.ready throws on script load', async () => {
-    // Test: Synchronous throw from `enterprise.ready` inside the `load` handler.
-    // Situation: The script loads and defines a broken `grecaptcha.enterprise`
-    //   whose `ready` throws synchronously, then a retry loads a healthy client.
-    // Expectation: The first promise rejects with the thrown error, the failed
-    //   `<script>` is removed, and the retry appends a new script and resolves.
+    // Test: Synchronous throw from `enterprise.ready` on `load`.
+    // Situation: First load defines a throwing `ready`; a retry loads cleanly.
+    // Expectation: Rejects, removes the tag, and resolves on retry.
     const brokenEnterprise = createMockEnterprise(() => {
       throw new Error('ready failed');
     });
@@ -240,11 +222,9 @@ describe('ensureRecaptchaScript', () => {
   });
 
   it('clears the cached promise when pre-existing enterprise.ready throws', async () => {
-    // Test: Synchronous throw from a pre-existing `window.grecaptcha.enterprise`.
-    // Situation: `window.grecaptcha.enterprise.ready` throws on the first call
-    //   and succeeds on the next call.
-    // Expectation: The first call rejects and clears `loadPromise` so the next
-    //   call re-invokes `ready` and resolves instead of returning a cached error.
+    // Test: Recovery when pre-existing `enterprise.ready` throws.
+    // Situation: Pre-existing `ready` throws on call 1 and succeeds on call 2.
+    // Expectation: Call 1 rejects and clears the cache so call 2 resolves.
     let shouldThrow = true;
     const enterprise = createMockEnterprise((callback) => {
       if (shouldThrow) {
@@ -266,11 +246,9 @@ describe('ensureRecaptchaScript', () => {
   });
 
   it('rejects and cleans up when enterprise.ready does not fire before the timeout', async () => {
-    // Test: Hung `enterprise.ready` (for example, blocked `gstatic.com` script).
-    // Situation: `enterprise.js` fires `load` and installs a `ready` stub that
-    //   never invokes its callback before `RECAPTCHA_READY_TIMEOUT_MS`.
-    // Expectation: The promise rejects with a timeout error, the `<script>` is
-    //   removed, and `loadPromise` is cleared so callers are not wedged forever.
+    // Test: Hung `enterprise.ready` timeout recovery.
+    // Situation: `ready` never invokes its callback within the timeout window.
+    // Expectation: Rejects on timeout, removes the tag, and allows retry.
     vi.useFakeTimers();
     const hungEnterprise = createMockEnterprise(() => undefined);
 
@@ -297,11 +275,9 @@ describe('ensureRecaptchaScript', () => {
   });
 
   it('does not let a stale script error clear a newer in-flight loadPromise', async () => {
-    // Test: Late event from a superseded `<script>` after reset and restart.
-    // Situation: Load 1 starts, `resetRecaptchaLoaderForTests()` resets state,
-    //   Load 2 starts, and then Load 1's detached `<script>` dispatches `error`.
-    // Expectation: Load 2's cached `loadPromise` stays intact (deduplicating a
-    //   concurrent caller) and resolves cleanly when Load 2's script loads.
+    // Test: Late error from a superseded `<script>` after reset.
+    // Situation: Load 1 starts, state resets, Load 2 starts, then Load 1 errors.
+    // Expectation: Load 2 keeps its cached promise and resolves cleanly.
     const firstAttempt = ensureRecaptchaScript('6Lc_first');
     const [staleScript] = appendedScripts;
 
