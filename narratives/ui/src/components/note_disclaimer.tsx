@@ -25,8 +25,8 @@ interface DisclaimerNoteProps {
 }
 
 /**
- * The AI-content wording under each answer. The prompt box in data_agent.tsx
- * has its own wording (COMPOSER_DISCLAIMER_TEXT).
+ * The AI-content wording under each answer. The prompt box has its own wording
+ * (COMPOSER_DISCLAIMER_TEXT in note_composer.tsx).
  */
 export const DISCLAIMER_TEXT =
   'These data trends were synthesized by Gemini using the Data Commons Knowledge Graph for preliminary research purposes. Please verify findings against cited source records.';

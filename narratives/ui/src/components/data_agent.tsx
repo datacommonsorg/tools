@@ -30,6 +30,7 @@ import {
 import { ReasoningBlock } from '@/src/components/block_reasoning';
 import { SkeletonCard } from '@/src/components/card_skeleton';
 import { PromptInput } from '@/src/components/input_prompt';
+import { ComposerNote } from '@/src/components/note_composer';
 import { ErrorNotice } from '@/src/components/notice_error';
 import { AnswerPanel } from '@/src/components/panel_answer';
 import { DebugPanel } from '@/src/components/panel_debug/panel_debug';
@@ -40,7 +41,6 @@ import {
   REDUCED_MOTION_QUERY,
   SCROLL_PIN_OFFSET_PX,
 } from '@/src/config/motion';
-import { getRuntimeConfig } from '@/src/config/runtime_config';
 import { useChatSession } from '@/src/hooks/chat_session_context';
 import { useDebugMode } from '@/src/hooks/use_debug_mode';
 import {
@@ -64,31 +64,6 @@ const PIN_HOLD_MS = 600;
 export const HANDOFF_MS = 400;
 /** Centered content column; <main> scrolls at full width. */
 const COLUMN = 'w-full max-w-4xl mx-auto px-3 sm:px-4 lg:px-8';
-/**
- * The AI-content wording under the prompt box. Each answer has its own wording
- * (DISCLAIMER_TEXT in note_disclaimer.tsx).
- */
-export const COMPOSER_DISCLAIMER_TEXT =
-  'Data Commons by Google. Data overviews are synthesized by Gemini. Gemini is AI and can make mistakes; please verify content against primary source data.';
-
-/**
- * Inline Google Cloud reCAPTCHA Enterprise attribution appended to
- * {@link COMPOSER_DISCLAIMER_TEXT} when hiding `.grecaptcha-badge`.
- * Per https://cloud.google.com/recaptcha/docs/faq, Cloud reCAPTCHA Enterprise
- * requires only "This site is protected by reCAPTCHA." (consumer Privacy
- * Policy / Terms links apply only to legacy free reCAPTCHA on developers.google.com).
- */
-export const RECAPTCHA_ATTRIBUTION_TEXT =
-  'This site is protected by reCAPTCHA.';
-
-const getComposerDisclaimerText = (): string => {
-  const { recaptchaSessionSiteKey, recaptchaCheckboxSiteKey } =
-    getRuntimeConfig();
-  if (recaptchaSessionSiteKey === '' && recaptchaCheckboxSiteKey === '') {
-    return COMPOSER_DISCLAIMER_TEXT;
-  }
-  return `${COMPOSER_DISCLAIMER_TEXT} ${RECAPTCHA_ATTRIBUTION_TEXT}`;
-};
 
 /**
  * The main chat surface: renders the empty-state view or the turn list, the
@@ -257,9 +232,7 @@ export function DataAgent() {
             onStop={stop}
             textareaRef={promptTextareaRef}
           />
-          <div className="text-center text-caption text-muted max-w-xl">
-            {getComposerDisclaimerText()}
-          </div>
+          <ComposerNote />
         </div>
       </div>
     </div>
