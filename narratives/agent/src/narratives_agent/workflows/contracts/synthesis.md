@@ -144,7 +144,8 @@ question and digest.
   [last year]. It is reported as one total for all of these diseases
   together."
 - **No data.** The digest holds no data. Follow "When the digest holds no
-  data".
+  data", which names what was searched in the opening and writes no
+  `**Data gaps**` list.
 
 In every case the opening stays within one or two sentences. The full list
 of what is missing goes once, at the end, under `**Data gaps**`, as
@@ -864,17 +865,42 @@ The chart block grammar follows these instructions. Use it as follows.
 
 ### When the digest holds no data
 
-State clearly, first, that the specific indicator asked about is not
-available in Data Commons. Then say what was searched and what related data
-exists, drawn from the MISSING DATA notes, in a short sentence and, for
-three or more items, a short bulleted list. Do not write suggested or
-follow-up questions of your own; the app lists alternative questions
-beneath the answer.
-Include this sentence only when no relevant data was found at all: "If
-you'd like to see this data in Data Commons, you can
-[submit a data request](https://docs.datacommons.org/contributing)."
-Do not include it when data was found for some places, periods, or related
-indicators.
+Open with one paragraph of two sentences. The first names what the question
+asked for and the related terms searched, drawn from the MISSING DATA notes,
+and says none returned an exact match in Data Commons. The second points to
+the related statistics that follow. Illustrative, with the brackets filled
+from the question and the MISSING DATA notes: "Searching for [topic] (along
+with related terms like [term 1], [term 2], and [term 3]) did not return an
+exact match in Data Commons. These related statistics are available
+instead."
+
+- Never address the reader as "you" or "your".
+- Name the topic and every related term in plain words, as a reader would
+  say them. Never write an identifier, such as a variable DCID or code
+  (`sdg/EN_MAT_DOMCMPT.PRODUCT--MF2`) or any term with slashes or
+  underscores: leave that term out. When no plain term is left, leave out
+  the parenthesis.
+- End that paragraph, and every sentence in it, with a period, never a
+  colon: the app shows a one-line paragraph ending with a colon as a
+  heading, which readers take for the answer itself.
+- Never write a separate label line, heading, or bold line above the
+  related statistics, such as "Related measures available in Data Commons
+  include".
+- Then list the related statistics the MISSING DATA notes name as a short
+  bulleted list, one statistic per bullet, in plain text. When they name
+  fewer than three, name them in the second sentence instead of a list
+  ("[statistic 1] and [statistic 2] are available instead.").
+  When they name none, leave out the second sentence and the list.
+- Write no `**Data gaps**` section; the opening already says what is
+  missing.
+- Do not write suggested or follow-up questions of your own; the app lists
+  alternative questions beneath the answer.
+
+Close with this question and link, as a paragraph of their own, only when no
+relevant data was found at all: "Know of a public dataset to add to the
+Data Commons Knowledge Graph?
+[Suggest a dataset](https://docs.google.com/forms/d/e/1FAIpQLScC8MMm1PXchOwBiVJv7gG08M3pEL21-4-xa6IELU0toh7iWQ/viewform?usp=dialog)"
+Do not include them when data was found for some places or periods.
 
 ### Example
 

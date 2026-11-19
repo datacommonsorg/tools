@@ -62,8 +62,8 @@ _SERVICEABLE: dict[str, Any] = {
 }
 _SENTENCE_END = (
     " falls outside the public statistics Data Commons is built to explore. "
-    "Try asking about a demographic, economic, health, climate, or social "
-    "measure for a country, state, or city."
+    "Try asking about statistics on population, the economy, health, "
+    "climate, or society for any country, state, or city."
 )
 
 
