@@ -872,3 +872,10 @@ select:not(:disabled) {
 ::view-transition-new(root) {
   animation-duration: 300ms;
 }
+
+/* Hide the floating reCAPTCHA badge in favor of inline disclaimer attribution.
+   `visibility: hidden` (never `display: none`) keeps Google's Session-Token
+   iframe active while preventing overlap with the sticky composer and mobile chips. */
+.grecaptcha-badge {
+  visibility: hidden;
+}

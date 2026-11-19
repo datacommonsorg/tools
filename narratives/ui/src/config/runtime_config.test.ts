@@ -27,10 +27,12 @@ import {
   resetRuntimeConfigForTests,
 } from '@/src/config/runtime_config';
 
-/** The empty chart hosts used when neither setting is configured. */
-const EMPTY_CHART_HOSTS = {
+/** The empty chart hosts and reCAPTCHA keys used when unconfigured. */
+const EMPTY_OPTIONAL_SETTINGS = {
   webComponentUrl: '',
   webComponentApiRoot: '',
+  recaptchaSessionSiteKey: '',
+  recaptchaCheckboxSiteKey: '',
 };
 
 const writeRuntimeConfigSlot = (text: string): void => {
@@ -89,7 +91,7 @@ describe('getRuntimeConfig', () => {
     expect(getRuntimeConfig()).toEqual({
       isChatEnabled: false,
       unavailableMessage: 'Custom',
-      ...EMPTY_CHART_HOSTS,
+      ...EMPTY_OPTIONAL_SETTINGS,
     });
     expect(warn).not.toHaveBeenCalled();
   });
@@ -115,7 +117,7 @@ describe('getRuntimeConfig', () => {
     expect(getRuntimeConfig()).toEqual({
       isChatEnabled: false,
       unavailableMessage: DEFAULT_UNAVAILABLE_MESSAGE,
-      ...EMPTY_CHART_HOSTS,
+      ...EMPTY_OPTIONAL_SETTINGS,
     });
     expect(warn).toHaveBeenCalledTimes(1);
   });
@@ -135,7 +137,7 @@ describe('getRuntimeConfig', () => {
     expect(getRuntimeConfig()).toEqual({
       isChatEnabled: false,
       unavailableMessage: DEFAULT_UNAVAILABLE_MESSAGE,
-      ...EMPTY_CHART_HOSTS,
+      ...EMPTY_OPTIONAL_SETTINGS,
     });
     expect(warn).toHaveBeenCalledTimes(1);
   });
@@ -175,10 +177,73 @@ describe('getRuntimeConfig', () => {
     expect(getRuntimeConfig()).toEqual({
       isChatEnabled: false,
       unavailableMessage: DEFAULT_UNAVAILABLE_MESSAGE,
-      ...EMPTY_CHART_HOSTS,
+      ...EMPTY_OPTIONAL_SETTINGS,
     });
     expect(warn).toHaveBeenCalledTimes(1);
     expect(String(warn.mock.calls[0][0])).toContain('"unavailable_message"');
+  });
+
+  it('parses and trims optional reCAPTCHA site keys and ignores non-strings without disabling chat', () => {
+    // Test: Parsing `recaptcha_session_site_key` and `recaptcha_checkbox_site_key`.
+    // Situation: `#runtime-config` supplies whitespace-padded site keys,
+    //            whitespace-only site keys, `null` site keys, and finally
+    //            non-string values.
+    // Expectation: String keys are trimmed; whitespace-only strings and `null`
+    //              resolve silently to `""`; other non-strings warn naming each
+    //              key and fall back to `""` while keeping `isChatEnabled: true`.
+    const warn = spyOnWarn();
+    writeRuntimeConfigSlot(
+      JSON.stringify({
+        enable_chat: true,
+        recaptcha_session_site_key: '  6Lc_session_key \n',
+        recaptcha_checkbox_site_key: '\t6Lc_checkbox_key  ',
+      }),
+    );
+    expect(getRuntimeConfig()).toEqual({
+      ...DEFAULT_RUNTIME_CONFIG,
+      recaptchaSessionSiteKey: '6Lc_session_key',
+      recaptchaCheckboxSiteKey: '6Lc_checkbox_key',
+    });
+    expect(warn).not.toHaveBeenCalled();
+
+    resetRuntimeConfigForTests();
+    writeRuntimeConfigSlot(
+      JSON.stringify({
+        enable_chat: true,
+        recaptcha_session_site_key: '   ',
+        recaptcha_checkbox_site_key: '\t\n',
+      }),
+    );
+    expect(getRuntimeConfig()).toEqual(DEFAULT_RUNTIME_CONFIG);
+    expect(warn).not.toHaveBeenCalled();
+
+    resetRuntimeConfigForTests();
+    writeRuntimeConfigSlot(
+      JSON.stringify({
+        enable_chat: true,
+        recaptcha_session_site_key: null,
+        recaptcha_checkbox_site_key: null,
+      }),
+    );
+    expect(getRuntimeConfig()).toEqual(DEFAULT_RUNTIME_CONFIG);
+    expect(warn).not.toHaveBeenCalled();
+
+    resetRuntimeConfigForTests();
+    writeRuntimeConfigSlot(
+      JSON.stringify({
+        enable_chat: true,
+        recaptcha_session_site_key: 123,
+        recaptcha_checkbox_site_key: { invalid: true },
+      }),
+    );
+    expect(getRuntimeConfig()).toEqual(DEFAULT_RUNTIME_CONFIG);
+    expect(warn).toHaveBeenCalledTimes(2);
+    expect(String(warn.mock.calls[0][0])).toContain(
+      '"recaptcha_session_site_key"',
+    );
+    expect(String(warn.mock.calls[1][0])).toContain(
+      '"recaptcha_checkbox_site_key"',
+    );
   });
 
   it('caches the first resolution until reset', () => {
@@ -214,8 +279,7 @@ describe('getRuntimeConfig chart hosts', () => {
       }),
     );
     expect(getRuntimeConfig()).toEqual({
-      isChatEnabled: true,
-      unavailableMessage: DEFAULT_UNAVAILABLE_MESSAGE,
+      ...DEFAULT_RUNTIME_CONFIG,
       webComponentUrl: 'https://autopush.datacommons.org/datacommons.js',
       webComponentApiRoot: 'http://localhost:8080',
     });
@@ -254,8 +318,7 @@ describe('getRuntimeConfig chart hosts', () => {
       }),
     );
     expect(getRuntimeConfig()).toEqual({
-      isChatEnabled: true,
-      unavailableMessage: DEFAULT_UNAVAILABLE_MESSAGE,
+      ...DEFAULT_RUNTIME_CONFIG,
       webComponentUrl: '',
       webComponentApiRoot: 'https://autopush.datacommons.org',
     });
@@ -296,8 +359,7 @@ describe('getRuntimeConfig chart hosts', () => {
       }),
     );
     expect(getRuntimeConfig()).toEqual({
-      isChatEnabled: true,
-      unavailableMessage: DEFAULT_UNAVAILABLE_MESSAGE,
+      ...DEFAULT_RUNTIME_CONFIG,
       webComponentUrl: 'https://autopush.datacommons.org/datacommons.js',
       webComponentApiRoot: '',
     });
