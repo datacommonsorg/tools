@@ -214,32 +214,23 @@ const fetchAgentRuntimeConfigText = async (
   return text;
 };
 
+/**
+ * Fills in any blank reCAPTCHA site keys on `base` using values read by Vite
+ * from `narratives/.env.local` (`fallback`). Keys injected by the Python agent
+ * take precedence; `.env.local` only fills in missing keys (for example, when
+ * running `pnpm dev:ui` standalone or against an agent without reCAPTCHA keys).
+ */
 const withFallbackRecaptchaKeys = (
   base: Readonly<RuntimeConfig>,
   fallback?: Readonly<DevRecaptchaKeys>,
-): Readonly<RuntimeConfig> => {
-  const fallbackSession = fallback?.sessionSiteKey?.trim() ?? '';
-  const fallbackCheckbox = fallback?.checkboxSiteKey?.trim() ?? '';
-  const recaptchaSessionSiteKey =
-    base.recaptchaSessionSiteKey !== ''
-      ? base.recaptchaSessionSiteKey
-      : fallbackSession;
-  const recaptchaCheckboxSiteKey =
-    base.recaptchaCheckboxSiteKey !== ''
-      ? base.recaptchaCheckboxSiteKey
-      : fallbackCheckbox;
-  if (
-    recaptchaSessionSiteKey === base.recaptchaSessionSiteKey &&
-    recaptchaCheckboxSiteKey === base.recaptchaCheckboxSiteKey
-  ) {
-    return base;
-  }
-  return Object.freeze({
+): Readonly<RuntimeConfig> =>
+  Object.freeze({
     ...base,
-    recaptchaSessionSiteKey,
-    recaptchaCheckboxSiteKey,
+    recaptchaSessionSiteKey:
+      base.recaptchaSessionSiteKey || fallback?.sessionSiteKey?.trim() || '',
+    recaptchaCheckboxSiteKey:
+      base.recaptchaCheckboxSiteKey || fallback?.checkboxSiteKey?.trim() || '',
   });
-};
 
 /**
  * Returns `html` with the runtime settings of the agent whose HTML shell is
@@ -263,17 +254,19 @@ export const copyAgentRuntimeConfig = async (
         `${shellUrl}: ${result.reason}. ${result.hint} ` +
         `Leaving #${RUNTIME_CONFIG_ELEMENT_ID} empty.`,
     );
+    // If the local Python agent is offline (such as UI-only `pnpm dev:ui`),
+    // still inject any `.env.local` reCAPTCHA keys; otherwise leave the empty
+    // `#runtime-config` slot untouched.
     const fallbackConfig = withFallbackRecaptchaKeys(
       DEFAULT_RUNTIME_CONFIG,
       fallbackRecaptchaKeys,
     );
-    if (
-      fallbackConfig.recaptchaSessionSiteKey === '' &&
-      fallbackConfig.recaptchaCheckboxSiteKey === ''
-    ) {
-      return html;
-    }
-    return stampRuntimeConfigHtml(html, fallbackConfig);
+    const hasLocalRecaptchaKeys =
+      Boolean(fallbackConfig.recaptchaSessionSiteKey) ||
+      Boolean(fallbackConfig.recaptchaCheckboxSiteKey);
+    return hasLocalRecaptchaKeys
+      ? stampRuntimeConfigHtml(html, fallbackConfig)
+      : html;
   }
   return stampRuntimeConfigHtml(
     html,
