@@ -33,8 +33,9 @@ Covers eight configuration behaviors in `config`:
    preferring Secret Manager over `config.json`, rejecting placeholder,
    empty, or JSON-wrapped secret payloads, and reusing a key another thread
    loaded while the caller waited.
-6. Fallback to `UTC` in `get_current_datetime` when `TIMEZONE` cannot be
-   resolved, and the timestamp `pin_current_datetime` pins for its context.
+6. The `YYYY-MM-DD` date `get_current_date` returns in the `TIMEZONE` zone,
+   its fallback to `UTC` when `TIMEZONE` cannot be resolved, and the date
+   `pin_current_date` pins for its context.
 7. `get_chat_config` applying `ENABLE_CHAT` and `UNAVAILABLE_MESSAGE` to the
    loaded `chat` section, or to the defaults when none is loaded.
 8. `get_debug_report_mode` applying `DEBUG_REPORT` to the loaded `debug`
@@ -45,7 +46,9 @@ import asyncio
 import json
 import os
 from collections.abc import Mapping
+from datetime import UTC, datetime, tzinfo
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 import requests
@@ -162,17 +165,21 @@ def test_absent_template_vars_leaves_placeholders_intact(
     assert config.render_prompt("{{instance.name}}") == "{{instance.name}}"
 
 
-def test_datetime_is_substituted_alongside_instance_vars(
+def test_a_datetime_placeholder_is_left_in_place(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    # Test: Simultaneous substitution of {{CURRENT_DATETIME}} and instance vars.
+    # Test: Rendering of a prompt that still holds {{CURRENT_DATETIME}}.
     # Situation: A prompt contains both {{CURRENT_DATETIME}} and
-    #   {{instance.name}}.
-    # Expectation: Both placeholders are replaced with their resolved values.
+    #   {{instance.name}}, and a date is pinned.
+    # Expectation: Only {{instance.name}} is replaced. The
+    #   {{CURRENT_DATETIME}} placeholder stays in the rendered prompt, which
+    #   does not contain the pinned date.
     _with_config(monkeypatch, AgentConfig(template_vars={"name": "Example DC"}))
-    rendered = config.render_prompt("{{CURRENT_DATETIME}} at {{instance.name}}")
-    assert "{{CURRENT_DATETIME}}" not in rendered
-    assert rendered.endswith("at Example DC")
+    with config.pin_current_date("2031-02-03"):
+        rendered = config.render_prompt(
+            "{{CURRENT_DATETIME}} at {{instance.name}}"
+        )
+    assert rendered == "{{CURRENT_DATETIME}} at Example DC"
 
 
 # --- prompt URLs derived from CONFIG_URL ------------------------------------
@@ -1093,74 +1100,115 @@ def test_get_debug_report_mode_applies_the_environment_to_the_loaded_config(
     assert config.get_debug_report_mode() == expected
 
 
-# --- prompt datetime rendering ----------------------------------------------
+# --- current date ------------------------------------------------------------
+
+# `_INSTANT` falls on three different dates in the zones the tests below use.
+_INSTANT = datetime(2026, 11, 19, 10, 30, tzinfo=UTC)
+
+
+def _freeze_clock(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Makes `config` read `_INSTANT` as the current time in any zone."""
+
+    def now(tz: tzinfo) -> datetime:
+        return _INSTANT.astimezone(tz)
+
+    monkeypatch.setattr(config, "datetime", SimpleNamespace(now=now))
+
+
+@pytest.mark.parametrize(
+    ("timezone", "expected"),
+    [
+        ("UTC", "2026-11-19"),
+        ("Pacific/Kiritimati", "2026-11-20"),
+        ("Pacific/Pago_Pago", "2026-11-18"),
+    ],
+)
+def test_the_current_date_is_an_iso_date_in_the_configured_zone(
+    monkeypatch: pytest.MonkeyPatch, timezone: str, expected: str
+) -> None:
+    # Test: The format and the zone of `get_current_date`.
+    # Situation: The clock is fixed at 10:30 UTC on 2026-11-19, and
+    #   `TIMEZONE` names UTC, a zone 14 hours ahead of UTC, or a zone 11
+    #   hours behind UTC.
+    # Expectation: `get_current_date` returns the date of that instant in
+    #   the configured zone as `YYYY-MM-DD`, with no time and no zone label.
+    _freeze_clock(monkeypatch)
+    monkeypatch.setenv("TIMEZONE", timezone)
+
+    assert config.get_current_date() == expected
 
 
 def test_unresolvable_timezone_falls_back_to_utc(
     monkeypatch: pytest.MonkeyPatch,
     caplog: pytest.LogCaptureFixture,
 ) -> None:
-    # Test: Fallback to `UTC` in `get_current_datetime` on an invalid timezone.
-    # Situation: The `TIMEZONE` environment variable is set to an unknown IANA
-    #   timezone identifier (`"Mars/Olympus_Mons"`).
-    # Expectation: `get_current_datetime` logs a warning and returns a timestamp
-    #   formatted in `UTC` without raising an exception.
+    # Test: Fallback to `UTC` in `get_current_date` on an invalid timezone.
+    # Situation: The clock is fixed at 10:30 UTC on 2026-11-19, and the
+    #   `TIMEZONE` environment variable is set to an unknown IANA timezone
+    #   identifier (`"Mars/Olympus_Mons"`).
+    # Expectation: `get_current_date` logs a warning that names the
+    #   identifier and returns the `UTC` date without raising an exception.
+    _freeze_clock(monkeypatch)
     monkeypatch.setenv("TIMEZONE", "Mars/Olympus_Mons")
     with caplog.at_level("WARNING"):
-        result = config.get_current_datetime()
-    assert result.endswith("UTC")
+        result = config.get_current_date()
+    assert result == "2026-11-19"
     assert "Mars/Olympus_Mons" in caplog.text
 
 
-def test_a_pinned_timestamp_is_rendered_until_the_pin_ends(
+def test_a_pinned_date_is_returned_until_the_pin_ends(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    # Test: `pin_current_datetime` with no value.
-    # Situation: The current time advances on every read; a prompt is
-    #   rendered twice inside the pin and the time is read after it.
-    # Expectation: Both renders name the time pinned on entry, which the
-    #   pin also yields, and the read after the pin sees the time advance.
-    readings = iter(f"time {index}" for index in range(10))
-    monkeypatch.setattr(
-        config, "_format_current_datetime", lambda: next(readings)
-    )
-    _with_config(monkeypatch, None)
+    # Test: `pin_current_date` with no value.
+    # Situation: The current date advances on every read; the date is read
+    #   twice inside the pin and once after it.
+    # Expectation: Both reads inside the pin return the date pinned on
+    #   entry, which the pin also yields, and the read after the pin sees
+    #   the date advance.
+    readings = iter(f"date {index}" for index in range(10))
+    monkeypatch.setattr(config, "_format_current_date", lambda: next(readings))
 
-    with config.pin_current_datetime() as pinned:
-        first = config.render_prompt("Now: {{CURRENT_DATETIME}}")
-        second = config.render_prompt("Now: {{CURRENT_DATETIME}}")
+    with config.pin_current_date() as pinned:
+        first = config.get_current_date()
+        second = config.get_current_date()
 
-    assert pinned == "time 0"
-    assert first == second == "Now: time 0"
-    assert config.get_current_datetime() == "time 1"
+    assert pinned == "date 0"
+    assert first == second == "date 0"
+    assert config.get_current_date() == "date 1"
 
 
-def test_a_pin_is_removed_when_its_block_raises() -> None:
-    # Test: The cleanup of `pin_current_datetime` on an exception.
-    # Situation: A block pins an explicit timestamp and raises.
-    # Expectation: The exception propagates and the timestamp is no longer
-    #   pinned afterward.
+def test_a_pin_is_removed_when_its_block_raises(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Test: The cleanup of `pin_current_date` on an exception.
+    # Situation: The clock is fixed at 10:30 UTC on 2026-11-19, and a block
+    #   pins another date and raises an exception.
+    # Expectation: The exception propagates, and `get_current_date` returns
+    #   the date of the fixed clock afterward, not the pinned date.
+    _freeze_clock(monkeypatch)
     with (
         pytest.raises(RuntimeError, match="phase failed"),
-        config.pin_current_datetime("Monday"),
+        config.pin_current_date("1999-01-01"),
     ):
-        assert config.get_current_datetime() == "Monday"
+        assert config.get_current_date() == "1999-01-01"
         raise RuntimeError("phase failed")
 
-    assert config.get_current_datetime() != "Monday"
+    assert config.get_current_date() == "2026-11-19"
 
 
 @pytest.mark.asyncio
-async def test_concurrent_turns_keep_their_own_pinned_timestamps() -> None:
+async def test_concurrent_turns_keep_their_own_pinned_dates() -> None:
     # Test: The isolation of pins across concurrent asyncio tasks.
-    # Situation: Two tasks pin different timestamps and yield to each other
+    # Situation: Two tasks pin different dates and yield to each other
     #   before reading them back.
-    # Expectation: Each task reads its own timestamp.
+    # Expectation: Each task reads its own date.
     async def read_pinned(value: str) -> str:
-        with config.pin_current_datetime(value):
+        with config.pin_current_date(value):
             await asyncio.sleep(0)
-            return config.get_current_datetime()
+            return config.get_current_date()
 
-    readings = await asyncio.gather(read_pinned("first"), read_pinned("second"))
+    readings = await asyncio.gather(
+        read_pinned("2031-02-03"), read_pinned("2031-02-04")
+    )
 
-    assert list(readings) == ["first", "second"]
+    assert list(readings) == ["2031-02-03", "2031-02-04"]

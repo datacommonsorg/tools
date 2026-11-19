@@ -109,8 +109,9 @@ process and PR expectations: [`CONTRIBUTING.md`](../CONTRIBUTING.md).
       and `json_value.py`.
     - `config.py`: loads `agent-config.json` (or the local `config.json`),
       layers the prompts, and returns the result as an `AgentConfig`; renders
-      prompts with the turn's pinned `{{CURRENT_DATETIME}}`
-      (`pin_current_datetime`); resolves chat availability with the
+      the `{{instance.*}}` placeholders of a prompt (`render_prompt`);
+      provides the turn's pinned current date in the `TIMEZONE` zone
+      (`pin_current_date`); resolves chat availability with the
       `ENABLE_CHAT` and `UNAVAILABLE_MESSAGE` overrides (`get_chat_config`);
       and resolves the turn debug report mode with the `DEBUG_REPORT`
       override (`get_debug_report_mode`).

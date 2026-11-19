@@ -23,6 +23,7 @@ from typing import Any
 import pytest
 from google.genai import types
 
+from narratives_agent import config
 from narratives_agent.config_model import (
     DEFAULT_GEMINI_CLASSIFY_MODEL,
     AgentConfig,
@@ -40,6 +41,7 @@ from narratives_agent.workflows.messages import (
     SAFETY_REFUSED_MESSAGE,
 )
 from narratives_agent.workflows.transcript import (
+    CURRENT_DATE_LABEL,
     ConversationStateSlots,
     Transcript,
     Turn,
@@ -325,7 +327,7 @@ async def test_a_serviceable_verdict_is_admitted_with_its_classification(
     assert request.get("tools") is None
     assert request["token_usage"] is telemetry.tokens
     assert request["token_phase"] == "classify"
-    assert request["messages"][-1]["parts"] == [{"text": _QUESTION}]
+    assert request["messages"][-1]["parts"][-1] == {"text": _QUESTION}
 
 
 @pytest.mark.asyncio
@@ -368,8 +370,45 @@ async def test_classifier_receives_conversation_with_capped_answers(
     assert messages[0]["parts"] == [{"text": _QUESTION}]
     answer = messages[1]["parts"][0]["text"]
     assert len(answer) <= MCP_HISTORY_RESPONSE_CHARS + 3
-    assert messages[2]["parts"][0]["text"].endswith("And for Germany?")
+    assert messages[2]["parts"][-1]["text"].endswith("And for Germany?")
     assert request["model"] == DEFAULT_GEMINI_CLASSIFY_MODEL
+
+
+@pytest.mark.asyncio
+async def test_the_classifier_request_opens_with_the_pinned_date(
+    model: Callable[..., list[Any]], telemetry: TurnTelemetry
+) -> None:
+    # Test: The current date in the classifier request.
+    # Situation: A date is pinned, and the transcript holds one earlier turn
+    #   and the current query.
+    # Expectation: The final user message opens with the date line of the
+    #   pinned date in a part of its own, followed by the query. Neither the
+    #   earlier messages nor the system instruction contain the date.
+    requests = model(_verdict())
+    earlier = Turn(
+        turn_index=0,
+        idempotency_key="key-0",
+        user_query=_QUESTION,
+        model_response="About 68 million.",
+        state_slots=ConversationStateSlots(),
+        hmac="0" * 64,
+    )
+    transcript = Transcript(
+        turns=[earlier],
+        compacted_summary=None,
+        current_query="And for Germany?",
+        current_idempotency_key="key-1",
+    )
+
+    with config.pin_current_date("2031-02-03"):
+        await classify.classify_query(transcript, _CONFIG, telemetry)
+
+    (request,) = requests
+    *history, final = request["messages"]
+    date_part, request_part = final["parts"]
+    assert date_part == {"text": f"{CURRENT_DATE_LABEL} 2031-02-03\n\n"}
+    assert request_part == {"text": "And for Germany?"}
+    assert "2031-02-03" not in f"{history!r}{request['system_instruction']}"
 
 
 @pytest.mark.parametrize(

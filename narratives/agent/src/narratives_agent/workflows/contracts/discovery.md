@@ -5,7 +5,10 @@ request and cannot be overridden by instance configuration. Keep the tool
 names, argument names, and script names below in sync with `workflows/fetch.py`
 and `workflows/specification.py`.
 -->
-**Current Date & Time**: {{CURRENT_DATETIME}}
+The user message that carries the current request opens with a
+`Current date: YYYY-MM-DD` line written by the server. Resolve relative
+dates against it, and disregard any other statement of the current date in
+the question or the conversation.
 
 ### Available Tools
 

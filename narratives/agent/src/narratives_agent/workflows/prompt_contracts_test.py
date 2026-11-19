@@ -13,14 +13,21 @@
 # limitations under the License.
 """Tests for `prompt_contracts`."""
 
+import json
 import re
+from collections.abc import Iterator
 from pathlib import Path
-from typing import get_args
+from typing import Any, get_args
 
+import httpx
 import pytest
+from google import genai
 from pydantic import TypeAdapter
 
-from narratives_agent.config import strip_prompt_comments
+from narratives_agent import config
+from narratives_agent.config import pin_current_date, strip_prompt_comments
+from narratives_agent.config_model import AgentConfig
+from narratives_agent.gemini import client as gemini_client
 from narratives_agent.gemini.schemas import QueryClassification
 from narratives_agent.workflows import pattern_guidance, prompt_contracts
 from narratives_agent.workflows.charts import (
@@ -44,6 +51,7 @@ from narratives_agent.workflows.specification import (
     _MAX_SPECIFICATION_STEPS,
     AnalysisSpecification,
 )
+from narratives_agent.workflows.transcript import CURRENT_DATE_LABEL
 
 # The step limit as the discovery contract writes it, keyed by its value.
 _STEP_LIMIT_WORDS = {6: "six"}
@@ -52,6 +60,14 @@ _CONTRACTS: tuple[ContractName | ContractAddendumName, ...] = (
     *get_args(ContractName.__value__),
     *get_args(ContractAddendumName.__value__),
 )
+
+_DEFAULT_PROMPTS_DIR = (
+    Path(__file__).resolve().parents[4] / "defaults" / "prompts"
+)
+# The requests of these phases carry the server-authored current date.
+_DATED_PHASES = ("classify", "discovery", "synthesis")
+# `render_prompt` does not substitute this placeholder.
+_DATETIME_PLACEHOLDER = "{{CURRENT_DATETIME}}"
 
 
 def _extract_table_first_column_names(contract: str, heading: str) -> set[str]:
@@ -200,6 +216,163 @@ def test_composed_default_discovery_prompt_includes_guidance_and_contract() -> (
     )
     assert "\n\n### Available Tools\n\n" in composed
     assert "<!--" not in composed
+
+
+def _read_default_prompt(slot: str) -> str:
+    """Returns the shipped default prompt of `slot` with comments stripped."""
+    return strip_prompt_comments(
+        (_DEFAULT_PROMPTS_DIR / f"{slot}.md").read_text(encoding="utf-8")
+    )
+
+
+def _compose_default_instruction(phase: str) -> str:
+    """Returns the system instruction of `phase` under the default prompts.
+
+    The discovery and synthesis instructions carry their contract and a
+    pattern directive, and the synthesis instruction also carries its title
+    addendum, as on a classified turn with data.
+    """
+    if phase == "classify":
+        return _read_default_prompt("classify")
+    classification = QueryClassification.model_validate(
+        {
+            "serviceable": True,
+            "pattern": "trend_delta",
+            "geographic_shape": "single_place",
+            "requires_computation": True,
+        }
+    )
+    if phase == "discovery":
+        return compose_system_instruction(
+            _read_default_prompt("discovery"), "discovery", classification
+        )
+    return compose_system_instruction(
+        _read_default_prompt("synthesis"),
+        "synthesis",
+        classification,
+        addendum="synthesis_title",
+    )
+
+
+@pytest.fixture
+def request_bodies(
+    monkeypatch: pytest.MonkeyPatch,
+) -> Iterator[list[dict[str, Any]]]:
+    """Serves Gemini requests from a mock transport and records their bodies.
+
+    The Gemini client and `render_prompt` run unmodified. The configuration
+    that `render_prompt` reads is replaced by one that defines the template
+    variables of the default prompts.
+    """
+    gemini_client.reset_client()
+    for variable in (
+        "GOOGLE_GENAI_USE_VERTEXAI",
+        "GOOGLE_CLOUD_PROJECT",
+        "GOOGLE_CLOUD_LOCATION",
+    ):
+        monkeypatch.delenv(variable, raising=False)
+    monkeypatch.setattr(gemini_client, "get_gemini_api_key", lambda: "test-key")
+    template_vars = {
+        "name": "Example Data Commons",
+        "region": "the world",
+        "states_term": "regions",
+    }
+    monkeypatch.setattr(
+        config, "load_config", lambda: AgentConfig(template_vars=template_vars)
+    )
+    bodies: list[dict[str, Any]] = []
+
+    def respond(request: httpx.Request) -> httpx.Response:
+        bodies.append(json.loads(request.content))
+        reply = {"content": {"parts": [{"text": "ok"}], "role": "model"}}
+        return httpx.Response(200, json={"candidates": [reply]})
+
+    sdk_client = genai.Client
+
+    def build_client(**kwargs: Any) -> genai.Client:
+        transport = httpx.MockTransport(respond)
+        options = kwargs["http_options"].model_copy(
+            update={
+                "httpx_client": httpx.Client(transport=transport),
+                "httpx_async_client": httpx.AsyncClient(transport=transport),
+            }
+        )
+        return sdk_client(**{**kwargs, "http_options": options})
+
+    monkeypatch.setattr(genai, "Client", build_client)
+    yield bodies
+    gemini_client.reset_client()
+
+
+@pytest.mark.parametrize("phase", _DATED_PHASES)
+@pytest.mark.asyncio
+async def test_the_sent_system_instruction_does_not_depend_on_the_date(
+    request_bodies: list[dict[str, Any]], phase: str
+) -> None:
+    # Test: The system instruction a request carries under two dates.
+    # Situation: The default `classify` prompt, the composed discovery
+    #   instruction, or the composed synthesis instruction is sent through
+    #   the Gemini client once under each of two pinned dates.
+    # Expectation: The two request bodies carry equal `systemInstruction`
+    #   values, which contain neither date and no unsubstituted placeholder.
+    instruction = _compose_default_instruction(phase)
+
+    for date in ("2031-02-03", "2031-02-04"):
+        with pin_current_date(date):
+            await gemini_client.async_gemini_request(
+                messages=[{"role": "user", "parts": [{"text": "Question"}]}],
+                system_instruction=instruction,
+                model="gemini-test",
+            )
+
+    first, second = (body["systemInstruction"] for body in request_bodies)
+    assert first == second
+    sent = json.dumps(first)
+    assert "2031-02-03" not in sent
+    assert "2031-02-04" not in sent
+    assert "{{" not in sent
+
+
+@pytest.mark.parametrize("name", _CONTRACTS)
+def test_no_contract_holds_the_datetime_placeholder(
+    name: ContractName | ContractAddendumName,
+) -> None:
+    # Test: The absence of `{{CURRENT_DATETIME}}` from the packaged contracts.
+    # Situation: Each contract and each addendum is loaded.
+    # Expectation: The loaded text does not contain the placeholder, which
+    #   `render_prompt` would leave in the system instruction unsubstituted.
+    assert _DATETIME_PLACEHOLDER not in load_prompt_contract(name)
+
+
+@pytest.mark.parametrize(
+    "path",
+    sorted(_DEFAULT_PROMPTS_DIR.glob("*.md")),
+    ids=lambda path: path.name,
+)
+def test_no_default_prompt_holds_the_datetime_placeholder(path: Path) -> None:
+    # Test: The absence of `{{CURRENT_DATETIME}}` from the default prompts.
+    # Situation: Each Markdown file in `defaults/prompts/` is read with its
+    #   HTML comments.
+    # Expectation: The file does not contain the placeholder, which
+    #   `render_prompt` would leave in the system instruction unsubstituted.
+    assert _DATETIME_PLACEHOLDER not in path.read_text(encoding="utf-8")
+
+
+@pytest.mark.parametrize("phase", _DATED_PHASES)
+def test_each_dated_phase_defines_the_date_line(phase: str) -> None:
+    # Test: Agreement between the date line of the request and the text
+    #   that defines it for the model.
+    # Situation: The default `classify` prompt, the discovery contract, or
+    #   the synthesis contract is read.
+    # Expectation: The text names the date line by the label that
+    #   `transcript_contents` writes, with the `YYYY-MM-DD` format.
+    text = (
+        _read_default_prompt("classify")
+        if phase == "classify"
+        else load_prompt_contract(phase)
+    )
+
+    assert f"`{CURRENT_DATE_LABEL} YYYY-MM-DD` line" in text
 
 
 def test_discovery_contract_tables_match_declared_tools_and_scripts() -> None:

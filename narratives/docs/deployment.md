@@ -342,7 +342,6 @@ Prompts support runtime template placeholders:
 
 | Placeholder | Substitution |
 | :--- | :--- |
-| `{{CURRENT_DATETIME}}` | Current date and time in the `TIMEZONE` environment variable's zone |
 | `{{instance.<key>}}` | Matching key from `template_vars` in `agent-config.json` (keys starting with `_` are ignored) |
 
 For example, given `config/agent-config.json`:
