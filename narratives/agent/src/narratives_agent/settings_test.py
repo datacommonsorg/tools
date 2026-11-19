@@ -37,6 +37,9 @@ Verifies that `Settings`:
     overrides, trims a trailing slash from the API root, and rejects a value
     that is not an http(s) URL on an ASCII hostname, an API root that is not
     an origin, and a value with a character that cannot enter a header.
+13. Defaults `recaptcha_session_site_key` and `recaptcha_checkbox_site_key` to
+    empty strings, treating blank values as unset and stripping surrounding
+    whitespace.
 """
 
 from pathlib import Path
@@ -53,6 +56,8 @@ from narratives_agent.settings import (
     DEFAULT_WEB_COMPONENT_URL,
     ENABLE_CHAT_ENV,
     MIN_SECRET_BYTES,
+    RECAPTCHA_CHECKBOX_SITE_KEY_ENV,
+    RECAPTCHA_SESSION_SITE_KEY_ENV,
     TRANSCRIPT_HMAC_SECRET_ENV,
     TRANSCRIPT_HMAC_SECRET_NAME_ENV,
     UNAVAILABLE_MESSAGE_ENV,
@@ -493,6 +498,36 @@ def test_build_sha_defaults_to_none_and_strips_whitespace(
     assert settings_blank.build_sha is None
     settings_set = _read_settings(monkeypatch, {"BUILD_SHA": " 3b34f1c\n"})
     assert settings_set.build_sha == "3b34f1c"
+
+
+@pytest.mark.parametrize(
+    ("env_name", "field_name"),
+    [
+        pytest.param(
+            RECAPTCHA_SESSION_SITE_KEY_ENV,
+            "recaptcha_session_site_key",
+            id="session",
+        ),
+        pytest.param(
+            RECAPTCHA_CHECKBOX_SITE_KEY_ENV,
+            "recaptcha_checkbox_site_key",
+            id="checkbox",
+        ),
+    ],
+)
+def test_recaptcha_site_keys_default_to_empty_and_strip_whitespace(
+    monkeypatch: pytest.MonkeyPatch, env_name: str, field_name: str
+) -> None:
+    # Test: Default and whitespace stripping for reCAPTCHA site key settings.
+    # Situation: `RECAPTCHA_SESSION_SITE_KEY` or `RECAPTCHA_CHECKBOX_SITE_KEY`
+    #   is unset, blank, or exported with surrounding whitespace.
+    # Expectation: Unset and blank resolve to `""`; a non-empty key has its
+    #   surrounding whitespace stripped.
+    assert getattr(Settings(), field_name) == ""
+    blank_settings = _read_settings(monkeypatch, {env_name: " \t\n "})
+    assert getattr(blank_settings, field_name) == ""
+    configured = _read_settings(monkeypatch, {env_name: "  6Lc_site_key_01 \n"})
+    assert getattr(configured, field_name) == "6Lc_site_key_01"
 
 
 def test_chart_hosts_default_to_public_data_commons() -> None:

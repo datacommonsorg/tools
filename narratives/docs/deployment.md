@@ -552,6 +552,33 @@ screening before the `classify` Gemini call:
 When `MODEL_ARMOR_TEMPLATE` is unset, Model Armor screening is skipped. When
 set, it works with both `GEMINI_API_KEY` and Vertex AI deployments.
 
+### Protecting traffic with reCAPTCHA Enterprise (optional)
+
+Public deployments behind Cloud Armor or an external Application Load Balancer
+can configure Google Cloud reCAPTCHA Enterprise public site keys through
+optional container environment variables:
+
+- `RECAPTCHA_SESSION_SITE_KEY`: Public WAF session-token site key injected as
+  `recaptcha_session_site_key` in `#runtime-config`.
+- `RECAPTCHA_CHECKBOX_SITE_KEY`: Public WAF checkbox site key injected as
+  `recaptcha_checkbox_site_key` in `#runtime-config`.
+
+When serving `index.html`, the backend includes any non-empty
+`RECAPTCHA_SESSION_SITE_KEY` and `RECAPTCHA_CHECKBOX_SITE_KEY` values inside
+`<script id="runtime-config" type="application/json">` alongside `enable_chat`,
+`unavailable_message`, and the chart hosts, recomputing the response `ETag`.
+When both variables are unset or blank, those keys are omitted from
+`#runtime-config`.
+
+When either reCAPTCHA site key is configured at startup, `spa.py` automatically
+adds Google's reCAPTCHA endpoints to the HTML shell's `Content-Security-Policy`
+(`script-src`, `frame-src`, and `connect-src`) — and omits them when neither
+key is set:
+
+- `https://www.google.com/recaptcha/`
+- `https://www.gstatic.com/recaptcha/`
+- `https://recaptcha.google.com/recaptcha/`
+
 ### Turn debug reports (`DEBUG_REPORT` and `BUILD_SHA`)
 
 The agent can emit a typed `debug_report` SSE frame at the end of each chat
