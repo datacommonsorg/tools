@@ -70,7 +70,8 @@ unhandled exception, because that middleware wraps every user middleware.
 
 The HTML shell (`/` and `/index.html`, on 200 and 304 responses) also carries
 the page's `Content-Security-Policy`, which `build_content_security_policy` in
-`server/routes/spa.py` builds once at startup from the chart host settings:
+`server/routes/spa.py` builds once at startup from the chart host settings and
+any configured reCAPTCHA site keys (shown below with reCAPTCHA unset):
 
 ```text
 default-src 'self';
@@ -85,6 +86,11 @@ base-uri 'none';
 form-action 'self';
 frame-ancestors 'self'
 ```
+
+When either `RECAPTCHA_SESSION_SITE_KEY` or `RECAPTCHA_CHECKBOX_SITE_KEY` is
+set at startup, `build_content_security_policy` also adds Google's reCAPTCHA
+endpoints to `script-src`, `connect-src`, and `frame-src` (see
+[deployment.md](deployment.md#protecting-traffic-with-recaptcha-enterprise-optional)).
 
 `script-src` allows no inline or evaluated script: the shell's two inline
 `<script>` elements are JSON data blocks, which browsers do not run, and the

@@ -238,9 +238,9 @@ def _serialize_runtime_config(settings: Settings) -> bytes:
 def _render_shell(full_path: str, settings: Settings) -> bytes:
     """Returns the HTML shell with runtime JSON injected into `#runtime-config`.
 
-    Reads the file, so callers run it off the event loop. Injects chat
-    availability and any configured reCAPTCHA site keys into the first empty
-    `#runtime-config` element when present.
+    Reads the file, so callers run it off the event loop. Replaces only the
+    first empty `#runtime-config` element with `_serialize_runtime_config`,
+    and returns a file without that element unchanged.
     """
     with open(full_path, "rb") as shell_file:
         template = shell_file.read()
@@ -298,10 +298,10 @@ def _build_shell_response(
 class SpaStaticFiles(StaticFiles):
     """Serves the UI build with cache and Content-Security-Policy headers.
 
-    The HTML shell carries the chart hosts from the `Settings` that this
-    instance is constructed with. The shell also carries the page's
-    Content-Security-Policy, which is built once from the same `Settings`,
-    so the hosts and the policy cannot disagree.
+    The HTML shell carries the chart hosts and any configured reCAPTCHA site
+    keys from the `Settings` that this instance is constructed with. The shell
+    also carries the page's Content-Security-Policy, which is built once from
+    the same `Settings`, so the stamped config and the policy cannot disagree.
     """
 
     def __init__(
@@ -318,8 +318,9 @@ class SpaStaticFiles(StaticFiles):
             directory: The static root.
             html: Whether a directory path serves its `index.html`.
             check_dir: Whether a missing `directory` raises at construction.
-            settings: The settings that supply the chart hosts stamped
-                into the shell and named in the shell's policy.
+            settings: The settings that supply the chart hosts and reCAPTCHA
+                site keys stamped into the shell and named in the shell's
+                policy.
         """
         super().__init__(directory=directory, html=html, check_dir=check_dir)
         self._settings = settings

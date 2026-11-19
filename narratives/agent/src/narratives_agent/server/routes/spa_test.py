@@ -28,7 +28,6 @@ Verifies that:
 5. Percent-encoded `..` segments cannot reach files outside the static root,
    and an unknown file or a missing static root returns 404.
 6. `/healthz` answers `ok`.
-7. The root `index.html` is served with the effective chat availability and
 7. The root `index.html` is served with the effective chat availability, the
    chart hosts, and any configured reCAPTCHA site keys injected into
    `#runtime-config`, escaped for a `<script>` element, under a SHA-256 `ETag`
@@ -708,18 +707,21 @@ def test_the_shell_carries_the_configured_chart_hosts(
     }
 
 
-def test_the_chart_hosts_are_fixed_when_the_app_starts(
+def test_chart_hosts_and_recaptcha_keys_are_fixed_when_the_app_starts(
     monkeypatch: pytest.MonkeyPatch, client: TestClient
 ) -> None:
-    # Test: Chart host settings changed after the app is built.
-    # Situation: The app starts with the default chart hosts. Then
-    #   `DC_WEB_COMPONENT_API_ROOT` changes, and the cached settings are
-    #   cleared.
-    # Expectation: The stamped chart hosts and the page policy both keep the
-    #   defaults the app was built with, so they cannot disagree.
+    # Test: Chart host and reCAPTCHA settings changed after the app is built.
+    # Situation: The app starts with the default chart hosts and no reCAPTCHA
+    #   site keys. Then `DC_WEB_COMPONENT_API_ROOT`,
+    #   `RECAPTCHA_SESSION_SITE_KEY`, and `RECAPTCHA_CHECKBOX_SITE_KEY` change,
+    #   and the cached settings are cleared.
+    # Expectation: The stamped `#runtime-config` and the page policy both keep
+    #   the defaults the app was built with, so they cannot disagree.
     monkeypatch.setenv(
         DC_WEB_COMPONENT_API_ROOT_ENV, "https://autopush.datacommons.org"
     )
+    monkeypatch.setenv(RECAPTCHA_SESSION_SITE_KEY_ENV, "6Lc_session_late")
+    monkeypatch.setenv(RECAPTCHA_CHECKBOX_SITE_KEY_ENV, "6Lc_checkbox_late")
     get_settings.cache_clear()
 
     response = client.get("/")
