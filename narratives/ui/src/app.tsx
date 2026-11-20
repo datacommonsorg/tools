@@ -58,14 +58,14 @@ export function App() {
   const { isChatEnabled, recaptchaSessionSiteKey } = getRuntimeConfig();
 
   useEffect(() => {
-    if (!isChatEnabled || recaptchaSessionSiteKey === '') {
+    if (view !== 'agent' || !isChatEnabled || recaptchaSessionSiteKey === '') {
       return;
     }
-    void ensureRecaptchaScript(recaptchaSessionSiteKey).catch(() => {
+    void ensureRecaptchaScript().catch(() => {
       // Ignore script load failures (for example, content blockers) so
       // background session-token minting never raises an unhandled rejection.
     });
-  }, [isChatEnabled, recaptchaSessionSiteKey]);
+  }, [view, isChatEnabled, recaptchaSessionSiteKey]);
 
   return (
     <ChatSessionProvider>

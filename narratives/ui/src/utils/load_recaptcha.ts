@@ -20,6 +20,7 @@
  * explicit widget rendering.
  */
 
+import { getRuntimeConfig } from '@/src/config/runtime_config';
 import type { GrecaptchaEnterprise } from '@/src/types/grecaptcha';
 
 const RECAPTCHA_ENTERPRISE_SCRIPT_URL =
@@ -39,10 +40,10 @@ const getEnterpriseClient = (): GrecaptchaEnterprise | null => {
     : null;
 };
 
-const buildRecaptchaScriptUrl = (sessionSiteKey?: string): string => {
-  const trimmedKey = sessionSiteKey?.trim() ?? '';
-  if (trimmedKey !== '') {
-    return `${RECAPTCHA_ENTERPRISE_SCRIPT_URL}?render=${encodeURIComponent(trimmedKey)}&waf=session`;
+const buildRecaptchaScriptUrl = (): string => {
+  const sessionSiteKey = getRuntimeConfig().recaptchaSessionSiteKey.trim();
+  if (sessionSiteKey !== '') {
+    return `${RECAPTCHA_ENTERPRISE_SCRIPT_URL}?render=${encodeURIComponent(sessionSiteKey)}&waf=session`;
   }
   return `${RECAPTCHA_ENTERPRISE_SCRIPT_URL}?render=explicit`;
 };
@@ -131,20 +132,19 @@ const clearCachedLoad = (
  * Loads `https://www.google.com/recaptcha/enterprise.js` at most once and
  * resolves with `window.grecaptcha.enterprise` after `ready(...)` fires.
  *
- * When `sessionSiteKey` is non-empty after trimming, loads the SDK with
- * `?render=<key>&waf=session` so the browser mints and refreshes the
- * `recaptcha-ca-t` session cookie. Otherwise loads `?render=explicit` for
- * on-demand widget rendering. The first in-flight or resolved call selects the
- * script mode; subsequent calls reuse its cached promise.
+ * Reads `getRuntimeConfig().recaptchaSessionSiteKey` when injecting the script
+ * so every caller resolves the configured mode consistently, including when
+ * retrying after an earlier load failure. When the session site key is
+ * non-empty, loads `?render=<key>&waf=session` so the browser mints and
+ * refreshes the `recaptcha-ca-t` session cookie; otherwise loads
+ * `?render=explicit` for on-demand widget rendering.
  *
  * If script loading fails, `grecaptcha.enterprise` is missing after `load`,
  * `ready(...)` throws, or `ready(...)` does not fire before
  * {@link RECAPTCHA_READY_TIMEOUT_MS}, clears the cached promise and removes
  * the failed `<script>` element so subsequent callers can retry.
  */
-export const ensureRecaptchaScript = (
-  sessionSiteKey?: string,
-): Promise<GrecaptchaEnterprise> => {
+export const ensureRecaptchaScript = (): Promise<GrecaptchaEnterprise> => {
   if (loadPromise !== null) {
     return loadPromise;
   }
@@ -159,7 +159,7 @@ export const ensureRecaptchaScript = (
   if (existingEnterprise !== null) {
     rawLoad = waitForEnterpriseReady(existingEnterprise);
   } else {
-    const scriptUrl = buildRecaptchaScriptUrl(sessionSiteKey);
+    const scriptUrl = buildRecaptchaScriptUrl();
     script = document.createElement('script');
     script.src = scriptUrl;
     script.async = true;
