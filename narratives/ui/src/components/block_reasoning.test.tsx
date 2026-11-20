@@ -22,7 +22,12 @@
 import { cleanup, fireEvent, render } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ReasoningBlock } from '@/src/components/block_reasoning';
-import { CLOSE_REASONING_LABEL } from '@/src/config/copy_chat';
+import {
+  CLOSE_REASONING_LABEL,
+  REASONING_DEFAULT_PHASE_LABEL,
+  REASONING_PLACEHOLDER_VERIFYING,
+  REASONING_VERIFYING_LABEL,
+} from '@/src/config/copy_chat';
 import { resetInstanceConfigForTests } from '@/src/config/instance_config';
 import { REASONING_COLLAPSE_MS } from '@/src/config/motion';
 
@@ -203,6 +208,38 @@ describe('ReasoningBlock', () => {
 
     rerender(<ReasoningBlock thoughts={[]} defaultOpen done status="done" />);
     expect(container.textContent).toContain('Reasoning details');
+  });
+
+  it('shows the verifying label and placeholder while paused for verification', () => {
+    // Test: Verification pause label in ReasoningBlock.
+    // Situation: ReasoningBlock renders while streaming and `isVerifying` is
+    //            true, then `isVerifying` clears when verification completes.
+    // Expectation: Displays `Verifying…` and the verification placeholder while
+    //              paused, then returns to the normal streaming phase label.
+    const { container, rerender } = render(
+      <ReasoningBlock
+        thoughts={[]}
+        defaultOpen
+        streaming
+        status="idle"
+        isVerifying
+      />,
+    );
+    expect(container.textContent).toContain(REASONING_VERIFYING_LABEL);
+    expect(container.textContent).toContain(REASONING_PLACEHOLDER_VERIFYING);
+    expect(container.textContent).not.toContain(REASONING_DEFAULT_PHASE_LABEL);
+
+    rerender(
+      <ReasoningBlock
+        thoughts={[]}
+        defaultOpen
+        streaming
+        status="idle"
+        isVerifying={false}
+      />,
+    );
+    expect(container.textContent).toContain(REASONING_DEFAULT_PHASE_LABEL);
+    expect(container.textContent).not.toContain(REASONING_VERIFYING_LABEL);
   });
 
   it('streams new thoughts in without replaying earlier ones', () => {

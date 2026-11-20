@@ -23,6 +23,7 @@ import { DataAgent } from '@/src/components/data_agent';
 import { MenuDrawer } from '@/src/components/drawer_menu';
 import { Header } from '@/src/components/header';
 import { MetricsPage } from '@/src/components/metrics_page';
+import { RecaptchaModal } from '@/src/components/modal_recaptcha';
 import { Sidebar } from '@/src/components/sidebar';
 import { UnavailableView } from '@/src/components/view_unavailable';
 import { getRuntimeConfig } from '@/src/config/runtime_config';
@@ -70,15 +71,34 @@ export function App() {
   return (
     <ChatSessionProvider>
       <ChatResetOnTabChange view={view} />
-      <div className="flex h-dvh w-full bg-surface relative">
-        <Sidebar />
-        <MenuDrawer />
-        <main className="flex-1 flex flex-col relative min-w-0 overflow-y-auto overscroll-none lg:pl-rail">
-          <Header />
-          {renderContent(view, isChatEnabled)}
-        </main>
-      </div>
+      <AppLayout view={view} isChatEnabled={isChatEnabled} />
+      <RecaptchaModal />
     </ChatSessionProvider>
+  );
+}
+
+/** Props for {@link AppLayout}. */
+interface AppLayoutProps {
+  view: View;
+  isChatEnabled: boolean;
+}
+
+/**
+ * Renders the sidebar, mobile drawer, header, and routed view, marking the
+ * background shell `inert` while the portaled verification modal is open.
+ */
+function AppLayout({ view, isChatEnabled }: Readonly<AppLayoutProps>) {
+  const { verificationModal } = useChatSession();
+  const isModalOpen = verificationModal.status === 'open';
+  return (
+    <div inert={isModalOpen} className="flex h-dvh w-full bg-surface relative">
+      <Sidebar />
+      <MenuDrawer />
+      <main className="flex-1 flex flex-col relative min-w-0 overflow-y-auto overscroll-none lg:pl-rail">
+        <Header />
+        {renderContent(view, isChatEnabled)}
+      </main>
+    </div>
   );
 }
 

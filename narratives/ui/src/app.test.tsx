@@ -26,15 +26,26 @@ import {
   fireEvent,
   render,
   screen,
+  waitFor,
 } from '@testing-library/react';
 import { useReducedMotion } from 'motion/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { App } from '@/src/app';
 import {
+  REASONING_DEFAULT_PHASE_LABEL,
+  REASONING_VERIFYING_LABEL,
+  RECAPTCHA_MODAL_CLOSE_LABEL,
+  RECAPTCHA_MODAL_TITLE,
+} from '@/src/config/copy_chat';
+import {
   DEFAULT_INSTANCE_CONFIG,
   resetInstanceConfigForTests,
 } from '@/src/config/instance_config';
 import { resetRuntimeConfigForTests } from '@/src/config/runtime_config';
+import type {
+  GrecaptchaEnterprise,
+  GrecaptchaRenderParameters,
+} from '@/src/types/grecaptcha';
 import * as recaptchaLoader from '@/src/utils/load_recaptcha';
 
 vi.mock('motion/react', async (importOriginal) => ({
@@ -333,5 +344,209 @@ describe('App reCAPTCHA session bootstrap', () => {
     } finally {
       process.off('unhandledRejection', unhandled);
     }
+  });
+
+  it('opens RecaptchaModal on HTTP 403 and streams the answer automatically once verified', async () => {
+    // Test: End-to-end 403 challenge and auto-retry through App and RecaptchaModal.
+    // Situation: The chat POST returns HTTP 403 while `recaptcha_checkbox_site_key`
+    //   is configured; the rendered checkbox widget calls its completion callback.
+    // Expectation: RecaptchaModal opens at the root layout, closes automatically
+    //   after verification, retries the POST with `X-Recaptcha-Token`, and
+    //   renders the streamed answer.
+    let capturedParams: GrecaptchaRenderParameters | null = null;
+    const mockEnterprise: GrecaptchaEnterprise = {
+      ready: vi.fn((callback: () => void) => callback()),
+      render: vi.fn(
+        (_container: HTMLElement, params: GrecaptchaRenderParameters) => {
+          capturedParams = params;
+          return 1;
+        },
+      ),
+      reset: vi.fn(),
+    };
+    vi.spyOn(recaptchaLoader, 'ensureRecaptchaScript').mockResolvedValue(
+      mockEnterprise,
+    );
+
+    const encoder = new TextEncoder();
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce({
+        ok: false,
+        status: 403,
+        statusText: 'Forbidden',
+        body: null,
+      })
+      .mockImplementationOnce(async (_url: string, init: RequestInit) => {
+        const body = JSON.parse(String(init.body)) as {
+          idempotency_key: string;
+        };
+        return {
+          ok: true,
+          status: 200,
+          statusText: 'OK',
+          body: new ReadableStream<Uint8Array>({
+            start(controller) {
+              controller.enqueue(
+                encoder.encode(
+                  `event: content\r\ndata: ${JSON.stringify({
+                    block: { type: 'text', markdown: 'Verified answer.' },
+                  })}\r\n\r\n` +
+                    `event: terminal\r\ndata: ${JSON.stringify({
+                      state: 'complete',
+                      idempotency_key: body.idempotency_key,
+                    })}\r\n\r\n`,
+                ),
+              );
+              controller.close();
+            },
+          }),
+        };
+      });
+    vi.stubGlobal('fetch', fetchMock);
+    writeRuntimeConfigSlot({
+      enable_chat: true,
+      recaptcha_checkbox_site_key: '6Lc_checkbox_app',
+    });
+
+    render(<App />);
+    fireEvent.change(screen.getByRole('textbox', { name: LANDING_PROMPT }), {
+      target: { value: 'Population of France?' },
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Submit' }));
+    });
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole('dialog', { name: RECAPTCHA_MODAL_TITLE }),
+      ).toBeTruthy();
+      expect(capturedParams).not.toBeNull();
+    });
+    const appShell = document.querySelector('main')?.parentElement;
+    expect(appShell?.hasAttribute('inert')).toBe(true);
+    expect(screen.getByText(REASONING_VERIFYING_LABEL)).toBeTruthy();
+    expect(screen.queryByText(REASONING_DEFAULT_PHASE_LABEL)).toBeNull();
+
+    await act(async () => {
+      capturedParams?.callback?.('app-verified-token');
+    });
+
+    await waitFor(() => {
+      expect(
+        screen.queryByRole('dialog', { name: RECAPTCHA_MODAL_TITLE }),
+      ).toBeNull();
+      expect(screen.getByText('Verified answer.')).toBeTruthy();
+    });
+    expect(appShell?.hasAttribute('inert')).toBe(false);
+    const retryHeaders = fetchMock.mock.calls[1][1].headers as Record<
+      string,
+      string
+    >;
+    expect(retryHeaders['X-Recaptcha-Token']).toBe('app-verified-token');
+  });
+
+  it('restores focus to the prior control after inert clears even when inert blurs activeElement on open', async () => {
+    // Test: Focus capture before `AppLayout` becomes `inert` and restoration after `inert` clears.
+    // Situation: A control inside `AppLayout` holds focus when HTTP 403 arrives;
+    //   setting `inert` on `AppLayout` synchronously blurs descendants (emulating
+    //   real-browser focus fixup that jsdom does not implement).
+    // Expectation: Dismissing the modal restores focus to the control only after
+    //   `AppLayout` no longer has `inert`.
+    const mockEnterprise: GrecaptchaEnterprise = {
+      ready: vi.fn((callback: () => void) => callback()),
+      render: vi.fn(() => 1),
+      reset: vi.fn(),
+    };
+    vi.spyOn(recaptchaLoader, 'ensureRecaptchaScript').mockResolvedValue(
+      mockEnterprise,
+    );
+
+    let resolveFetch!: (response: {
+      ok: boolean;
+      status: number;
+      statusText: string;
+      body: null;
+    }) => void;
+    const fetchMock = vi.fn(
+      () =>
+        new Promise<{
+          ok: boolean;
+          status: number;
+          statusText: string;
+          body: null;
+        }>((resolve) => {
+          resolveFetch = resolve;
+        }),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+    writeRuntimeConfigSlot({
+      enable_chat: true,
+      recaptcha_checkbox_site_key: '6Lc_checkbox_focus',
+    });
+
+    render(<App />);
+    const appShell = document.querySelector('main')?.parentElement;
+    expect(appShell).toBeInstanceOf(HTMLElement);
+    if (!(appShell instanceof HTMLElement)) {
+      throw new Error('Expected AppLayout shell element');
+    }
+
+    // Emulate real browsers immediately blurring any focused descendant when
+    // React commits `inert=""` onto `AppLayout` before effects execute.
+    let inertBlurredPriorControl = false;
+    const realSetAttribute = appShell.setAttribute.bind(appShell);
+    vi.spyOn(appShell, 'setAttribute').mockImplementation((name, value) => {
+      realSetAttribute(name, value);
+      if (
+        name === 'inert' &&
+        document.activeElement instanceof HTMLElement &&
+        appShell.contains(document.activeElement)
+      ) {
+        inertBlurredPriorControl = true;
+        document.activeElement.blur();
+      }
+    });
+
+    fireEvent.change(screen.getByRole('textbox', { name: LANDING_PROMPT }), {
+      target: { value: 'Population of France?' },
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Submit' }));
+    });
+
+    const newChatButton = screen.getByRole('button', { name: 'New chat' });
+    newChatButton.focus();
+    expect(document.activeElement).toBe(newChatButton);
+
+    let wasInertWhenRestored: boolean | null = null;
+    const realFocus = newChatButton.focus.bind(newChatButton);
+    vi.spyOn(newChatButton, 'focus').mockImplementation((options) => {
+      wasInertWhenRestored = appShell.hasAttribute('inert');
+      realFocus(options);
+    });
+
+    await act(async () => {
+      resolveFetch({
+        ok: false,
+        status: 403,
+        statusText: 'Forbidden',
+        body: null,
+      });
+    });
+
+    const closeButton = await screen.findByRole('button', {
+      name: RECAPTCHA_MODAL_CLOSE_LABEL,
+    });
+    expect(inertBlurredPriorControl).toBe(true);
+    expect(document.activeElement).toBe(closeButton);
+
+    fireEvent.click(closeButton);
+
+    await waitFor(() => {
+      expect(screen.queryByRole('dialog')).toBeNull();
+      expect(document.activeElement).toBe(newChatButton);
+    });
+    expect(wasInertWhenRestored).toBe(false);
   });
 });

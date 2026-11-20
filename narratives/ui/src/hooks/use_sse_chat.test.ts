@@ -14,7 +14,10 @@ import {
   HIGH_TRAFFIC_ERROR,
   INTERRUPTED_TURN_ERROR,
   TRANSCRIPT_REJECTED_ERROR,
+  VERIFICATION_CANCELED_ERROR,
+  VERIFICATION_FAILED_ERROR,
 } from '@/src/config/copy_chat';
+import { resetRuntimeConfigForTests } from '@/src/config/runtime_config';
 import {
   type AnswerBlock,
   applyEvent,
@@ -30,6 +33,7 @@ import {
   type ProvenanceItem,
   parseSseStream,
   type RawAnswerBlock,
+  RECAPTCHA_ACTION_TOKEN_TTL_MS,
   type TurnStatus,
   transcriptRequestFields,
   useSseChat,
@@ -2123,5 +2127,368 @@ describe('assignCitationNumbers', () => {
       [1],
     ]);
     expect(assignCitationNumbers([])).toEqual([]);
+  });
+});
+
+describe('useSseChat reCAPTCHA 403 verification', () => {
+  const writeRuntimeConfig = (payload: Record<string, unknown>): void => {
+    document.getElementById('runtime-config')?.remove();
+    const slot = document.createElement('script');
+    slot.id = 'runtime-config';
+    slot.type = 'application/json';
+    slot.textContent = JSON.stringify(payload);
+    document.head.appendChild(slot);
+    resetRuntimeConfigForTests();
+  };
+
+  const requestHeaders = (
+    fetchMock: ReturnType<typeof vi.fn>,
+    index: number,
+  ): Record<string, string> =>
+    ((fetchMock.mock.calls[index][1] as RequestInit).headers ?? {}) as Record<
+      string,
+      string
+    >;
+
+  const renderHookWithState = (initialTurns: ChatTurn[] = []) =>
+    renderHook(() => {
+      const [turns, setTurns] = useState<ChatTurn[]>(initialTurns);
+      return { turns, chat: useSseChat({ turns, setTurns }) };
+    });
+
+  const okResponse = (markdown: string, idempotencyKey: string) => ({
+    ok: true,
+    status: 200,
+    statusText: 'OK',
+    body: streamOf([
+      frame('content', buildTextBlock(markdown)),
+      frame('terminal', {
+        state: 'complete',
+        idempotency_key: idempotencyKey,
+        turn_index: 0,
+        hmac: sig('a'),
+        state_slots: SLOTS,
+        compacted_summary: null,
+        window: [
+          {
+            turn_index: 0,
+            idempotency_key: idempotencyKey,
+            hmac: sig('a'),
+          },
+        ],
+      }),
+    ]),
+  });
+
+  const forbiddenResponse = () => ({
+    ok: false,
+    status: 403,
+    statusText: 'Forbidden',
+    body: null,
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+    vi.unstubAllGlobals();
+    document.getElementById('runtime-config')?.remove();
+    resetRuntimeConfigForTests();
+  });
+
+  it('surfaces HTTP 403 immediately without opening the modal when no checkbox site key is configured', async () => {
+    // Test: HTTP 403 without reCAPTCHA fallback configured.
+    // Situation: `#runtime-config` omits `recaptcha_checkbox_site_key` and
+    //   the chat POST returns HTTP 403.
+    // Expectation: `verificationModal` stays closed and the turn settles with
+    //   a non-retryable HTTP 403 error.
+    writeRuntimeConfig({ enable_chat: true });
+    const fetchMock = vi.fn().mockResolvedValue(forbiddenResponse());
+    vi.stubGlobal('fetch', fetchMock);
+    const { result } = renderHookWithState();
+
+    await act(async () => {
+      await result.current.chat.send('What is the population of France?');
+    });
+
+    expect(result.current.chat.verificationModal).toEqual({ status: 'closed' });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(result.current.turns[0]).toMatchObject({
+      status: 'error',
+      error: 'Data Commons ran into an error. HTTP 403 Forbidden.',
+      isRetryable: false,
+    });
+  });
+
+  it('opens verificationModal on HTTP 403, caches X-Recaptcha-Token, and auto-retries with the same payload', async () => {
+    // Test: 403 pause-and-resume happy path plus in-memory token reuse and expiry.
+    // Situation: The first POST returns 403; the user solves the checkbox modal
+    //   producing a token; the user then asks a second question within the
+    //   25-minute TTL and a third question after the TTL expires.
+    // Expectation: The modal opens while the first turn stays idle with no
+    //   error; completing verification closes the modal, resends the identical
+    //   payload (`idempotency_key`, `turns`, `message`) with `X-Recaptcha-Token`,
+    //   reuses the cached token on turn 2, and omits it on turn 3 after expiry.
+    writeRuntimeConfig({
+      enable_chat: true,
+      recaptcha_checkbox_site_key: '6Lc_checkbox_test',
+    });
+    let nowMs = 1_700_000_000_000;
+    vi.spyOn(Date, 'now').mockImplementation(() => nowMs);
+
+    const fetchMock = vi.fn(async (_url: string, init: RequestInit) => {
+      const req = parseRequest(init.body);
+      const headers = (init.headers ?? {}) as Record<string, string>;
+      if (fetchMock.mock.calls.length === 1) {
+        return forbiddenResponse();
+      }
+      return okResponse(
+        `Answer (${headers['X-Recaptcha-Token'] ?? 'none'})`,
+        req.idempotency_key,
+      );
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    const { result } = renderHookWithState();
+
+    let sendPromise!: Promise<void>;
+    await act(async () => {
+      sendPromise = result.current.chat.send('Question 1');
+    });
+
+    expect(result.current.chat.verificationModal).toEqual({
+      status: 'open',
+      checkboxSiteKey: '6Lc_checkbox_test',
+    });
+    expect(result.current.chat.isStreaming).toBe(true);
+    expect(result.current.chat.error).toBeNull();
+    expect(result.current.turns[0]).toMatchObject({
+      userMessage: 'Question 1',
+      status: 'idle',
+    });
+    expect(result.current.turns[0].error).toBeUndefined();
+
+    await act(async () => {
+      result.current.chat.completeVerification('token-abc');
+      await sendPromise;
+    });
+
+    expect(result.current.chat.verificationModal).toEqual({ status: 'closed' });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock.mock.calls[0][1].body).toBe(
+      fetchMock.mock.calls[1][1].body,
+    );
+    expect(requestHeaders(fetchMock, 0)['X-Recaptcha-Token']).toBeUndefined();
+    expect(requestHeaders(fetchMock, 1)['X-Recaptcha-Token']).toBe('token-abc');
+    expect(result.current.turns[0]).toMatchObject({
+      status: 'done',
+      text: 'Answer (token-abc)',
+    });
+
+    // Turn 2 within 25-minute TTL reuses the cached token automatically.
+    nowMs += RECAPTCHA_ACTION_TOKEN_TTL_MS - 1_000;
+    await act(async () => {
+      await result.current.chat.send('Question 2');
+    });
+    expect(requestHeaders(fetchMock, 2)['X-Recaptcha-Token']).toBe('token-abc');
+
+    // Turn 3 after TTL elapses evicts the expired token and omits the header.
+    nowMs += 1_000;
+    await act(async () => {
+      await result.current.chat.send('Question 3');
+    });
+    expect(requestHeaders(fetchMock, 3)['X-Recaptcha-Token']).toBeUndefined();
+  });
+
+  it('evicts a cached token on HTTP 403 and settles with a retryable verification error when the retry also returns 403', async () => {
+    // Test: Stale token eviction and single-retry bound per turn.
+    // Situation: Turn 1 caches a token; turn 2 sends that cached token and gets
+    //   403 twice (initial attempt and post-verification retry with a cancelable
+    //   body).
+    // Expectation: The stale token is evicted, the modal opens once for turn 2,
+    //   and when the retry also returns 403, the rejected token is evicted, the
+    //   retry 403 body is canceled, and the turn settles with retryable
+    //   `VERIFICATION_FAILED_ERROR` rather than opening a second modal.
+    writeRuntimeConfig({
+      enable_chat: true,
+      recaptcha_checkbox_site_key: '6Lc_checkbox_test',
+    });
+    const cancelRetryBody = vi.fn().mockResolvedValue(undefined);
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(forbiddenResponse())
+      .mockImplementationOnce(async (_url: string, init: RequestInit) =>
+        okResponse('Turn 1 ok', parseRequest(init.body).idempotency_key),
+      )
+      .mockResolvedValueOnce(forbiddenResponse())
+      .mockResolvedValueOnce({
+        ok: false,
+        status: 403,
+        statusText: 'Forbidden',
+        body: { cancel: cancelRetryBody },
+      })
+      .mockImplementationOnce(async (_url: string, init: RequestInit) =>
+        okResponse('Turn 3 ok', parseRequest(init.body).idempotency_key),
+      );
+    vi.stubGlobal('fetch', fetchMock);
+    const { result } = renderHookWithState();
+
+    // Turn 1: 403 -> verify -> 200 (caches token-1).
+    let sendPromise!: Promise<void>;
+    await act(async () => {
+      sendPromise = result.current.chat.send('Turn 1');
+    });
+    await act(async () => {
+      result.current.chat.completeVerification('token-1');
+      await sendPromise;
+    });
+
+    // Turn 2: cached token-1 gets 403 -> verify -> token-2 also gets 403.
+    await act(async () => {
+      sendPromise = result.current.chat.send('Turn 2');
+    });
+    expect(requestHeaders(fetchMock, 2)['X-Recaptcha-Token']).toBe('token-1');
+    expect(result.current.chat.verificationModal).toEqual({
+      status: 'open',
+      checkboxSiteKey: '6Lc_checkbox_test',
+    });
+
+    await act(async () => {
+      result.current.chat.completeVerification('token-2');
+      await sendPromise;
+    });
+    expect(requestHeaders(fetchMock, 3)['X-Recaptcha-Token']).toBe('token-2');
+    expect(cancelRetryBody).toHaveBeenCalledTimes(1);
+    expect(result.current.chat.verificationModal).toEqual({ status: 'closed' });
+    expect(result.current.chat.error).toBe(VERIFICATION_FAILED_ERROR);
+    expect(result.current.turns[1]).toMatchObject({
+      status: 'error',
+      error: VERIFICATION_FAILED_ERROR,
+      isRetryable: true,
+    });
+
+    // Turn 3 must not send the evicted rejected token-2.
+    await act(async () => {
+      await result.current.chat.send('Turn 3');
+    });
+    expect(requestHeaders(fetchMock, 4)['X-Recaptcha-Token']).toBeUndefined();
+  });
+
+  it('settles the pending turn with VERIFICATION_CANCELED_ERROR on cancel while keeping prior signed turns', async () => {
+    // Test: User cancels the verification modal mid-conversation.
+    // Situation: Turn 1 completed with a valid signature; turn 2 hits HTTP 403
+    //   and the user clicks Cancel/Escape on the verification modal.
+    // Expectation: Modal closes, turn 2 settles with `VERIFICATION_CANCELED_ERROR`
+    //   (`isRetryable: true`), and turn 1 retains its signature intact.
+    writeRuntimeConfig({
+      enable_chat: true,
+      recaptcha_checkbox_site_key: '6Lc_checkbox_test',
+    });
+    const fetchMock = vi
+      .fn()
+      .mockImplementationOnce(async (_url: string, init: RequestInit) =>
+        okResponse('Signed answer', parseRequest(init.body).idempotency_key),
+      )
+      .mockResolvedValueOnce(forbiddenResponse());
+    vi.stubGlobal('fetch', fetchMock);
+    const { result } = renderHookWithState();
+
+    await act(async () => {
+      await result.current.chat.send('First question');
+    });
+    expect(result.current.turns[0].hmac).toBe(sig('a'));
+
+    let sendPromise!: Promise<void>;
+    await act(async () => {
+      sendPromise = result.current.chat.send('Second question');
+    });
+    expect(result.current.chat.verificationModal.status).toBe('open');
+
+    await act(async () => {
+      result.current.chat.cancelVerification();
+      await sendPromise;
+    });
+
+    expect(result.current.chat.verificationModal).toEqual({ status: 'closed' });
+    expect(result.current.chat.isStreaming).toBe(false);
+    expect(result.current.chat.error).toBe(VERIFICATION_CANCELED_ERROR);
+    expect(result.current.turns[0].hmac).toBe(sig('a'));
+    expect(result.current.turns[1]).toMatchObject({
+      userMessage: 'Second question',
+      status: 'error',
+      error: VERIFICATION_CANCELED_ERROR,
+      isRetryable: true,
+    });
+  });
+
+  it('closes the modal and resolves cleanly when stop() is called during verification', async () => {
+    // Test: Aborting a turn via `stop()` while awaiting checkbox verification.
+    // Situation: A chat POST hits HTTP 403 and opens `verificationModal`, then
+    //   `stop()` is called before the user responds.
+    // Expectation: The modal closes immediately, the pending `send()` promise
+    //   resolves without leaving an error banner, and the turn is marked stopped.
+    writeRuntimeConfig({
+      enable_chat: true,
+      recaptcha_checkbox_site_key: '6Lc_checkbox_test',
+    });
+    const fetchMock = vi.fn().mockResolvedValue(forbiddenResponse());
+    vi.stubGlobal('fetch', fetchMock);
+    const { result } = renderHookWithState();
+
+    let sendPromise!: Promise<void>;
+    await act(async () => {
+      sendPromise = result.current.chat.send('Pending question');
+    });
+    expect(result.current.chat.verificationModal.status).toBe('open');
+
+    await act(async () => {
+      result.current.chat.stop();
+      await sendPromise;
+    });
+
+    expect(result.current.chat.verificationModal).toEqual({ status: 'closed' });
+    expect(result.current.chat.isStreaming).toBe(false);
+    expect(result.current.chat.error).toBeNull();
+    expect(result.current.turns[0]).toMatchObject({
+      status: 'done',
+      stopped: true,
+    });
+  });
+
+  it('cancels the initial 403 response body, blocks double-submit while verifying, and settles cleanly on unmount', async () => {
+    // Test: Resource cleanup, re-entrancy guard, and unmount during 403 modal.
+    // Situation: A 403 response carries a cancelable body stream; while
+    //   `verificationModal` is open, a second `send()` is called and then the
+    //   hook unmounts.
+    // Expectation: `resp.body.cancel()` is invoked, the second `send()` is
+    //   ignored (no duplicate fetch or turn), and unmount resolves the
+    //   suspended `send()` promise cleanly.
+    writeRuntimeConfig({
+      enable_chat: true,
+      recaptcha_checkbox_site_key: '6Lc_checkbox_test',
+    });
+    const cancelBody = vi.fn().mockResolvedValue(undefined);
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: false,
+      status: 403,
+      statusText: 'Forbidden',
+      body: { cancel: cancelBody },
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    const { result, unmount } = renderHookWithState();
+
+    let firstSend!: Promise<void>;
+    await act(async () => {
+      firstSend = result.current.chat.send('First question');
+    });
+    expect(cancelBody).toHaveBeenCalledTimes(1);
+    expect(result.current.chat.verificationModal.status).toBe('open');
+
+    // Double-submit while modal is open must be ignored.
+    await act(async () => {
+      await result.current.chat.send('Duplicate question');
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(result.current.turns).toHaveLength(1);
+
+    unmount();
+    await expect(firstSend).resolves.toBeUndefined();
   });
 });

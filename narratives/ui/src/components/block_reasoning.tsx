@@ -37,6 +37,8 @@ import {
   REASONING_PLACEHOLDER_CLASSIFY,
   REASONING_PLACEHOLDER_DONE,
   REASONING_PLACEHOLDER_STREAMING,
+  REASONING_PLACEHOLDER_VERIFYING,
+  REASONING_VERIFYING_LABEL,
 } from '@/src/config/copy_chat';
 import { getInstanceConfig } from '@/src/config/instance_config';
 import {
@@ -156,6 +158,8 @@ interface ReasoningBlockProps {
   // with the rotating loader; once done we switch to "Reasoning" with
   // the sparkle icon.
   status?: TurnStatus;
+  // True while the turn is paused awaiting user reCAPTCHA verification.
+  isVerifying?: boolean;
   // Called as the closing button at the end of the body starts the collapse,
   // so the turn can bring its question back into view alongside it.
   onClose?: () => void;
@@ -177,11 +181,17 @@ const PREVIOUS_THOUGHT_MIN_SHARE = 0.5;
 const LAYOUT_SLACK_PX = 1;
 
 /**
- * Returns the header label for the turn status: the phase's label while
- * streaming, falling back to a generic one, and the done label afterwards.
+ * Returns the header label for the turn status: `Verifying…` while paused for
+ * reCAPTCHA verification, the phase's label while streaming (falling back to a
+ * generic one), and the done label afterwards.
  */
-function getPhaseLabel(streaming: boolean, status?: TurnStatus): string {
+function getPhaseLabel(
+  streaming: boolean,
+  status?: TurnStatus,
+  isVerifying = false,
+): string {
   if (!streaming) return REASONING_DONE_LABEL;
+  if (isVerifying) return REASONING_VERIFYING_LABEL;
   return (
     (status && REASONING_PHASE_LABELS[status]) ?? REASONING_DEFAULT_PHASE_LABEL
   );
@@ -232,8 +242,10 @@ function placeholderText(
   streaming: boolean,
   done: boolean,
   status?: TurnStatus,
+  isVerifying = false,
 ): string {
   if (streaming) {
+    if (isVerifying) return REASONING_PLACEHOLDER_VERIFYING;
     return status === 'classify'
       ? REASONING_PLACEHOLDER_CLASSIFY
       : REASONING_PLACEHOLDER_STREAMING;
@@ -248,13 +260,15 @@ export function ReasoningBlock({
   streaming = false,
   done = false,
   status,
+  isVerifying = false,
   onClose,
   answerCardRef,
 }: ReasoningBlockProps) {
   const [open, setOpen] = useState(defaultOpen);
   // While streaming, the header also names the section the model is on.
-  const heading = streaming ? getLatestHeading(thoughts, status) : undefined;
-  const phaseLabel = getPhaseLabel(streaming, status);
+  const heading =
+    streaming && !isVerifying ? getLatestHeading(thoughts, status) : undefined;
+  const phaseLabel = getPhaseLabel(streaming, status, isVerifying);
 
   // While the turn streams with the reasoning open, keep the latest thought
   // and the skeleton in view: whenever the block or card resizes, scroll by
@@ -355,7 +369,7 @@ export function ReasoningBlock({
 
   // The thoughts render back to back as one continuous block, not grouped
   // per phase; the placeholder stands in only when there are none.
-  const placeholder = placeholderText(streaming, done, status);
+  const placeholder = placeholderText(streaming, done, status, isVerifying);
 
   // If we have nothing at all (e.g. error before stream started),
   // skip rendering entirely.
