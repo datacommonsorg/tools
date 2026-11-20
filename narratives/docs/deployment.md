@@ -533,6 +533,38 @@ copies the element from the agent at `AGENT_URL`, so set `ENABLE_CHAT` and
   An `ENABLE_CHAT` value that the deployment always sets, such as `true`, takes
   precedence over `chat.enabled` in `agent-config.json`.
 
+### Daily Gemini token budget (optional)
+
+Set `DAILY_TOKEN_BUDGET_PER_INSTANCE` to a positive integer to cap the total
+Gemini tokens (`total_token_count`, including prompt, output, and thinking
+tokens) that each agent instance may spend per UTC calendar day. When the
+variable is unset or blank, budget enforcement is disabled. A zero, negative,
+or non-integer value fails startup validation so a misconfigured deployment
+does not start unguarded.
+
+Once an instance reaches or exceeds its daily limit, `POST /agent/chat/stream`
+immediately ends new turns with a non-retryable terminal error frame
+(`reason: "daily_token_budget_exhausted"`, `is_retryable: false`) carrying the
+effective `chat.unavailable_message` (or `UNAVAILABLE_MESSAGE`), before calling
+Gemini or MCP. Turns already in flight finish and record their token totals in
+`finally`. Counters reset automatically when the UTC date advances.
+
+- **Sizing across replicas:** Counters live in process memory (one Uvicorn
+  worker per container). For multi-replica GKE deployments, set the per-instance
+  cap to `global daily cap / replicas`; on Cloud Run, account for
+  `max_instances`. Pod restarts, rollouts, or changing the variable via
+  `kubectl set env` reset each restarted instance's counter to zero for the
+  current UTC day. For an immediate stop across all pods, use
+  `ENABLE_CHAT=false`.
+- **Model and thinking-level changes:** Because the budget counts tokens rather
+  than dollars, re-size `DAILY_TOKEN_BUDGET_PER_INSTANCE` (and any project-level
+  Vertex AI alert threshold) whenever changing Gemini models or raising thinking
+  levels in `agent-config.json`.
+- **Threshold telemetry:** Each instance emits at most one structured
+  `daily_token_budget` JSON record to stdout at 80% usage (`state: "warning"`,
+  severity `WARNING`) and one at 100% (`state: "exhausted"`, severity `ERROR`)
+  per UTC day, suitable for Cloud Logging alerts.
+
 ### Screening prompts with Google Cloud Model Armor (optional)
 
 By default, Narratives screens incoming queries with its built-in regex
@@ -735,6 +767,9 @@ The turn span carries the same fields as `narratives.scripts`,
 `narratives.processing_retries`, `narratives.charts_emitted`,
 `narratives.charts_rejected`, and `narratives.title_outcome`. On a `refused`
 turn, `error_type` holds the refusal reason (`adversarial`, `off_domain`,
-`safety_blocked`, or `chat_disabled`) and `pattern` is omitted; if the
-classifier call itself fails, the turn falls through with `pattern` set to
-`exploratory`.
+`safety_blocked`, `chat_disabled`, or `daily_token_budget_exhausted`) and
+`pattern` is omitted; if the classifier call itself fails, the turn falls
+through with `pattern` set to `exploratory`. When
+`DAILY_TOKEN_BUDGET_PER_INSTANCE` is configured, each instance also writes
+content-free `daily_token_budget` JSON records (`state: "warning"` at 80% and
+`state: "exhausted"` at 100%, once each per UTC day).

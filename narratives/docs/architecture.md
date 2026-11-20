@@ -167,7 +167,11 @@ Each `POST /agent/chat/stream` request first checks whether chat is enabled
 `ENABLE_CHAT` when set); when chat is disabled, the turn aborts immediately
 with a single `terminal` error frame (`reason: "chat_disabled"`,
 `is_retryable: false`) carrying `chat.unavailable_message` (overridden by
-`UNAVAILABLE_MESSAGE` when set) before making any Gemini or MCP calls.
+`UNAVAILABLE_MESSAGE` when set) before making any Gemini or MCP calls. When
+`DAILY_TOKEN_BUDGET_PER_INSTANCE` is set and the instance has reached its UTC
+daily Gemini token cap (`token_budget.py`), the turn likewise aborts before any
+model or MCP call with `reason: "daily_token_budget_exhausted"`,
+`is_retryable: false`, and the same unavailable message.
 Otherwise, the request runs through the agent loop in five steps:
 
 1. **Query classification (`classify`):** Before any tool is called, a

@@ -48,8 +48,8 @@ process and PR expectations: [`CONTRIBUTING.md`](../CONTRIBUTING.md).
     `mypy`, `pytest`).
   - `src/narratives_agent/` — installable Python package (`config.py`,
     `config_model.py`, `gcp_auth.py`, `json_value.py`, `model_armor.py`,
-    `secret_manager.py`, `telemetry.py`, `server/`, `workflows/`, `mcp/`,
-    `gemini/`, `analytics/`).
+    `secret_manager.py`, `telemetry.py`, `token_budget.py`, `server/`,
+    `workflows/`, `mcp/`, `gemini/`, `analytics/`).
     - `server/app.py` — the FastAPI application
       (`uvicorn narratives_agent.server.app:app` in production).
     - `server/security_headers.py`: the ASGI middleware that adds the HTTP
@@ -129,6 +129,9 @@ process and PR expectations: [`CONTRIBUTING.md`](../CONTRIBUTING.md).
     - `secret_manager.py`: reads secrets from Google Cloud Secret Manager,
       caches results, and provides test resets.
     - `settings.py` — every environment variable the agent reads (`Settings`).
+    - `token_budget.py`: optional in-memory per-instance daily Gemini token
+      budget (`DAILY_TOKEN_BUDGET_PER_INSTANCE`), resetting at UTC midnight and
+      emitting once-per-day warning/exhausted telemetry events.
 - `defaults/` — baseline `theme.json`, `agent-config.json`, and `prompts/`.
 - `config/` — instance-specific overrides layered over `defaults/` at deploy
   time.

@@ -21,6 +21,7 @@ from narratives_agent.gcp_auth import reset_adc_credentials, reset_dc_api_key
 from narratives_agent.model_armor import reset_model_armor_client
 from narratives_agent.secret_manager import reset_secret_manager_client
 from narratives_agent.settings import (
+    DAILY_TOKEN_BUDGET_PER_INSTANCE_ENV,
     DC_API_KEY_ENV,
     DC_API_KEY_SECRET_ENV,
     DC_WEB_COMPONENT_API_ROOT_ENV,
@@ -35,6 +36,7 @@ from narratives_agent.settings import (
     UNAVAILABLE_MESSAGE_ENV,
     get_settings,
 )
+from narratives_agent.token_budget import reset_daily_token_budget
 from narratives_agent.workflows.transcript import reset_signing_key
 
 
@@ -48,6 +50,7 @@ def clear_settings_cache(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
     variables it sets itself.
     """
     for var in (
+        DAILY_TOKEN_BUDGET_PER_INSTANCE_ENV,
         DC_API_KEY_ENV,
         DC_API_KEY_SECRET_ENV,
         DC_WEB_COMPONENT_API_ROOT_ENV,
@@ -70,6 +73,7 @@ def clear_settings_cache(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
     reset_adc_credentials()
     reset_model_armor_client()
     reset_secret_manager_client()
+    reset_daily_token_budget()
     yield
     get_settings.cache_clear()
     reset_signing_key()
@@ -77,3 +81,4 @@ def clear_settings_cache(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
     reset_adc_credentials()
     reset_model_armor_client()
     reset_secret_manager_client()
+    reset_daily_token_budget()
