@@ -20,6 +20,7 @@
  * explicit widget rendering.
  */
 
+import { getRuntimeConfig } from '@/src/config/runtime_config';
 import type { GrecaptchaEnterprise } from '@/src/types/grecaptcha';
 
 const RECAPTCHA_ENTERPRISE_SCRIPT_URL =
@@ -39,8 +40,8 @@ const getEnterpriseClient = (): GrecaptchaEnterprise | null => {
     : null;
 };
 
-const buildRecaptchaScriptUrl = (sessionSiteKey?: string): string => {
-  const trimmedKey = sessionSiteKey?.trim() ?? '';
+const buildRecaptchaScriptUrl = (sessionSiteKey: string): string => {
+  const trimmedKey = sessionSiteKey.trim();
   if (trimmedKey !== '') {
     return `${RECAPTCHA_ENTERPRISE_SCRIPT_URL}?render=${encodeURIComponent(trimmedKey)}&waf=session`;
   }
@@ -131,9 +132,12 @@ const clearCachedLoad = (
  * Loads `https://www.google.com/recaptcha/enterprise.js` at most once and
  * resolves with `window.grecaptcha.enterprise` after `ready(...)` fires.
  *
- * When `sessionSiteKey` is non-empty after trimming, loads the SDK with
+ * When `sessionSiteKey` is omitted or blank, falls back to
+ * `getRuntimeConfig().recaptchaSessionSiteKey` so every caller resolves the
+ * configured script mode consistently, including when retrying after an
+ * earlier load failure. When the resolved key is non-empty, loads
  * `?render=<key>&waf=session` so the browser mints and refreshes the
- * `recaptcha-ca-t` session cookie. Otherwise loads `?render=explicit` for
+ * `recaptcha-ca-t` session cookie; otherwise loads `?render=explicit` for
  * on-demand widget rendering. The first in-flight or resolved call selects the
  * script mode; subsequent calls reuse its cached promise.
  *
@@ -159,7 +163,9 @@ export const ensureRecaptchaScript = (
   if (existingEnterprise !== null) {
     rawLoad = waitForEnterpriseReady(existingEnterprise);
   } else {
-    const scriptUrl = buildRecaptchaScriptUrl(sessionSiteKey);
+    const resolvedSessionSiteKey =
+      sessionSiteKey?.trim() || getRuntimeConfig().recaptchaSessionSiteKey;
+    const scriptUrl = buildRecaptchaScriptUrl(resolvedSessionSiteKey);
     script = document.createElement('script');
     script.src = scriptUrl;
     script.async = true;

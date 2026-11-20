@@ -15,9 +15,9 @@
  */
 
 /**
- * @fileoverview Tests that moving between the app's tabs drops the chat and
- * returns the scroll container to its top, and that the Data Agent route
- * renders the unavailable view while chat is disabled.
+ * @fileoverview Tests root App behavior: tab resets and scroll restoration,
+ * the unavailable view while chat is disabled, and route- and chat-gated
+ * reCAPTCHA session bootstrap.
  */
 
 import {
@@ -275,12 +275,41 @@ describe('App reCAPTCHA session bootstrap', () => {
     expect(spy).not.toHaveBeenCalled();
   });
 
-  it('loads the reCAPTCHA session script on mount and swallows load errors cleanly', async () => {
-    // Test: Mount bootstrap and error suppression for reCAPTCHA session mode.
+  it('skips reCAPTCHA bootstrap on #/metrics and loads once navigating to the Data Agent view', () => {
+    // Test: Route-gated reCAPTCHA bootstrap on Key Metrics vs Data Agent.
+    // Situation: `#runtime-config` sets `recaptcha_session_site_key` with chat
+    //   enabled, and the user lands directly on `#/metrics` before navigating
+    //   to `#/agent`.
+    // Expectation: `ensureRecaptchaScript` is not called on `#/metrics` and is
+    //   invoked once with no arguments after switching to `#/agent`.
+    const spy = vi
+      .spyOn(recaptchaLoader, 'ensureRecaptchaScript')
+      .mockResolvedValue({
+        ready: vi.fn(),
+        render: vi.fn(() => 0),
+        reset: vi.fn(),
+      });
+    writeRuntimeConfigSlot({
+      enable_chat: true,
+      recaptcha_session_site_key: '6Lc_metrics_gate',
+    });
+    window.location.hash = '#/metrics';
+
+    render(<App />);
+    expect(spy).not.toHaveBeenCalled();
+
+    goTo('#/agent');
+    expect(spy).toHaveBeenCalledTimes(1);
+    expect(spy).toHaveBeenCalledWith();
+  });
+
+  it('loads the reCAPTCHA session script on the Data Agent view and swallows load errors cleanly', async () => {
+    // Test: Data Agent reCAPTCHA session bootstrap and error suppression.
     // Situation: `#runtime-config` sets `recaptcha_session_site_key`, and
     //   `ensureRecaptchaScript` rejects because a browser extension blocked it.
-    // Expectation: `ensureRecaptchaScript` is called with the configured
-    //   session site key and no unhandled promise rejection escapes.
+    // Expectation: `ensureRecaptchaScript` is called with no arguments
+    //   (reading the configured session key from runtime config) and no
+    //   unhandled promise rejection escapes.
     const spy = vi
       .spyOn(recaptchaLoader, 'ensureRecaptchaScript')
       .mockRejectedValue(new Error('Blocked by extension'));
@@ -293,7 +322,8 @@ describe('App reCAPTCHA session bootstrap', () => {
 
     try {
       render(<App />);
-      expect(spy).toHaveBeenCalledWith('6Lc_session_boot');
+      expect(spy).toHaveBeenCalledTimes(1);
+      expect(spy).toHaveBeenCalledWith();
       await act(async () => {
         await new Promise<void>((resolve) => {
           setTimeout(resolve, 0);

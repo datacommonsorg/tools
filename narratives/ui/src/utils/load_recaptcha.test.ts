@@ -19,6 +19,7 @@
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import * as runtimeConfig from '@/src/config/runtime_config';
 import type { GrecaptchaEnterprise } from '@/src/types/grecaptcha';
 import {
   ensureRecaptchaScript,
@@ -35,6 +36,18 @@ const createMockEnterprise = (
   render: vi.fn(() => 0),
   reset: vi.fn(),
 });
+
+const writeRuntimeConfigSlot = (payload: Record<string, unknown>): void => {
+  document.getElementById('runtime-config')?.remove();
+  const slot = document.createElement('script');
+  slot.id = 'runtime-config';
+  slot.type = 'application/json';
+  slot.textContent = JSON.stringify(payload);
+  // Mount under `document.body` so the `document.head.appendChild` spy only
+  // intercepts scripts injected by `ensureRecaptchaScript`.
+  document.body.appendChild(slot);
+  runtimeConfig.resetRuntimeConfigForTests();
+};
 
 const appendedScripts: HTMLScriptElement[] = [];
 
@@ -63,8 +76,10 @@ beforeEach(() => {
 afterEach(() => {
   vi.useRealTimers();
   resetRecaptchaLoaderForTests();
+  runtimeConfig.resetRuntimeConfigForTests();
   appendedScripts.length = 0;
   document.head.innerHTML = '';
+  document.getElementById('runtime-config')?.remove();
   delete window.grecaptcha;
   vi.restoreAllMocks();
 });
@@ -94,9 +109,89 @@ describe('ensureRecaptchaScript', () => {
     ['omitted', undefined],
     ['empty', ''],
     ['whitespace-only', '   \t\n '],
+  ])('falls back to runtime config when sessionSiteKey is %s', async (_, key) => {
+    // Test: Fallback to `#runtime-config` on omitted or blank input.
+    // Situation: `#runtime-config` sets `recaptcha_session_site_key` and
+    //   `ensureRecaptchaScript` receives `undefined`, `""`, or whitespace.
+    // Expectation: Appends `?render=<key>&waf=session` and resolves.
+    writeRuntimeConfigSlot({
+      recaptcha_session_site_key: '6Lc_from_runtime',
+    });
+    const enterprise = createMockEnterprise();
+    const pending = ensureRecaptchaScript(key);
+
+    expect(appendedScripts).toHaveLength(1);
+    expect(appendedScripts[0].src).toBe(
+      'https://www.google.com/recaptcha/enterprise.js?render=6Lc_from_runtime&waf=session',
+    );
+
+    window.grecaptcha = { enterprise };
+    appendedScripts[0].dispatchEvent(new Event('load'));
+
+    await expect(pending).resolves.toBe(enterprise);
+  });
+
+  it('keeps WAF session mode when retrying without arguments after an initial script error', async () => {
+    // Test: Retry mode consistency after a transient script load error.
+    // Situation: `#runtime-config` sets `recaptcha_session_site_key`; the first
+    //   call fails with `error`, then a second caller retries with no arguments.
+    // Expectation: The retry still loads `?render=<key>&waf=session` rather
+    //   than falling back to `?render=explicit`.
+    writeRuntimeConfigSlot({
+      recaptcha_session_site_key: '6Lc_retry_session',
+    });
+    const firstAttempt = ensureRecaptchaScript('6Lc_retry_session');
+    const [failedScript] = appendedScripts;
+    failedScript.dispatchEvent(new Event('error'));
+
+    await expect(firstAttempt).rejects.toThrow(
+      /Failed to load reCAPTCHA Enterprise SDK/,
+    );
+    expect(appendedScripts).toHaveLength(0);
+
+    const enterprise = createMockEnterprise();
+    const retryAttempt = ensureRecaptchaScript();
+    expect(appendedScripts).toHaveLength(1);
+    const [retryScript] = appendedScripts;
+    expect(retryScript.src).toBe(
+      'https://www.google.com/recaptcha/enterprise.js?render=6Lc_retry_session&waf=session',
+    );
+
+    window.grecaptcha = { enterprise };
+    retryScript.dispatchEvent(new Event('load'));
+
+    await expect(retryAttempt).resolves.toBe(enterprise);
+  });
+
+  it('does not read runtime config for cached or pre-existing SDK calls', async () => {
+    // Test: Lazy runtime-config lookup on no-op loader paths.
+    // Situation: Callers invoke `ensureRecaptchaScript()` when a load is
+    //   already cached and when `window.grecaptcha.enterprise` already exists.
+    // Expectation: `getRuntimeConfig` is not called on either path.
+    const configSpy = vi.spyOn(runtimeConfig, 'getRuntimeConfig');
+    const enterprise = createMockEnterprise();
+
+    const first = ensureRecaptchaScript('6Lc_cached');
+    expect(ensureRecaptchaScript()).toBe(first);
+    window.grecaptcha = { enterprise };
+    appendedScripts[0].dispatchEvent(new Event('load'));
+    await expect(first).resolves.toBe(enterprise);
+    expect(ensureRecaptchaScript()).toBe(first);
+
+    resetRecaptchaLoaderForTests();
+    await expect(ensureRecaptchaScript()).resolves.toBe(enterprise);
+
+    expect(configSpy).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['omitted', undefined],
+    ['empty', ''],
+    ['whitespace-only', '   \t\n '],
   ])('loads the explicit render URL when the session site key is %s', async (_, key) => {
     // Test: Explicit fallback URL without a session site key.
-    // Situation: Called with `undefined`, `""`, or whitespace-only input.
+    // Situation: No runtime session key is configured and input is `undefined`,
+    //   `""`, or whitespace-only.
     // Expectation: Uses `?render=explicit` (no `waf=session`) and resolves.
     const enterprise = createMockEnterprise();
     const pending = ensureRecaptchaScript(key);
