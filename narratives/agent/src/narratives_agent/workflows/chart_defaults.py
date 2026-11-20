@@ -763,6 +763,26 @@ def _resolve_candidate_charts(
     return ()
 
 
+def _is_cohort_relation(result: ScriptResult, context: _FloorContext) -> bool:
+    """Returns whether a result relates two measures across a cohort.
+
+    True for a `relate_cohorts` result any of whose input tables was
+    fetched across a cohort of child places, such as every US state.
+    """
+    analysis = context.analysis
+    if analysis is None or not isinstance(result.metrics, RelationMetrics):
+        return False
+    step = analysis.find_step(result.step_id)
+    if step is None:
+        return False
+    for _, reference in list_step_inputs(step):
+        for table_id in list_reference_table_ids(analysis, reference, step):
+            entry = context.cache.get(table_id)
+            if entry is not None and get_chart_cohort(entry.table) is not None:
+                return True
+    return False
+
+
 def build_default_charts(
     digest: AnalysisDigest,
     analysis: AnalysisSpecification | None,
@@ -780,6 +800,14 @@ def build_default_charts(
     `contracts/synthesis.md` asks; distributions, standalone derivations,
     non-cohort relations, and relations over a date window produce none.
 
+    When the digest relates two measures across a cohort, the answer is
+    about the two together ("Relationships between two measures" in
+    `contracts/synthesis.md`), so the floor is that relation's scatter or
+    nothing. A supporting step's chart, such as a ranking of one of the
+    measures, would show places the answer's group tables do not, as when
+    a poverty rate computed as a percentage cannot be charted and the
+    floor would otherwise rank diabetes alone.
+
     Args:
         digest: Analysis digest for the turn.
         analysis: Specification that produced the digest; None when the
@@ -792,9 +820,16 @@ def build_default_charts(
     """
     context = _FloorContext(cache, digest, analysis)
     ok_results = [result for result in digest.results if result.status == "ok"]
-    for candidate in _order_default_candidates(ok_results):
+    relations = [
+        result for result in ok_results if _is_cohort_relation(result, context)
+    ]
+    candidates = relations or _order_default_candidates(ok_results)
+    for candidate in candidates:
         charts = _resolve_candidate_charts(candidate, context)
         if charts:
             return charts
-    logger.info("No default chart: no result yielded a valid default chart")
+    if relations:
+        logger.info("No default chart: the relation's scatter cannot be drawn")
+    else:
+        logger.info("No default chart: no result yielded a valid default chart")
     return ()

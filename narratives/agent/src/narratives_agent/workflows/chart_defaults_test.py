@@ -1204,13 +1204,17 @@ def test_a_relation_supplies_the_floor_ahead_of_an_earlier_ranking() -> None:
     assert chart["title"] == "Diabetes, Income"
 
 
-def test_a_mixed_per_capita_relation_falls_back_to_its_ranking() -> None:
-    # Test: Fallback when a `relate_cohorts` scatter mixes per-capita and
+def test_a_mixed_per_capita_relation_gets_no_default_chart() -> None:
+    # Test: The floor when a `relate_cohorts` scatter mixes per-capita and
     #   raw tables.
     # Situation: `s1` derives crimes per person, `s2` ranks `s1`, and `s3`
     #   relates `s1` to raw income `t3` across states.
-    # Expectation: Because a single scatter cannot mix per-capita and raw
-    #   variables, `s3` is rejected and `s2` supplies the per-capita ranking.
+    # Expectation: A single scatter cannot mix per-capita and raw
+    #   variables, so `s3` yields no chart, and the floor adds none rather
+    #   than the per-capita ranking from `s2`. The answer is about the two
+    #   measures together, and a ranking of one of them would show places
+    #   its group tables do not. (Until this change, `s2` supplied the
+    #   ranking, as introduced in #574.)
     cache, per_capita, derived_result = _make_per_capita_case(is_cohort=True)
     income = _make_cohort("t3", variable_dcid="Median_Income", name="Income")
     cache.store_fetched(income)
@@ -1233,12 +1237,7 @@ def test_a_mixed_per_capita_relation_falls_back_to_its_ranking() -> None:
     )
     digest = _make_digest(derived_result, ranked, related)
 
-    chart = _resolve_default_wire(digest, analysis, cache)
-
-    assert chart is not None
-    assert chart["viz_type"] == "ranking"
-    assert chart["title"] == "Crimes per person"
-    assert chart["per_capita"] is True
+    assert build_default_charts(digest, analysis, cache) == ()
 
 
 def test_a_staggered_single_point_series_charts_as_a_latest_bar() -> None:

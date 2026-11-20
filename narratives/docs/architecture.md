@@ -263,7 +263,11 @@ Otherwise, the request runs through the agent loop in five steps:
    leave a charted table without a place holding two dates, or a kind the
    table shape cannot support (a map without a cohort, a scatter without two
    variables) rejects the chart, which is dropped and counted while the prose
-   stands.
+   stands. When the digest relates a scatter's two variables
+   (`relate_cohorts`), the resolver orders them from the relation, the
+   compared `target` first and the grouping `by` second, so the component
+   draws the grouping variable on the horizontal axis whatever order the
+   model listed the tables in.
    The date bounds are checked with the comparison `<datacommons-line>`
    applies, so a `start_date` of `2005-06` excludes an annual `2005`. Each
    resolved chart carries `facet_ids` mapping its variables to the facets that
@@ -294,7 +298,10 @@ Otherwise, the request runs through the agent loop in five steps:
    which is considered first, or the direct chart of `analyze_timeseries`,
    `rank_cohort`, or `compute_composition`; distributions, standalone
    derivations, non-cohort relations, and relations over a window cohort receive
-   none); its block carries `standalone: true`, so the app shows it full width
+   none). When the digest holds a cohort `relate_cohorts` result, the floor is
+   that relation's scatter or nothing: it never falls back to a chart of one of
+   the two measures, which would show places the answer's group tables do not.
+   The default chart's block carries `standalone: true`, so the app shows it full width
    rather than beside the text before it. A ranking of a cohort, or any ranking
    over a window cohort, is charted as a `line` of its first five places, with
    the parent place when a step analyzed the parent's series, the parent's table
