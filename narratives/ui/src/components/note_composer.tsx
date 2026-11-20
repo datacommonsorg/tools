@@ -38,7 +38,7 @@ const POLICY_CONJUNCTION_TEXT = 'and';
 const POLICY_SUFFIX_TEXT = 'apply.';
 
 /** reCAPTCHA notice that ends the note. */
-const RECAPTCHA_NOTICE_TEXT = 'This site is protected by reCAPTCHA.';
+export const RECAPTCHA_NOTICE_TEXT = 'This site is protected by reCAPTCHA.';
 
 /** Google policies linked from the composer note. */
 export const POLICY_LINKS = {
