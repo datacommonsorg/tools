@@ -33,14 +33,17 @@ styles.
   Base Data Commons defaults when the tag is empty.
 - **Runtime settings come from `#runtime-config`** in `index.html`.
   Components read the chat availability (`isChatEnabled`,
-  `unavailableMessage`) and the chart hosts (`webComponentUrl`,
-  `webComponentApiRoot`) synchronously via `getRuntimeConfig()` in
-  `src/config/runtime_config.ts`, which defaults chat to enabled and chart
-  hosts to `""` when the tag is empty, disables chat when its JSON is
-  malformed, and resolves a missing or invalid chart host to `""` without
-  affecting chat. Under `pnpm dev:ui`, the Vite dev server copies the element
-  from the agent at `AGENT_URL`, so the agent is the only source of the
-  values.
+  `unavailableMessage`), chart hosts (`webComponentUrl`,
+  `webComponentApiRoot`), and optional reCAPTCHA Enterprise site keys
+  (`recaptchaSessionSiteKey`, `recaptchaCheckboxSiteKey`) synchronously via
+  `getRuntimeConfig()` in `src/config/runtime_config.ts`, which defaults chat
+  to enabled and optional hosts and site keys to `""` when the tag is empty,
+  disables chat when its JSON is malformed, and resolves missing or invalid
+  hosts or site keys to `""` without affecting chat. Under `pnpm dev:ui`, the
+  Vite dev server copies the element from the agent at `AGENT_URL`; agent
+  values take precedence, and `RECAPTCHA_SESSION_SITE_KEY` /
+  `RECAPTCHA_CHECKBOX_SITE_KEY` from `narratives/.env.local` act as a dev-only
+  fallback when the agent omits them or cannot be reached.
 - **Variants and state are expressed as conditional utility classes**, the
   Tailwind idiom — not `data-*` attributes, which belong to a stylesheet-driven
   stack. Lift any condition more complex than a single ternary out of the JSX

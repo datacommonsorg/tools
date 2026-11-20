@@ -22,13 +22,14 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { build, type Rollup } from 'vite';
-import { afterEach, describe, expect, it } from 'vitest';
+import { build, type Plugin, type Rollup } from 'vite';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import viteConfig from '@/vite.config';
 
 const tempDirs: string[] = [];
 
 afterEach(() => {
+  vi.unstubAllEnvs();
   for (const dir of tempDirs.splice(0)) {
     fs.rmSync(dir, { recursive: true, force: true });
   }
@@ -41,6 +42,49 @@ describe('vite.config', () => {
     // Expectation: `base` is `"/"` so `/agent` dev-proxy routes stay at root.
     const config = viteConfig({ command: 'serve', mode: 'development' });
     expect(config.base).toBe('/');
+  });
+
+  it('passes dev reCAPTCHA env keys to the serve-only narratives-runtime-config plugin', async () => {
+    // Test: Dev-only `#runtime-config` reCAPTCHA fallback wiring in `vite.config.ts`.
+    // Situation: `RECAPTCHA_SESSION_SITE_KEY` and `RECAPTCHA_CHECKBOX_SITE_KEY`
+    //            are set in the environment and the local Python agent is
+    //            unreachable during `pnpm dev:ui`.
+    // Expectation: `narratives-runtime-config` has `apply: "serve"` and injects
+    //              both fallback keys into `#runtime-config`.
+    const warn = vi.spyOn(console, 'warn').mockReturnValue(undefined);
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('offline')));
+    vi.stubEnv('RECAPTCHA_SESSION_SITE_KEY', '6Lc_dev_session');
+    vi.stubEnv('RECAPTCHA_CHECKBOX_SITE_KEY', '6Lc_dev_checkbox');
+    try {
+      const config = viteConfig({ command: 'serve', mode: 'development' });
+      const plugin = (config.plugins ?? [])
+        .flat()
+        .find(
+          (candidate): candidate is Plugin =>
+            candidate !== null &&
+            typeof candidate === 'object' &&
+            'name' in candidate &&
+            candidate.name === 'narratives-runtime-config',
+        );
+      expect(plugin?.apply).toBe('serve');
+      const transform =
+        typeof plugin?.transformIndexHtml === 'function'
+          ? plugin.transformIndexHtml
+          : undefined;
+      expect(transform).toBeTypeOf('function');
+      const html = await transform?.(
+        '<script id="runtime-config" type="application/json"></script>',
+        { path: '/index.html', filename: '/index.html' },
+      );
+      expect(html).toContain('"recaptcha_session_site_key":"6Lc_dev_session"');
+      expect(html).toContain(
+        '"recaptcha_checkbox_site_key":"6Lc_dev_checkbox"',
+      );
+      expect(warn).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.unstubAllGlobals();
+      vi.restoreAllMocks();
+    }
   });
 
   it('emits relative ./assets/ and public asset paths in production index.html', async () => {

@@ -27,6 +27,7 @@ import {
   render,
   screen,
 } from '@testing-library/react';
+import { useReducedMotion } from 'motion/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { App } from '@/src/app';
 import {
@@ -34,6 +35,12 @@ import {
   resetInstanceConfigForTests,
 } from '@/src/config/instance_config';
 import { resetRuntimeConfigForTests } from '@/src/config/runtime_config';
+import * as recaptchaLoader from '@/src/utils/load_recaptcha';
+
+vi.mock('motion/react', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('motion/react')>()),
+  useReducedMotion: vi.fn(),
+}));
 
 /** The landing prompt's accessible name. */
 const LANDING_PROMPT = 'Ask a question to explore relevant statistical data';
@@ -74,15 +81,18 @@ const writeChatDisabledSlot = (): void => {
 
 beforeEach(() => {
   window.location.hash = '';
+  vi.mocked(useReducedMotion).mockReturnValue(true);
   vi.stubGlobal('ResizeObserver', NoopResizeObserver);
 });
 
 afterEach(() => {
   cleanup();
+  vi.restoreAllMocks();
   vi.unstubAllGlobals();
   window.location.hash = '';
   document.getElementById('runtime-config')?.remove();
   document.getElementById('instance-config')?.remove();
+  recaptchaLoader.resetRecaptchaLoaderForTests();
   resetRuntimeConfigForTests();
   resetInstanceConfigForTests();
 });
@@ -219,5 +229,79 @@ describe('App with chat disabled', () => {
     goTo('#/agent');
     expect(screen.getByRole('note').textContent).toBe(UNAVAILABLE_MESSAGE);
     expect(mainScrollTo).toHaveBeenCalledWith(0, 0);
+  });
+});
+
+describe('App reCAPTCHA session bootstrap', () => {
+  const writeRuntimeConfigSlot = (payload: Record<string, unknown>): void => {
+    document.getElementById('runtime-config')?.remove();
+    const slot = document.createElement('script');
+    slot.id = 'runtime-config';
+    slot.type = 'application/json';
+    slot.textContent = JSON.stringify(payload);
+    document.head.appendChild(slot);
+    resetRuntimeConfigForTests();
+  };
+
+  it('does not load the reCAPTCHA script when recaptchaSessionSiteKey is empty', () => {
+    // Test: Mount behavior without a configured reCAPTCHA session site key.
+    // Situation: `#runtime-config` sets only a checkbox key.
+    // Expectation: `ensureRecaptchaScript` is never invoked on mount.
+    const spy = vi.spyOn(recaptchaLoader, 'ensureRecaptchaScript');
+    writeRuntimeConfigSlot({
+      enable_chat: true,
+      recaptcha_checkbox_site_key: '6Lc_checkbox_only',
+    });
+
+    render(<App />);
+
+    expect(spy).not.toHaveBeenCalled();
+  });
+
+  it('does not load the reCAPTCHA script when chat is disabled', () => {
+    // Test: Mount behavior while the chat off-switch is active.
+    // Situation: `#runtime-config` sets `enable_chat: false` alongside a
+    //   configured `recaptcha_session_site_key`.
+    // Expectation: `ensureRecaptchaScript` is never invoked while chat is
+    //   disabled.
+    const spy = vi.spyOn(recaptchaLoader, 'ensureRecaptchaScript');
+    writeRuntimeConfigSlot({
+      enable_chat: false,
+      recaptcha_session_site_key: '6Lc_disabled_chat',
+    });
+
+    render(<App />);
+
+    expect(spy).not.toHaveBeenCalled();
+  });
+
+  it('loads the reCAPTCHA session script on mount and swallows load errors cleanly', async () => {
+    // Test: Mount bootstrap and error suppression for reCAPTCHA session mode.
+    // Situation: `#runtime-config` sets `recaptcha_session_site_key`, and
+    //   `ensureRecaptchaScript` rejects because a browser extension blocked it.
+    // Expectation: `ensureRecaptchaScript` is called with the configured
+    //   session site key and no unhandled promise rejection escapes.
+    const spy = vi
+      .spyOn(recaptchaLoader, 'ensureRecaptchaScript')
+      .mockRejectedValue(new Error('Blocked by extension'));
+    const unhandled = vi.fn();
+    process.on('unhandledRejection', unhandled);
+    writeRuntimeConfigSlot({
+      enable_chat: true,
+      recaptcha_session_site_key: '6Lc_session_boot',
+    });
+
+    try {
+      render(<App />);
+      expect(spy).toHaveBeenCalledWith('6Lc_session_boot');
+      await act(async () => {
+        await new Promise<void>((resolve) => {
+          setTimeout(resolve, 0);
+        });
+      });
+      expect(unhandled).not.toHaveBeenCalled();
+    } finally {
+      process.off('unhandledRejection', unhandled);
+    }
   });
 });
