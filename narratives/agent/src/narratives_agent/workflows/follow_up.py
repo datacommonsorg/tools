@@ -15,6 +15,7 @@
 
 """Generates follow-up questions suggested after a completed answer."""
 
+import asyncio
 import json
 import logging
 import re
@@ -34,6 +35,12 @@ logger = logging.getLogger(__name__)
 
 # Max number of follow-up questions returned to the UI.
 MAX_FOLLOW_UP_QUESTIONS = 3
+# `FOLLOW_UP_TIMEOUT_SECONDS` is the upper bound in seconds for the
+# follow-up model call. The chat stream stays open after the terminal event
+# until this call ends, and the browser keeps the prompt locked while the
+# stream is open, so a slow call is abandoned and the turn ends without
+# follow-up questions.
+FOLLOW_UP_TIMEOUT_SECONDS = 10
 # Headings of the two topic lists in the follow-up request; `follow_up.md`
 # refers to them by these names.
 UNUSED_TOPICS_HEADING = "INDICATORS THE ANSWER DID NOT USE"
@@ -84,7 +91,8 @@ async def generate_follow_up_questions(
     when there are no topics (no static fallback), uses a structured Gemini
     call, and filters out any question that leaks a context-dependent pronoun.
     Also returns [] when the `follow_up` prompt slot is empty, so the model is
-    never called without its system instruction.
+    never called without its system instruction. The function also returns []
+    when the Gemini call does not finish within `FOLLOW_UP_TIMEOUT_SECONDS`.
 
     Args:
         user_message: The user's query.
@@ -118,16 +126,17 @@ async def generate_follow_up_questions(
 Generate the self-contained follow-up questions now."""
 
     try:
-        response = await async_gemini_request(
-            messages=[{"role": "user", "parts": [{"text": prompt}]}],
-            system_instruction=system_prompt,
-            model=role.model,
-            temperature=role.temperature,
-            thinking_level=role.thinking_level,
-            response_schema=FOLLOW_UP_SCHEMA,
-            token_usage=token_usage,
-            token_phase=GeminiRole.FOLLOW_UP.value,
-        )
+        async with asyncio.timeout(FOLLOW_UP_TIMEOUT_SECONDS):
+            response = await async_gemini_request(
+                messages=[{"role": "user", "parts": [{"text": prompt}]}],
+                system_instruction=system_prompt,
+                model=role.model,
+                temperature=role.temperature,
+                thinking_level=role.thinking_level,
+                response_schema=FOLLOW_UP_SCHEMA,
+                token_usage=token_usage,
+                token_phase=GeminiRole.FOLLOW_UP.value,
+            )
         questions: list[Any] = []
         if response.text.strip():
             loaded = json.loads(response.text)
@@ -140,6 +149,13 @@ Generate the self-contained follow-up questions now."""
                 "returning no questions",
                 response.finish_reason,
             )
+    except TimeoutError:
+        logger.warning(
+            "Follow-up generation did not finish within %d seconds; "
+            "returning no questions",
+            FOLLOW_UP_TIMEOUT_SECONDS,
+        )
+        return []
     except GeminiBlockedError as error:
         logger.warning(
             "Follow-up generation blocked (%s); returning no questions",
