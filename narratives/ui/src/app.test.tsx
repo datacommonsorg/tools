@@ -31,7 +31,11 @@ import {
 import { useReducedMotion } from 'motion/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { App } from '@/src/app';
-import { RECAPTCHA_MODAL_TITLE } from '@/src/config/copy_chat';
+import {
+  REASONING_DEFAULT_PHASE_LABEL,
+  REASONING_VERIFYING_LABEL,
+  RECAPTCHA_MODAL_TITLE,
+} from '@/src/config/copy_chat';
 import {
   DEFAULT_INSTANCE_CONFIG,
   resetInstanceConfigForTests,
@@ -420,6 +424,8 @@ describe('App reCAPTCHA session bootstrap', () => {
     });
     const appShell = document.querySelector('main')?.parentElement;
     expect(appShell?.hasAttribute('inert')).toBe(true);
+    expect(screen.getByText(REASONING_VERIFYING_LABEL)).toBeTruthy();
+    expect(screen.queryByText(REASONING_DEFAULT_PHASE_LABEL)).toBeNull();
 
     await act(async () => {
       capturedParams?.callback?.('app-verified-token');

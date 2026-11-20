@@ -44,6 +44,12 @@ export const REASONING_PHASE_LABELS: Partial<Record<TurnStatus, string>> = {
 /** Reasoning header label while streaming in a status with no phase label. */
 export const REASONING_DEFAULT_PHASE_LABEL = 'Thinking';
 
+/** Reasoning header label while paused awaiting reCAPTCHA verification. */
+export const REASONING_VERIFYING_LABEL = 'Verifying…';
+
+/** Reasoning body shown while paused awaiting reCAPTCHA verification. */
+export const REASONING_PLACEHOLDER_VERIFYING = 'Waiting for security check…';
+
 /** Reasoning body shown during classification, before any thought arrives. */
 export const REASONING_PLACEHOLDER_CLASSIFY = 'Reviewing your question…';
 
