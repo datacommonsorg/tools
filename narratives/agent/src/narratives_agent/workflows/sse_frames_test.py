@@ -29,7 +29,7 @@ import json
 import pytest
 
 from narratives_agent.analytics.provenance import Source
-from narratives_agent.telemetry import ErrorType, TurnTelemetry
+from narratives_agent.telemetry import ErrorType, TerminalState, TurnTelemetry
 from narratives_agent.workflows.blocks import ChartBlock, TextBlock
 from narratives_agent.workflows.charts import PlaceList, ResolvedLineChart
 from narratives_agent.workflows.classify import RefusedReason
@@ -57,6 +57,7 @@ from narratives_agent.workflows.transcript import (
     SignedWindow,
     Turn,
 )
+from narratives_agent.workflows.turn_record import TurnRecord
 
 _IDEMPOTENCY_KEY = "key-4"
 _EARLIER_HMAC = "a" * 64
@@ -426,10 +427,9 @@ def test_a_debug_report_frame_serializes_to_event_and_report_dictionary() -> (
     #   serialized.
     # Expectation: The event is "debug_report" and the payload matches
     #   report.to_dict().
-    report = build_debug_report(
-        telemetry=TurnTelemetry(turn_id="turn-debug-123"),
-        terminal_state="complete",
-    )
+    record = TurnRecord(telemetry=TurnTelemetry(turn_id="turn-debug-123"))
+    record.terminal_state = TerminalState.COMPLETE
+    report = build_debug_report(record)
     frame = DebugReportFrame(report=report)
 
     assert _serialize(frame) == ("debug_report", json.dumps(report.to_dict()))

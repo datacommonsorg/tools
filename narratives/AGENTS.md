@@ -76,7 +76,8 @@ process and PR expectations: [`CONTRIBUTING.md`](../CONTRIBUTING.md).
       specification and returns an `AnalysisDigest` or a
       `ProcessingDiagnostic` (`processing.py`), the best-effort request,
       before a specification runs, for the variable metadata of the fetched
-      tables it reads (`metadata_backfill.py`), the turn debug report builder
+      tables it reads (`metadata_backfill.py`), the turn record that collects
+      each turn's results (`turn_record.py`), the turn debug report builder
       (`debug_report.py`), the chart grammar, resolver, and wire serializer
       (`charts.py`), the default chart floor (`chart_defaults.py`), the
       synthesis prompt builder (`synthesis.py`), the streaming block splitter

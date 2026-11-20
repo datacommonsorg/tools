@@ -32,8 +32,9 @@ from narratives_agent.telemetry import ErrorType, TerminalState
 from narratives_agent.workflows.blocks import SynthesisBlock, TextBlock
 from narratives_agent.workflows.charts import serialize_resolved_chart
 from narratives_agent.workflows.classify import RefusedReason
-from narratives_agent.workflows.debug_report import DebugReport, ThoughtPhase
+from narratives_agent.workflows.debug_report import DebugReport
 from narratives_agent.workflows.transcript import SignedWindow
+from narratives_agent.workflows.turn_record import ThoughtPhase
 
 type EventName = Literal[
     "status", "thought", "content", "terminal", "follow_ups", "debug_report"
@@ -438,7 +439,6 @@ __all__ = [
     "TerminalErrorFrame",
     "TerminalRefusedFrame",
     "ThoughtFrame",
-    "ThoughtPhase",
     "TitleFrame",
     "ToolCallFrame",
     "serialize_source",
