@@ -28,6 +28,8 @@ Verifies these behaviors in `telemetry`:
    does nothing before `configure_telemetry` has run.
 8. `configure_telemetry` installs the provider, handler, and instrumentors
    once and is idempotent on subsequent calls.
+9. `record_budget_event` emits content-free `daily_token_budget` JSON records
+   at `WARNING` and `ERROR` severities.
 """
 
 import io
@@ -776,3 +778,48 @@ def test_turn_telemetry_elapsed_ms_matches_duration_ms_after_finish(
     (message,) = turn_records
     record = json.loads(message)
     assert elapsed_after == record["duration_ms"]
+
+
+@pytest.mark.parametrize(
+    ("state", "expected_severity", "used_tokens"),
+    [
+        pytest.param(
+            telemetry.BudgetEventState.WARNING, "WARNING", 800, id="warning"
+        ),
+        pytest.param(
+            telemetry.BudgetEventState.EXHAUSTED,
+            "ERROR",
+            1000,
+            id="exhausted",
+        ),
+    ],
+)
+def test_record_budget_event_emits_structured_content_free_json(
+    turn_records: list[str],
+    state: telemetry.BudgetEventState,
+    expected_severity: str,
+    used_tokens: int,
+) -> None:
+    # Test: Structured `daily_token_budget` event schema and severity.
+    # Situation: `record_budget_event` is invoked for the `warning` and
+    #   `exhausted` states.
+    # Expectation: One JSON line is written to the structured stdout logger
+    #   with severity WARNING or ERROR and only the allowlisted operational
+    #   budget fields.
+    telemetry.record_budget_event(
+        state,
+        used_tokens=used_tokens,
+        limit_tokens=1000,
+        utc_day="2026-11-20",
+    )
+
+    (message,) = turn_records
+    assert json.loads(message) == {
+        "severity": expected_severity,
+        "message": f"daily token budget {state}",
+        "event": "daily_token_budget",
+        "state": state,
+        "used_tokens": used_tokens,
+        "limit_tokens": 1000,
+        "utc_day": "2026-11-20",
+    }

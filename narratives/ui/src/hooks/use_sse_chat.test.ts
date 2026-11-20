@@ -17,7 +17,10 @@ import {
   VERIFICATION_CANCELED_ERROR,
   VERIFICATION_FAILED_ERROR,
 } from '@/src/config/copy_chat';
-import { resetRuntimeConfigForTests } from '@/src/config/runtime_config';
+import {
+  DEFAULT_UNAVAILABLE_MESSAGE,
+  resetRuntimeConfigForTests,
+} from '@/src/config/runtime_config';
 import {
   type AnswerBlock,
   applyEvent,
@@ -940,6 +943,32 @@ describe('applyEvent', () => {
     expect(turn.status).toBe(status);
     expect(turn.error).toBe(shownError);
     expect(turn.isRetryable).toBe(isExpectedRetryable);
+    expect(turn.refusalMessage).toBeUndefined();
+  });
+
+  it('maps a daily_token_budget_exhausted terminal frame to a non-retryable error', () => {
+    // Test: Budget-exhausted terminal frame handling.
+    // Situation: The server ends a turn with `state: "error"`,
+    //   `reason: "daily_token_budget_exhausted"`, `is_retryable: false`, and
+    //   the unavailable message.
+    // Expectation: Turn status becomes `error` with the server message,
+    //   `terminalReason` preserves `daily_token_budget_exhausted`, and
+    //   `isRetryable` is false so no retry button is offered.
+    const turn = applyEvent(blankTurn(), {
+      event: 'terminal',
+      data: {
+        state: 'error',
+        error: DEFAULT_UNAVAILABLE_MESSAGE,
+        reason: 'daily_token_budget_exhausted',
+        is_retryable: false,
+        ...TERMINAL_FIELDS,
+      },
+    });
+
+    expect(turn.status).toBe('error');
+    expect(turn.error).toBe(DEFAULT_UNAVAILABLE_MESSAGE);
+    expect(turn.terminalReason).toBe('daily_token_budget_exhausted');
+    expect(turn.isRetryable).toBe(false);
     expect(turn.refusalMessage).toBeUndefined();
   });
 
