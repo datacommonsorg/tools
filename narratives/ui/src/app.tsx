@@ -42,11 +42,13 @@ function getView(route: string): View {
 }
 
 /** Renders the main view for the current hash route. */
-function renderContent(view: View, isDataAgentActive: boolean) {
-  if (isDataAgentActive) {
-    return <DataAgent />;
+function renderContent(view: View, isChatEnabled: boolean) {
+  switch (view) {
+    case 'metrics':
+      return <MetricsPage />;
+    default:
+      return isChatEnabled ? <DataAgent /> : <UnavailableView />;
   }
-  return view === 'metrics' ? <MetricsPage /> : <UnavailableView />;
 }
 
 /** Root component: providers + sidebar/header layout around the routed view. */
@@ -54,17 +56,16 @@ export function App() {
   const [route] = useHashRoute();
   const view = getView(route);
   const { isChatEnabled, recaptchaSessionSiteKey } = getRuntimeConfig();
-  const isDataAgentActive = view === 'agent' && isChatEnabled;
 
   useEffect(() => {
-    if (!isDataAgentActive || recaptchaSessionSiteKey === '') {
+    if (view !== 'agent' || !isChatEnabled || recaptchaSessionSiteKey === '') {
       return;
     }
     void ensureRecaptchaScript().catch(() => {
       // Ignore script load failures (for example, content blockers) so
       // background session-token minting never raises an unhandled rejection.
     });
-  }, [isDataAgentActive, recaptchaSessionSiteKey]);
+  }, [view, isChatEnabled, recaptchaSessionSiteKey]);
 
   return (
     <ChatSessionProvider>
@@ -74,7 +75,7 @@ export function App() {
         <MenuDrawer />
         <main className="flex-1 flex flex-col relative min-w-0 overflow-y-auto overscroll-none lg:pl-rail">
           <Header />
-          {renderContent(view, isDataAgentActive)}
+          {renderContent(view, isChatEnabled)}
         </main>
       </div>
     </ChatSessionProvider>
