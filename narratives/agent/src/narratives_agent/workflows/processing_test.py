@@ -13,10 +13,12 @@
 # limitations under the License.
 """Tests for `execute_specification` in `processing`.
 
-Covers the dispatch of every step type, shared cohort alignment, refusal
-diagnostics with coverage and alternative sources, the enforced
-preconditions, the wall-clock budget and the isolation of a run that
-outlives it, derived-table replacement, and digest source numbering.
+This suite covers the dispatch of every step type, shared cohort
+alignment, refusal diagnostics with coverage and alternative sources,
+the enforced preconditions, the wall-clock budget and the isolation of a
+run that outlives its budget, spare workers for a quick run while
+abandoned runs hold others, derived-table replacement, keeping derived
+tables only from a digest, and digest source numbering.
 """
 
 import asyncio
@@ -575,6 +577,51 @@ async def test_a_refused_derived_metric_reports_both_tables_sources() -> None:
 
 
 @pytest.mark.asyncio
+async def test_a_refusal_after_a_derivation_stores_no_derived_table() -> None:
+    # Test: The derived tables of a run that ends with a step refusal.
+    # Situation: `s1` derives a table from `t1` and `t2`, and a ranking of
+    #   `s1` then refuses because one of four requested places has a value.
+    # Expectation: The outcome is a refusal diagnostic for `s2` that lists
+    #   the derived metric as completed, and the cache holds only the
+    #   fetched tables.
+    cache = _build_cache(
+        _build_table(
+            "t1",
+            {"a": 10.0},
+            variable_dcid="Count_Case",
+            source=_WDI,
+            requested=("a", "b", "c", "d"),
+        ),
+        _build_table(
+            "t2",
+            {"a": 1000.0},
+            variable_dcid="Count_Person",
+            source=_CENSUS,
+            requested=("a", "b", "c", "d"),
+        ),
+    )
+    specification = _build_specification(
+        {
+            "step_id": "s1",
+            "script": "compute_derived_metric",
+            "left": "t1",
+            "right": "t2",
+        },
+        {"step_id": "s2", "script": "rank_cohort", "table": "s1"},
+    )
+
+    diagnostic = await execute_specification(specification, cache)
+
+    assert isinstance(diagnostic, StepRefusalDiagnostic)
+    assert diagnostic.step_id == "s2"
+    assert diagnostic.refusal_reason == "insufficient_coverage"
+    assert [item.script for item in diagnostic.completed_results] == [
+        "compute_derived_metric"
+    ]
+    assert cache.table_ids == ("t1", "t2")
+
+
+@pytest.mark.asyncio
 async def test_a_derived_metric_of_mismatched_units_is_refused() -> None:
     # Test: A refusal the script reports before measuring coverage.
     # Situation: `t1` counts people and `t2` reports dollars, and the step
@@ -691,9 +738,9 @@ async def test_a_run_over_budget_ends_with_a_timeout_diagnostic(
         tables: dict[str, ObservationTable],
         cancel: threading.Event,
         timeout_seconds: float,
-    ) -> tuple[TimeoutDiagnostic, tuple[CachedTable, ...]]:
+    ) -> TimeoutDiagnostic:
         asyncio.run_coroutine_threadsafe(released.wait(), loop).result()
-        return processing._build_timeout_diagnostic(timeout_seconds), ()
+        return processing._build_timeout_diagnostic(timeout_seconds)
 
     monkeypatch.setattr(processing, "_run_specification", run_blocked)
     cache = _build_cache(
@@ -839,6 +886,81 @@ async def test_a_cancelled_run_stops_at_its_next_step_boundary(
 
     assert steps_run == ["s1"]
     assert cache.table_ids == ("t1", "t2")
+
+
+@pytest.mark.asyncio
+async def test_a_quick_run_finishes_while_two_abandoned_runs_hold_workers(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Test: Spare workers in the module's processing pool.
+    # Situation: Two runs block inside their first step, and their awaiting
+    #   tasks are canceled, so each abandoned run keeps a worker of the
+    #   module's pool. A quick specification then runs under the default
+    #   budget.
+    # Expectation: The quick run returns a digest while the two abandoned
+    #   runs still hold their workers.
+    started = threading.Semaphore(0)
+    finished = threading.Semaphore(0)
+    released = threading.Event()
+    run_step = processing._run_step
+    steps_started: list[str] = []
+
+    def run_step_blocking_derivations(
+        step: SpecificationStep, state: processing._RunState
+    ) -> StepRefusalDiagnostic | None:
+        if step.script != "compute_derived_metric":
+            return run_step(step, state)
+        steps_started.append(step.step_id)
+        started.release()
+        try:
+            released.wait()
+            return run_step(step, state)
+        finally:
+            finished.release()
+
+    monkeypatch.setattr(processing, "_run_step", run_step_blocking_derivations)
+    cache = _build_cache(
+        _build_table(
+            "t1", {"a": 10.0}, variable_dcid="Count_Case", source=_WDI
+        ),
+        _build_table(
+            "t2", {"a": 1000.0}, variable_dcid="Count_Person", source=_WDI
+        ),
+    )
+    slow = _build_specification(
+        {
+            "step_id": "s1",
+            "script": "compute_derived_metric",
+            "left": "t1",
+            "right": "t2",
+        }
+    )
+    quick = _build_specification(
+        {"step_id": "s1", "script": "analyze_timeseries", "table": "t1"}
+    )
+    loop = asyncio.get_running_loop()
+
+    try:
+        abandoned = [
+            asyncio.create_task(execute_specification(slow, cache))
+            for _ in range(2)
+        ]
+        for _ in abandoned:
+            await loop.run_in_executor(None, started.acquire)
+        for task in abandoned:
+            task.cancel()
+            with pytest.raises(asyncio.CancelledError):
+                await task
+        digest = await execute_specification(quick, cache)
+    finally:
+        released.set()
+        # Waits for the abandoned runs to return their workers, so that the
+        # module's pool is idle when the test ends.
+        for _ in steps_started:
+            await loop.run_in_executor(None, finished.acquire)
+
+    assert isinstance(digest, AnalysisDigest)
+    assert steps_started == ["s1", "s1"]
 
 
 @pytest.mark.asyncio
