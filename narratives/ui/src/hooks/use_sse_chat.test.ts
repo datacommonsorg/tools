@@ -46,6 +46,7 @@ interface WireRequest {
   idempotency_key: string;
   turns: WireTurn[];
   compacted_summary: string | null;
+  conversation_id: string | null;
   debug?: boolean;
 }
 
@@ -55,6 +56,8 @@ function parseRequest(body: unknown): WireRequest {
 }
 
 const TERMINAL_FIELDS = { idempotency_key: 'key-1' };
+
+const CONVERSATION_ID = '0123456789abcdef0123456789abcdef';
 
 const SLOTS: ConversationStateSlots = {
   scopes: [
@@ -182,17 +185,21 @@ const signedTurn = (
 });
 
 describe('transcriptRequestFields', () => {
-  it('sends only signed turns, verbatim, with the latest summary', () => {
+  it('sends only signed turns, verbatim, with the latest summary and conversation ID', () => {
     // Test: Verify the selection and wire mapping of context turns.
-    // Situation: Two signed turns (the second under a summary) are mixed with
-    //   an error turn, a stopped turn, and an unsigned complete turn.
+    // Situation: Two signed turns (the second under a summary and a
+    //   conversation ID) are mixed with an error turn, a stopped turn, and an
+    //   unsigned complete turn.
     // Expectation: Only the signed turns are sent, in order, with the query,
-    //   answer, and state slots exactly as stored, and the summary comes from
-    //   the last signed turn.
+    //   answer, and state slots exactly as stored, and the summary and the
+    //   conversation ID come from the last signed turn.
     const turns: ChatTurn[] = [
       signedTurn(0),
       { ...blankTurn(), status: 'error', error: 'failed' },
-      signedTurn(1, { compactedSummary: 'Earlier turns.' }),
+      signedTurn(1, {
+        compactedSummary: 'Earlier turns.',
+        conversationId: CONVERSATION_ID,
+      }),
       { ...signedTurn(2), stopped: true },
       { ...blankTurn(), status: 'done', text: 'Unsigned answer' },
     ];
@@ -207,16 +214,19 @@ describe('transcriptRequestFields', () => {
         hmac: sig(String(index)),
       })),
       compacted_summary: 'Earlier turns.',
+      conversation_id: CONVERSATION_ID,
     });
   });
 
   it('sends an empty window when no turn is signed', () => {
     // Test: Verify the request fields for the first turn of a conversation.
     // Situation: The turn list is empty.
-    // Expectation: Both the turns list and the compacted summary are empty.
+    // Expectation: The turns list is empty, and the compacted summary and
+    //   the conversation ID are null.
     expect(transcriptRequestFields([])).toEqual({
       turns: [],
       compacted_summary: null,
+      conversation_id: null,
     });
   });
 
@@ -260,11 +270,12 @@ describe('applySignedWindow', () => {
     //   terminal event's window drops turn 0 and re-signs turn 1 under a new
     //   summary.
     // Expectation: Turn 0 loses its signature, turn 1 takes the new one and
-    //   drops its stored summary, and the in-flight turn receives its index,
-    //   signature, slots, and the summary.
+    //   drops its stored summary and conversation ID, and the in-flight turn
+    //   receives its index, signature, slots, the summary, and the
+    //   conversation ID.
     const turns = [
       signedTurn(0),
-      signedTurn(1),
+      signedTurn(1, { conversationId: CONVERSATION_ID }),
       { ...blankTurn(), idempotencyKey: 'key-2' },
     ];
 
@@ -275,6 +286,7 @@ describe('applySignedWindow', () => {
       hmac: sig('c'),
       state_slots: SLOTS,
       compacted_summary: 'Turn 0 summary.',
+      conversation_id: CONVERSATION_ID,
       window: [
         { turn_index: 1, idempotency_key: 'key-1', hmac: sig('b') },
         { turn_index: 2, idempotency_key: 'key-2', hmac: sig('c') },
@@ -286,12 +298,72 @@ describe('applySignedWindow', () => {
     expect(next[0].stateSlots).toBeUndefined();
     expect(next[1].hmac).toBe(sig('b'));
     expect(next[1].compactedSummary).toBeUndefined();
+    expect(next[1].conversationId).toBeUndefined();
     expect(next[2]).toMatchObject({
       turnIndex: 2,
       hmac: sig('c'),
       stateSlots: SLOTS,
       compactedSummary: 'Turn 0 summary.',
+      conversationId: CONVERSATION_ID,
     });
+  });
+
+  it('stores no conversation ID from a signed event without one', () => {
+    // Test: A signed terminal event from an agent that sends no
+    //   `conversation_id`.
+    // Situation: The terminal event signs the in-flight turn and carries
+    //   every window key except `conversation_id`.
+    // Expectation: The turn is signed and holds no conversation ID, and the
+    //   next request's `conversation_id` is null.
+    const turns = [
+      { ...blankTurn(), status: 'done' as const, idempotencyKey: 'key-0' },
+    ];
+
+    const next = applySignedWindow(turns, 'key-0', {
+      state: 'complete',
+      idempotency_key: 'key-0',
+      turn_index: 0,
+      hmac: sig('0'),
+      state_slots: SLOTS,
+      compacted_summary: null,
+      window: [{ turn_index: 0, idempotency_key: 'key-0', hmac: sig('0') }],
+    });
+
+    expect(next[0].hmac).toBe(sig('0'));
+    expect(next[0].conversationId).toBeUndefined();
+    expect(transcriptRequestFields(next).conversation_id).toBeNull();
+  });
+
+  it.each<unknown>([
+    '',
+    123,
+    null,
+  ])('stores no conversation ID from a signed event whose ID is %j', (malformedId) => {
+    // Test: A signed terminal event whose `conversation_id` is not a
+    //   non-empty string.
+    // Situation: The terminal event signs the in-flight turn and carries an
+    //   empty string, a number, or null as `conversation_id`.
+    // Expectation: The turn is signed and holds no conversation ID, and the
+    //   next request's `conversation_id` is null.
+    const turns = [
+      { ...blankTurn(), status: 'done' as const, idempotencyKey: 'key-0' },
+    ];
+
+    const next = applySignedWindow(turns, 'key-0', {
+      state: 'complete',
+      idempotency_key: 'key-0',
+      turn_index: 0,
+      hmac: sig('0'),
+      state_slots: SLOTS,
+      compacted_summary: null,
+      // The cast sends a value that violates the wire contract.
+      conversation_id: malformedId as string,
+      window: [{ turn_index: 0, idempotency_key: 'key-0', hmac: sig('0') }],
+    });
+
+    expect(next[0].hmac).toBe(sig('0'));
+    expect(next[0].conversationId).toBeUndefined();
+    expect(transcriptRequestFields(next).conversation_id).toBeNull();
   });
 
   it('leaves the turns unchanged for an unsigned complete event', () => {
@@ -1207,8 +1279,9 @@ describe('useSseChat', () => {
     // Situation: The first turn completes with a signed terminal event, and
     //   the user asks a follow-up.
     // Expectation: The turn stores its key, index, signature, and slots, and
-    //   the follow-up request carries it verbatim with the summary and no
-    //   `history` field.
+    //   the follow-up request carries it verbatim with the summary, the
+    //   conversation ID, and no `history` field. The first request carries a
+    //   null conversation ID, and only the latest signed turn stores the ID.
     const { result, fetchMock } = renderChat([]);
     // Signs each request's turn the way the agent does: the window lists the
     // turns the request carried, then the new turn under the request's key.
@@ -1241,6 +1314,7 @@ describe('useSseChat', () => {
               ...entry,
               state_slots: SLOTS,
               compacted_summary: null,
+              conversation_id: CONVERSATION_ID,
               window,
             },
             2,
@@ -1257,15 +1331,18 @@ describe('useSseChat', () => {
     const first = requestBody(fetchMock, 0);
     expect(first.turns).toEqual([]);
     expect(first.compacted_summary).toBeNull();
+    expect(first.conversation_id).toBeNull();
     expect(result.current.turns[0]).toMatchObject({
       idempotencyKey: first.idempotency_key,
       turnIndex: 0,
       hmac: sig('0'),
       stateSlots: SLOTS,
     });
+    expect(result.current.turns[0].conversationId).toBeUndefined();
     expect(result.current.turns[1]).toMatchObject({
       turnIndex: 1,
       hmac: sig('1'),
+      conversationId: CONVERSATION_ID,
     });
     const second = requestBody(fetchMock, 1);
     expect(second).not.toHaveProperty('history');
@@ -1281,6 +1358,7 @@ describe('useSseChat', () => {
       },
     ]);
     expect(second.compacted_summary).toBeNull();
+    expect(second.conversation_id).toBe(CONVERSATION_ID);
   });
 
   it('clears every signature when the agent rejects the transcript', async () => {
@@ -1289,11 +1367,17 @@ describe('useSseChat', () => {
     // Situation: Two signed turns exist, and the agent answers the next
     //   request with HTTP 400 and reason `transcript_invalid`.
     // Expectation: The new turn ends with the rejection message, every
-    //   earlier turn loses its signature and summary, and the next request
-    //   sends no context.
+    //   earlier turn loses its signature, summary, and conversation ID, and
+    //   the next request sends no context.
     const { result, fetchMock } = renderChat(
       [],
-      [signedTurn(0), signedTurn(1, { compactedSummary: 'Earlier turns.' })],
+      [
+        signedTurn(0),
+        signedTurn(1, {
+          compactedSummary: 'Earlier turns.',
+          conversationId: CONVERSATION_ID,
+        }),
+      ],
     );
     fetchMock.mockResolvedValueOnce({
       ok: false,
@@ -1306,6 +1390,7 @@ describe('useSseChat', () => {
     await act(() => result.current.chat.send('And Germany?'));
 
     expect(requestBody(fetchMock, 0).turns).toHaveLength(2);
+    expect(requestBody(fetchMock, 0).conversation_id).toBe(CONVERSATION_ID);
     const turns = result.current.turns;
     expect(turns[2].status).toBe('error');
     expect(turns[2].error).toBe(TRANSCRIPT_REJECTED_ERROR);
@@ -1316,7 +1401,12 @@ describe('useSseChat', () => {
       undefined,
     ]);
     expect(turns[1].compactedSummary).toBeUndefined();
-    expect(transcriptRequestFields(turns).turns).toEqual([]);
+    expect(turns[1].conversationId).toBeUndefined();
+    expect(transcriptRequestFields(turns)).toEqual({
+      turns: [],
+      compacted_summary: null,
+      conversation_id: null,
+    });
   });
 
   it('keeps signatures on a 400 that is not a transcript rejection', async () => {
