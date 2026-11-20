@@ -212,79 +212,54 @@ describe('RecaptchaModal', () => {
     expect(mock.renderFn.mock.calls[0][1].size).toBe('compact');
   });
 
-  it('dismisses via close button, Escape, and backdrop click, respects defaultPrevented, and restores focus', async () => {
-    // Test: Dismissal controls, Escape defaultPrevented handling, and focus restoration.
-    // Situation: A trigger button holds focus when the modal opens.
-    // Expectation: Opening focuses the close button without triggering a
-    //   tooltip, Escape calls `preventDefault()`, already-prevented Escape
-    //   events are ignored, and closing restores focus to the trigger.
+  it('moves initial focus to close and dismisses via close button, Escape, and backdrop click while respecting defaultPrevented', async () => {
+    // Test: Initial dialog focus, dismissal controls, and Escape defaultPrevented handling.
+    // Situation: The modal opens in a mocked session context.
+    // Expectation: Opening focuses the close button immediately, clicking the
+    //   close button or backdrop or pressing Escape invokes `cancelVerification`,
+    //   Escape calls `preventDefault()`, and already-prevented Escape events are
+    //   ignored.
     const mock = createMockEnterprise();
     vi.spyOn(recaptchaLoader, 'ensureRecaptchaScript').mockResolvedValue(
       mock.enterprise,
     );
     const cancelVerification = vi.fn();
 
-    const trigger = document.createElement('button');
-    trigger.type = 'button';
-    trigger.textContent = 'Trigger';
-    document.body.appendChild(trigger);
-    try {
-      trigger.focus();
+    renderModal(
+      { status: 'open', checkboxSiteKey: '6Lc_checkbox' },
+      { cancelVerification },
+    );
 
-      const openContext = createContextValue({
-        verificationModal: { status: 'open', checkboxSiteKey: '6Lc_checkbox' },
-        cancelVerification,
-      });
-      const { rerender } = render(
-        <ChatSessionContext.Provider value={openContext}>
-          <RecaptchaModal />
-        </ChatSessionContext.Provider>,
-      );
+    const closeButton = screen.getByRole('button', {
+      name: RECAPTCHA_MODAL_CLOSE_LABEL,
+    });
+    expect(document.activeElement).toBe(closeButton);
 
-      const closeButton = screen.getByRole('button', {
-        name: RECAPTCHA_MODAL_CLOSE_LABEL,
-      });
-      expect(document.activeElement).toBe(closeButton);
+    fireEvent.click(closeButton);
+    const escapeEvent = new KeyboardEvent('keydown', {
+      key: 'Escape',
+      bubbles: true,
+      cancelable: true,
+    });
+    document.dispatchEvent(escapeEvent);
+    expect(escapeEvent.defaultPrevented).toBe(true);
 
-      fireEvent.click(closeButton);
-      const escapeEvent = new KeyboardEvent('keydown', {
-        key: 'Escape',
-        bubbles: true,
-        cancelable: true,
-      });
-      document.dispatchEvent(escapeEvent);
-      expect(escapeEvent.defaultPrevented).toBe(true);
+    const preventedEscape = new KeyboardEvent('keydown', {
+      key: 'Escape',
+      bubbles: true,
+      cancelable: true,
+    });
+    preventedEscape.preventDefault();
+    document.dispatchEvent(preventedEscape);
 
-      const preventedEscape = new KeyboardEvent('keydown', {
-        key: 'Escape',
-        bubbles: true,
-        cancelable: true,
-      });
-      preventedEscape.preventDefault();
-      document.dispatchEvent(preventedEscape);
-
-      const scrim = document.querySelector(
-        '[aria-hidden="true"][data-non-print="true"]',
-      );
-      expect(scrim).not.toBeNull();
-      if (scrim) {
-        fireEvent.click(scrim);
-      }
-      expect(cancelVerification).toHaveBeenCalledTimes(3);
-
-      const closedContext = createContextValue({
-        verificationModal: { status: 'closed' },
-        cancelVerification,
-      });
-      rerender(
-        <ChatSessionContext.Provider value={closedContext}>
-          <RecaptchaModal />
-        </ChatSessionContext.Provider>,
-      );
-      expect(document.activeElement).toBe(trigger);
-    } finally {
-      trigger.remove();
+    const scrim = document.querySelector(
+      '[aria-hidden="true"][data-non-print="true"]',
+    );
+    expect(scrim).not.toBeNull();
+    if (scrim) {
+      fireEvent.click(scrim);
     }
+    expect(cancelVerification).toHaveBeenCalledTimes(3);
   });
 
   it('traps Tab and Shift+Tab inside the dialog and leaves focus in external challenge iframes', async () => {

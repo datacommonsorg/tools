@@ -34,6 +34,7 @@ import { App } from '@/src/app';
 import {
   REASONING_DEFAULT_PHASE_LABEL,
   REASONING_VERIFYING_LABEL,
+  RECAPTCHA_MODAL_CLOSE_LABEL,
   RECAPTCHA_MODAL_TITLE,
 } from '@/src/config/copy_chat';
 import {
@@ -443,5 +444,109 @@ describe('App reCAPTCHA session bootstrap', () => {
       string
     >;
     expect(retryHeaders['X-Recaptcha-Token']).toBe('app-verified-token');
+  });
+
+  it('restores focus to the prior control after inert clears even when inert blurs activeElement on open', async () => {
+    // Test: Focus capture before `AppLayout` becomes `inert` and restoration after `inert` clears.
+    // Situation: A control inside `AppLayout` holds focus when HTTP 403 arrives;
+    //   setting `inert` on `AppLayout` synchronously blurs descendants (emulating
+    //   real-browser focus fixup that jsdom does not implement).
+    // Expectation: Dismissing the modal restores focus to the control only after
+    //   `AppLayout` no longer has `inert`.
+    const mockEnterprise: GrecaptchaEnterprise = {
+      ready: vi.fn((callback: () => void) => callback()),
+      render: vi.fn(() => 1),
+      reset: vi.fn(),
+    };
+    vi.spyOn(recaptchaLoader, 'ensureRecaptchaScript').mockResolvedValue(
+      mockEnterprise,
+    );
+
+    let resolveFetch!: (response: {
+      ok: boolean;
+      status: number;
+      statusText: string;
+      body: null;
+    }) => void;
+    const fetchMock = vi.fn(
+      () =>
+        new Promise<{
+          ok: boolean;
+          status: number;
+          statusText: string;
+          body: null;
+        }>((resolve) => {
+          resolveFetch = resolve;
+        }),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+    writeRuntimeConfigSlot({
+      enable_chat: true,
+      recaptcha_checkbox_site_key: '6Lc_checkbox_focus',
+    });
+
+    render(<App />);
+    const appShell = document.querySelector('main')?.parentElement;
+    expect(appShell).toBeInstanceOf(HTMLElement);
+    if (!(appShell instanceof HTMLElement)) {
+      throw new Error('Expected AppLayout shell element');
+    }
+
+    // Emulate real browsers immediately blurring any focused descendant when
+    // React commits `inert=""` onto `AppLayout` before effects execute.
+    let inertBlurredPriorControl = false;
+    const realSetAttribute = appShell.setAttribute.bind(appShell);
+    vi.spyOn(appShell, 'setAttribute').mockImplementation((name, value) => {
+      realSetAttribute(name, value);
+      if (
+        name === 'inert' &&
+        document.activeElement instanceof HTMLElement &&
+        appShell.contains(document.activeElement)
+      ) {
+        inertBlurredPriorControl = true;
+        document.activeElement.blur();
+      }
+    });
+
+    fireEvent.change(screen.getByRole('textbox', { name: LANDING_PROMPT }), {
+      target: { value: 'Population of France?' },
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Submit' }));
+    });
+
+    const newChatButton = screen.getByRole('button', { name: 'New chat' });
+    newChatButton.focus();
+    expect(document.activeElement).toBe(newChatButton);
+
+    let wasInertWhenRestored: boolean | null = null;
+    const realFocus = newChatButton.focus.bind(newChatButton);
+    vi.spyOn(newChatButton, 'focus').mockImplementation((options) => {
+      wasInertWhenRestored = appShell.hasAttribute('inert');
+      realFocus(options);
+    });
+
+    await act(async () => {
+      resolveFetch({
+        ok: false,
+        status: 403,
+        statusText: 'Forbidden',
+        body: null,
+      });
+    });
+
+    const closeButton = await screen.findByRole('button', {
+      name: RECAPTCHA_MODAL_CLOSE_LABEL,
+    });
+    expect(inertBlurredPriorControl).toBe(true);
+    expect(document.activeElement).toBe(closeButton);
+
+    fireEvent.click(closeButton);
+
+    await waitFor(() => {
+      expect(screen.queryByRole('dialog')).toBeNull();
+      expect(document.activeElement).toBe(newChatButton);
+    });
+    expect(wasInertWhenRestored).toBe(false);
   });
 });

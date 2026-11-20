@@ -110,6 +110,34 @@ const trapDialogFocus = (
 };
 
 /**
+ * Picks `'compact'` when the widget host is narrower than the standard 304px
+ * reCAPTCHA checkbox so the widget never overflows narrow viewports.
+ */
+const selectWidgetSize = (container: HTMLElement): GrecaptchaSize => {
+  const availableWidth =
+    container.parentElement?.clientWidth ?? container.clientWidth;
+  return availableWidth > 0 && availableWidth < NORMAL_WIDGET_WIDTH_PX
+    ? 'compact'
+    : 'normal';
+};
+
+/**
+ * Resets a rendered reCAPTCHA widget, ignoring errors if its iframe was
+ * already torn down.
+ */
+const safeResetWidget = (
+  enterprise: GrecaptchaEnterprise | null,
+  widgetId: number | null,
+): void => {
+  if (enterprise === null || widgetId === null) return;
+  try {
+    enterprise.reset(widgetId);
+  } catch {
+    // Ignore reset failures if the iframe was already torn down.
+  }
+};
+
+/**
  * Root-mounted modal gate that mounts {@link RecaptchaModalDialog} only while
  * verification is open, resetting all internal widget state between openings.
  */
@@ -151,20 +179,11 @@ function RecaptchaModalDialog({
     closeButtonRef.current?.focus();
   }, []);
 
-  // Move focus into the dialog on mount and restore it to the prior control
-  // on unmount, decoupled from callback identity changes.
+  // Move initial focus into the dialog on mount. Capturing and restoring prior
+  // focus lives in `useRecaptchaVerification` so it reads `activeElement`
+  // before `AppLayout` becomes `inert` and restores it after `inert` clears.
   useEffect(() => {
-    const previouslyFocused =
-      document.activeElement instanceof HTMLElement
-        ? document.activeElement
-        : null;
     closeButtonRef.current?.focus();
-
-    return () => {
-      if (previouslyFocused?.isConnected) {
-        previouslyFocused.focus();
-      }
-    };
   }, []);
 
   // Dismiss on Escape and trap Tab/Shift+Tab within the dialog.
@@ -275,81 +294,43 @@ function RecaptchaCheckboxWidget({
       isActive = false;
       const activeWidgetId = widgetId;
       widgetId = null;
-      if (enterpriseClient !== null && activeWidgetId !== null) {
-        try {
-          enterpriseClient.reset(activeWidgetId);
-        } catch {
-          // Ignore reset failures if the iframe was already torn down.
-        }
-      }
+      safeResetWidget(enterpriseClient, activeWidgetId);
       container.replaceChildren();
     };
 
-    void ensureRecaptchaScript().then(
-      (enterprise) => {
-        if (!isActive || !container.isConnected) return;
-        enterpriseClient = enterprise;
-        // Clear any leftover nodes so StrictMode double-effects never hit
-        // "reCAPTCHA has already been rendered in this element".
-        container.replaceChildren();
-        const availableWidth =
-          container.parentElement?.clientWidth ?? container.clientWidth;
-        const size: GrecaptchaSize =
-          availableWidth > 0 && availableWidth < NORMAL_WIDGET_WIDTH_PX
-            ? 'compact'
-            : 'normal';
-        try {
-          widgetId = enterprise.render(container, {
-            sitekey: checkboxSiteKey,
-            size,
-            callback: (token: string) => {
-              if (!isActive) return;
-              if (token.trim() === '') {
-                teardownWidget();
-                setWidgetState({
-                  status: 'error',
-                  message: RECAPTCHA_MODAL_WIDGET_ERROR,
-                });
-                return;
-              }
-              isActive = false;
-              onComplete(token);
-            },
-            'expired-callback': () => {
-              if (!isActive) return;
-              if (widgetId !== null) {
-                try {
-                  enterprise.reset(widgetId);
-                } catch {
-                  // Ignore reset failures if the iframe was already torn down.
-                }
-              }
-              setWidgetState({
-                status: 'ready',
-                notice: RECAPTCHA_MODAL_EXPIRED_NOTE,
-              });
-            },
-            'error-callback': () => {
-              if (!isActive) return;
-              teardownWidget();
-              setWidgetState({
-                status: 'error',
-                message: RECAPTCHA_MODAL_WIDGET_ERROR,
-              });
-            },
-          });
-          setWidgetState({ status: 'ready', notice: null });
-        } catch (error) {
-          if (!isActive) return;
-          console.warn('[recaptcha] Failed to render checkbox widget:', error);
-          teardownWidget();
-          setWidgetState({
-            status: 'error',
-            message: RECAPTCHA_MODAL_LOAD_ERROR,
-          });
-        }
-      },
-      (error: unknown) => {
+    const handleWidgetError = (): void => {
+      if (!isActive) return;
+      teardownWidget();
+      setWidgetState({
+        status: 'error',
+        message: RECAPTCHA_MODAL_WIDGET_ERROR,
+      });
+    };
+
+    const handleTokenSolved = (token: string): void => {
+      if (!isActive) return;
+      if (token.trim() === '') {
+        handleWidgetError();
+        return;
+      }
+      isActive = false;
+      onComplete(token);
+    };
+
+    const handleTokenExpired = (): void => {
+      if (!isActive) return;
+      safeResetWidget(enterpriseClient, widgetId);
+      setWidgetState({
+        status: 'ready',
+        notice: RECAPTCHA_MODAL_EXPIRED_NOTE,
+      });
+    };
+
+    const mountWidget = async (): Promise<void> => {
+      let enterprise: GrecaptchaEnterprise;
+      try {
+        enterprise = await ensureRecaptchaScript();
+      } catch (error) {
         if (!isActive) return;
         console.warn('[recaptcha] Failed to load enterprise.js:', error);
         teardownWidget();
@@ -357,9 +338,36 @@ function RecaptchaCheckboxWidget({
           status: 'error',
           message: RECAPTCHA_MODAL_LOAD_ERROR,
         });
-      },
-    );
+        return;
+      }
 
+      if (!isActive || !container.isConnected) return;
+      enterpriseClient = enterprise;
+      // Clear any leftover nodes so StrictMode double-effects never hit
+      // "reCAPTCHA has already been rendered in this element".
+      container.replaceChildren();
+
+      try {
+        widgetId = enterprise.render(container, {
+          sitekey: checkboxSiteKey,
+          size: selectWidgetSize(container),
+          callback: handleTokenSolved,
+          'expired-callback': handleTokenExpired,
+          'error-callback': handleWidgetError,
+        });
+        setWidgetState({ status: 'ready', notice: null });
+      } catch (error) {
+        if (!isActive) return;
+        console.warn('[recaptcha] Failed to render checkbox widget:', error);
+        teardownWidget();
+        setWidgetState({
+          status: 'error',
+          message: RECAPTCHA_MODAL_LOAD_ERROR,
+        });
+      }
+    };
+
+    void mountWidget();
     return teardownWidget;
   }, [checkboxSiteKey, onComplete]);
 

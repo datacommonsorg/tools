@@ -97,6 +97,13 @@ export const DEFAULT_TURN_ERROR =
 export const VERIFICATION_CANCELED_ERROR =
   'Verification was canceled before Data Commons could send your question.';
 
+/**
+ * Error message shown when a chat submission is still rejected with HTTP 403
+ * after completing the reCAPTCHA checkbox check.
+ */
+export const VERIFICATION_FAILED_ERROR =
+  'Security verification could not be completed.';
+
 /** Heading of the fallback reCAPTCHA checkbox verification dialog. */
 export const RECAPTCHA_MODAL_TITLE = 'Quick security check';
 

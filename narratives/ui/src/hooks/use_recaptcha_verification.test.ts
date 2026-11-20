@@ -160,4 +160,68 @@ describe('useRecaptchaVerification', () => {
     unmount();
     expect(await onUnmount).toEqual({ status: 'aborted' });
   });
+
+  it('captures focus synchronously before inert blurs it, preserves it across superseded prompts, and restores on close', async () => {
+    // Test: Pre-inert focus capture and post-close focus restoration.
+    // Situation: A button holds focus when `requestVerification` is called;
+    //   an `inert` ancestor immediately blurs it (simulated via `.blur()`),
+    //   a superseding request arrives while another control has focus, and
+    //   verification is then canceled.
+    // Expectation: Focus is restored to the original button once the modal
+    //   state settles back to `'closed'`, and a disconnected target is skipped
+    //   without throwing.
+    const trigger = document.createElement('button');
+    trigger.type = 'button';
+    trigger.textContent = 'Trigger';
+    const modalControl = document.createElement('button');
+    modalControl.type = 'button';
+    modalControl.textContent = 'Modal close';
+    document.body.append(trigger, modalControl);
+
+    try {
+      const { result } = renderHook(() => useRecaptchaVerification());
+      trigger.focus();
+      expect(document.activeElement).toBe(trigger);
+
+      let first!: Promise<VerificationOutcome>;
+      let second!: Promise<VerificationOutcome>;
+      act(() => {
+        first = result.current.requestVerification('6Lc_site_1');
+        // Emulate real browsers blurring descendants as soon as `inert` commits.
+        trigger.blur();
+      });
+      expect(document.activeElement).toBe(document.body);
+
+      // Superseding an already-open prompt must not overwrite prior focus with
+      // a control inside the modal.
+      modalControl.focus();
+      act(() => {
+        second = result.current.requestVerification('6Lc_site_2');
+      });
+      expect(await first).toEqual({ status: 'aborted' });
+
+      act(() => {
+        result.current.cancelVerification();
+      });
+      expect(await second).toEqual({ status: 'canceled' });
+      expect(document.activeElement).toBe(trigger);
+
+      // Disconnected prior target is skipped cleanly on close.
+      let third!: Promise<VerificationOutcome>;
+      act(() => {
+        third = result.current.requestVerification('6Lc_site_3');
+      });
+      trigger.remove();
+      act(() => {
+        result.current.completeVerification('tok-disconnected');
+      });
+      expect(await third).toEqual({
+        status: 'verified',
+        token: 'tok-disconnected',
+      });
+    } finally {
+      trigger.remove();
+      modalControl.remove();
+    }
+  });
 });

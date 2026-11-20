@@ -80,6 +80,7 @@ export function useRecaptchaVerification(): UseRecaptchaVerificationResult {
     useState<VerificationModalState>(CLOSED_VERIFICATION_MODAL);
   const actionTokenRef = useRef<CachedActionToken | null>(null);
   const pendingVerificationRef = useRef<PendingVerification | null>(null);
+  const previouslyFocusedRef = useRef<HTMLElement | null>(null);
 
   const settlePending = useCallback((outcome: VerificationOutcome) => {
     const pending = pendingVerificationRef.current;
@@ -105,6 +106,20 @@ export function useRecaptchaVerification(): UseRecaptchaVerificationResult {
   const requestVerification = useCallback(
     (checkboxSiteKey: string): Promise<VerificationOutcome> =>
       new Promise<VerificationOutcome>((resolve) => {
+        // Capture the focused control synchronously before `setVerificationModal`
+        // commits `inert` on `AppLayout`, which blurs descendants in real browsers.
+        if (
+          !pendingVerificationRef.current &&
+          typeof document !== 'undefined'
+        ) {
+          const active = document.activeElement;
+          previouslyFocusedRef.current =
+            active instanceof HTMLElement &&
+            active !== document.body &&
+            active !== document.documentElement
+              ? active
+              : null;
+        }
         // Abort any superseded verification waiter before replacing it.
         const previous = pendingVerificationRef.current;
         pendingVerificationRef.current = { resolve };
@@ -135,11 +150,23 @@ export function useRecaptchaVerification(): UseRecaptchaVerificationResult {
     settlePending({ status: 'canceled' });
   }, [settlePending]);
 
+  // Restore focus after React commits `inert={false}` on the background shell
+  // and unmounts the dialog so real browsers do not silently ignore `.focus()`.
+  useEffect(() => {
+    if (verificationModal.status !== 'closed') return;
+    const target = previouslyFocusedRef.current;
+    previouslyFocusedRef.current = null;
+    if (target?.isConnected) {
+      target.focus();
+    }
+  }, [verificationModal.status]);
+
   // Resolve any awaiting promise on unmount so suspended callers do not dangle.
   useEffect(() => {
     return () => {
       const pending = pendingVerificationRef.current;
       pendingVerificationRef.current = null;
+      previouslyFocusedRef.current = null;
       pending?.resolve({ status: 'aborted' });
     };
   }, []);

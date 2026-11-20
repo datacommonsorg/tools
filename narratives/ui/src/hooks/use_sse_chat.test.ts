@@ -15,6 +15,7 @@ import {
   INTERRUPTED_TURN_ERROR,
   TRANSCRIPT_REJECTED_ERROR,
   VERIFICATION_CANCELED_ERROR,
+  VERIFICATION_FAILED_ERROR,
 } from '@/src/config/copy_chat';
 import { resetRuntimeConfigForTests } from '@/src/config/runtime_config';
 import {
@@ -2296,17 +2297,20 @@ describe('useSseChat reCAPTCHA 403 verification', () => {
     expect(requestHeaders(fetchMock, 3)['X-Recaptcha-Token']).toBeUndefined();
   });
 
-  it('evicts a cached token on HTTP 403 and avoids looping when the retry also returns 403', async () => {
+  it('evicts a cached token on HTTP 403 and settles with a retryable verification error when the retry also returns 403', async () => {
     // Test: Stale token eviction and single-retry bound per turn.
     // Situation: Turn 1 caches a token; turn 2 sends that cached token and gets
-    //   403 twice (initial attempt and post-verification retry).
+    //   403 twice (initial attempt and post-verification retry with a cancelable
+    //   body).
     // Expectation: The stale token is evicted, the modal opens once for turn 2,
-    //   and when the retry also returns 403, the rejected token is evicted and
-    //   the turn settles with HTTP 403 rather than opening a second modal.
+    //   and when the retry also returns 403, the rejected token is evicted, the
+    //   retry 403 body is canceled, and the turn settles with retryable
+    //   `VERIFICATION_FAILED_ERROR` rather than opening a second modal.
     writeRuntimeConfig({
       enable_chat: true,
       recaptcha_checkbox_site_key: '6Lc_checkbox_test',
     });
+    const cancelRetryBody = vi.fn().mockResolvedValue(undefined);
     const fetchMock = vi
       .fn()
       .mockResolvedValueOnce(forbiddenResponse())
@@ -2314,7 +2318,12 @@ describe('useSseChat reCAPTCHA 403 verification', () => {
         okResponse('Turn 1 ok', parseRequest(init.body).idempotency_key),
       )
       .mockResolvedValueOnce(forbiddenResponse())
-      .mockResolvedValueOnce(forbiddenResponse())
+      .mockResolvedValueOnce({
+        ok: false,
+        status: 403,
+        statusText: 'Forbidden',
+        body: { cancel: cancelRetryBody },
+      })
       .mockImplementationOnce(async (_url: string, init: RequestInit) =>
         okResponse('Turn 3 ok', parseRequest(init.body).idempotency_key),
       );
@@ -2346,11 +2355,13 @@ describe('useSseChat reCAPTCHA 403 verification', () => {
       await sendPromise;
     });
     expect(requestHeaders(fetchMock, 3)['X-Recaptcha-Token']).toBe('token-2');
+    expect(cancelRetryBody).toHaveBeenCalledTimes(1);
     expect(result.current.chat.verificationModal).toEqual({ status: 'closed' });
+    expect(result.current.chat.error).toBe(VERIFICATION_FAILED_ERROR);
     expect(result.current.turns[1]).toMatchObject({
       status: 'error',
-      error: 'Data Commons ran into an error. HTTP 403 Forbidden.',
-      isRetryable: false,
+      error: VERIFICATION_FAILED_ERROR,
+      isRetryable: true,
     });
 
     // Turn 3 must not send the evicted rejected token-2.
