@@ -13,6 +13,7 @@
 # limitations under the License.
 """Tests for the follow-up question workflow."""
 
+import asyncio
 import logging
 from pathlib import Path
 from typing import Any
@@ -26,6 +27,17 @@ from narratives_agent.gemini.response import GeminiResponse
 from narratives_agent.workflows import follow_up
 
 _CONFIG = AgentConfig(prompts=Prompts(follow_up="Suggest follow-up questions."))
+
+
+def _list_follow_up_records(
+    caplog: pytest.LogCaptureFixture,
+) -> list[logging.LogRecord]:
+    """Returns the captured records that the follow-up module logged."""
+    return [
+        record
+        for record in caplog.records
+        if record.name == follow_up.logger.name
+    ]
 
 
 @pytest.mark.asyncio
@@ -165,6 +177,127 @@ async def test_an_empty_response_returns_no_questions(
     assert questions == []
     assert [record.levelno for record in caplog.records] == [logging.WARNING]
     assert f"finish reason: {response.finish_reason}" in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_a_call_that_exceeds_the_budget_returns_no_questions(
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    # Test: The time budget of the follow-up model call.
+    # Situation: `async_gemini_request` never returns, and
+    #   `FOLLOW_UP_TIMEOUT_SECONDS` is 0, so the budget expires while the
+    #   call is waiting.
+    # Expectation: No questions are returned, the in-flight call is
+    #   canceled, and the follow-up module logs one record, a WARNING that
+    #   says the call did not finish within the budget of 0 seconds.
+    canceled = asyncio.Event()
+
+    async def request(**kwargs: Any) -> GeminiResponse:
+        try:
+            await asyncio.Event().wait()
+        except asyncio.CancelledError:
+            canceled.set()
+            raise
+        return GeminiResponse()
+
+    monkeypatch.setattr(follow_up, "async_gemini_request", request)
+    monkeypatch.setattr(follow_up, "FOLLOW_UP_TIMEOUT_SECONDS", 0)
+
+    with caplog.at_level(logging.DEBUG, logger=follow_up.logger.name):
+        # When the budget is not applied to the call, the one-second bound
+        # fails the test instead of letting the test wait forever.
+        async with asyncio.timeout(1):
+            questions = await follow_up.generate_follow_up_questions(
+                "What is the population of California?",
+                follow_up.FollowUpTopics(unused=("California population",)),
+                _CONFIG,
+            )
+
+    assert questions == []
+    assert canceled.is_set()
+    records = _list_follow_up_records(caplog)
+    assert [record.levelno for record in records] == [logging.WARNING]
+    assert "did not finish within 0 seconds" in records[0].getMessage()
+
+
+@pytest.mark.asyncio
+async def test_a_cancellation_before_the_deadline_propagates(
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    # Test: Cancellation of follow-up generation before its budget expires.
+    # Situation: `FOLLOW_UP_TIMEOUT_SECONDS` keeps its default value, and the
+    #   task that generates the questions is canceled while
+    #   `async_gemini_request` is waiting.
+    # Expectation: The task raises `CancelledError` and ends as canceled, and
+    #   the follow-up module logs nothing.
+    started = asyncio.Event()
+
+    async def request(**kwargs: Any) -> GeminiResponse:
+        started.set()
+        await asyncio.Event().wait()
+        return GeminiResponse()
+
+    monkeypatch.setattr(follow_up, "async_gemini_request", request)
+
+    with caplog.at_level(logging.DEBUG, logger=follow_up.logger.name):
+        task = asyncio.create_task(
+            follow_up.generate_follow_up_questions(
+                "What is the population of California?",
+                follow_up.FollowUpTopics(unused=("California population",)),
+                _CONFIG,
+            )
+        )
+        await started.wait()
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+
+    assert task.cancelled() is True
+    assert _list_follow_up_records(caplog) == []
+
+
+@pytest.mark.asyncio
+async def test_a_cancellation_after_the_deadline_propagates(
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    # Test: Cancellation of follow-up generation after its budget expires.
+    # Situation: `FOLLOW_UP_TIMEOUT_SECONDS` is 0, so the budget has expired
+    #   and the timeout has requested cancellation of the task when the task
+    #   is canceled a second time, before the task has resumed.
+    # Expectation: The task raises `CancelledError` and ends as canceled, and
+    #   the follow-up module logs nothing, because the second cancellation
+    #   is not reported as a timeout.
+    started = asyncio.Event()
+
+    async def request(**kwargs: Any) -> GeminiResponse:
+        started.set()
+        await asyncio.Event().wait()
+        return GeminiResponse()
+
+    monkeypatch.setattr(follow_up, "async_gemini_request", request)
+    monkeypatch.setattr(follow_up, "FOLLOW_UP_TIMEOUT_SECONDS", 0)
+
+    with caplog.at_level(logging.DEBUG, logger=follow_up.logger.name):
+        task = asyncio.create_task(
+            follow_up.generate_follow_up_questions(
+                "What is the population of California?",
+                follow_up.FollowUpTopics(unused=("California population",)),
+                _CONFIG,
+            )
+        )
+        await started.wait()
+        # The timeout's own cancellation request is already pending, so the
+        # cancellation below is the second request the task receives.
+        assert task.cancelling() == 1
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+
+    assert task.cancelled() is True
+    assert _list_follow_up_records(caplog) == []
 
 
 @pytest.mark.asyncio

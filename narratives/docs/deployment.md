@@ -559,9 +559,18 @@ can configure Google Cloud reCAPTCHA Enterprise public site keys through
 optional container environment variables:
 
 - `RECAPTCHA_SESSION_SITE_KEY`: Public WAF session-token site key injected as
-  `recaptcha_session_site_key` in `#runtime-config`.
+  `recaptcha_session_site_key` in `#runtime-config`. When set and chat is
+  enabled, the UI loads Google's `enterprise.js?render=<key>&waf=session`
+  script on the Data Agent view so browsers silently mint and refresh the
+  `recaptcha-ca-t` session cookie.
 - `RECAPTCHA_CHECKBOX_SITE_KEY`: Public WAF checkbox site key injected as
-  `recaptcha_checkbox_site_key` in `#runtime-config`.
+  `recaptcha_checkbox_site_key` in `#runtime-config`. When set and a chat
+  `POST /agent/chat/stream` returns HTTP `403`, the UI pauses the pending turn,
+  opens an in-app checkbox verification dialog (`RecaptchaModal`), caches the
+  solved token in memory for 25 minutes, and retries the same request once with
+  the `X-Recaptcha-Token` header. Subsequent turns within that 25-minute window
+  attach the cached `X-Recaptcha-Token` automatically; any HTTP `403` clears
+  the cached token.
 
 When serving `index.html`, the backend includes any non-empty
 `RECAPTCHA_SESSION_SITE_KEY` and `RECAPTCHA_CHECKBOX_SITE_KEY` values inside

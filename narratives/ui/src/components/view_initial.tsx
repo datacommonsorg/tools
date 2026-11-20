@@ -21,6 +21,7 @@
 import { domAnimation, LazyMotion, m, useReducedMotion } from 'motion/react';
 import { SuggestionChip } from '@/src/components/chip_suggestion';
 import { PromptInput } from '@/src/components/input_prompt';
+import { RECAPTCHA_NOTICE_TEXT } from '@/src/components/note_composer';
 import { TaglineText } from '@/src/components/text_tagline';
 import { getInstanceConfig } from '@/src/config/instance_config';
 import {
@@ -95,6 +96,12 @@ export function InitialView({ query, setQuery, onSend }: InitialViewProps) {
               />
             </m.div>
           ))}
+          <m.p
+            variants={INTRO_FADE_UP_VARIANTS}
+            className="basis-full text-center text-caption text-muted"
+          >
+            {RECAPTCHA_NOTICE_TEXT}
+          </m.p>
         </m.div>
       </m.div>
     </LazyMotion>

@@ -71,7 +71,8 @@ const COLUMN = 'w-full max-w-4xl mx-auto px-3 sm:px-4 lg:px-8';
  */
 export function DataAgent() {
   const [query, setQuery] = useState('');
-  const { turns, isStreaming, send, stop } = useChatSession();
+  const { turns, isStreaming, send, stop, verificationModal } =
+    useChatSession();
   // Citation labels belong to the thread, not to one answer, so they are
   // worked out here, where every turn is in view.
   const citationNumbers = useMemo(() => assignCitationNumbers(turns), [turns]);
@@ -206,6 +207,11 @@ export function DataAgent() {
             citationNumbers={citationNumbers[i]}
             isLast={i === turns.length - 1}
             isStreaming={isStreaming && i === turns.length - 1}
+            isVerifying={
+              verificationModal.status === 'open' &&
+              isStreaming &&
+              i === turns.length - 1
+            }
             onAsk={(question) => send(question)}
             promptTextareaRef={promptTextareaRef}
           />
@@ -248,6 +254,8 @@ interface TurnViewProps {
   citationNumbers?: number[];
   isLast: boolean;
   isStreaming: boolean;
+  /** True while this turn is paused awaiting user reCAPTCHA verification. */
+  isVerifying?: boolean;
   onAsk?: (question: string) => void;
   /** The follow-up prompt, which takes focus when this turn's toast closes. */
   promptTextareaRef?: RefObject<HTMLTextAreaElement | null>;
@@ -260,6 +268,7 @@ export function TurnView({
   citationNumbers,
   isLast,
   isStreaming,
+  isVerifying = false,
   onAsk,
   promptTextareaRef,
 }: TurnViewProps) {
@@ -390,6 +399,7 @@ export function TurnView({
               turn.provenance.length > 0)
           }
           status={turn.status}
+          isVerifying={isVerifying}
           onClose={showQuestion}
           answerCardRef={answerCardRef}
         />

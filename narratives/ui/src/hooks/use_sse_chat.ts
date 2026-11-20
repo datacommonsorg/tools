@@ -2,7 +2,7 @@
  * @fileoverview Provides the SSE chat hook: streams agent responses and reduces events into chat turns.
  */
 
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { withBaseUrl } from '@/src/config/base_url';
 import {
   CANCELED_TURN_ERROR,
@@ -12,7 +12,10 @@ import {
   HIGH_TRAFFIC_ERROR,
   INTERRUPTED_TURN_ERROR,
   TRANSCRIPT_REJECTED_ERROR,
+  VERIFICATION_CANCELED_ERROR,
+  VERIFICATION_FAILED_ERROR,
 } from '@/src/config/copy_chat';
+import { getRuntimeConfig } from '@/src/config/runtime_config';
 import {
   type ClientTurnTimings,
   computeElapsedMs,
@@ -21,11 +24,18 @@ import {
 } from '@/src/hooks/turn_timings';
 import { isDebugUrlEnabled } from '@/src/hooks/use_debug_mode';
 import {
+  RECAPTCHA_ACTION_TOKEN_TTL_MS,
+  useRecaptchaVerification,
+  type VerificationModalState,
+  type VerificationOutcome,
+} from '@/src/hooks/use_recaptcha_verification';
+import {
   parseServerDebugReport,
   type ServerDebugReport,
 } from '@/src/types/debug_report';
 
-export type { ClientTurnTimings };
+export type { ClientTurnTimings, VerificationModalState };
+export { RECAPTCHA_ACTION_TOKEN_TTL_MS };
 
 /** SSE framing: events are separated by a blank line (after line-ending normalization). */
 const SSE_EVENT_SEPARATOR = '\n\n';
@@ -325,6 +335,12 @@ const HTTP_SERVER_ERROR_MIN = 500;
  * out at the server (408) or was rate limited (429).
  */
 const HTTP_RETRYABLE_CLIENT_ERRORS: ReadonlySet<number> = new Set([408, 429]);
+
+/** HTTP status Cloud Armor returns when a chat POST requires reCAPTCHA verification. */
+const HTTP_FORBIDDEN = 403;
+
+/** Request header carrying the checkbox reCAPTCHA action token to Cloud Armor. */
+const RECAPTCHA_TOKEN_HEADER = 'X-Recaptcha-Token';
 
 /**
  * Records the places, variables, and date range of one data query or chart, in
@@ -798,6 +814,93 @@ export async function* parseSseStream(
   }
 }
 
+/** Outcome of posting a chat request with single-retry reCAPTCHA fallback. */
+type PostChatResult =
+  | { status: 'response'; resp: Response }
+  | { status: 'canceled' }
+  | { status: 'verification_failed' }
+  | { status: 'aborted' };
+
+/** Inputs for {@link postWithRecaptchaRetry}. */
+interface PostWithRecaptchaRetryParams {
+  endpoint: string;
+  body: string;
+  signal: AbortSignal;
+  getActiveToken: () => string | null;
+  clearToken: () => void;
+  requestVerification: (
+    checkboxSiteKey: string,
+  ) => Promise<VerificationOutcome>;
+}
+
+/** Cancels an unused response body so its underlying connection can release. */
+function cancelResponseBody(resp: Response): void {
+  if (typeof resp.body?.cancel === 'function') {
+    void resp.body.cancel().catch(() => undefined);
+  }
+}
+
+/**
+ * Posts a chat request with any cached checkbox reCAPTCHA token. On HTTP 403
+ * when a checkbox site key is configured, evicts any stale token, prompts for
+ * interactive verification, and retries the identical payload once.
+ */
+async function postWithRecaptchaRetry({
+  endpoint,
+  body,
+  signal,
+  getActiveToken,
+  clearToken,
+  requestVerification,
+}: PostWithRecaptchaRetryParams): Promise<PostChatResult> {
+  const post = (actionToken: string | null): Promise<Response> => {
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+    };
+    if (actionToken !== null) {
+      headers[RECAPTCHA_TOKEN_HEADER] = actionToken;
+    }
+    return fetch(endpoint, {
+      method: 'POST',
+      headers,
+      body,
+      signal,
+    });
+  };
+
+  const initialResp = await post(getActiveToken());
+  if (signal.aborted) return { status: 'aborted' };
+  if (initialResp.status !== HTTP_FORBIDDEN) {
+    return { status: 'response', resp: initialResp };
+  }
+
+  clearToken();
+  const { recaptchaCheckboxSiteKey } = getRuntimeConfig();
+  if (recaptchaCheckboxSiteKey === '') {
+    return { status: 'response', resp: initialResp };
+  }
+
+  cancelResponseBody(initialResp);
+  const outcome = await requestVerification(recaptchaCheckboxSiteKey);
+  if (signal.aborted || outcome.status === 'aborted') {
+    return { status: 'aborted' };
+  }
+  if (outcome.status === 'canceled') {
+    return { status: 'canceled' };
+  }
+
+  const retryResp = await post(outcome.token);
+  if (signal.aborted) return { status: 'aborted' };
+  if (retryResp.status === HTTP_FORBIDDEN) {
+    // Evict a token rejected on retry instead of looping into another modal
+    // prompt for the same turn; a manual retry opens a fresh challenge.
+    clearToken();
+    cancelResponseBody(retryResp);
+    return { status: 'verification_failed' };
+  }
+  return { status: 'response', resp: retryResp };
+}
+
 /** Identifies the open request: its abort handle, its turn's key, and its start timestamp. */
 interface InFlightRequest {
   controller: AbortController;
@@ -811,6 +914,9 @@ export interface UseSseChatResult {
   error: string | null;
   send: (message: string) => Promise<void>;
   stop: () => void;
+  verificationModal: VerificationModalState;
+  completeVerification: (token: string) => void;
+  cancelVerification: () => void;
 }
 
 /**
@@ -837,11 +943,30 @@ export function useSseChat(props: UseSseChatProps): UseSseChatResult {
   const [isStreaming, setIsStreaming] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const inFlightRef = useRef<InFlightRequest | null>(null);
+  const {
+    verificationModal,
+    getActiveToken,
+    clearToken,
+    requestVerification,
+    abortVerification,
+    completeVerification,
+    cancelVerification,
+  } = useRecaptchaVerification();
+
+  // Abort any in-flight HTTP stream on unmount.
+  useEffect(() => {
+    return () => {
+      const inFlight = inFlightRef.current;
+      inFlightRef.current = null;
+      inFlight?.controller.abort();
+    };
+  }, []);
 
   // Settles the open request now; once aborted, it writes nothing more.
   const stop = useCallback(() => {
     const inFlight = inFlightRef.current;
     inFlightRef.current = null;
+    abortVerification();
     setIsStreaming(false);
     setError(null);
     if (!inFlight) return;
@@ -856,7 +981,7 @@ export function useSseChat(props: UseSseChatProps): UseSseChatResult {
         return recordTimingMilestone(settled, 'totalMs', totalMs);
       }),
     );
-  }, [setTurns]);
+  }, [setTurns, abortVerification]);
 
   const send = useCallback(
     async (message: string) => {
@@ -902,19 +1027,39 @@ export function useSseChat(props: UseSseChatProps): UseSseChatResult {
       const requestDebug =
         typeof window !== 'undefined' &&
         isDebugUrlEnabled(window.location.search);
+      const requestBody = JSON.stringify({
+        message,
+        ...transcript,
+        idempotency_key: idempotencyKey,
+        ...(requestDebug ? { debug: true } : {}),
+      });
+
       try {
-        const resp = await fetch(endpoint, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            message,
-            ...transcript,
-            idempotency_key: idempotencyKey,
-            ...(requestDebug ? { debug: true } : {}),
-          }),
+        const postResult = await postWithRecaptchaRetry({
+          endpoint,
+          body: requestBody,
           signal: controller.signal,
+          getActiveToken,
+          clearToken,
+          requestVerification,
         });
-        if (controller.signal.aborted) return;
+        if (postResult.status === 'aborted') return;
+        if (postResult.status !== 'response') {
+          const errText =
+            postResult.status === 'canceled'
+              ? VERIFICATION_CANCELED_ERROR
+              : VERIFICATION_FAILED_ERROR;
+          patch((turn) => ({
+            ...turn,
+            status: 'error',
+            error: errText,
+            isRetryable: true,
+          }));
+          setError(errText);
+          return;
+        }
+        const { resp } = postResult;
+
         const headersReceivedMs = computeElapsedMs(submittedPerfMs);
         patch((turn) =>
           recordTimingMilestone(turn, 'headersReceivedMs', headersReceivedMs),
@@ -1028,10 +1173,26 @@ export function useSseChat(props: UseSseChatProps): UseSseChatResult {
         }
       }
     },
-    [endpoint, turns, setTurns, isStreaming],
+    [
+      endpoint,
+      turns,
+      setTurns,
+      isStreaming,
+      getActiveToken,
+      clearToken,
+      requestVerification,
+    ],
   );
 
-  return { isStreaming, error, send, stop };
+  return {
+    isStreaming,
+    error,
+    send,
+    stop,
+    verificationModal,
+    completeVerification,
+    cancelVerification,
+  };
 }
 
 /** Returns the message shown for a terminal event that ends the turn in `error`. */

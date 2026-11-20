@@ -19,6 +19,7 @@
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { resetRuntimeConfigForTests } from '@/src/config/runtime_config';
 import type { GrecaptchaEnterprise } from '@/src/types/grecaptcha';
 import {
   ensureRecaptchaScript,
@@ -35,6 +36,18 @@ const createMockEnterprise = (
   render: vi.fn(() => 0),
   reset: vi.fn(),
 });
+
+const writeRuntimeConfigSlot = (payload: Record<string, unknown>): void => {
+  document.getElementById('runtime-config')?.remove();
+  const slot = document.createElement('script');
+  slot.id = 'runtime-config';
+  slot.type = 'application/json';
+  slot.textContent = JSON.stringify(payload);
+  // Mount under `document.body` so the `document.head.appendChild` spy only
+  // intercepts scripts injected by `ensureRecaptchaScript`.
+  document.body.appendChild(slot);
+  resetRuntimeConfigForTests();
+};
 
 const appendedScripts: HTMLScriptElement[] = [];
 
@@ -63,19 +76,24 @@ beforeEach(() => {
 afterEach(() => {
   vi.useRealTimers();
   resetRecaptchaLoaderForTests();
+  resetRuntimeConfigForTests();
   appendedScripts.length = 0;
   document.head.innerHTML = '';
+  document.getElementById('runtime-config')?.remove();
   delete window.grecaptcha;
   vi.restoreAllMocks();
 });
 
 describe('ensureRecaptchaScript', () => {
-  it('loads the WAF session URL when a non-empty session site key is provided', async () => {
+  it('loads the WAF session URL when #runtime-config sets a session site key', async () => {
     // Test: Session-key script URL and resolution via `ready`.
-    // Situation: Called with a padded key needing URL encoding.
+    // Situation: `#runtime-config` sets a padded key needing URL encoding.
     // Expectation: Appends async `?render=<encoded>&waf=session` and resolves.
+    writeRuntimeConfigSlot({
+      recaptcha_session_site_key: '  6Lc+key/1  ',
+    });
     const enterprise = createMockEnterprise();
-    const pending = ensureRecaptchaScript('  6Lc+key/1  ');
+    const pending = ensureRecaptchaScript();
 
     expect(appendedScripts).toHaveLength(1);
     expect(appendedScripts[0].async).toBe(true);
@@ -90,16 +108,19 @@ describe('ensureRecaptchaScript', () => {
     expect(enterprise.ready).toHaveBeenCalledTimes(1);
   });
 
-  it.each([
-    ['omitted', undefined],
-    ['empty', ''],
-    ['whitespace-only', '   \t\n '],
-  ])('loads the explicit render URL when the session site key is %s', async (_, key) => {
-    // Test: Explicit fallback URL without a session site key.
-    // Situation: Called with `undefined`, `""`, or whitespace-only input.
+  it.each<[string, Record<string, unknown> | null]>([
+    ['absent', null],
+    ['empty', { recaptcha_session_site_key: '' }],
+    ['whitespace-only', { recaptcha_session_site_key: '   \t\n ' }],
+  ])('loads the explicit render URL when the runtime session site key is %s', async (_, payload) => {
+    // Test: Explicit fallback URL without a configured session site key.
+    // Situation: `#runtime-config` is absent or sets an empty/whitespace key.
     // Expectation: Uses `?render=explicit` (no `waf=session`) and resolves.
+    if (payload !== null) {
+      writeRuntimeConfigSlot(payload);
+    }
     const enterprise = createMockEnterprise();
-    const pending = ensureRecaptchaScript(key);
+    const pending = ensureRecaptchaScript();
 
     expect(appendedScripts).toHaveLength(1);
     expect(appendedScripts[0].src).toBe(
@@ -116,8 +137,11 @@ describe('ensureRecaptchaScript', () => {
     // Test: Concurrent and post-load caller deduplication.
     // Situation: Two calls overlap before `load`; a third runs after resolution.
     // Expectation: All callers share one promise and one `<script>` tag.
+    writeRuntimeConfigSlot({
+      recaptcha_session_site_key: '6Lc_session',
+    });
     const enterprise = createMockEnterprise();
-    const first = ensureRecaptchaScript('6Lc_session');
+    const first = ensureRecaptchaScript();
     const second = ensureRecaptchaScript();
 
     expect(second).toBe(first);
@@ -142,18 +166,23 @@ describe('ensureRecaptchaScript', () => {
     const enterprise = createMockEnterprise();
     window.grecaptcha = { enterprise };
 
-    const resolved = await ensureRecaptchaScript('6Lc_session');
+    const resolved = await ensureRecaptchaScript();
 
     expect(resolved).toBe(enterprise);
     expect(enterprise.ready).toHaveBeenCalledTimes(1);
     expect(appendedScripts).toHaveLength(0);
   });
 
-  it('clears the cached promise, removes the failed script, and retries after a script error', async () => {
-    // Test: Retry after a script load error.
-    // Situation: First `<script>` fires `error`, then a caller retries.
-    // Expectation: Rejects, removes the failed tag, and resolves on retry.
-    const firstAttempt = ensureRecaptchaScript('6Lc_session');
+  it('clears the cached promise, removes the failed script, and retries in WAF session mode after a script error', async () => {
+    // Test: Retry and mode consistency after a script load error.
+    // Situation: `#runtime-config` sets a session key; the first `<script>`
+    //   fires `error`, then a subsequent caller retries.
+    // Expectation: Rejects, removes the failed tag, and retries with
+    //   `?render=<key>&waf=session` before resolving.
+    writeRuntimeConfigSlot({
+      recaptcha_session_site_key: '6Lc_session',
+    });
+    const firstAttempt = ensureRecaptchaScript();
     const [failedScript] = appendedScripts;
     failedScript.dispatchEvent(new Event('error'));
 
@@ -163,10 +192,13 @@ describe('ensureRecaptchaScript', () => {
     expect(appendedScripts).toHaveLength(0);
 
     const enterprise = createMockEnterprise();
-    const retryAttempt = ensureRecaptchaScript('6Lc_session');
+    const retryAttempt = ensureRecaptchaScript();
+    expect(appendedScripts).toHaveLength(1);
     const [retryScript] = appendedScripts;
-    expect(retryScript).toBeDefined();
     expect(retryScript).not.toBe(failedScript);
+    expect(retryScript.src).toBe(
+      'https://www.google.com/recaptcha/enterprise.js?render=6Lc_session&waf=session',
+    );
 
     window.grecaptcha = { enterprise };
     retryScript.dispatchEvent(new Event('load'));
@@ -203,7 +235,7 @@ describe('ensureRecaptchaScript', () => {
     const brokenEnterprise = createMockEnterprise(() => {
       throw new Error('ready failed');
     });
-    const firstAttempt = ensureRecaptchaScript('6Lc_session');
+    const firstAttempt = ensureRecaptchaScript();
     const [firstScript] = appendedScripts;
     window.grecaptcha = { enterprise: brokenEnterprise };
     firstScript.dispatchEvent(new Event('load'));
@@ -213,7 +245,7 @@ describe('ensureRecaptchaScript', () => {
 
     const healthyEnterprise = createMockEnterprise();
     delete window.grecaptcha;
-    const retryAttempt = ensureRecaptchaScript('6Lc_session');
+    const retryAttempt = ensureRecaptchaScript();
     const [retryScript] = appendedScripts;
     window.grecaptcha = { enterprise: healthyEnterprise };
     retryScript.dispatchEvent(new Event('load'));
@@ -234,14 +266,12 @@ describe('ensureRecaptchaScript', () => {
     });
     window.grecaptcha = { enterprise };
 
-    await expect(ensureRecaptchaScript('6Lc_session')).rejects.toThrow(
+    await expect(ensureRecaptchaScript()).rejects.toThrow(
       'pre-existing ready failed',
     );
 
     shouldThrow = false;
-    await expect(ensureRecaptchaScript('6Lc_session')).resolves.toBe(
-      enterprise,
-    );
+    await expect(ensureRecaptchaScript()).resolves.toBe(enterprise);
     expect(enterprise.ready).toHaveBeenCalledTimes(2);
   });
 
@@ -252,7 +282,7 @@ describe('ensureRecaptchaScript', () => {
     vi.useFakeTimers();
     const hungEnterprise = createMockEnterprise(() => undefined);
 
-    const firstAttempt = ensureRecaptchaScript('6Lc_session');
+    const firstAttempt = ensureRecaptchaScript();
     const [firstScript] = appendedScripts;
     window.grecaptcha = { enterprise: hungEnterprise };
     firstScript.dispatchEvent(new Event('load'));
@@ -266,7 +296,7 @@ describe('ensureRecaptchaScript', () => {
 
     delete window.grecaptcha;
     const healthyEnterprise = createMockEnterprise();
-    const retryAttempt = ensureRecaptchaScript('6Lc_session');
+    const retryAttempt = ensureRecaptchaScript();
     const [retryScript] = appendedScripts;
     window.grecaptcha = { enterprise: healthyEnterprise };
     retryScript.dispatchEvent(new Event('load'));
@@ -278,12 +308,14 @@ describe('ensureRecaptchaScript', () => {
     // Test: Late error from a superseded `<script>` after reset.
     // Situation: Load 1 starts, state resets, Load 2 starts, then Load 1 errors.
     // Expectation: Load 2 keeps its cached promise and resolves cleanly.
-    const firstAttempt = ensureRecaptchaScript('6Lc_first');
+    writeRuntimeConfigSlot({ recaptcha_session_site_key: '6Lc_first' });
+    const firstAttempt = ensureRecaptchaScript();
     const [staleScript] = appendedScripts;
 
     resetRecaptchaLoaderForTests();
+    writeRuntimeConfigSlot({ recaptcha_session_site_key: '6Lc_second' });
 
-    const secondAttempt = ensureRecaptchaScript('6Lc_second');
+    const secondAttempt = ensureRecaptchaScript();
     const [activeScript] = appendedScripts;
 
     staleScript.dispatchEvent(new Event('error'));
@@ -292,7 +324,7 @@ describe('ensureRecaptchaScript', () => {
     );
 
     // Load 2 must still be cached in `loadPromise`.
-    expect(ensureRecaptchaScript('6Lc_second')).toBe(secondAttempt);
+    expect(ensureRecaptchaScript()).toBe(secondAttempt);
     expect(appendedScripts).toEqual([activeScript]);
 
     const enterprise = createMockEnterprise();
