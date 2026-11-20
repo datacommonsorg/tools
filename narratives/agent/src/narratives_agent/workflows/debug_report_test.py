@@ -54,23 +54,27 @@ from narratives_agent.gemini.schemas import QueryPattern
 from narratives_agent.json_value import JsonObject
 from narratives_agent.settings import DebugReportMode
 from narratives_agent.telemetry import (
+    ErrorType,
     TerminalState,
     TitleOutcome,
     TokenCounts,
     TurnTelemetry,
 )
+from narratives_agent.workflows.classify import RefusedReason
 from narratives_agent.workflows.debug_report import (
     MAX_DEBUG_TEXT_CHARS,
     DebugCappedText,
     DebugRoleConfig,
     DebugStepRefusalDiagnostic,
-    DebugThought,
     DebugTimeoutDiagnostic,
     build_debug_report,
     should_emit_debug_report,
     truncate_debug_text,
 )
-from narratives_agent.workflows.mcp_loop import RejectedSubmission
+from narratives_agent.workflows.mcp_loop import (
+    DiscoveryResult,
+    RejectedSubmission,
+)
 from narratives_agent.workflows.processing import (
     ProcessingDiagnostic,
     StepRefusalDiagnostic,
@@ -83,7 +87,8 @@ from narratives_agent.workflows.specification import (
     RankCohortStep,
     UnavailableReport,
 )
-from narratives_agent.workflows.turn_cache import CachedTable, TurnCache
+from narratives_agent.workflows.turn_cache import CachedTable
+from narratives_agent.workflows.turn_record import TurnRecord, TurnThought
 
 
 def _make_telemetry(
@@ -108,6 +113,21 @@ def _make_telemetry(
     if phase_durations is not None:
         telemetry.phase_durations_ms.update(phase_durations)
     return telemetry
+
+
+def _make_record(
+    telemetry: TurnTelemetry | None = None,
+    *,
+    terminal_state: TerminalState = TerminalState.COMPLETE,
+    terminal_reason: ErrorType | RefusedReason | None = None,
+) -> TurnRecord:
+    """Factory helper returning the TurnRecord of a turn that has ended."""
+    record = TurnRecord(
+        telemetry=telemetry if telemetry is not None else _make_telemetry()
+    )
+    record.terminal_state = terminal_state
+    record.terminal_reason = terminal_reason
+    return record
 
 
 def _make_table(
@@ -197,12 +217,7 @@ def test_build_debug_report_complete_turn_with_tokens_and_phases() -> None:
     )
     telemetry.finish(TerminalState.COMPLETE)
 
-    report = build_debug_report(
-        telemetry=telemetry,
-        terminal_state="complete",
-        terminal_reason=None,
-        is_clarification=False,
-    )
+    report = build_debug_report(_make_record(telemetry))
 
     assert report.turn_id == "turn-complete-1"
     assert report.terminal_state == "complete"
@@ -248,12 +263,7 @@ def test_the_debug_report_carries_the_title_outcome() -> None:
     telemetry = _make_telemetry()
     telemetry.title_outcome = TitleOutcome.OMITTED
 
-    report = build_debug_report(
-        telemetry=telemetry,
-        terminal_state="complete",
-        terminal_reason=None,
-        is_clarification=False,
-    )
+    report = build_debug_report(_make_record(telemetry))
 
     assert report.title_outcome is TitleOutcome.OMITTED
     assert report.to_dict()["title_outcome"] == "omitted"
@@ -268,12 +278,9 @@ def test_build_debug_report_clarification_turn() -> None:
         pattern="single_point",
         phase_durations={"discovery": 50.0},
     )
-    report = build_debug_report(
-        telemetry=telemetry,
-        terminal_state="complete",
-        terminal_reason=None,
-        is_clarification=True,
-    )
+    record = _make_record(telemetry)
+    record.is_clarification = True
+    report = build_debug_report(record)
 
     assert report.is_clarification is True
     assert report.pattern == "single_point"
@@ -290,9 +297,11 @@ def test_build_debug_report_refused_turn_omits_pattern() -> None:
     telemetry.finish(TerminalState.REFUSED, "off_domain")
 
     report = build_debug_report(
-        telemetry=telemetry,
-        terminal_state="refused",
-        terminal_reason="off_domain",
+        _make_record(
+            telemetry,
+            terminal_state=TerminalState.REFUSED,
+            terminal_reason=RefusedReason.OFF_DOMAIN,
+        )
     )
 
     assert report.terminal_state == "refused"
@@ -309,13 +318,37 @@ def test_build_debug_report_error_turn() -> None:
     telemetry.finish(TerminalState.ERROR, "mcp_timeout")
 
     report = build_debug_report(
-        telemetry=telemetry,
-        terminal_state="error",
-        terminal_reason="mcp_timeout",
+        _make_record(
+            telemetry,
+            terminal_state=TerminalState.ERROR,
+            terminal_reason=ErrorType.MCP_TIMEOUT,
+        )
     )
 
     assert report.terminal_state == "error"
     assert report.terminal_reason == "mcp_timeout"
+
+
+@pytest.mark.parametrize(
+    "state",
+    [
+        pytest.param(None, id="unset"),
+        pytest.param(TerminalState.CANCELED, id="canceled"),
+    ],
+)
+def test_build_debug_report_reports_a_state_it_does_not_model_as_error(
+    state: TerminalState | None,
+) -> None:
+    # Test: Terminal state of a report built from a record whose state the
+    #   report does not model.
+    # Situation: The record's terminal state is unset or `canceled`.
+    # Expectation: The report's terminal state is "error".
+    record = TurnRecord(telemetry=_make_telemetry())
+    record.terminal_state = state
+
+    report = build_debug_report(record)
+
+    assert report.terminal_state == "error"
 
 
 def test_build_debug_report_with_cached_tables_profiles_all_variants() -> None:
@@ -328,7 +361,8 @@ def test_build_debug_report_with_cached_tables_profiles_all_variants() -> None:
     #   - s1: derived table (derived), used in answer.
     # Expectation: Table records match expected source selection, usage flags,
     #   date ranges, and row counts in storage order.
-    cache = TurnCache()
+    record = _make_record()
+    cache = record.cache
     source = Source(
         name="US Census Bureau",
         url="https://census.gov",
@@ -397,13 +431,8 @@ def test_build_debug_report_with_cached_tables_profiles_all_variants() -> None:
         )
     )
 
-    telemetry = _make_telemetry()
-    report = build_debug_report(
-        telemetry=telemetry,
-        terminal_state="complete",
-        cache=cache,
-        used_table_ids={"t1", "s1"},
-    )
+    record.used_table_ids = frozenset({"t1", "s1"})
+    report = build_debug_report(record)
 
     assert len(report.tables) == 3
 
@@ -464,7 +493,8 @@ def test_build_debug_report_cohort_place_cap_and_name_resolution() -> None:
     # Expectation: `places_with_data_count` reflects the true total (30);
     #   `places` is capped at 25; requested places precede other places; names
     #   resolve via the 3-step fallback.
-    cache = TurnCache()
+    record = _make_record()
+    cache = record.cache
     place_dcids = [f"geoId/{i:02d}" for i in range(1, 31)]
     # Requested places: geoId/02 first, then missing geoId/99, then geoId/01.
     requested = ("geoId/02", "geoId/99", "geoId/01")
@@ -497,12 +527,7 @@ def test_build_debug_report_cohort_place_cap_and_name_resolution() -> None:
     )
     cache.store_fetched(CachedTable(table_id="t1", table=cohort_table))
 
-    telemetry = _make_telemetry()
-    report = build_debug_report(
-        telemetry=telemetry,
-        terminal_state="complete",
-        cache=cache,
-    )
+    report = build_debug_report(record)
 
     t1_rec = report.tables[0]
     assert t1_rec.parent_place_dcid == "country/USA"
@@ -529,19 +554,19 @@ def test_debug_report_serializes_trajectory_and_analysis_context() -> None:
     # Test: Serialization of thoughts, tool calls, rejected specs, diagnostics,
     #   specification, unavailable report, and digest.
     # Situation: A turn produces discovery and synthesis thoughts, a tool call,
-    #   three rejected submissions covering each rejection reason, three
-    #   diagnostics covering StepRefusalDiagnostic with and without coverage
-    #   plus TimeoutDiagnostic, a valid specification, an unavailable report,
-    #   and an analytical digest.
+    #   three rejected submissions covering each rejection reason, two loop
+    #   diagnostics covering StepRefusalDiagnostic with and without coverage,
+    #   a TimeoutDiagnostic from the default specification, a valid
+    #   specification, an unavailable report, and an analytical digest.
     # Expectation: build_debug_report populates typed dataclass records on
     #   DebugReport, and to_dict serializes every field matching the wire
     #   specification without leaking untyped internals.
-    telemetry = _make_telemetry()
+    record = _make_record()
     thoughts = [
-        DebugThought(
+        TurnThought(
             phase="discovery", text="Looking up France.", round_number=1
         ),
-        DebugThought(
+        TurnThought(
             phase="synthesis", text="Writing response.", round_number=None
         ),
     ]
@@ -627,10 +652,9 @@ def test_debug_report_serializes_trajectory_and_analysis_context() -> None:
         message="Specification exceeded timeout",
     )
 
-    diagnostics: list[tuple[int | None, ProcessingDiagnostic]] = [
+    loop_diagnostics: list[tuple[int, ProcessingDiagnostic]] = [
         (1, diag_with_cov),
         (2, diag_no_cov),
-        (None, diag_timeout),
     ]
 
     unavailable = UnavailableReport(
@@ -642,18 +666,18 @@ def test_debug_report_serializes_trajectory_and_analysis_context() -> None:
 
     digest = AnalysisDigest(results=(), sources=())
 
-    report = build_debug_report(
-        telemetry=telemetry,
-        terminal_state="complete",
-        thoughts=thoughts,
+    record.thoughts.extend(thoughts)
+    record.loop_result = DiscoveryResult(
         tool_calls=tool_calls,
         rejected_submissions=rejected_submissions,
-        diagnostics=diagnostics,
-        specification=final_spec,
-        specification_origin="model",
+        diagnostics=loop_diagnostics,
         unavailable=unavailable,
-        digest=digest,
     )
+    record.default_diagnostics.append(diag_timeout)
+    record.specification = final_spec
+    record.specification_origin = "model"
+    record.digest = digest
+    report = build_debug_report(record)
 
     assert len(report.thoughts) == 2
     assert report.thoughts[0].phase == "discovery"
@@ -780,10 +804,10 @@ def test_debug_report_serializes_trajectory_and_analysis_context() -> None:
 
 def test_specification_origin_resolution() -> None:
     # Test: Specification origin resolution.
-    # Situation: build_debug_report is called with:
-    #   1. specification=None (with or without origin provided).
-    #   2. specification is set with origin=None (defaults to "model").
-    #   3. specification is set with explicit origin="default".
+    # Situation: build_debug_report reads a record that holds:
+    #   1. no specification, with an origin recorded.
+    #   2. a specification with no origin recorded (defaults to "model").
+    #   3. a specification with the explicit origin "default".
     # Expectation: specification_origin resolves to None when specification is
     #   None, defaults to "model" when specification is present, and honors
     #   explicit origin settings.
@@ -797,32 +821,24 @@ def test_specification_origin_resolution() -> None:
     )
 
     # 1. specification is None
-    report_none = build_debug_report(
-        telemetry=telemetry,
-        terminal_state="complete",
-        specification=None,
-        specification_origin="model",
-    )
+    record_none = _make_record(telemetry)
+    record_none.specification_origin = "model"
+    report_none = build_debug_report(record_none)
     assert report_none.specification_origin is None
     assert report_none.to_dict()["specification_origin"] is None
 
     # 2. specification is set, origin is omitted/None
-    report_default = build_debug_report(
-        telemetry=telemetry,
-        terminal_state="complete",
-        specification=spec,
-        specification_origin=None,
-    )
+    record_default = _make_record(telemetry)
+    record_default.specification = spec
+    report_default = build_debug_report(record_default)
     assert report_default.specification_origin == "model"
     assert report_default.to_dict()["specification_origin"] == "model"
 
     # 3. specification is set, origin is explicitly "default"
-    report_fallback = build_debug_report(
-        telemetry=telemetry,
-        terminal_state="complete",
-        specification=spec,
-        specification_origin="default",
-    )
+    record_fallback = _make_record(telemetry)
+    record_fallback.specification = spec
+    record_fallback.specification_origin = "default"
+    report_fallback = build_debug_report(record_fallback)
     assert report_fallback.specification_origin == "default"
     assert report_fallback.to_dict()["specification_origin"] == "default"
 
@@ -870,19 +886,14 @@ def test_truncate_debug_text_boundary_and_serialization() -> None:
 
 def test_build_debug_report_synthesis_fields_and_capping() -> None:
     # Test: Synthesis prompt and raw output capping and serialization.
-    # Situation: build_debug_report is called with None, short text, and text
-    #   exceeding MAX_DEBUG_TEXT_CHARS.
+    # Situation: build_debug_report reads records whose synthesis fields are
+    #   None, short text, and text exceeding MAX_DEBUG_TEXT_CHARS.
     # Expectation: None produces None in both report fields and serialized dict;
     #   strings are converted to DebugCappedText and serialized via to_dict().
     telemetry = _make_telemetry()
 
     # 1. Unset synthesis fields
-    report_none = build_debug_report(
-        telemetry=telemetry,
-        terminal_state="complete",
-        synthesis_prompt=None,
-        synthesis_raw_output=None,
-    )
+    report_none = build_debug_report(_make_record(telemetry))
     assert report_none.synthesis_prompt is None
     assert report_none.synthesis_raw_output is None
     dict_none = report_none.to_dict()
@@ -892,12 +903,10 @@ def test_build_debug_report_synthesis_fields_and_capping() -> None:
     # 2. Populated synthesis fields within limit
     prompt_text = "What is the poverty rate in California?"
     raw_output_text = "The poverty rate is 12%.\n\n```chart\n{}\n```"
-    report_set = build_debug_report(
-        telemetry=telemetry,
-        terminal_state="complete",
-        synthesis_prompt=prompt_text,
-        synthesis_raw_output=raw_output_text,
-    )
+    record_set = _make_record(telemetry)
+    record_set.synthesis_prompt = prompt_text
+    record_set.synthesis_raw_output = raw_output_text
+    report_set = build_debug_report(record_set)
     assert report_set.synthesis_prompt == DebugCappedText(
         text=prompt_text, truncated=False, total_chars=len(prompt_text)
     )
@@ -918,12 +927,10 @@ def test_build_debug_report_synthesis_fields_and_capping() -> None:
 
     # 3. Oversized synthesis fields
     oversized = "y" * (MAX_DEBUG_TEXT_CHARS + 50)
-    report_oversized = build_debug_report(
-        telemetry=telemetry,
-        terminal_state="complete",
-        synthesis_prompt=oversized,
-        synthesis_raw_output=oversized,
-    )
+    record_oversized = _make_record(telemetry)
+    record_oversized.synthesis_prompt = oversized
+    record_oversized.synthesis_raw_output = oversized
+    report_oversized = build_debug_report(record_oversized)
     assert report_oversized.synthesis_prompt is not None
     assert report_oversized.synthesis_prompt.truncated is True
     assert report_oversized.synthesis_prompt.total_chars == len(oversized)
@@ -940,9 +947,7 @@ def test_build_debug_report_role_configs_and_secret_redaction() -> None:
     telemetry = _make_telemetry()
 
     # 1. config is None
-    report_no_config = build_debug_report(
-        telemetry=telemetry, terminal_state="complete", config=None
-    )
+    report_no_config = build_debug_report(_make_record(telemetry), config=None)
     assert report_no_config.role_configs == ()
     assert report_no_config.to_dict()["role_configs"] == []
 
@@ -959,9 +964,7 @@ def test_build_debug_report_role_configs_and_secret_redaction() -> None:
         )
     )
 
-    report = build_debug_report(
-        telemetry=telemetry, terminal_state="complete", config=config
-    )
+    report = build_debug_report(_make_record(telemetry), config=config)
 
     # Must cover all 5 roles in GeminiRole order
     roles_order = [role.value for role in GeminiRole]
@@ -1018,9 +1021,7 @@ def test_build_debug_report_prompt_hashes_and_contracts() -> None:
     telemetry = _make_telemetry()
 
     # 1. config is None
-    report_none = build_debug_report(
-        telemetry=telemetry, terminal_state="complete", config=None
-    )
+    report_none = build_debug_report(_make_record(telemetry), config=None)
     assert report_none.prompt_hashes == MappingProxyType({})
     assert report_none.to_dict()["prompt_hashes"] == {}
 
@@ -1033,9 +1034,7 @@ def test_build_debug_report_prompt_hashes_and_contracts() -> None:
     )
     config = AgentConfig(prompts=prompts)
 
-    report = build_debug_report(
-        telemetry=telemetry, terminal_state="complete", config=config
-    )
+    report = build_debug_report(_make_record(telemetry), config=config)
     hashes = report.prompt_hashes
     data_hashes = report.to_dict()["prompt_hashes"]
     assert data_hashes == dict(hashes)
@@ -1090,7 +1089,7 @@ def test_build_debug_report_prompt_hashes_and_contracts() -> None:
         prompts=replace(config.prompts, synthesis="Updated synthesis prompt"),
     )
     report_mod = build_debug_report(
-        telemetry=telemetry, terminal_state="complete", config=config_modified
+        _make_record(telemetry), config=config_modified
     )
     mod_hashes = report_mod.prompt_hashes
     assert mod_hashes["synthesis"] != hashes["synthesis"]
@@ -1106,15 +1105,11 @@ def test_build_debug_report_build_sha() -> None:
     #   to_dict().
     telemetry = _make_telemetry()
 
-    report_none = build_debug_report(
-        telemetry=telemetry, terminal_state="complete", build_sha=None
-    )
+    report_none = build_debug_report(_make_record(telemetry), build_sha=None)
     assert report_none.build_sha is None
     assert report_none.to_dict()["build_sha"] is None
 
     sha = "3b34f1cac2c2f51e9662d330ebc58014a2193944"
-    report_sha = build_debug_report(
-        telemetry=telemetry, terminal_state="complete", build_sha=sha
-    )
+    report_sha = build_debug_report(_make_record(telemetry), build_sha=sha)
     assert report_sha.build_sha == sha
     assert report_sha.to_dict()["build_sha"] == sha

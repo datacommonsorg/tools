@@ -11,16 +11,15 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-"""Builds structured turn debug reports from telemetry and cache state.
+"""Builds structured turn debug reports from the turn record.
 
-This module models the typed server debug report and constructs it from
-operational turn telemetry and cached observation tables without exposing
-untyped internal maps or sensitive conversation content.
+This module models the typed server debug report and constructs it from the
+turn's `TurnRecord` (its telemetry, cached observation tables, and results)
+without exposing untyped internal maps or sensitive conversation content.
 """
 
 import hashlib
-from collections.abc import Mapping, Sequence
-from collections.abc import Set as AbstractSet
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from types import MappingProxyType
 from typing import Literal
@@ -34,13 +33,10 @@ from narratives_agent.analytics.summarize import SUMMARY_PLACE_LIST_CAP
 from narratives_agent.analytics.tables import ObservationTable
 from narratives_agent.config_model import PROMPT_SLOTS, AgentConfig, GeminiRole
 from narratives_agent.gemini.schemas import QueryPattern
-from narratives_agent.json_value import JsonObject, JsonValue, json_safe
+from narratives_agent.json_value import JsonObject, json_safe
 from narratives_agent.settings import DebugReportMode
-from narratives_agent.telemetry import TitleOutcome, TurnTelemetry
-from narratives_agent.workflows.mcp_loop import (
-    RejectedSubmission,
-    RejectionReason,
-)
+from narratives_agent.telemetry import TerminalState, TitleOutcome
+from narratives_agent.workflows.mcp_loop import RejectionReason
 from narratives_agent.workflows.processing import (
     ProcessingDiagnostic,
     StepRefusalDiagnostic,
@@ -54,7 +50,11 @@ from narratives_agent.workflows.specification import (
 from narratives_agent.workflows.turn_cache import (
     DERIVED_TABLE_PREFIX,
     CachedTable,
-    TurnCache,
+)
+from narratives_agent.workflows.turn_record import (
+    SpecificationOrigin,
+    TurnRecord,
+    TurnThought,
 )
 
 __all__ = [
@@ -70,13 +70,10 @@ __all__ = [
     "DebugStepRefusalDiagnostic",
     "DebugTableRecord",
     "DebugTerminalState",
-    "DebugThought",
     "DebugTimeoutDiagnostic",
     "DebugTokenCall",
     "DebugTokenUsage",
     "SourceSelection",
-    "SpecificationOrigin",
-    "ThoughtPhase",
     "build_debug_diagnostic",
     "build_debug_report",
     "should_emit_debug_report",
@@ -88,8 +85,6 @@ MAX_DEBUG_TEXT_CHARS = 32_000
 
 type DebugTerminalState = Literal["complete", "refused", "error"]
 type SourceSelection = Literal["chosen", "server_default", "derived"]
-type SpecificationOrigin = Literal["model", "default"]
-type ThoughtPhase = Literal["discovery", "synthesis"]
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -225,21 +220,6 @@ class DebugTableRecord:
     source: DebugSourceRecord | None
     date_range: tuple[str, str] | None
     row_count: int
-
-
-@dataclass(frozen=True, kw_only=True)
-class DebugThought:
-    """Model reasoning thought emitted during discovery or synthesis.
-
-    Attributes:
-        phase: The pipeline phase that produced the thought.
-        text: The thought text chunk.
-        round_number: 1-based discovery round, or None for synthesis thoughts.
-    """
-
-    phase: ThoughtPhase
-    text: str
-    round_number: int | None = None
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -395,7 +375,7 @@ class DebugReport:
     title_outcome: TitleOutcome
     tokens: DebugTokenUsage
     tables: tuple[DebugTableRecord, ...]
-    thoughts: tuple[DebugThought, ...] = ()
+    thoughts: tuple[TurnThought, ...] = ()
     tool_calls: tuple[JsonObject, ...] = ()
     rejected_specifications: tuple[DebugRejectedSpecification, ...] = ()
     diagnostics: tuple[DebugDiagnostic, ...] = ()
@@ -703,54 +683,38 @@ def _build_prompt_hashes(config: AgentConfig) -> Mapping[str, str]:
     return MappingProxyType(hashes)
 
 
+def _resolve_terminal_state(state: TerminalState | None) -> DebugTerminalState:
+    """Maps the state a turn ended in to the report's terminal state.
+
+    The report has no state of its own for a canceled turn or for a turn
+    that recorded no state, so each is reported as `error`.
+    """
+    if state == TerminalState.COMPLETE:
+        return "complete"
+    if state == TerminalState.REFUSED:
+        return "refused"
+    return "error"
+
+
 def build_debug_report(
+    record: TurnRecord,
     *,
-    telemetry: TurnTelemetry,
-    terminal_state: DebugTerminalState,
-    terminal_reason: str | None = None,
-    is_clarification: bool = False,
-    cache: TurnCache | None = None,
-    used_table_ids: AbstractSet[str] = frozenset(),
-    thoughts: Sequence[DebugThought] = (),
-    tool_calls: Sequence[Mapping[str, JsonValue]] = (),
-    rejected_submissions: Sequence[RejectedSubmission] = (),
-    diagnostics: Sequence[tuple[int | None, ProcessingDiagnostic]] = (),
-    specification: AnalysisSpecification | None = None,
-    specification_origin: SpecificationOrigin | None = None,
-    unavailable: UnavailableReport | None = None,
-    digest: AnalysisDigest | None = None,
-    synthesis_prompt: str | None = None,
-    synthesis_raw_output: str | None = None,
     config: AgentConfig | None = None,
     build_sha: str | None = None,
 ) -> DebugReport:
-    """Builds a structured TurnDebugReport from telemetry and cache state.
+    """Builds the structured debug report of a turn from its record.
 
     Args:
-        telemetry: Operational telemetry collected during the turn.
-        terminal_state: Terminal outcome state ('complete', 'refused', 'error').
-        terminal_reason: Optional terminal failure or refusal reason code.
-        is_clarification: Whether the turn was answered with a clarification.
-        cache: Optional turn cache holding fetched and derived tables.
-        used_table_ids: Table IDs incorporated into the synthesis response.
-        thoughts: Model reasoning thoughts emitted during the turn.
-        tool_calls: Tool and server-function records emitted during discovery.
-        rejected_submissions: Specifications rejected during the turn.
-        diagnostics: Processing diagnostics and their optional discovery
-            rounds.
-        specification: The final analysis specification executed, if any.
-        specification_origin: Origin of the specification ('model' or
-            'default').
-        unavailable: The no-data report filed for the turn, if any.
-        digest: Analytical digest produced by the processed specification.
-        synthesis_prompt: Rendered prompt supplied to the synthesis model.
-        synthesis_raw_output: Raw text returned by the synthesis model.
+        record: The turn's record, holding its telemetry, cache, results,
+            and terminal state and reason.
         config: Loaded agent configuration used to snapshot roles and prompts.
         build_sha: Build or commit SHA identifying the running image.
 
     Returns:
         The validated DebugReport dataclass.
     """
+    telemetry = record.telemetry
+    terminal_state = _resolve_terminal_state(record.terminal_state)
     phase_durations_ms = dict(telemetry.phase_durations_ms)
     nested_phases = (
         {"processing": "discovery"}
@@ -780,22 +744,21 @@ def build_debug_report(
     pattern = None if terminal_state == "refused" else telemetry.pattern
 
     tables: list[DebugTableRecord] = []
-    if cache is not None:
-        for table_id in cache.table_ids:
-            entry = cache.get(table_id)
-            if entry is not None:
-                tables.append(
-                    _build_debug_table_record(
-                        entry,
-                        used_in_answer=table_id in used_table_ids,
-                    )
+    for table_id in record.cache.table_ids:
+        entry = record.cache.get(table_id)
+        if entry is not None:
+            tables.append(
+                _build_debug_table_record(
+                    entry,
+                    used_in_answer=table_id in record.used_table_ids,
                 )
+            )
 
     resolved_specification_origin: SpecificationOrigin | None
-    if specification is None:
+    if record.specification is None:
         resolved_specification_origin = None
-    elif specification_origin is not None:
-        resolved_specification_origin = specification_origin
+    elif record.specification_origin is not None:
+        resolved_specification_origin = record.specification_origin
     else:
         resolved_specification_origin = "model"
 
@@ -806,22 +769,30 @@ def build_debug_report(
             errors=sub.errors,
             specification=sub.specification,
         )
-        for sub in rejected_submissions
+        for sub in record.loop_result.rejected_submissions
     )
 
-    debug_diagnostics = tuple(
-        build_debug_diagnostic(diag, round_number=round_num)
-        for round_num, diag in diagnostics
+    debug_diagnostics = (
+        *(
+            build_debug_diagnostic(diagnostic, round_number=round_number)
+            for round_number, diagnostic in record.loop_result.diagnostics
+        ),
+        # The default specification runs outside the discovery rounds, so
+        # its diagnostics carry no round and follow those of the loop.
+        *(
+            build_debug_diagnostic(diagnostic)
+            for diagnostic in record.default_diagnostics
+        ),
     )
 
     capped_synthesis_prompt = (
-        truncate_debug_text(synthesis_prompt)
-        if synthesis_prompt is not None
+        truncate_debug_text(record.synthesis_prompt)
+        if record.synthesis_prompt is not None
         else None
     )
     capped_synthesis_raw_output = (
-        truncate_debug_text(synthesis_raw_output)
-        if synthesis_raw_output is not None
+        truncate_debug_text(record.synthesis_raw_output)
+        if record.synthesis_raw_output is not None
         else None
     )
     role_configs = _build_role_configs(config) if config is not None else ()
@@ -834,8 +805,12 @@ def build_debug_report(
     return DebugReport(
         turn_id=telemetry.turn_id,
         terminal_state=terminal_state,
-        terminal_reason=terminal_reason,
-        is_clarification=is_clarification,
+        terminal_reason=(
+            str(record.terminal_reason)
+            if record.terminal_reason is not None
+            else None
+        ),
+        is_clarification=record.is_clarification,
         pattern=pattern,
         duration_ms=telemetry.elapsed_ms(),
         phase_durations_ms=phase_durations_ms,
@@ -848,14 +823,14 @@ def build_debug_report(
         title_outcome=telemetry.title_outcome,
         tokens=tokens,
         tables=tuple(tables),
-        thoughts=tuple(thoughts),
-        tool_calls=tuple(dict(call) for call in tool_calls),
+        thoughts=tuple(record.thoughts),
+        tool_calls=tuple(dict(call) for call in record.loop_result.tool_calls),
         rejected_specifications=rejected_specs,
         diagnostics=debug_diagnostics,
-        specification=specification,
+        specification=record.specification,
         specification_origin=resolved_specification_origin,
-        unavailable=unavailable,
-        digest=digest,
+        unavailable=record.loop_result.unavailable,
+        digest=record.digest,
         synthesis_prompt=capped_synthesis_prompt,
         synthesis_raw_output=capped_synthesis_raw_output,
         role_configs=role_configs,
