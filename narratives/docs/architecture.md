@@ -327,6 +327,8 @@ Otherwise, the request runs through the agent loop in five steps:
    so the browser can include it in follow-up questions.
 5. **Follow-up suggestions (`follow_ups`):** Suggested follow-up questions are
    streamed after the main answer finishes.
+   A follow-up call that does not finish within 10 seconds is abandoned, and
+   the stream closes without a `follow_ups` frame.
 
 ### Server-Sent Events (SSE)
 

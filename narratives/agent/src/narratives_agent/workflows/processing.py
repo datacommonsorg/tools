@@ -81,11 +81,14 @@ logger = logging.getLogger(__name__)
 # A run that has not finished within this many seconds is abandoned and
 # reported as a timeout, so a stuck run cannot hold the turn open.
 _PROCESSING_TIMEOUT_SECONDS = 5.0
-# Runs share this many worker threads across concurrent turns. A run that
-# outlives its budget keeps its thread until its next step boundary, and a
-# run queued behind busy workers spends its own budget waiting, so two
-# abandoned runs inside long steps can make concurrent runs time out.
-_PROCESSING_MAX_WORKERS = 2
+# The maximum number of analysis runs in progress at once, across all turns.
+# A run that times out keeps its worker until its current step finishes. If
+# the limit is too low, timed-out runs can occupy every worker, and queued
+# runs then exceed their budget while they wait. If the limit is too high,
+# concurrent heavy runs compete for the same CPU, so each one takes longer
+# and all of them can exceed their budget. Busy workers also delay the
+# server's responses to other turns.
+_PROCESSING_MAX_WORKERS = 8
 # The steps whose script produces only a result. An alignment and a
 # reduction produce a cohort, and a derived metric produces a table as well
 # as a result.
@@ -192,6 +195,19 @@ class TimeoutDiagnostic:
 
 # Why a specification produced no digest: a refused step, or the budget.
 ProcessingDiagnostic = StepRefusalDiagnostic | TimeoutDiagnostic
+
+
+@dataclass(frozen=True)
+class _CompletedRun:
+    """The outcome of a run whose every step succeeded.
+
+    Attributes:
+        digest: The digest of the run's results.
+        derived: The tables the run derived, in step order.
+    """
+
+    digest: AnalysisDigest
+    derived: tuple[CachedTable, ...]
 
 
 def _describe_sources(sources: tuple[AlternativeSource, ...]) -> str:
@@ -524,24 +540,24 @@ def _run_specification(
     tables: dict[str, ObservationTable],
     cancel: threading.Event,
     timeout_seconds: float,
-) -> tuple[AnalysisDigest | ProcessingDiagnostic, tuple[CachedTable, ...]]:
+) -> _CompletedRun | ProcessingDiagnostic:
     """Runs every step in order on the calling thread.
 
-    The run never touches the cache, which is not synchronized: it reads
-    the fetched tables the caller resolved, and returns the derived tables
-    beside the outcome for the caller to store. It stops at the next step
-    boundary once `cancel` is set, which the caller does when the budget
-    expires.
+    The run never touches the cache, which is not synchronized. The run
+    reads the fetched tables the caller resolved and returns the derived
+    tables only with a digest, so a diagnostic carries no derived table.
+    The caller sets `cancel` when its `await` ends so that an abandoned run
+    stops at its next step boundary.
 
     Args:
         specification: A specification `validate_specification` accepted.
         tables: The fetched tables the steps reference, by table id.
-        cancel: Set by the caller when the run's budget has expired.
+        cancel: The event that the caller sets when its `await` ends.
         timeout_seconds: The budget, stated in a timeout diagnostic.
 
     Returns:
-        The digest or diagnostic, and the derived `CachedTable` entries in
-        step order.
+        The digest with the derived `CachedTable` entries in step order, or
+        the diagnostic of the step that refused or of the cancellation.
     """
     state = _RunState(
         tables=dict(tables),
@@ -549,18 +565,18 @@ def _run_specification(
     )
     for step in specification.steps:
         if cancel.is_set():
-            return _build_timeout_diagnostic(timeout_seconds), tuple(
-                state.derived
-            )
+            return _build_timeout_diagnostic(timeout_seconds)
         diagnostic = _run_step(step, state)
         if diagnostic is not None:
-            return diagnostic, tuple(state.derived)
+            return diagnostic
     if cancel.is_set():
-        return _build_timeout_diagnostic(timeout_seconds), tuple(state.derived)
-    digest = AnalysisDigest.from_results(
-        tuple(state.results), missing_notes=tuple(specification.missing)
+        return _build_timeout_diagnostic(timeout_seconds)
+    return _CompletedRun(
+        digest=AnalysisDigest.from_results(
+            tuple(state.results), missing_notes=tuple(specification.missing)
+        ),
+        derived=tuple(state.derived),
     )
-    return digest, tuple(state.derived)
 
 
 def _validate_run_preconditions(
@@ -592,17 +608,21 @@ async def execute_specification(
     The steps run on the module's bounded thread pool so that a long
     reduction never blocks concurrent streams, and under `timeout_seconds`
     so that a stuck run ends the phase with a diagnostic rather than holding
-    the turn open. The cache's derived tables are cleared before the run
-    and replaced by the ones the run produced once it returns in time. A
-    run that exceeds the budget, or whose awaiting task is cancelled, is
-    signaled to stop at its next step boundary and stores nothing; until it
-    stops, it holds one of the pool's `_PROCESSING_MAX_WORKERS` threads.
+    the turn open. The cache's derived tables are cleared before the run,
+    and the run's derived tables are stored only when the run returns a
+    digest within the budget, so a diagnostic leaves no derived table in
+    the cache. A run that exceeds the budget, or whose awaiting task is
+    canceled, is signaled to stop at its next step boundary. An abandoned
+    run that has already started holds one of the pool's
+    `_PROCESSING_MAX_WORKERS` threads until the run stops.
 
     Args:
         specification: A specification that `validate_specification`
             accepts against `cache`.
-        cache: The turn's cache, which receives the derived tables.
-        timeout_seconds: The wall-clock budget of the run, in seconds.
+        cache: The turn's cache, which receives the run's derived tables
+            when the outcome is a digest.
+        timeout_seconds: The wall-clock budget of the run, in seconds,
+            which includes the time the run waits for a worker thread.
 
     Returns:
         The digest, or the diagnostic of the first step that refused or of
@@ -630,9 +650,7 @@ async def execute_specification(
         timeout_seconds,
     )
     try:
-        outcome, derived = await asyncio.wait_for(
-            future, timeout=timeout_seconds
-        )
+        run = await asyncio.wait_for(future, timeout=timeout_seconds)
     except TimeoutError:
         logger.warning(
             "Processing exceeded %g seconds for %d steps",
@@ -645,6 +663,8 @@ async def execute_specification(
         # the awaiting task, at its next step boundary; once the run has
         # returned, the event is no longer read.
         cancel.set()
-    for entry in derived:
-        cache.store_derived(entry)
-    return outcome
+    if isinstance(run, _CompletedRun):
+        for entry in run.derived:
+            cache.store_derived(entry)
+        return run.digest
+    return run
