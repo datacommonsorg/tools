@@ -188,11 +188,17 @@ async def test_a_call_that_exceeds_the_budget_returns_no_questions(
     # Situation: `async_gemini_request` never returns, and
     #   `FOLLOW_UP_TIMEOUT_SECONDS` is 0, so the budget expires while the
     #   call is waiting.
-    # Expectation: No questions are returned, and the follow-up module logs
-    #   one record, a WARNING that says the call did not finish within the
-    #   budget of 0 seconds.
+    # Expectation: No questions are returned, the in-flight call is
+    #   canceled, and the follow-up module logs one record, a WARNING that
+    #   says the call did not finish within the budget of 0 seconds.
+    canceled = asyncio.Event()
+
     async def request(**kwargs: Any) -> GeminiResponse:
-        await asyncio.Event().wait()
+        try:
+            await asyncio.Event().wait()
+        except asyncio.CancelledError:
+            canceled.set()
+            raise
         return GeminiResponse()
 
     monkeypatch.setattr(follow_up, "async_gemini_request", request)
@@ -209,6 +215,7 @@ async def test_a_call_that_exceeds_the_budget_returns_no_questions(
             )
 
     assert questions == []
+    assert canceled.is_set()
     records = _list_follow_up_records(caplog)
     assert [record.levelno for record in records] == [logging.WARNING]
     assert "did not finish within 0 seconds" in records[0].getMessage()
@@ -282,6 +289,9 @@ async def test_a_cancellation_after_the_deadline_propagates(
             )
         )
         await started.wait()
+        # The timeout's own cancellation request is already pending, so the
+        # cancellation below is the second request the task receives.
+        assert task.cancelling() == 1
         task.cancel()
         with pytest.raises(asyncio.CancelledError):
             await task
