@@ -26,15 +26,21 @@ import {
   fireEvent,
   render,
   screen,
+  waitFor,
 } from '@testing-library/react';
 import { useReducedMotion } from 'motion/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { App } from '@/src/app';
+import { RECAPTCHA_MODAL_TITLE } from '@/src/config/copy_chat';
 import {
   DEFAULT_INSTANCE_CONFIG,
   resetInstanceConfigForTests,
 } from '@/src/config/instance_config';
 import { resetRuntimeConfigForTests } from '@/src/config/runtime_config';
+import type {
+  GrecaptchaEnterprise,
+  GrecaptchaRenderParameters,
+} from '@/src/types/grecaptcha';
 import * as recaptchaLoader from '@/src/utils/load_recaptcha';
 
 vi.mock('motion/react', async (importOriginal) => ({
@@ -333,5 +339,103 @@ describe('App reCAPTCHA session bootstrap', () => {
     } finally {
       process.off('unhandledRejection', unhandled);
     }
+  });
+
+  it('opens RecaptchaModal on HTTP 403 and streams the answer automatically once verified', async () => {
+    // Test: End-to-end 403 challenge and auto-retry through App and RecaptchaModal.
+    // Situation: The chat POST returns HTTP 403 while `recaptcha_checkbox_site_key`
+    //   is configured; the rendered checkbox widget calls its completion callback.
+    // Expectation: RecaptchaModal opens at the root layout, closes automatically
+    //   after verification, retries the POST with `X-Recaptcha-Token`, and
+    //   renders the streamed answer.
+    let capturedParams: GrecaptchaRenderParameters | null = null;
+    const mockEnterprise: GrecaptchaEnterprise = {
+      ready: vi.fn((callback: () => void) => callback()),
+      render: vi.fn(
+        (_container: HTMLElement, params: GrecaptchaRenderParameters) => {
+          capturedParams = params;
+          return 1;
+        },
+      ),
+      reset: vi.fn(),
+    };
+    vi.spyOn(recaptchaLoader, 'ensureRecaptchaScript').mockResolvedValue(
+      mockEnterprise,
+    );
+
+    const encoder = new TextEncoder();
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce({
+        ok: false,
+        status: 403,
+        statusText: 'Forbidden',
+        body: null,
+      })
+      .mockImplementationOnce(async (_url: string, init: RequestInit) => {
+        const body = JSON.parse(String(init.body)) as {
+          idempotency_key: string;
+        };
+        return {
+          ok: true,
+          status: 200,
+          statusText: 'OK',
+          body: new ReadableStream<Uint8Array>({
+            start(controller) {
+              controller.enqueue(
+                encoder.encode(
+                  `event: content\r\ndata: ${JSON.stringify({
+                    block: { type: 'text', markdown: 'Verified answer.' },
+                  })}\r\n\r\n` +
+                    `event: terminal\r\ndata: ${JSON.stringify({
+                      state: 'complete',
+                      idempotency_key: body.idempotency_key,
+                    })}\r\n\r\n`,
+                ),
+              );
+              controller.close();
+            },
+          }),
+        };
+      });
+    vi.stubGlobal('fetch', fetchMock);
+    writeRuntimeConfigSlot({
+      enable_chat: true,
+      recaptcha_checkbox_site_key: '6Lc_checkbox_app',
+    });
+
+    render(<App />);
+    fireEvent.change(screen.getByRole('textbox', { name: LANDING_PROMPT }), {
+      target: { value: 'Population of France?' },
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Submit' }));
+    });
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole('dialog', { name: RECAPTCHA_MODAL_TITLE }),
+      ).toBeTruthy();
+      expect(capturedParams).not.toBeNull();
+    });
+    const appShell = document.querySelector('main')?.parentElement;
+    expect(appShell?.hasAttribute('inert')).toBe(true);
+
+    await act(async () => {
+      capturedParams?.callback?.('app-verified-token');
+    });
+
+    await waitFor(() => {
+      expect(
+        screen.queryByRole('dialog', { name: RECAPTCHA_MODAL_TITLE }),
+      ).toBeNull();
+      expect(screen.getByText('Verified answer.')).toBeTruthy();
+    });
+    expect(appShell?.hasAttribute('inert')).toBe(false);
+    const retryHeaders = fetchMock.mock.calls[1][1].headers as Record<
+      string,
+      string
+    >;
+    expect(retryHeaders['X-Recaptcha-Token']).toBe('app-verified-token');
   });
 });

@@ -403,12 +403,17 @@ that previous answers were not modified before feeding them back to Gemini:
 
 | HTTP Status | When it happens |
 | :--- | :--- |
+| `403` | Cloud Armor reCAPTCHA policy requires interactive verification |
 | `413` (`request_too_large`) | Request body is larger than 4 MiB |
 | `400` (`transcript_invalid`) | Turn history was modified, reordered, or exceeds size limits (>6 turns, >32,000-character answer, or >8,000-character summary) |
 | `422` | Request body is invalid JSON, or `message` (>4,000 characters) / `idempotency_key` is invalid |
 
 If the server returns `400`, the UI clears its stored signatures so the user's
-next question starts fresh.
+next question starts fresh. If Cloud Armor returns `403` while
+`recaptcha_checkbox_site_key` is configured in `#runtime-config`, the UI evicts
+any cached checkbox token, opens `RecaptchaModal` over the paused turn, caches
+the solved token in memory for 25 minutes, and retries the identical request
+once with `X-Recaptcha-Token`.
 
 In local development, if neither `TRANSCRIPT_HMAC_SECRET` nor
 `TRANSCRIPT_HMAC_SECRET_NAME` is set, the server generates a temporary random

@@ -85,6 +85,47 @@ export const DEFAULT_TURN_ERROR =
   'Data Commons ran into an unexpected problem.';
 
 /**
+ * Error message shown when the user dismisses the reCAPTCHA verification modal
+ * before completing the security check for a pending chat turn.
+ */
+export const VERIFICATION_CANCELED_ERROR =
+  'Verification was canceled before Data Commons could send your question.';
+
+/** Heading of the fallback reCAPTCHA checkbox verification dialog. */
+export const RECAPTCHA_MODAL_TITLE = 'Quick security check';
+
+/** Supporting copy explaining why the reCAPTCHA verification dialog opened. */
+export const RECAPTCHA_MODAL_DESCRIPTION =
+  'Complete the check below to continue sending your question.';
+
+/** Accessible label for the button that dismisses the verification dialog. */
+export const RECAPTCHA_MODAL_CLOSE_LABEL = 'Cancel verification';
+
+/** Status label announced while the reCAPTCHA checkbox widget is loading. */
+export const RECAPTCHA_MODAL_LOADING_LABEL = 'Loading security check…';
+
+/**
+ * Error message shown inside the verification dialog when `enterprise.js`
+ * fails to load (for example, blocked by a content blocker or offline network).
+ */
+export const RECAPTCHA_MODAL_LOAD_ERROR =
+  'Unable to load the security check. Disable any content blocker for this site or check your connection, then try again.';
+
+/**
+ * Error message shown inside the verification dialog if the reCAPTCHA widget
+ * reports a transient error before producing a token.
+ */
+export const RECAPTCHA_MODAL_WIDGET_ERROR =
+  'The security check ran into an error. Please try again.';
+
+/**
+ * Inline status note shown inside the verification dialog when a solved token
+ * expires before submission and the user needs to check the box again.
+ */
+export const RECAPTCHA_MODAL_EXPIRED_NOTE =
+  'Verification expired. Please complete the check again.';
+
+/**
  * Label in the answer card's header when the agent's search finished and
  * found no matching data.
  */

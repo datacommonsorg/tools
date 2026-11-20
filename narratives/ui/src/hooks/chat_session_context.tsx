@@ -81,7 +81,15 @@ export function ChatSessionProvider({ children }: { children: ReactNode }) {
     clearStoredChats();
   }, []);
 
-  const { isStreaming, error, send, stop } = useSseChat({ turns, setTurns });
+  const {
+    isStreaming,
+    error,
+    send,
+    stop,
+    verificationModal,
+    completeVerification,
+    cancelVerification,
+  } = useSseChat({ turns, setTurns });
 
   const newChat = useCallback(() => {
     stop();
@@ -99,6 +107,9 @@ export function ChatSessionProvider({ children }: { children: ReactNode }) {
       error,
       send,
       stop,
+      verificationModal,
+      completeVerification,
+      cancelVerification,
       newChat,
       isDrawerOpen,
       toggleDrawer,
@@ -110,6 +121,9 @@ export function ChatSessionProvider({ children }: { children: ReactNode }) {
       error,
       send,
       stop,
+      verificationModal,
+      completeVerification,
+      cancelVerification,
       newChat,
       isDrawerOpen,
       toggleDrawer,

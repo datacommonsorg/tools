@@ -2,7 +2,7 @@
  * @fileoverview Provides the SSE chat hook: streams agent responses and reduces events into chat turns.
  */
 
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { withBaseUrl } from '@/src/config/base_url';
 import {
   CANCELED_TURN_ERROR,
@@ -12,7 +12,9 @@ import {
   HIGH_TRAFFIC_ERROR,
   INTERRUPTED_TURN_ERROR,
   TRANSCRIPT_REJECTED_ERROR,
+  VERIFICATION_CANCELED_ERROR,
 } from '@/src/config/copy_chat';
+import { getRuntimeConfig } from '@/src/config/runtime_config';
 import {
   type ClientTurnTimings,
   computeElapsedMs,
@@ -21,11 +23,17 @@ import {
 } from '@/src/hooks/turn_timings';
 import { isDebugUrlEnabled } from '@/src/hooks/use_debug_mode';
 import {
+  RECAPTCHA_ACTION_TOKEN_TTL_MS,
+  useRecaptchaVerification,
+  type VerificationModalState,
+} from '@/src/hooks/use_recaptcha_verification';
+import {
   parseServerDebugReport,
   type ServerDebugReport,
 } from '@/src/types/debug_report';
 
-export type { ClientTurnTimings };
+export type { ClientTurnTimings, VerificationModalState };
+export { RECAPTCHA_ACTION_TOKEN_TTL_MS };
 
 /** SSE framing: events are separated by a blank line (after line-ending normalization). */
 const SSE_EVENT_SEPARATOR = '\n\n';
@@ -325,6 +333,12 @@ const HTTP_SERVER_ERROR_MIN = 500;
  * out at the server (408) or was rate limited (429).
  */
 const HTTP_RETRYABLE_CLIENT_ERRORS: ReadonlySet<number> = new Set([408, 429]);
+
+/** HTTP status Cloud Armor returns when a chat POST requires reCAPTCHA verification. */
+const HTTP_FORBIDDEN = 403;
+
+/** Request header carrying the checkbox reCAPTCHA action token to Cloud Armor. */
+const RECAPTCHA_TOKEN_HEADER = 'X-Recaptcha-Token';
 
 /**
  * Records the places, variables, and date range of one data query or chart, in
@@ -811,6 +825,9 @@ export interface UseSseChatResult {
   error: string | null;
   send: (message: string) => Promise<void>;
   stop: () => void;
+  verificationModal: VerificationModalState;
+  completeVerification: (token: string) => void;
+  cancelVerification: () => void;
 }
 
 /**
@@ -837,11 +854,30 @@ export function useSseChat(props: UseSseChatProps): UseSseChatResult {
   const [isStreaming, setIsStreaming] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const inFlightRef = useRef<InFlightRequest | null>(null);
+  const {
+    verificationModal,
+    getActiveToken,
+    clearToken,
+    requestVerification,
+    abortVerification,
+    completeVerification,
+    cancelVerification,
+  } = useRecaptchaVerification();
+
+  // Abort any in-flight HTTP stream on unmount.
+  useEffect(() => {
+    return () => {
+      const inFlight = inFlightRef.current;
+      inFlightRef.current = null;
+      inFlight?.controller.abort();
+    };
+  }, []);
 
   // Settles the open request now; once aborted, it writes nothing more.
   const stop = useCallback(() => {
     const inFlight = inFlightRef.current;
     inFlightRef.current = null;
+    abortVerification();
     setIsStreaming(false);
     setError(null);
     if (!inFlight) return;
@@ -856,7 +892,7 @@ export function useSseChat(props: UseSseChatProps): UseSseChatResult {
         return recordTimingMilestone(settled, 'totalMs', totalMs);
       }),
     );
-  }, [setTurns]);
+  }, [setTurns, abortVerification]);
 
   const send = useCallback(
     async (message: string) => {
@@ -902,19 +938,65 @@ export function useSseChat(props: UseSseChatProps): UseSseChatResult {
       const requestDebug =
         typeof window !== 'undefined' &&
         isDebugUrlEnabled(window.location.search);
-      try {
-        const resp = await fetch(endpoint, {
+      const requestBody = JSON.stringify({
+        message,
+        ...transcript,
+        idempotency_key: idempotencyKey,
+        ...(requestDebug ? { debug: true } : {}),
+      });
+
+      const postChatStream = (
+        actionToken: string | null,
+      ): Promise<Response> => {
+        const headers: Record<string, string> = {
+          'Content-Type': 'application/json',
+        };
+        if (actionToken !== null) {
+          headers[RECAPTCHA_TOKEN_HEADER] = actionToken;
+        }
+        return fetch(endpoint, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            message,
-            ...transcript,
-            idempotency_key: idempotencyKey,
-            ...(requestDebug ? { debug: true } : {}),
-          }),
+          headers,
+          body: requestBody,
           signal: controller.signal,
         });
+      };
+
+      try {
+        let resp = await postChatStream(getActiveToken());
         if (controller.signal.aborted) return;
+
+        if (resp.status === HTTP_FORBIDDEN) {
+          clearToken();
+          const { recaptchaCheckboxSiteKey } = getRuntimeConfig();
+          if (recaptchaCheckboxSiteKey !== '') {
+            if (typeof resp.body?.cancel === 'function') {
+              void resp.body.cancel().catch(() => undefined);
+            }
+            const outcome = await requestVerification(recaptchaCheckboxSiteKey);
+            if (controller.signal.aborted || outcome.status === 'aborted') {
+              return;
+            }
+            if (outcome.status === 'canceled') {
+              patch((turn) => ({
+                ...turn,
+                status: 'error',
+                error: VERIFICATION_CANCELED_ERROR,
+                isRetryable: true,
+              }));
+              setError(VERIFICATION_CANCELED_ERROR);
+              return;
+            }
+            resp = await postChatStream(outcome.token);
+            if (controller.signal.aborted) return;
+            if (resp.status === HTTP_FORBIDDEN) {
+              // Evict a token rejected on retry and surface the HTTP 403 error
+              // instead of looping into another modal prompt for the same turn.
+              clearToken();
+            }
+          }
+        }
+
         const headersReceivedMs = computeElapsedMs(submittedPerfMs);
         patch((turn) =>
           recordTimingMilestone(turn, 'headersReceivedMs', headersReceivedMs),
@@ -1028,10 +1110,26 @@ export function useSseChat(props: UseSseChatProps): UseSseChatResult {
         }
       }
     },
-    [endpoint, turns, setTurns, isStreaming],
+    [
+      endpoint,
+      turns,
+      setTurns,
+      isStreaming,
+      getActiveToken,
+      clearToken,
+      requestVerification,
+    ],
   );
 
-  return { isStreaming, error, send, stop };
+  return {
+    isStreaming,
+    error,
+    send,
+    stop,
+    verificationModal,
+    completeVerification,
+    cancelVerification,
+  };
 }
 
 /** Returns the message shown for a terminal event that ends the turn in `error`. */
