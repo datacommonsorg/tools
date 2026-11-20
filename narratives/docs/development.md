@@ -164,9 +164,14 @@ subpath (for example `https://<host>/narratives`) reads the agent mounted
 there. The fetch does not follow redirects.
 
 When the agent cannot be read (it is stopped, has no build, or answers with a
-redirect such as an IAP sign-in), the element stays empty, so the page shows
-chat as enabled, and Vite logs a `[runtime-config]` warning with the reason. A
-production build leaves the element empty for the agent server to stamp.
+redirect such as an IAP sign-in), Vite logs a `[runtime-config]` warning with
+the reason and either stamps default settings with any local reCAPTCHA keys
+(`RECAPTCHA_SESSION_SITE_KEY` / `RECAPTCHA_CHECKBOX_SITE_KEY` from
+`narratives/.env.local` or the shell environment) or leaves the element empty
+so the page shows chat as enabled. When the agent is reachable and chat is
+enabled, agent-provided reCAPTCHA keys take precedence and local keys fill in
+any missing ones. A production build leaves the element empty for the agent
+server to stamp.
 
 ## Workspace scripts
 
