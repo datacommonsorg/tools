@@ -16,9 +16,9 @@
 This suite covers the dispatch of every step type, shared cohort
 alignment, refusal diagnostics with coverage and alternative sources,
 the enforced preconditions, the wall-clock budget and the isolation of a
-run that outlives its budget, the wiring of the pool size, derived-table
-replacement, keeping derived tables only from a digest, and digest
-source numbering.
+run that outlives its budget, spare workers for a quick run while
+abandoned runs hold others, derived-table replacement, keeping derived
+tables only from a digest, and digest source numbering.
 """
 
 import asyncio
@@ -888,16 +888,79 @@ async def test_a_cancelled_run_stops_at_its_next_step_boundary(
     assert cache.table_ids == ("t1", "t2")
 
 
-def test_the_executor_has_the_configured_number_of_workers() -> None:
-    # Test: The wiring of the pool size constant.
-    # Situation: The module has been imported, which builds its executor.
-    # Expectation: The executor has `_PROCESSING_MAX_WORKERS` workers.
-    # `ThreadPoolExecutor` has no public accessor for its size, so the test
-    # reads the private `_max_workers` attribute rather than inferring the
-    # size from the timing of concurrent runs.
-    assert (
-        processing._EXECUTOR._max_workers == processing._PROCESSING_MAX_WORKERS
+@pytest.mark.asyncio
+async def test_a_quick_run_finishes_while_two_abandoned_runs_hold_workers(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Test: Spare workers in the module's processing pool.
+    # Situation: Two runs block inside their first step, and their awaiting
+    #   tasks are canceled, so each abandoned run keeps a worker of the
+    #   module's pool. A quick specification then runs under the default
+    #   budget.
+    # Expectation: The quick run returns a digest while the two abandoned
+    #   runs still hold their workers.
+    started = threading.Semaphore(0)
+    finished = threading.Semaphore(0)
+    released = threading.Event()
+    run_step = processing._run_step
+    steps_started: list[str] = []
+
+    def run_step_blocking_derivations(
+        step: SpecificationStep, state: processing._RunState
+    ) -> StepRefusalDiagnostic | None:
+        if step.script != "compute_derived_metric":
+            return run_step(step, state)
+        steps_started.append(step.step_id)
+        started.release()
+        try:
+            released.wait()
+            return run_step(step, state)
+        finally:
+            finished.release()
+
+    monkeypatch.setattr(processing, "_run_step", run_step_blocking_derivations)
+    cache = _build_cache(
+        _build_table(
+            "t1", {"a": 10.0}, variable_dcid="Count_Case", source=_WDI
+        ),
+        _build_table(
+            "t2", {"a": 1000.0}, variable_dcid="Count_Person", source=_WDI
+        ),
     )
+    slow = _build_specification(
+        {
+            "step_id": "s1",
+            "script": "compute_derived_metric",
+            "left": "t1",
+            "right": "t2",
+        }
+    )
+    quick = _build_specification(
+        {"step_id": "s1", "script": "analyze_timeseries", "table": "t1"}
+    )
+    loop = asyncio.get_running_loop()
+
+    try:
+        abandoned = [
+            asyncio.create_task(execute_specification(slow, cache))
+            for _ in range(2)
+        ]
+        for _ in abandoned:
+            await loop.run_in_executor(None, started.acquire)
+        for task in abandoned:
+            task.cancel()
+            with pytest.raises(asyncio.CancelledError):
+                await task
+        digest = await execute_specification(quick, cache)
+    finally:
+        released.set()
+        # Waits for the abandoned runs to return their workers, so that the
+        # module's pool is idle when the test ends.
+        for _ in steps_started:
+            await loop.run_in_executor(None, finished.acquire)
+
+    assert isinstance(digest, AnalysisDigest)
+    assert steps_started == ["s1", "s1"]
 
 
 @pytest.mark.asyncio
