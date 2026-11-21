@@ -313,7 +313,7 @@ Otherwise, the request runs through the agent loop in five steps:
    exceed every cohort place's value on each date they share (as a total or
    count does, which would flatten their lines), and with the ranked places
    alone otherwise; a single-date cohort ranking falls back to a `ranking` chart
-   when its table has one date, or when the ranking supports a relation. The
+   when its table has one date. The
    default `line` of a window ranking is clamped to the window's start and end
    dates. The default `line` of an `analyze_timeseries` step is clamped to the
    earliest date the step summarized when the step, or the derived table it

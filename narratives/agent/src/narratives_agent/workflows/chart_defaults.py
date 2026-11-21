@@ -384,7 +384,6 @@ def _build_ranking_specifications(
     has_cohort: bool,
     parent: _ParentSeries | None,
     title: str,
-    prefers_line: bool,
 ) -> tuple[
     RankingChartSpecification | BarChartSpecification | LineChartSpecification,
     ...,
@@ -398,10 +397,8 @@ def _build_ranking_specifications(
     table holds at least two dates in the drawn span, and the line falls
     back to the ranked places alone otherwise. A single-date cohort ranking
     falls back to a `ranking` chart when no line can be drawn, such as when
-    the table has one date, and uses only the `ranking` chart when
-    `prefers_line` is false, as for a ranking that supports a relation. Any
-    other table is a `bar` of its leading places at
-    `metrics.reference_date`.
+    the table has one date. Any other table is a `bar` of its leading places
+    at `metrics.reference_date`.
     """
     if not metrics.top_n:
         return ()
@@ -419,8 +416,6 @@ def _build_ranking_specifications(
         )
     if has_cohort:
         ranking = _build_cohort_ranking_specification(metrics, table_ids, title)
-        if not prefers_line:
-            return (ranking,)
         lines = _build_ranking_line_candidates(
             metrics, table_ids, parent, title
         )
@@ -749,7 +744,6 @@ def _resolve_candidate_charts(
             has_cohort,
             _find_parent_series(analysis, table_ids, context.cache),
             title,
-            prefers_line="relate_cohorts" not in analysis.list_script_names(),
         )
     else:
         spec = _build_default_specification(

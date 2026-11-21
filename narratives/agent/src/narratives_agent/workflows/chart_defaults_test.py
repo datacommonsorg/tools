@@ -1240,6 +1240,61 @@ def test_a_mixed_per_capita_relation_gets_no_default_chart() -> None:
     assert build_default_charts(digest, analysis, cache) == ()
 
 
+def _make_ranking_and_relation_spec() -> AnalysisSpecification:
+    """Ranks income (`t1`) in `s1` and relates diabetes (`t2`) to it in `s2`."""
+    return AnalysisSpecification.model_validate(
+        {
+            "steps": [
+                {"step_id": "s1", "script": "rank_cohort", "table": "t1"},
+                {
+                    "step_id": "s2",
+                    "script": "relate_cohorts",
+                    "target": "t2",
+                    "by": "t1",
+                    "n": 2,
+                },
+            ]
+        }
+    )
+
+
+def test_a_ranking_beside_a_refused_relation_is_charted_as_a_line() -> None:
+    # Test: The default chart of a cohort ranking whose specification also
+    #   holds a relation that was refused.
+    # Situation: Income (`t1`) covers six states for 2022 and 2023 and is
+    #   ranked in `s1`. Diabetes (`t2`) covers one of the states, so the
+    #   relation in `s2` is refused for coverage.
+    # Expectation: The floor charts the ranking as a line of its first five
+    #   states, as for any cohort ranking, not as a `ranking` chart.
+    income = _make_cohort(
+        "t1",
+        variable_dcid="Median_Income",
+        name="Income",
+        dates=("2022", "2023"),
+    )
+    diabetes = _make_table(
+        "t2",
+        "Percent_Diabetes",
+        name="Diabetes",
+        unit="Percent",
+        places=_STATES[:1],
+        dates=("2023",),
+        parent="country/USA",
+        child_type="State",
+    )
+    relation = relate_cohorts(diabetes.table, income.table, n=2, step_id="s2")
+    assert relation.status == "refused"
+    digest = _make_digest(rank_cohort(income.table, step_id="s1"), relation)
+
+    chart = _resolve_default_wire(
+        digest, _make_ranking_and_relation_spec(), _make_cache(income, diabetes)
+    )
+
+    assert chart is not None
+    assert chart["viz_type"] == "line"
+    assert chart["place_dcids"] == list(reversed(_STATES))[:5]
+
+
 def test_a_staggered_single_point_series_charts_as_a_latest_bar() -> None:
     # Test: Default chart for a multi-date table where each place has one row.
     # Situation: France reports only in 2022 and Germany only in 2023, so
