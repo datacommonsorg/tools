@@ -165,6 +165,7 @@ from narratives_agent.workflows.transcript import (
     load_transcript,
 )
 from narratives_agent.workflows.turn_cache import CachedTable, TurnCache
+from narratives_agent.workflows.turn_record import TurnRecord
 
 _QUESTION = "What is the population of France?"
 _IDEMPOTENCY_KEY = "test-idempotency-key"
@@ -1092,6 +1093,29 @@ async def test_a_default_requests_metadata_once_before_its_first_run(
     assert providers == ["World Bank"]
     assert turn.list_content_payloads("tool_call") == []
     assert turn.finished == [(TerminalState.COMPLETE, None)]
+
+
+@pytest.mark.asyncio
+async def test_run_discovery_phase_records_the_specification_and_its_origin(
+    turn: _Turn,
+) -> None:
+    # Test: Recording of the answering specification in `run_discovery_phase`.
+    # Situation: The loop fetches one table and has a series specification
+    #   accepted.
+    # Expectation: The turn's record holds that specification with the
+    #   origin `model`.
+    ctx = chat_pipeline.TurnContext(
+        transcript=_TRANSCRIPT,
+        config=AgentConfig(),
+        record=TurnRecord(telemetry=TurnTelemetry("test-turn-id")),
+        emit=turn.emit,
+        classification=_CLASSIFICATION,
+    )
+
+    await chat_pipeline.run_discovery_phase(ctx)
+
+    assert ctx.record.specification == _SERIES_SPECIFICATION
+    assert ctx.record.specification_origin == "model"
 
 
 def test_tables_used_skips_a_stale_derived_table() -> None:
@@ -2785,26 +2809,33 @@ async def test_a_correlation_over_named_places_is_written_as_a_comparison(
     assert "`scatter`" not in instruction.rpartition("### Analytical")[2]
 
 
+def _make_table_context(
+    turn: _Turn, table: CachedTable
+) -> chat_pipeline.TurnContext:
+    """Builds a turn context whose record's cache holds `table`."""
+    record = TurnRecord(telemetry=TurnTelemetry("test-turn-id"))
+    record.cache.store_fetched(table)
+    return chat_pipeline.TurnContext(
+        transcript=_TRANSCRIPT,
+        config=AgentConfig(),
+        record=record,
+        emit=turn.emit,
+    )
+
+
 @pytest.mark.asyncio
-async def test_run_synthesis_phase_captures_prompt_and_raw_output(
+async def test_run_synthesis_phase_records_prompt_and_raw_output(
     monkeypatch: pytest.MonkeyPatch, turn: _Turn
 ) -> None:
-    # Test: Capture of rendered prompt and raw output in `run_synthesis_phase`.
+    # Test: Recording of rendered prompt and raw output in
+    #   `run_synthesis_phase`.
     # Situation: Synthesis streams text followed by a chart block and a second
     #   text block.
     # Expectation: `rendered_prompt` and `raw_output` are populated on both
-    #   SynthesisPhaseResult and SynthesisCapture, and `raw_output` preserves
+    #   SynthesisPhaseResult and the turn's record, and `raw_output` preserves
     #   the fenced chart block that is stripped from `result.text`.
     table = _make_table("t1")
-    cache = TurnCache()
-    cache.store_fetched(table)
-    ctx = chat_pipeline.TurnContext(
-        transcript=_TRANSCRIPT,
-        config=AgentConfig(),
-        telemetry=TurnTelemetry("test-turn-id"),
-        emit=turn.emit,
-        cache=cache,
-    )
+    ctx = _make_table_context(turn, table)
     discovery = chat_pipeline.DiscoveryPhaseResult(
         digest=AnalysisDigest(results=()),
         spec=_SERIES_SPECIFICATION,
@@ -2828,10 +2859,7 @@ async def test_run_synthesis_phase_captures_prompt_and_raw_output(
 
     monkeypatch.setattr(chat_pipeline, "async_gemini_stream", start_synthesis)
 
-    capture = chat_pipeline.SynthesisCapture()
-    result = await chat_pipeline.run_synthesis_phase(
-        ctx, discovery, capture=capture
-    )
+    result = await chat_pipeline.run_synthesis_phase(ctx, discovery)
 
     expected_signed_text = (
         "Here is the introduction.\n\nHere is the conclusion."
@@ -2843,8 +2871,8 @@ async def test_run_synthesis_phase_captures_prompt_and_raw_output(
     assert result.rendered_prompt != ""
     assert "What is the population of France?" in result.rendered_prompt
 
-    assert capture.raw_output == result.raw_output
-    assert capture.rendered_prompt == result.rendered_prompt
+    assert ctx.record.synthesis_raw_output == result.raw_output
+    assert ctx.record.synthesis_prompt == result.rendered_prompt
 
 
 def _make_synthesis_context(
@@ -2871,7 +2899,7 @@ def _make_synthesis_context(
     ctx = chat_pipeline.TurnContext(
         transcript=_TRANSCRIPT,
         config=AgentConfig(),
-        telemetry=TurnTelemetry("test-turn-id"),
+        record=TurnRecord(telemetry=TurnTelemetry("test-turn-id")),
         emit=turn.emit,
     )
     return ctx, instructions
@@ -2987,28 +3015,19 @@ async def test_an_answer_without_data_gets_no_title(
 
 
 @pytest.mark.asyncio
-async def test_run_synthesis_phase_capture_on_abort_and_stream_failure(
+async def test_run_synthesis_phase_records_on_abort_and_stream_failure(
     monkeypatch: pytest.MonkeyPatch, turn: _Turn
 ) -> None:
-    # Test: `SynthesisCapture` behavior on `SYNTHESIS_EMPTY` and stream error.
+    # Test: The turn's record on `SYNTHESIS_EMPTY` and on a stream error.
     # Situation:
     #   1. Synthesis stream emits only an invalid chart fence and no prose.
     #   2. Synthesis stream open fails with a GeminiError before yielding.
     # Expectation:
-    #   1. On SYNTHESIS_EMPTY, SynthesisCapture retains rendered_prompt and
-    #      raw_output with the rejected fence.
-    #   2. On open failure, SynthesisCapture retains rendered_prompt and
-    #      raw_output is None.
+    #   1. On SYNTHESIS_EMPTY, the record retains the rendered prompt and
+    #      the raw output with the rejected fence.
+    #   2. On open failure, the record retains the rendered prompt and its
+    #      raw output is None.
     table = _make_table("t1")
-    cache = TurnCache()
-    cache.store_fetched(table)
-    ctx = chat_pipeline.TurnContext(
-        transcript=_TRANSCRIPT,
-        config=AgentConfig(),
-        telemetry=TurnTelemetry("test-turn-id"),
-        emit=turn.emit,
-        cache=cache,
-    )
     discovery = chat_pipeline.DiscoveryPhaseResult(
         digest=AnalysisDigest(results=()),
         spec=_SERIES_SPECIFICATION,
@@ -3029,15 +3048,14 @@ async def test_run_synthesis_phase_capture_on_abort_and_stream_failure(
         chat_pipeline, "async_gemini_stream", start_empty_synthesis
     )
 
-    capture_empty = chat_pipeline.SynthesisCapture()
+    ctx_empty = _make_table_context(turn, table)
     with pytest.raises(chat_pipeline.TurnAbortedError) as exc_info:
-        await chat_pipeline.run_synthesis_phase(
-            ctx, discovery, capture=capture_empty
-        )
+        await chat_pipeline.run_synthesis_phase(ctx_empty, discovery)
     assert exc_info.value.error_type == ErrorType.SYNTHESIS_EMPTY
-    assert capture_empty.raw_output == rejected_chart_text
-    assert capture_empty.rendered_prompt is not None
-    assert "What is the population of France?" in capture_empty.rendered_prompt
+    record_empty = ctx_empty.record
+    assert record_empty.synthesis_raw_output == rejected_chart_text
+    assert record_empty.synthesis_prompt is not None
+    assert "What is the population of France?" in record_empty.synthesis_prompt
 
     # 2. SYNTHESIS_ERROR: async_gemini_stream fails to open
     async def start_failing_synthesis(
@@ -3049,15 +3067,14 @@ async def test_run_synthesis_phase_capture_on_abort_and_stream_failure(
         chat_pipeline, "async_gemini_stream", start_failing_synthesis
     )
 
-    capture_error = chat_pipeline.SynthesisCapture()
+    ctx_error = _make_table_context(turn, table)
     with pytest.raises(chat_pipeline.TurnAbortedError) as exc_info_err:
-        await chat_pipeline.run_synthesis_phase(
-            ctx, discovery, capture=capture_error
-        )
+        await chat_pipeline.run_synthesis_phase(ctx_error, discovery)
     assert exc_info_err.value.error_type == ErrorType.SYNTHESIS_ERROR
-    assert capture_error.raw_output is None
-    assert capture_error.rendered_prompt is not None
-    assert "What is the population of France?" in capture_error.rendered_prompt
+    record_error = ctx_error.record
+    assert record_error.synthesis_raw_output is None
+    assert record_error.synthesis_prompt is not None
+    assert "What is the population of France?" in record_error.synthesis_prompt
 
 
 @pytest.mark.parametrize(
@@ -3295,6 +3312,84 @@ async def test_default_specification_sets_origin_default_in_debug_report(
     assert report["terminal_state"] == "complete"
     assert report["specification_origin"] == "default"
     assert report["specification"] is not None
+
+
+@pytest.mark.asyncio
+async def test_refused_default_runs_are_diagnosed_in_the_debug_report(
+    monkeypatch: pytest.MonkeyPatch, turn: _Turn
+) -> None:
+    # Test: The default specification's diagnostics in the debug report.
+    # Situation: A top-N turn ends at a bound with two state cohort tables,
+    #   each requesting four states with a value for one, so the first run
+    #   of the default refuses over `t1` and its retry refuses over `t2`;
+    #   DEBUG_REPORT is "on".
+    # Expectation: debug_report carries one `step_refusal` diagnostic for
+    #   each run, in run order and without a discovery round.
+    monkeypatch.setenv("DEBUG_REPORT", "on")
+    ranking = QueryClassification.model_validate(
+        {
+            "serviceable": True,
+            "pattern": "top_n_ranking",
+            "geographic_shape": "child_places",
+            "requires_computation": True,
+        }
+    )
+
+    async def classify(*args: object, **_: object) -> Admitted:
+        return Admitted(ranking)
+
+    def make_sparse_cohort(table_id: str, variable_dcid: str) -> CachedTable:
+        entry = _make_state_cohort(table_id, variable_dcid, "01 02 03 04")
+        return replace(
+            entry, table=replace(entry.table, rows=entry.table.rows[:1])
+        )
+
+    monkeypatch.setattr(chat_pipeline, "classify_query", classify)
+    _install_loop(
+        monkeypatch,
+        DiscoveryResult(truncated=True),
+        make_sparse_cohort("t1", "Median_Income"),
+        make_sparse_cohort("t2", "Percent_Diabetes"),
+    )
+
+    await chat_pipeline.run_turn(_TRANSCRIPT, turn.emit)
+
+    assert turn.events[-1][0] == "debug_report"
+    diagnostics = turn.events[-1][1]["diagnostics"]
+    assert isinstance(diagnostics, list)
+    assert [
+        (
+            diagnostic["kind"],
+            diagnostic["round"],
+            diagnostic["input_table_ids"],
+        )
+        for diagnostic in diagnostics
+        if isinstance(diagnostic, dict)
+    ] == [
+        ("step_refusal", None, ["t1"]),
+        ("step_refusal", None, ["t2"]),
+    ]
+
+
+@pytest.mark.asyncio
+async def test_the_digest_that_answered_the_turn_is_in_the_debug_report(
+    monkeypatch: pytest.MonkeyPatch, turn: _Turn
+) -> None:
+    # Test: The digest in the debug report.
+    # Situation: The loop fetches one table and has a series specification
+    #   accepted; DEBUG_REPORT is "on".
+    # Expectation: debug_report carries the digest of that specification
+    #   over that table, as `AnalysisDigest.to_dict` serializes it.
+    monkeypatch.setenv("DEBUG_REPORT", "on")
+    cache = TurnCache()
+    cache.store_fetched(_make_table())
+    digest = await execute_specification(_SERIES_SPECIFICATION, cache)
+    assert isinstance(digest, AnalysisDigest)
+
+    await chat_pipeline.run_turn(_TRANSCRIPT, turn.emit)
+
+    assert turn.events[-1][0] == "debug_report"
+    assert turn.events[-1][1]["digest"] == digest.to_dict()
 
 
 @pytest.mark.asyncio
