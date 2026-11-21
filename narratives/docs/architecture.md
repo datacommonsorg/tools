@@ -305,8 +305,9 @@ Otherwise, the request runs through the agent loop in five steps:
    none). When the digest holds a cohort `relate_cohorts` result, the floor is
    that relation's scatter or nothing: it never falls back to a chart of one of
    the two measures, which would show places the answer's group tables do not.
-   The default chart's block carries `standalone: true`, so the app shows it full width
-   rather than beside the text before it. A ranking of a cohort, or any ranking
+   The default chart's block carries `standalone: true`, so the app shows it
+   full width rather than beside the text before it. A ranking of a cohort, or
+   any ranking
    over a window cohort, is charted as a `line` of its first five places, with
    the parent place when a step analyzed the parent's series, the parent's table
    holds at least two dates in the drawn span, and the parent's value does not

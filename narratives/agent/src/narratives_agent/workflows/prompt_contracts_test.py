@@ -781,8 +781,11 @@ def test_synthesis_contract_keeps_introducing_sentences_out_of_headings() -> (
     #   period, so the app never shows it as a heading; a table of all
     #   places opens with a short label and names any places of another
     #   type in a sentence; the ranking's note on such places is a sentence
-    #   with a period; and the old sentence-with-colon example is gone.
-    flattened = " ".join(load_prompt_contract("synthesis").split())
+    #   with a period; the old sentence-with-colon example is gone; and the
+    #   worked example introduces its second list with a label, not with a
+    #   sentence ending in a colon.
+    contract = load_prompt_contract("synthesis")
+    flattened = " ".join(contract.split())
 
     assert (
         "Any other sentence that introduces a list or table ends with a "
@@ -794,6 +797,8 @@ def test_synthesis_contract_keeps_introducing_sentences_out_of_headings() -> (
         'in a sentence ending with a period: "The ten highest are Puerto '
         'Rico and nine states."'
     ) in flattened
+    assert "\n\nLabor force participation by sex:\n\n- **Women:**" in contract
+    assert "differs by sex:" not in flattened
 
 
 def test_synthesis_contract_compares_groups_by_their_medians() -> None:
@@ -835,9 +840,9 @@ def test_synthesis_contract_lays_out_relationships_by_what_data_covers() -> (
     assert "one `scatter` of the two measures across all the places, the " in (
         flattened
     )
-    assert "Draw no scatter: a scatter needs every place of a kind." in (
-        flattened
-    )
+    assert (
+        "Do not draw a scatter: a scatter needs every place of a kind."
+    ) in flattened
     assert (
         "say once, in a few words, that it compares the places side by side "
         "rather than measuring a correlation or causal link"
@@ -897,12 +902,40 @@ def test_synthesis_contract_keeps_names_sources_and_headings_consistent() -> (
 ):
     # Test: Naming, attribution, and heading length.
     # Situation: The synthesis contract the model receives.
-    # Expectation: An indicator keeps one name throughout; a comparison's
-    #   figure-free opening still names the source; and a lead-in label is
-    #   a few words long.
-    flattened = " ".join(load_prompt_contract("synthesis").split())
+    # Expectation: An indicator keeps one name throughout, and that name
+    #   keeps the word for its statistic, such as "median"; a comparison's
+    #   figure-free opening still names the source; a lead-in label is a
+    #   few words long; and the worked examples give each indicator one
+    #   name in the prose, the lead-in line or column header, and the chart
+    #   title.
+    contract = load_prompt_contract("synthesis")
+    flattened = " ".join(contract.split())
+    examples = contract[
+        contract.index("A comparison of several places:") : contract.index(
+            "### Chart blocks"
+        )
+    ]
 
     assert "Call an indicator by one name throughout the answer" in flattened
+    assert (
+        "Keep in that name the word that says which statistic the figure is "
+        '("median", "average", "per capita"): "median household income", '
+        'never "household income" alone'
+    ) in flattened
+    assert "Median gross rent" not in examples
+    for name in ("Median household income", "Median rent"):
+        assert f"| City | {name} (USD, [year])" in examples
+        assert f'"title": "{name} in [city A]' in examples
+    assert (
+        "median rent rises with median household income across the four cities"
+    ) in " ".join(examples.split())
+    for name in (
+        "Skilled birth attendance",
+        "Family planning coverage",
+        "Maternal mortality",
+    ):
+        assert f"\n\n{name}:\n\n- **Latest:** {name}" in examples
+        assert f'"title": "{name} worldwide"' in examples
     assert "Keep the official name for table headers and chart" not in (
         flattened
     )
@@ -922,7 +955,10 @@ def test_prompts_carry_no_conflicting_instructions() -> None:
     #   A and Y in B" shape; trend answers take the change measure the
     #   contract gives; a peer comparison spans two sentences; the ranking
     #   chart bullet appears once; caveats never split a stats-chart pair;
-    #   and exploratory answers follow the per-indicator block shape.
+    #   exploratory answers follow the per-indicator block shape; and a
+    #   comparison of several indicators names its source in the rule for
+    #   its first sentence and in the worked example, as the headline rule
+    #   asks.
     flattened = " ".join(load_prompt_contract("synthesis").split())
     directives = " ".join(
         directive.synthesis
@@ -944,6 +980,18 @@ def test_prompts_carry_no_conflicting_instructions() -> None:
     assert "each indicator's own lead-in line, short list, and chart" in (
         directives
     )
+    assert (
+        "The first sentence names the source and states the pattern"
+    ) in flattened
+    assert (
+        '"According to [source], median rent rises with median household '
+        'income across all four cities, led by Austin." Nothing more'
+    ) in flattened
+    assert (
+        "According to [source], median rent rises with median household "
+        "income across the four cities, led by [city A]."
+    ) in flattened
+    assert "Rents rise with household incomes" not in flattened
 
 
 # The spelled-out chart caps the contracts may state, and their ordinals.

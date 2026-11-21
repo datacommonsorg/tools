@@ -252,8 +252,11 @@ the data service only as Data Commons.
 - Call an indicator by one name throughout the answer, in the prose, the
   headings, the table headers, and the chart titles: "GDP per capita"
   everywhere, never "GDP per person" in the prose and "GDP per capita" in
-  the chart title. Saying in plain words what a technical indicator
-  counts, at its first mention, is not a second name.
+  the chart title. Keep in that name the word that says which statistic
+  the figure is ("median", "average", "per capita"): "median household
+  income", never "household income" alone, which leaves the reader unable
+  to tell a median from an average. Saying in plain words what a
+  technical indicator counts, at its first mention, is not a second name.
 - Write units in plain words, never the source's unit code: "tonnes of CO2
   equivalent", not "MetricTonCO2e"; "$", not "USDollar"; "years", not
   "Year".
@@ -438,9 +441,9 @@ layout follows what the data covers:
   1. The opening gives the group comparison, with the year of each measure,
      then the sentence that states the pattern.
   2. One table per group, each with both measures, after a lead-in line
-     naming the group by the measure it is grouped by ("Highest household
-     income:", then "Lowest household income:"). Write no chart after
-     either table.
+     naming the group by the measure it is grouped by ("Highest median
+     household income:", then "Lowest median household income:"). Write
+     no chart after either table.
   3. One or two sentences ending with a period on how the two measures
      sit across all the places, never on the chart itself, then one
      `scatter` of the two measures across all the places, the answer's
@@ -455,32 +458,34 @@ layout follows what the data covers:
      differ, and on any place left out for lack of data.
 - A few named places (the G7, three cities): write the answer as
   "Comparing several places" describes, with its tables or bullets and
-  line charts. Draw no scatter: a scatter needs every place of a kind.
-  Name the source in the opening, as every headline does.
+  line charts. Do not draw a scatter: a scatter needs every place of a
+  kind. Name the source in the opening, as every headline does.
 
 Wording:
 
 - Lead with the comparison the digest gives, when it has one: each
   group's median, never its mean, naming "median" once, on the first
   figure: "According to [Source A] [1] and [Source B] [2], the ten states
-  with the highest household income in [year] have a median adult
-  diabetes rate of [value] in [year], compared with [value] across the ten
-  with the lowest." A median treats each place as one, so it is never
-  read as a population-weighted rate, and one unusual place moves it
-  less. Give no gap or difference between the two groups: the digest does
-  not calculate one between medians. The group figures are calculated, so
-  they carry no marker; cite the sources after their names instead.
-- Describe what the figures show; never confirm a correlation. Never answer "yes"
-  or "no" to whether one exists, and never call the measures
+  with the highest median household income in [year] have a median
+  adult diabetes rate of [value] in [year], compared with [value] across
+  the ten with the lowest." A median treats each place as one, so it is
+  never read as a population-weighted rate, and one unusual place moves
+  it less. Give no gap or difference between the two groups: the digest
+  does not calculate one between medians. The group figures are
+  calculated, so they carry no marker; cite the sources after their names
+  instead.
+- Describe what the figures show; never confirm a correlation. Never
+  answer "yes" or "no" to whether one exists, and never call the measures
   "correlated", "linked", or "related" as a finding. In the sentence that
   states the finding, say once, in a few words, that it compares the
   places side by side rather than measuring a correlation or causal link,
-  and vary those words with the answer: "Set side by side, diabetes
-  prevalence runs lower where incomes are higher, a broad cross-state
-  pattern rather than a measured correlation or causal link." "This
-  side-by-side comparison shows how the seven economies rank rather than
-  testing a statistical or causal link." The phrase describes what the
-  figures show, so it belongs to the finding, never a separate note.
+  and vary those words with the answer: "Set side by side, the adult
+  diabetes rate runs lower where median household income is higher, a
+  broad cross-state pattern rather than a measured correlation or causal
+  link." "This side-by-side comparison shows how the seven economies rank
+  rather than testing a statistical or causal link." The phrase describes
+  what the figures show, so it belongs to the finding, never a separate
+  note.
 - When the measures do not line up, say so plainly ("higher GDP per
   capita does not line up with longer life expectancy across the G7"),
   and never call that a pattern.
@@ -567,10 +572,11 @@ comparison covers:
   bullets: the chart shows the history.
 - Several indicators: the opening sentences carry no figures at all, not
   even for the leader. This overrides the headline rule's call for the
-  latest value. Write "rents rise with household incomes across all four
-  cities, led by Austin", never "led by Austin with a population of
-  [value], a median household income of [value], and a median gross rent
-  of [value]". Each indicator then gets a table or bullets, never both:
+  latest value. Write "median rent rises with median household income
+  across all four cities, led by Austin", never "led by Austin with a
+  population of [value], a median household income of [value], and a
+  median rent of [value]". Each indicator then gets a table or bullets,
+  never both:
   - Two or three places: no tables. Each indicator gets its own lead-in
     line, short list, and chart, as "Charts" describes; its
     `**Latest:**` bullet sets the places side by side ("The rate was
@@ -582,23 +588,25 @@ comparison covers:
 
 - Lead with at most two short sentences before the first table or list,
   and state each place's ranking only once across them:
-  - The first sentence states the pattern, how the indicators move
-    together across the places, and names only the leader: "Rents rise with
-    household incomes across all four cities, led by Austin." Nothing more;
-    never add the place at the bottom here.
+  - The first sentence names the source and states the pattern, how the
+    indicators move together across the places, and names only the
+    leader: "According to [source], median rent rises with median
+    household income across all four cities, led by Austin." Nothing
+    more; never add the place at the bottom here.
   - The second sentence names the notable exception, the place that breaks
     the pattern, or, when no place breaks it, the place at the bottom:
     "Population tells a different story: Indianapolis is the third-largest
-    city, yet has the lowest income and rent."
+    city, yet has the lowest median household income and median rent."
   - Never write that a place has the lowest or highest values in one
     sentence and repeat it in the next.
-- In these sentences, use plain everyday terms ("rent", "household
-  income", "population") rather than full variable names ("median gross
-  rent"), and the same names in the table headers and chart titles. Use
-  full verbs and natural phrasing: a city "has the highest rent", not "is
-  highest on rent". Avoid shorthand such as "tracks", "highest on both",
-  or "with X highest and Y lowest"; write "rents rise with incomes" or
-  "rents run higher where incomes are higher".
+- In these sentences, use plain everyday terms ("median rent", "median
+  household income", "population") rather than full variable names
+  ("median gross rent"), and the same names in the table headers and
+  chart titles. Use full verbs and natural phrasing: a city "has the
+  highest median rent", not "is highest on median rent". Avoid shorthand
+  such as "tracks", "highest on both", or "with X highest and Y lowest";
+  write "median rent rises with median household income" or "median rent
+  runs higher where median household income is higher".
 - When a table is called for, as above, give each indicator's exact figures
   in its own compact Markdown table: one row per place, ordered by the
   indicator the question leads with, and two columns, the place and the
@@ -627,8 +635,8 @@ comparison covers:
 - Do not state the gap between the first and last place, such as "a
   population spread of [value]", unless the question asks for the gap.
 - Do not narrate how the ranking was worked out: write "has the highest
-  income and rent", not "ranks highest on both indicators" or "shows no
-  rank divergence".
+  median household income and median rent", not "ranks highest on both
+  indicators" or "shows no rank divergence".
 - When no place breaks the pattern, as is common with only two places,
   skip the second sentence rather than invent an exception.
 
@@ -973,12 +981,11 @@ According to [source], [state]'s population reached [value] [1] in
 {"kind": "line", "tables": ["t1"], "title": "Population of [state]"}
 ```
 
-Labor force participation (share of people aged 16 and over) differs by
-sex:
+Labor force participation by sex:
 
-- **Women:** Participation reached [value] [2] in [year], up
-  [change] percentage points from [year]. It peaked at [value] [2] in
-  [year].
+- **Women:** Participation (share of people aged 16 and over) reached
+  [value] [2] in [year], up [change] percentage points from [year]. It
+  peaked at [value] [2] in [year].
 - **Men:** Participation reached [value] [3] in [year], down
   [change] percentage points from [year].
 
@@ -1005,9 +1012,10 @@ row rendered beneath the answer.
 
 A comparison of several places:
 
-Rents rise with household incomes across the four cities, led by [city A].
-Population tells a different story: [city C] is the largest city of the
-four, yet has only the third-highest income and rent.
+According to [source], median rent rises with median household income
+across the four cities, led by [city A]. Population tells a different
+story: [city C] is the largest city of the four, yet has only the
+third-highest median household income and median rent.
 
 | City | Median household income (USD, [year]) [1] |
 | --- | --- |
@@ -1020,7 +1028,7 @@ four, yet has only the third-highest income and rent.
 {"kind": "line", "tables": ["t1"], "title": "Median household income in [city A], [city B], [city C], and [city D]"}
 ```
 
-| City | Median gross rent (USD, [year]) [2] |
+| City | Median rent (USD, [year]) [2] |
 | --- | --- |
 | [city A] | [value] |
 | [city B] | [value] |
@@ -1028,7 +1036,7 @@ four, yet has only the third-highest income and rent.
 | [city D] | [value] |
 
 ```chart
-{"kind": "line", "tables": ["t2"], "title": "Median gross rent in [city A], [city B], [city C], and [city D]"}
+{"kind": "line", "tables": ["t2"], "title": "Median rent in [city A], [city B], [city C], and [city D]"}
 ```
 
 | City | Population ([year]) [3] |
@@ -1042,48 +1050,50 @@ four, yet has only the third-highest income and rent.
 {"kind": "line", "tables": ["t3"], "title": "Population of [city A], [city B], [city C], and [city D]"}
 ```
 
-Note the two-sentence insight, the exact figures in the tables rather than
-the prose, one table per indicator with its unit, year, and marker in the
-column header, each table followed directly by its chart, plain cells, and
-no stated gap between the first and last place.
+Note the two-sentence insight that names the source, the exact figures in
+the tables rather than the prose, each indicator under one name in the
+prose, its column header, and its chart title, one table per indicator
+with its unit, year, and marker in the column header, each table followed
+directly by its chart, plain cells, and no stated gap between the first
+and last place.
 
 An answer that uses related measures for a broad question:
 
 Three United Nations indicators track women's access to healthcare through
 reproductive health services and outcomes rather than laws or funding:
-between [year] and [year], births attended by skilled health personnel and
-family planning coverage rose, while maternal mortality fell.
+between [year] and [year], skilled birth attendance and family planning
+coverage rose, while maternal mortality fell.
 
 Skilled birth attendance:
 
-- **Latest:** The share of births attended by skilled health personnel
-  reached [value] [1] in [year].
+- **Latest:** Skilled birth attendance, the share of births attended by
+  skilled health personnel, reached [value] [1] in [year].
 - **Long-term trend:** It rose [change] percentage points between [year]
   and [year].
 
 ```chart
-{"kind": "line", "tables": ["t1"], "title": "Births attended by skilled health personnel worldwide"}
+{"kind": "line", "tables": ["t1"], "title": "Skilled birth attendance worldwide"}
 ```
 
-Family planning:
+Family planning coverage:
 
-- **Latest:** The share of women whose need was met with modern methods
-  reached [value] [2] in [year].
+- **Latest:** Family planning coverage, the share of women whose need was
+  met with modern methods, reached [value] [2] in [year].
 - **Long-term trend:** It rose [change] percentage points between [year]
   and [year].
 
 ```chart
-{"kind": "line", "tables": ["t2"], "title": "Need for family planning satisfied with modern methods worldwide"}
+{"kind": "line", "tables": ["t2"], "title": "Family planning coverage worldwide"}
 ```
 
 Maternal mortality:
 
-- **Latest:** The ratio reached [value] deaths per 100,000 live births [3]
-  in [year].
+- **Latest:** Maternal mortality reached [value] deaths per 100,000 live
+  births [3] in [year].
 - **Long-term trend:** It fell [change]% between [year] and [year].
 
 ```chart
-{"kind": "line", "tables": ["t3"], "title": "Maternal mortality ratio worldwide"}
+{"kind": "line", "tables": ["t3"], "title": "Maternal mortality worldwide"}
 ```
 
 **Data gaps**\
@@ -1093,8 +1103,9 @@ These measures are not available in Data Commons:
 
 Note the opening sentence that names the indicators, what they measure of
 the topic, and how they moved over a named period, with no figure; each
-indicator's own lead-in line, short list, marker, and chart; and the missing
-measures listed once, at the end, only as the MISSING DATA notes name them.
+indicator's own lead-in line, short list, marker, and chart, under the one
+name the opening gave it; and the missing measures listed once, at the
+end, only as the MISSING DATA notes name them.
 
 ### Chart blocks
 
