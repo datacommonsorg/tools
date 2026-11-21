@@ -31,6 +31,7 @@ from google.genai import types
 from pydantic import ValidationError
 
 from narratives_agent.analytics.digest import AnalysisDigest
+from narratives_agent.config import get_current_date
 from narratives_agent.config_model import AgentConfig, GeminiRole, RoleConfig
 from narratives_agent.gemini.client import (
     GeminiBlockedError,
@@ -1147,6 +1148,7 @@ async def _iterate(
         transcript_contents(
             transcript,
             transcript.current_query,
+            current_date=get_current_date(),
             max_response_chars=MCP_HISTORY_RESPONSE_CHARS,
         )
     )

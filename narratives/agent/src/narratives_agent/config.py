@@ -29,9 +29,10 @@ and the configured prompts (`prompts/<slot>.md` beside `CONFIG_URL`, then
 inline `prompts` entries) are layered over them slot by slot. A configured
 prompt that is absent or fails to load leaves the default prompt in place.
 
-`render_prompt` substitutes `{{CURRENT_DATETIME}}` with the timestamp that
-`pin_current_datetime` holds for the current context, so every prompt of one
-chat turn names the same time.
+`get_current_date` returns the current date in the `TIMEZONE` zone, or the
+date that `pin_current_date` holds for the current context, so every caller
+in one chat turn reads the same date. `render_prompt` substitutes only the
+`{{instance.*}}` template variables.
 """
 
 import json
@@ -82,11 +83,11 @@ _config_mtime = 0.0
 _config_path: Path | None = None
 _defaults_config: AgentConfig | None = None
 _defaults_dir: Path | None = None
-# The timestamp `get_current_datetime` returns while `pin_current_datetime`
-# is active. A context variable keeps concurrent asyncio turns, each in its
-# own task context, from reading another turn's timestamp.
-_pinned_current_datetime: ContextVar[str | None] = ContextVar(
-    "_pinned_current_datetime", default=None
+# `_pinned_current_date` holds the date `get_current_date` returns while
+# `pin_current_date` is active. A context variable keeps concurrent asyncio
+# turns, each in its own task context, from reading another turn's date.
+_pinned_current_date: ContextVar[str | None] = ContextVar(
+    "_pinned_current_date", default=None
 )
 
 _HTML_COMMENT_RE = re.compile(r"<!--.*?-->", re.DOTALL)
@@ -505,21 +506,21 @@ def get_debug_report_mode() -> DebugReportMode:
     return settings.debug_report
 
 
-def get_current_datetime() -> str:
-    """Returns the pinned timestamp, or the current date and time.
+def get_current_date() -> str:
+    """Returns the pinned date, or the current date, as `YYYY-MM-DD`.
 
-    Inside `pin_current_datetime` the pinned timestamp is returned, so every
-    prompt rendered during one turn names the same time; otherwise the
-    current time is formatted by `_format_current_datetime`.
+    Inside `pin_current_date` the pinned date is returned, so every caller
+    in one turn reads the same date; otherwise the current date is
+    formatted by `_format_current_date`.
     """
-    if (pinned := _pinned_current_datetime.get()) is not None:
+    if (pinned := _pinned_current_date.get()) is not None:
         return pinned
-    return _format_current_datetime()
+    return _format_current_date()
 
 
 @contextmanager
-def pin_current_datetime(value: str | None = None) -> Iterator[str]:
-    """Pins the timestamp `get_current_datetime` returns in this context.
+def pin_current_date(value: str | None = None) -> Iterator[str]:
+    """Pins the date `get_current_date` returns in this context.
 
     The pin applies to the current context, to the tasks it creates, and to
     its `asyncio.to_thread` calls, which copy the context (a bare
@@ -527,27 +528,26 @@ def pin_current_datetime(value: str | None = None) -> Iterator[str]:
     block raises.
 
     Args:
-        value: The timestamp to pin, or None to pin the current time as
-            `_format_current_datetime` formats it.
+        value: The date to pin, or None to pin the current date as
+            `_format_current_date` formats it.
 
     Yields:
-        The pinned timestamp.
+        The pinned date.
     """
-    resolved = value if value is not None else _format_current_datetime()
-    token = _pinned_current_datetime.set(resolved)
+    resolved = value if value is not None else _format_current_date()
+    token = _pinned_current_date.set(resolved)
     try:
         yield resolved
     finally:
-        _pinned_current_datetime.reset(token)
+        _pinned_current_date.reset(token)
 
 
-def _format_current_datetime() -> str:
-    """Formats the current date and time in the configured timezone.
+def _format_current_date() -> str:
+    """Formats the current date in the configured timezone as `YYYY-MM-DD`.
 
     The TIMEZONE environment variable selects the zone (for example
-    "Asia/Kolkata" or "America/Los_Angeles"), and the trailing label
-    ("IST", "PT", ...) is the zone abbreviation resolved at runtime.
-    Falls back to UTC when TIMEZONE names a zone that cannot be resolved.
+    "Asia/Kolkata" or "America/Los_Angeles"). The zone falls back to UTC
+    when TIMEZONE names a zone that cannot be resolved.
     """
     tz_name = get_settings().timezone
     try:
@@ -555,19 +555,19 @@ def _format_current_datetime() -> str:
     except Exception:
         logger.warning(f"Unknown TIMEZONE={tz_name!r}; falling back to UTC")
         tz = ZoneInfo("UTC")
-    now = datetime.now(tz)
-    return now.strftime("%A, %B %d, %Y at %I:%M %p ") + now.strftime("%Z")
+    return datetime.now(tz).date().isoformat()
 
 
 def render_prompt(prompt: str) -> str:
-    """Substitute {{CURRENT_DATETIME}} and {{instance.<key>}} into a prompt.
+    """Returns `prompt` with its {{instance.<key>}} placeholders substituted.
 
     An {{instance.<key>}} with no matching template_vars entry is left in place
     rather than blanked: a visible placeholder in an answer is a far louder
     failure than a sentence that has silently lost its subject. When no
-    configuration is loaded, every {{instance.<key>}} is left in place.
+    configuration is loaded, every {{instance.<key>}} is left in place. No
+    other placeholder is substituted.
     """
-    rendered = prompt.replace("{{CURRENT_DATETIME}}", get_current_datetime())
+    rendered = prompt
     config = load_config()
     template_vars = config.template_vars if config is not None else {}
     for key, value in template_vars.items():

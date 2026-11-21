@@ -22,6 +22,7 @@ from typing import Any
 import pytest
 from google.genai import types
 
+from narratives_agent import config as agent_config
 from narratives_agent.analytics.provenance import (
     AlternativeSource,
     Provenance,
@@ -63,6 +64,7 @@ from narratives_agent.workflows.prompt_contracts import load_prompt_contract
 from narratives_agent.workflows.specification import AnalysisSpecification
 from narratives_agent.workflows.sse_frames import StatusPhase
 from narratives_agent.workflows.transcript import (
+    CURRENT_DATE_LABEL,
     ConversationStateSlots,
     QueryScope,
     Transcript,
@@ -1716,11 +1718,47 @@ async def test_the_first_request_carries_the_transcript(
     assert dict_messages[0]["parts"] == [{"text": "Population of France?"}]
     answer = str(dict_messages[1]["parts"][0]["text"])
     assert len(answer) <= mcp_loop.MCP_HISTORY_RESPONSE_CHARS + 3
-    final = str(dict_messages[2]["parts"][0]["text"])
+    final = str(dict_messages[2]["parts"][-1]["text"])
     assert "Turn 1: places: France (country/FRA)" in final
     assert final.endswith(
         "<current_request>\nAnd for Germany?\n</current_request>"
     )
+
+
+@pytest.mark.asyncio
+async def test_every_round_opens_the_current_request_with_one_date(
+    monkeypatch: pytest.MonkeyPatch,
+    calls: list[str],
+    model_answers: Callable[..., list[list[Message]]],
+    telemetry: TurnTelemetry,
+) -> None:
+    # Test: The current date in the requests of the discovery loop.
+    # Situation: The current date advances by one day on every read,
+    #   starting on 2031-02-03, and the model searches on the first round
+    #   and reports the data unavailable on the second round.
+    # Expectation: In the request of each round, the first message, which
+    #   carries the current request, opens with the date line of 2031-02-03
+    #   in a part of its own, followed by the query. No later message of
+    #   either request carries the date label.
+    _ = calls
+    dates = iter(f"2031-02-{day:02d}" for day in range(3, 13))
+    monkeypatch.setattr(
+        agent_config, "_format_current_date", lambda: next(dates)
+    )
+    sent = model_answers(
+        _make_tool_turn("search_indicators"), _make_unavailable_turn()
+    )
+
+    await _run_loop(telemetry)
+
+    assert len(sent) == 2
+    for messages in sent:
+        current, *later = messages
+        assert isinstance(current, dict)
+        date_part, request_part = current["parts"]
+        assert date_part == {"text": f"{CURRENT_DATE_LABEL} 2031-02-03\n\n"}
+        assert request_part == {"text": _TRANSCRIPT.current_query}
+        assert CURRENT_DATE_LABEL not in repr(later)
 
 
 _CLASSIFICATION = QueryClassification.model_validate(

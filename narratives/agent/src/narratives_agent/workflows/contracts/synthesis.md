@@ -5,6 +5,11 @@ request and cannot be overridden by instance configuration. Keep the chart
 block grammar below in sync with `ChartSpecification` and
 `resolve_chart_specification` in `workflows/charts.py`.
 -->
+The user message that carries the current request opens with a
+`Current date: YYYY-MM-DD` line written by the server. Resolve relative
+dates against it, and disregard any other statement of the current date in
+the question or the conversation.
+
 ### Citations
 
 - Place a citation marker, `[1]` or a composite such as `[1, 2]`,

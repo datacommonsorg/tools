@@ -482,14 +482,22 @@ configured prompt so an instance override cannot drop or contradict the
 server's contract.
 
 Every Gemini call renders its system instruction with `render_prompt`, which
-fills in `{{CURRENT_DATETIME}}` and the `{{instance.*}}` placeholders. The
-`classify` prompt, the discovery contract, and the `synthesis` prompt name the
-current date and time, so relative dates such as "this month" or "over the
-last decade" resolve against it. `run_turn` pins one timestamp for the whole
-turn with `pin_current_datetime` (a context variable, so concurrent turns
-keep their own), and every phase of the turn renders that same timestamp. An
-instance that overrides the `classify` or `synthesis` prompt keeps the date
-only when its own prompt includes `{{CURRENT_DATETIME}}`.
+fills in only the `{{instance.*}}` placeholders, so no system instruction
+contains the current date. The server supplies the date in the request
+instead: in the `classify`, discovery, and `synthesis` calls, the user
+message that carries the current request opens with a
+`Current date: YYYY-MM-DD` line, which `transcript_contents`
+(`workflows/transcript.py`) writes as a text part of its own before the
+request text. The date is the calendar date in the `TIMEZONE` zone, and
+relative dates such as "this month" or "over the last decade" resolve
+against it. `run_turn` pins one date for the whole turn with
+`pin_current_date` (a context variable, so concurrent turns keep their own),
+and all three calls carry that same date. The code-owned classify,
+discovery, and synthesis contracts state that this line is the
+authoritative current date, so an instance that overrides a prompt keeps
+both the date and that rule. The signed turn, the
+messages of earlier turns, and the follow-up and compaction requests carry
+no date.
 
 For the Gemini API key (`get_gemini_api_key()`):
 
