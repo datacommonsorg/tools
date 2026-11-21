@@ -223,6 +223,10 @@
           "$ref": "#/$defs/hexColor",
           "description": "Secondary/muted text (--theme-text-muted → --color-on-surface-variant)."
         },
+        "headline": {
+          "$ref": "#/$defs/hexColor",
+          "description": "Landing-view heading and the unavailable note's title (--theme-headline → --color-headline)."
+        },
         "background": {
           "$ref": "#/$defs/hexColor",
           "description": "Page background, and the surface of the composer, cards and drawers (--theme-background → --color-surface)."
@@ -233,11 +237,11 @@
         },
         "gradient_start": {
           "$ref": "#/$defs/hexColor",
-          "description": "Hero 'Data Agent' heading gradient start stop (--theme-gradient-start → --color-theme-gradient-start)."
+          "description": "Ignored; the landing heading color is `headline`. Accepted so existing themes still validate."
         },
         "gradient_end": {
           "$ref": "#/$defs/hexColor",
-          "description": "Hero 'Data Agent' heading gradient end stop (--theme-gradient-end → --color-theme-gradient-end)."
+          "description": "Ignored; the landing heading color is `headline`. Accepted so existing themes still validate."
         },
         "gradient_border_stop_1": {
           "$ref": "#/$defs/hexColor",
@@ -326,11 +330,45 @@
     },
     "headline": {
       "type": "string",
-      "description": "Hero heading on the empty Data Agent screen, e.g. \"Data agent explorer\"."
+      "description": "Hero heading on the empty Data Agent screen, e.g. \"Explore global public data in one place\"."
     },
     "tagline": {
       "type": "string",
-      "description": "Sub-heading under `headline`, e.g. \"powered by Google's Data Commons\"."
+      "description": "Sub-heading under `headline`, e.g. \"Answers draw from organized datasets in the Data Commons Knowledge Graph\"."
+    },
+    "tagline_link": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["text", "sections"],
+      "description": "Turns a phrase in `tagline` into a link that opens a dialog.",
+      "properties": {
+        "text": {
+          "type": "string",
+          "description": "Exact phrase in `tagline` that becomes the link."
+        },
+        "sections": {
+          "type": "array",
+          "minItems": 1,
+          "description": "Dialog sections; the first title also names the dialog.",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["title", "body"],
+            "properties": {
+              "title": { "type": "string", "description": "Section heading." },
+              "body": { "type": "string", "description": "Section text." }
+            }
+          }
+        },
+        "sources": {
+          "$ref": "#/$defs/link",
+          "description": "Optional link to the data sources, shown in the dialog's action bar."
+        }
+      }
+    },
+    "unavailable_link": {
+      "$ref": "#/$defs/link",
+      "description": "Action of the note shown on the Data Agent route while chat is disabled, e.g. {\"label\": \"Go to Data Commons\", \"href\": \"https://datacommons.org\"}."
     },
     "fonts": {
       "type": "object",

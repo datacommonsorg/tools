@@ -22,6 +22,7 @@ import { domAnimation, LazyMotion, m, useReducedMotion } from 'motion/react';
 import { SuggestionChip } from '@/src/components/chip_suggestion';
 import { PromptInput } from '@/src/components/input_prompt';
 import { RECAPTCHA_NOTICE_TEXT } from '@/src/components/note_composer';
+import { TaglineText } from '@/src/components/text_tagline';
 import { getInstanceConfig } from '@/src/config/instance_config';
 import {
   INTRO_CASCADE_VARIANTS,
@@ -39,7 +40,7 @@ interface InitialViewProps {
 
 /** Empty-state landing view: hero heading, prompt input, and suggestion chips. */
 export function InitialView({ query, setQuery, onSend }: InitialViewProps) {
-  const { headline, tagline, suggestions } = getInstanceConfig();
+  const { headline, tagline, taglineLink, suggestions } = getInstanceConfig();
   const reduceMotion = useReducedMotion();
 
   return (
@@ -48,19 +49,19 @@ export function InitialView({ query, setQuery, onSend }: InitialViewProps) {
         variants={INTRO_CASCADE_VARIANTS}
         // Reduced motion: no initial/animate, so everything renders at rest.
         {...(!reduceMotion && { initial: 'hidden', animate: 'show' })}
-        className="flex-1 flex flex-col items-center justify-start sm:justify-center w-full max-w-5xl mx-auto px-4 lg:px-12 pt-8 sm:pt-0 pb-8 sm:pb-24 relative"
+        className="flex-1 flex flex-col items-center justify-center relative px-4"
       >
         <m.h1
           variants={INTRO_FADE_UP_VARIANTS}
-          className="text-display-small-gradient mb-1 tracking-tight text-center"
+          className="text-display-medium text-headline mb-1 text-center"
         >
           {headline}
         </m.h1>
         <m.p
           variants={INTRO_FADE_UP_VARIANTS}
-          className="text-label-large text-subtle mb-8 text-center"
+          className="text-body-regular text-subtle mt-2 mb-6 text-center"
         >
-          {tagline}
+          <TaglineText tagline={tagline} link={taglineLink} />
         </m.p>
 
         <m.div variants={INTRO_FADE_UP_VARIANTS} className="w-full">
@@ -74,10 +75,11 @@ export function InitialView({ query, setQuery, onSend }: InitialViewProps) {
 
         {/* Place suggestion chips inline on narrow screens so they are not
             clipped by the virtual keyboard, and dock them to the bottom of the
-            hero container on wider screens. */}
+            hero container on wider screens at least 480px tall, where they
+            do not overlap the prompt. */}
         <m.div
           variants={INTRO_CASCADE_VARIANTS}
-          className="static sm:absolute sm:bottom-6 sm:left-0 sm:right-0 mt-8 sm:mt-0 w-full flex flex-wrap justify-center gap-3 sm:gap-4 px-2 sm:px-6"
+          className="static sm:tall:absolute sm:tall:bottom-6 sm:tall:left-0 sm:tall:right-0 mt-8 sm:tall:mt-0 w-full flex flex-wrap justify-center gap-3 sm:gap-4 px-2 sm:px-6"
         >
           {suggestions.map((text, index) => (
             <m.div key={index} variants={INTRO_FADE_UP_VARIANTS}>

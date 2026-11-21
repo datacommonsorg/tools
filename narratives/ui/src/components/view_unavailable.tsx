@@ -20,6 +20,10 @@
  */
 
 import { domAnimation, LazyMotion, m, useReducedMotion } from 'motion/react';
+import { useId } from 'react';
+import { createPortal } from 'react-dom';
+import { Link } from '@/src/components/link';
+import { UNAVAILABLE_TITLE } from '@/src/config/copy_chat';
 import { getInstanceConfig } from '@/src/config/instance_config';
 import {
   INTRO_CASCADE_VARIANTS,
@@ -28,16 +32,17 @@ import {
 import { getRuntimeConfig } from '@/src/config/runtime_config';
 
 /**
- * Unavailable view: the landing view's heading and tagline above a notice
- * card holding the configured unavailable message. It renders no controls
- * and sends no requests.
+ * Unavailable view: the landing view's heading and tagline under a scrim,
+ * with the configured unavailable message centered over it like a modal
+ * window. It sends no requests; its only control is the configured
+ * `unavailableLink`. The app shell is `inert` while this view shows, so the
+ * layer is portaled to `<body>` to stay interactive.
  */
 export function UnavailableView() {
-  const { headline, tagline } = getInstanceConfig();
+  const { headline, tagline, unavailableLink } = getInstanceConfig();
   const { unavailableMessage } = getRuntimeConfig();
   const shouldReduceMotion = useReducedMotion();
-  // Without a tagline, the heading carries the spacing above the card.
-  const headlineMarginClass = tagline ? 'mb-1' : 'mb-8';
+  const titleId = useId();
 
   return (
     <LazyMotion features={domAnimation} strict>
@@ -49,27 +54,56 @@ export function UnavailableView() {
       >
         <m.h1
           variants={INTRO_FADE_UP_VARIANTS}
-          className={`text-display-small-gradient ${headlineMarginClass} tracking-tight text-center`}
+          className="text-display-medium text-headline mb-1 text-center"
         >
           {headline}
         </m.h1>
         {tagline && (
           <m.p
             variants={INTRO_FADE_UP_VARIANTS}
-            className="text-label-large text-subtle mb-8 text-center"
+            className="text-body-regular text-subtle mt-2 mb-6 text-center"
           >
             {tagline}
           </m.p>
         )}
-        <m.div
-          variants={INTRO_FADE_UP_VARIANTS}
-          role="note"
-          className="w-full max-w-prompt rounded-card border border-border bg-surface-soft px-6 py-6 sm:px-8 sm:py-7 text-center"
-        >
-          <p className="text-body-large text-on-surface-variant">
-            {unavailableMessage}
-          </p>
-        </m.div>
+        {/* A modal-style backdrop over the inert page: the note's action is
+            the way out. It scrolls when the note is taller than the
+            viewport; `m-auto` centers the note without clipping its top. */}
+        {createPortal(
+          <div className="fixed inset-0 z-50 flex overflow-y-auto p-4 bg-scrim/30 motion-safe:animate-fade-in">
+            <m.div
+              variants={INTRO_FADE_UP_VARIANTS}
+              role="note"
+              aria-labelledby={titleId}
+              className="m-auto w-full max-w-198 rounded-dialog unavailable-art shadow-elevated text-left"
+            >
+              {/* Keeps the text below the artwork's figures at any note width. */}
+              <div aria-hidden="true" className="aspect-unavailable-art" />
+              <div className="flex flex-col gap-3 px-11">
+                <h2
+                  id={titleId}
+                  className="text-headline-large-emphasized text-headline"
+                >
+                  {UNAVAILABLE_TITLE}
+                </h2>
+                <p className="text-headline-small text-on-surface-variant">
+                  {unavailableMessage}
+                </p>
+              </div>
+              <div className="flex flex-wrap items-center justify-end gap-4 px-6 pb-6">
+                {/* Same tab: the user is leaving a page with nothing to do. */}
+                <Link
+                  href={unavailableLink.href}
+                  target="_self"
+                  className="flex items-center h-14 px-6 rounded-full text-body-large-emphasized bg-theme-primary text-white hover:opacity-90 transition-opacity"
+                >
+                  {unavailableLink.label}
+                </Link>
+              </div>
+            </m.div>
+          </div>,
+          document.body,
+        )}
       </m.div>
     </LazyMotion>
   );

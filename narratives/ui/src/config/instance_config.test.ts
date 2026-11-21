@@ -311,6 +311,94 @@ describe('getInstanceConfig', () => {
     expect(getInstanceConfig().navigation).toEqual(navigation);
   });
 
+  it('reads a tagline link from the theme document', () => {
+    // Test: Valid `tagline_link` overrides, with and without `sources`.
+    // Situation: The theme document sets `tagline_link` with one section and a
+    //            sources link, then again without `sources`.
+    // Expectation: `taglineLink` holds the configured phrase, sections, and
+    //              sources; without `sources` it parses with `sources`
+    //              undefined. No warning is logged.
+    const warn = spyOnWarn();
+    const taglineLink = {
+      text: 'Acme Graph',
+      sections: [{ title: 'Acme Graph', body: 'What the graph holds.' }],
+      sources: { label: 'Sources', href: 'https://acme.example/sources' },
+    };
+    writeSlot(JSON.stringify({ tagline_link: taglineLink }));
+    expect(getInstanceConfig().taglineLink).toEqual(taglineLink);
+
+    resetInstanceConfigForTests();
+    const { sources: _, ...withoutSources } = taglineLink;
+    writeSlot(JSON.stringify({ tagline_link: withoutSources }));
+    expect(getInstanceConfig().taglineLink).toEqual(withoutSources);
+    expect(warn).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['has no sections', { text: 'Graph', sections: [] }],
+    [
+      'has a section without a body',
+      { text: 'Graph', sections: [{ title: 'Graph' }] },
+    ],
+    [
+      'has a non-string phrase',
+      { text: 42, sections: [{ title: 'Graph', body: 'Body.' }] },
+    ],
+    [
+      'has an unsafe sources href',
+      {
+        text: 'Graph',
+        sections: [{ title: 'Graph', body: 'Body.' }],
+        sources: { label: 'Sources', href: 'javascript:alert(1)' },
+      },
+    ],
+  ])('keeps the default tagline link when the override %s', (_, taglineLink) => {
+    // Test: Malformed or unsafe `tagline_link` overrides.
+    // Situation: `tagline_link` has empty sections, a section missing its
+    //            body, a non-string phrase, or a script URL as its sources
+    //            href.
+    // Expectation: `taglineLink` falls back to the default and one warning
+    //              names `tagline_link`.
+    const warn = spyOnWarn();
+    writeSlot(JSON.stringify({ tagline_link: taglineLink }));
+    expect(getInstanceConfig().taglineLink).toEqual(
+      DEFAULT_INSTANCE_CONFIG.taglineLink,
+    );
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(String(warn.mock.calls[0]?.[0])).toContain('"tagline_link"');
+  });
+
+  it('reads the unavailable link from the theme document', () => {
+    // Test: Valid `unavailable_link` override.
+    // Situation: The theme document sets `unavailable_link`.
+    // Expectation: `unavailableLink` holds it and no warning is logged.
+    const warn = spyOnWarn();
+    const unavailableLink = {
+      label: 'Visit Acme',
+      href: 'https://acme.example',
+    };
+    writeSlot(JSON.stringify({ unavailable_link: unavailableLink }));
+    expect(getInstanceConfig().unavailableLink).toEqual(unavailableLink);
+    expect(warn).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['has no label', { href: 'https://acme.example' }],
+    ['has an unsafe href', { label: 'Go', href: 'javascript:alert(1)' }],
+  ])('keeps the default unavailable link when the override %s', (_, link) => {
+    // Test: Malformed or unsafe `unavailable_link` overrides.
+    // Situation: `unavailable_link` lacks a label or uses a script URL.
+    // Expectation: `unavailableLink` falls back to the default and one
+    //              warning names `unavailable_link`.
+    const warn = spyOnWarn();
+    writeSlot(JSON.stringify({ unavailable_link: link }));
+    expect(getInstanceConfig().unavailableLink).toEqual(
+      DEFAULT_INSTANCE_CONFIG.unavailableLink,
+    );
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(String(warn.mock.calls[0]?.[0])).toContain('"unavailable_link"');
+  });
+
   it('falls back to the defaults and warns on malformed JSON', () => {
     // Test: Malformed JSON in the instance-config element.
     // Situation: The element contains invalid JSON syntax.

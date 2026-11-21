@@ -74,8 +74,9 @@ _INDEX = _SHELL_HEAD + _RUNTIME_OPEN + b"</script>"
 _STAMPED_INDEX = (
     _SHELL_HEAD
     + _RUNTIME_OPEN
-    + b'{"enable_chat":true,"unavailable_message":"This Data Commons tool '
-    + b'is temporarily unavailable due to high traffic.",'
+    + b'{"enable_chat":true,"unavailable_message":"Due to high traffic, '
+    + b"this feature is temporarily paused. We are scaling capacity to "
+    + b'restore service as quickly as possible. Please try again later.",'
     + b'"web_component_url":"https://datacommons.org/datacommons.js",'
     + b'"web_component_api_root":"https://datacommons.org"}</script>'
 )
@@ -407,10 +408,7 @@ def test_the_shell_carries_a_hash_of_the_stamped_bytes(
             "false",
             {
                 "enable_chat": False,
-                "unavailable_message": (
-                    "This Data Commons tool is temporarily unavailable due "
-                    "to high traffic."
-                ),
+                "unavailable_message": DEFAULT_UNAVAILABLE_MESSAGE,
                 **_DEFAULT_CHART_HOSTS,
             },
             id="ENABLE_CHAT",
