@@ -651,7 +651,7 @@ describe('AnswerPanel', () => {
   it('labels the header when the answer found no matching data', () => {
     // Test: Card header of an answer without data.
     // Situation: A finished answer whose turn has `hasData` false.
-    // Expectation: The header reads "No matching data found" with no ghost
+    // Expectation: The header reads "No exact data match found" with no ghost
     //   line, and the question is not repeated under the user's bubble.
     const { container } = render(
       <AnswerPanel
@@ -664,7 +664,7 @@ describe('AnswerPanel', () => {
     );
     const header = container.querySelector('.print-heading');
 
-    expect(header?.textContent).toBe('No matching data found');
+    expect(header?.textContent).toBe('No exact data match found');
     expect(header?.querySelector('[aria-hidden="true"]')).toBeNull();
   });
 
@@ -673,7 +673,7 @@ describe('AnswerPanel', () => {
     // Situation: A finished answer whose turn has `hasData` false and
     //   `truncated` true.
     // Expectation: The header reads "Search ended before finding data", not
-    //   "No matching data found".
+    //   "No exact data match found".
     const { container } = render(
       <AnswerPanel
         turn={buildTurnWithBlocks(
