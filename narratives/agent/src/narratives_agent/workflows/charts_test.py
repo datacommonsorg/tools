@@ -1416,6 +1416,29 @@ def test_a_relation_sets_the_scatter_axes(tables: list[str]) -> None:
     assert chart["variable_dcids"] == ["Percent_Diabetes", "Median_Income"]
 
 
+def test_a_bar_draws_the_target_for_the_places_of_a_relation_group() -> None:
+    # Test: The chart of a second measure in one end of a ranking.
+    # Situation: The digest relates diabetes on 2021 (`target`) to income on
+    #   2023 (`by`), and a bar of the diabetes table names the places of
+    #   the relation's highest-income group, as "A second measure in one end
+    #   of a ranking" in `contracts/synthesis.md` asks.
+    # Expectation: The bar draws diabetes for those places, in the group's
+    #   order, at the date the relation aligned diabetes on.
+    cache, digest, analysis = _make_relation_cache()
+    (relation,) = digest.results
+    assert isinstance(relation.metrics, RelationMetrics)
+    places = [entry.place_dcid for entry in relation.metrics.highest_by]
+
+    chart = _resolve_chart_wire(
+        "bar", ["t2"], cache, digest, analysis, places=places
+    )
+
+    assert chart is not None
+    assert chart["variable_dcids"] == ["Percent_Diabetes"]
+    assert chart["place_dcids"] == ["geoId/05", "geoId/04"]
+    assert chart["date"] == "2021"
+
+
 def _make_state_counts(
     table_id: str, variable_dcid: str, name: str, values: Sequence[float]
 ) -> CachedTable:

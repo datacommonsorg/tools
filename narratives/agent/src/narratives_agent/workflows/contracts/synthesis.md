@@ -643,8 +643,18 @@ comparison covers:
 ### Rankings
 
 When the answer ranks places on one indicator (the ten highest, the five
-lowest), follow these rules; when the digest relates a second measure to
-the ranking, follow "Relationships between two measures" instead.
+lowest), follow these rules. When the digest relates a second measure to
+the ranking, the question decides the layout:
+
+- When the question asks how the two measures relate, or sets the two
+  ends of the ranking side by side ("diabetes in the highest- and
+  lowest-income counties"), follow "Relationships between two measures"
+  instead.
+- When the question asks for the second measure in one end of the ranking
+  only ("the unemployment rate in the ten most populous states"), follow
+  "A second measure in one end of a ranking" instead.
+
+For a ranking of one indicator:
 
 - Give only the end of the ranking the question asks for: the highest
   places for "the ten highest", the lowest for "the five lowest". The
@@ -687,6 +697,38 @@ the ranking, follow "Relationships between two measures" instead.
 - Call the places by what they are ("states and territories",
   "countries"), never "reporting places" or "places reporting".
 - Do not state how many places were ranked unless the question asks.
+
+### A second measure in one end of a ranking
+
+When the question asks for a second measure in one end of a ranking only
+("the unemployment rate in the ten most populous states") and the digest
+relates the two measures, answer for that end alone:
+
+- Take the end the question means from the digest's two groups: the most
+  populous states are the group with the highest population, and the
+  poorest counties the group with the lowest income. Say nothing of the
+  other group, which a follow-up question can ask about.
+- The headline names both sources and gives the group's median of the
+  second measure, never its mean, with the year of each measure:
+  "According to [Source A] [1] and [Source B] [2], the ten most populous
+  states in [year] have a median unemployment rate of [value] in [year]."
+  The median is calculated, so it carries no marker.
+- Give the group's places in one table, in the ranking's order, with both
+  measures, each with its unit, year, and citation marker in its column
+  header: `| State | Population ([year]) [1] | Unemployment rate (%,
+  [year]) [2] |`.
+- Directly after the table, with no text between them, add one `bar` of
+  the second measure for the same places: `{"kind": "bar", "tables":
+  ["t2"], "places": [...]}`. Set `places` to the place DCIDs the digest
+  gives for that group, which the chart accepts even when the TABLE
+  INVENTORY names only some of the table's places. Write no `ranking`
+  chart, which cannot be limited to the table's places, and no `scatter`.
+  Write no chart when the TABLE INVENTORY marks the second measure's
+  table "do not chart it".
+- The question does not ask how the two measures relate, so state no
+  pattern between them, and leave out what "Relationships between two
+  measures" asks an answer to say about correlation.
+- Name any place left out for lack of data once, after the chart.
 
 ### Tables of all places
 
@@ -915,8 +957,10 @@ The chart block grammar follows these instructions. Use it as follows.
   "Relationships between two measures" describes: one `scatter` across
   the cohort, when it can be drawn, as the answer's last chart, and no
   chart beside the group tables, since a `ranking` cannot be limited to a
-  table's places. Use a `bar` of the named places for a handful of places
-  that are not a cohort.
+  table's places. When the answer covers one end of the ranking alone,
+  chart the second variable as a `bar` of that end's places, as "A second
+  measure in one end of a ranking" describes. Use a `bar` of the named
+  places for a handful of places that are not a cohort.
   When the digest summarizes a cohort over a multi-period window in another
   way (its coverage reads "from ... to ..."), such as a distribution, chart
   the trajectories behind it as a `line` of the places the answer names,

@@ -133,7 +133,14 @@ _DIRECTIVES: Mapping[QueryPattern, Directive] = {
             "is in the table inventory and the indicator is a rate, share, "
             "per-person value, or average, never a total or count; for both "
             "ends, give each end its own table and chart. When the digest "
-            "relates a second variable to the ranking, write the answer as "
+            "relates a second variable to the ranking and the question asks "
+            "for that variable in one end of the ranking only, answer for "
+            'that end alone, as "A second measure in one end of a ranking" '
+            "describes: its places in one table with both measures, followed "
+            "directly by a `bar` of the second variable for those places, "
+            "with no scatter and no remark about correlation. When the "
+            "question asks how the two variables relate, or sets the two "
+            "ends side by side, write the answer as "
             '"Relationships between two measures" describes instead: one '
             "table per group with both measures and no chart beside it, "
             "the places the result leaves out named once at the end, and "

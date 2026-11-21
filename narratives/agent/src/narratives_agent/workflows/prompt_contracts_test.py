@@ -897,6 +897,50 @@ def test_relationship_answers_skip_a_scatter_that_cannot_be_drawn() -> None:
         ) in directive
 
 
+def test_one_end_of_a_cross_variable_ranking_is_answered_alone() -> None:
+    # Test: The layout of a ranking question that asks for a second measure
+    #   in one end of the ranking only.
+    # Situation: The synthesis contract and the `top_n_ranking` directive.
+    # Expectation: "Rankings" sends a question about how the two measures
+    #   relate to "Relationships between two measures", and a question
+    #   about one end to its own section; that section gives one table with
+    #   both measures and a `bar` of the second measure for the same
+    #   places, with no scatter and nothing about correlation; and the
+    #   directive draws the same line between the two cases.
+    flattened = " ".join(load_prompt_contract("synthesis").split())
+    directive = pattern_guidance._DIRECTIVES["top_n_ranking"].synthesis
+
+    assert (
+        "When the question asks for the second measure in one end of the "
+        'ranking only ("the unemployment rate in the ten most populous '
+        'states"), follow "A second measure in one end of a ranking" '
+        "instead."
+    ) in flattened
+    assert "### A second measure in one end of a ranking" in flattened
+    assert (
+        "add one `bar` of the second measure for the same places"
+    ) in flattened
+    assert (
+        "Write no `ranking` chart, which cannot be limited to the table's "
+        "places, and no `scatter`."
+    ) in flattened
+    assert (
+        "state no pattern between them, and leave out what "
+        '"Relationships between two measures" asks an answer to say about '
+        "correlation"
+    ) in flattened
+    assert (
+        "the question asks for that variable in one end of the ranking "
+        'only, answer for that end alone, as "A second measure in one end '
+        'of a ranking" describes'
+    ) in directive
+    assert (
+        "When the question asks how the two variables relate, or sets the "
+        "two ends side by side, write the answer as "
+        '"Relationships between two measures" describes instead'
+    ) in directive
+
+
 def test_synthesis_contract_keeps_names_sources_and_headings_consistent() -> (
     None
 ):
