@@ -1503,17 +1503,27 @@ def _order_scatter_axes(
     whatever order the model listed the tables in. The order comes from the
     analysis, not from the model, as the figures do. Without such a
     relation, the model's order stands.
+
+    A relation names the variables of the tables it read, so a relation
+    over per-capita tables names their derived variables, while the chart
+    draws their fetched numerators. Each related variable is therefore
+    matched through the table it belongs to.
     """
+    charted_variables = {
+        item.analysis_table.variable_dcid: item.chart_table.variable_dcid
+        for item in tables
+    }
     for item in tables:
         for result in _list_bound_results(
             item.analysis_entry.table_id, context
         ):
             metrics = result.metrics
-            if isinstance(metrics, RelationMetrics) and {
-                metrics.target_variable_dcid,
-                metrics.by_variable_dcid,
-            } == set(variables):
-                return (metrics.target_variable_dcid, metrics.by_variable_dcid)
+            if not isinstance(metrics, RelationMetrics):
+                continue
+            target = charted_variables.get(metrics.target_variable_dcid)
+            by = charted_variables.get(metrics.by_variable_dcid)
+            if target is not None and by is not None and target != by:
+                return (target, by)
     return variables
 
 

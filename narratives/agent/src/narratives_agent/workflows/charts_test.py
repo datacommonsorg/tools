@@ -1415,6 +1415,95 @@ def test_a_relation_sets_the_scatter_axes(tables: list[str]) -> None:
     assert chart["variable_dcids"] == ["Percent_Diabetes", "Median_Income"]
 
 
+def _make_state_counts(
+    table_id: str, variable_dcid: str, name: str, values: Sequence[float]
+) -> CachedTable:
+    """Builds a 2023 count table of the six states, one value per state."""
+    return _make_table(
+        table_id,
+        variable_dcid,
+        name=name,
+        unit="Count",
+        places=_STATES,
+        dates=("2023",),
+        values=dict(zip(_STATES, values, strict=True)),
+        parent="country/USA",
+        child_type="State",
+    )
+
+
+@pytest.mark.parametrize("tables", [["s1", "s2"], ["s2", "s1"]])
+def test_a_relation_over_per_capita_tables_sets_the_scatter_axes(
+    tables: list[str],
+) -> None:
+    # Test: The axis order of a scatter of two related per-capita tables.
+    # Situation: `s1` derives crimes per person and `s2` doctors per person
+    #   across six states, the digest relates `s1` (`target`) to `s2`
+    #   (`by`), and the model lists the two tables in either order.
+    # Expectation: The chart lists the crime count first and the doctor
+    #   count second, normalized per capita, although the relation names
+    #   the derived variables rather than the counts the chart draws.
+    population = _make_cohort("t1")
+    crimes = _make_state_counts(
+        "t2", "Count_Crime", "Crimes", (5.0, 30.0, 12.0, 60.0, 20.0, 90.0)
+    )
+    doctors = _make_state_counts(
+        "t3", "Count_Doctor", "Doctors", (9.0, 4.0, 21.0, 8.0, 45.0, 6.0)
+    )
+    crime_rate = derive_observation_table(
+        crimes.table, population.table, operation="per_capita", step_id="s1"
+    )
+    doctor_rate = derive_observation_table(
+        doctors.table, population.table, operation="per_capita", step_id="s2"
+    )
+    assert crime_rate.table is not None and doctor_rate.table is not None
+    analysis = AnalysisSpecification.model_validate(
+        {
+            "steps": [
+                {
+                    "step_id": "s1",
+                    "script": "compute_derived_metric",
+                    "left": "t2",
+                    "right": "t1",
+                    "operation": "per_capita",
+                },
+                {
+                    "step_id": "s2",
+                    "script": "compute_derived_metric",
+                    "left": "t3",
+                    "right": "t1",
+                    "operation": "per_capita",
+                },
+                {
+                    "step_id": "s3",
+                    "script": "relate_cohorts",
+                    "target": "s1",
+                    "by": "s2",
+                    "n": 2,
+                },
+            ]
+        }
+    )
+    digest = _make_digest(
+        crime_rate.result,
+        doctor_rate.result,
+        relate_cohorts(crime_rate.table, doctor_rate.table, n=2, step_id="s3"),
+    )
+    cache = _make_cache(
+        population,
+        crimes,
+        doctors,
+        CachedTable("s1", crime_rate.table),
+        CachedTable("s2", doctor_rate.table),
+    )
+
+    chart = _resolve_chart_wire("scatter", tables, cache, digest, analysis)
+
+    assert chart is not None
+    assert chart["variable_dcids"] == ["Count_Crime", "Count_Doctor"]
+    assert chart["per_capita"] is True
+
+
 def test_a_ranking_of_the_variable_slices_before_a_relation() -> None:
     # Test: The precedence of results for a ranked slice.
     # Situation: The digest holds the relation first and then a ranking of
