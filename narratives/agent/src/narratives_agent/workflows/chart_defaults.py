@@ -90,10 +90,6 @@ _MIN_BAR_CHART_PLACES = 2
 _SCATTER_TABLE_COUNT = 2
 # Date keyword that leaves a multi-vintage scatter unpinned to a single date.
 _LATEST_DATE = "LATEST"
-# Default chart priorities: `relate_cohorts` results are considered before
-# every other result.
-_RELATION_PRIORITY = 0
-_DEFAULT_PRIORITY = 1
 
 
 @dataclass(frozen=True)
@@ -676,25 +672,6 @@ def _build_default_specification(
             )
 
 
-def _rank_default_candidate(result: ScriptResult) -> int:
-    """Returns a result's default chart priority; lower is considered first."""
-    if isinstance(result.metrics, RelationMetrics):
-        return _RELATION_PRIORITY
-    return _DEFAULT_PRIORITY
-
-
-def _order_default_candidates(
-    results: Sequence[ScriptResult],
-) -> list[ScriptResult]:
-    """Orders `ok` results for the default chart floor, first to last.
-
-    `relate_cohorts` results come first so a two-variable cohort relation
-    charts as a scatter ahead of a single-table supporting step; `sorted` is
-    stable, so the digest's order holds otherwise.
-    """
-    return sorted(results, key=_rank_default_candidate)
-
-
 def _list_percentage_numerators(
     analysis: AnalysisSpecification,
 ) -> frozenset[str]:
@@ -761,7 +738,12 @@ def _is_cohort_relation(result: ScriptResult, context: _FloorContext) -> bool:
     """Returns whether a result relates two measures across a cohort.
 
     True for a `relate_cohorts` result any of whose input tables was
-    fetched across a cohort of child places, such as every US state.
+    fetched across a cohort of child places, such as every US state. One
+    cohort input is enough, as one cohort table is enough for
+    `run_synthesis_phase` to ask for the cohort layout of "Relationships
+    between two measures": an answer written in that layout gets the
+    relation's scatter or no chart, including when the scatter is rejected
+    because only one of the two measures covers the cohort.
     """
     analysis = context.analysis
     if analysis is None or not isinstance(result.metrics, RelationMetrics):
@@ -784,9 +766,8 @@ def build_default_charts(
 ) -> tuple[ResolvedChart, ...]:
     """Builds the fallback chart from the primary script result of a digest.
 
-    The first `ok` result that yields a resolved chart supplies the floor,
-    with `relate_cohorts` results considered before supporting single-table
-    steps. Only results whose metrics directly define the chart
+    The first `ok` result that yields a resolved chart supplies the floor.
+    Only results whose metrics directly define the chart
     (`analyze_timeseries`, `rank_cohort`, `compute_composition`, and cohort
     `relate_cohorts` on single dates) supply a default chart. A ranking of a
     cohort, or any ranking over a date window, is charted as a `line` of its
@@ -817,7 +798,7 @@ def build_default_charts(
     relations = [
         result for result in ok_results if _is_cohort_relation(result, context)
     ]
-    candidates = relations or _order_default_candidates(ok_results)
+    candidates = relations or ok_results
     for candidate in candidates:
         charts = _resolve_candidate_charts(candidate, context)
         if charts:
