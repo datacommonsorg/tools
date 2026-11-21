@@ -368,6 +368,37 @@ describe('getInstanceConfig', () => {
     expect(String(warn.mock.calls[0]?.[0])).toContain('"tagline_link"');
   });
 
+  it('reads the unavailable link from the theme document', () => {
+    // Test: Valid `unavailable_link` override.
+    // Situation: The theme document sets `unavailable_link`.
+    // Expectation: `unavailableLink` holds it and no warning is logged.
+    const warn = spyOnWarn();
+    const unavailableLink = {
+      label: 'Visit Acme',
+      href: 'https://acme.example',
+    };
+    writeSlot(JSON.stringify({ unavailable_link: unavailableLink }));
+    expect(getInstanceConfig().unavailableLink).toEqual(unavailableLink);
+    expect(warn).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['has no label', { href: 'https://acme.example' }],
+    ['has an unsafe href', { label: 'Go', href: 'javascript:alert(1)' }],
+  ])('keeps the default unavailable link when the override %s', (_, link) => {
+    // Test: Malformed or unsafe `unavailable_link` overrides.
+    // Situation: `unavailable_link` lacks a label or uses a script URL.
+    // Expectation: `unavailableLink` falls back to the default and one
+    //              warning names `unavailable_link`.
+    const warn = spyOnWarn();
+    writeSlot(JSON.stringify({ unavailable_link: link }));
+    expect(getInstanceConfig().unavailableLink).toEqual(
+      DEFAULT_INSTANCE_CONFIG.unavailableLink,
+    );
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(String(warn.mock.calls[0]?.[0])).toContain('"unavailable_link"');
+  });
+
   it('falls back to the defaults and warns on malformed JSON', () => {
     // Test: Malformed JSON in the instance-config element.
     // Situation: The element contains invalid JSON syntax.

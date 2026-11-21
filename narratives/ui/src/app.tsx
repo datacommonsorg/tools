@@ -85,13 +85,18 @@ interface AppLayoutProps {
 
 /**
  * Renders the sidebar, mobile drawer, header, and routed view, marking the
- * background shell `inert` while the portaled verification modal is open.
+ * background shell `inert` while a portaled overlay covers it: the
+ * verification modal, or the unavailable view's note.
  */
 function AppLayout({ view, isChatEnabled }: Readonly<AppLayoutProps>) {
   const { verificationModal } = useChatSession();
   const isModalOpen = verificationModal.status === 'open';
+  const isUnavailableShown = view === 'agent' && !isChatEnabled;
   return (
-    <div inert={isModalOpen} className="flex h-dvh w-full bg-surface relative">
+    <div
+      inert={isModalOpen || isUnavailableShown}
+      className="flex h-dvh w-full bg-surface relative"
+    >
       <Sidebar />
       <MenuDrawer />
       <main className="flex-1 flex flex-col relative min-w-0 overflow-y-auto overscroll-none lg:pl-rail">

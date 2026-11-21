@@ -80,6 +80,9 @@
   --color-surface-dialog: #f9fafa;
   --color-dialog-fade-start: rgb(244 250 255 / 0.01);
   --color-dialog-fade-end: #ecf4fd;
+  /* Unavailable note: the bottom color of its artwork, which fills the note
+     below the image. Consumed through `unavailable-art`. */
+  --color-surface-unavailable: #ecf4fd;
   --color-skeleton-bar: var(--theme-skeleton-bar, #efeded);
   /* Inline-code chip behind `code` in the reasoning aside. */
   --color-code-surface: var(--theme-code-surface, #f2f2f2);
@@ -103,6 +106,11 @@
   --radius-pill: 28px;
   /* Modal dialogs. Consumed as `rounded-dialog`. */
   --radius-dialog: 42px;
+
+  /* Unavailable note: the artwork's width over the height of its figures
+     (358px of 580px) plus 12px of space above the text. Consumed as
+     `aspect-unavailable-art`. */
+  --aspect-unavailable-art: 792 / 370;
 
   /* Widths. Tailwind v4 turns the --container-* namespace into `max-w-*`
      utilities, so this is consumed as `max-w-prompt`. */
@@ -158,8 +166,8 @@
   /* Neutral 40: the color of the AI disclaimer under each answer. */
   --color-ai-disclaimer: #5e5e5e;
   --color-subtle: #747775;
-  /* Landing-view heading. */
-  --color-headline: #303030;
+  /* Landing-view heading and the unavailable note's title. */
+  --color-headline: var(--theme-headline, #303030);
   --color-placeholder: #8e918f;
 
   /* Text — table */
@@ -301,6 +309,10 @@
   --static-display-medium-font: var(--font-display, 'Google Sans');
   --static-display-medium-size: 45px;
   --static-display-medium-line-height: 52px;
+
+  --static-headline-large-font: var(--font-display, 'Google Sans');
+  --static-headline-large-size: 32px;
+  --static-headline-large-line-height: 40px;
 
   --static-headline-small-font: var(--font-display, 'Google Sans');
   --static-headline-small-size: 24px;
@@ -458,6 +470,14 @@ select:not(:disabled) {
   }
 }
 
+/* Unavailable note: its artwork at full width along the top edge, on the
+   artwork's own bottom color so a taller note continues it seamlessly. */
+@utility unavailable-art {
+  background:
+    url('./assets/art_unavailable.png') top / 100% auto no-repeat,
+    var(--color-surface-unavailable);
+}
+
 @utility glow-ring {
   position: relative;
   overflow: clip;
@@ -559,6 +579,24 @@ select:not(:disabled) {
   font-size: var(--static-headline-small-size, 24px);
   font-style: normal;
   font-weight: 500;
+  line-height: var(--static-headline-small-line-height, 32px);
+  letter-spacing: 0;
+}
+
+.text-headline-large-emphasized {
+  font-family: var(--static-headline-large-font, 'Google Sans');
+  font-size: var(--static-headline-large-size, 32px);
+  font-style: normal;
+  font-weight: 500;
+  line-height: var(--static-headline-large-line-height, 40px);
+  letter-spacing: 0;
+}
+
+.text-headline-small {
+  font-family: var(--static-headline-small-font, 'Google Sans');
+  font-size: var(--static-headline-small-size, 24px);
+  font-style: normal;
+  font-weight: 400;
   line-height: var(--static-headline-small-line-height, 32px);
   letter-spacing: 0;
 }

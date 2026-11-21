@@ -260,7 +260,7 @@ You only need to include the keys you want to override in
 
 | Category | Configurable keys |
 | :--- | :--- |
-| **Identity** | `instance_name`, `headline`, `tagline`, `tagline_link`, `logo`, `logo_text`, `logo_height`, `logo_alt`, `logo_href`, `favicon` |
+| **Identity** | `instance_name`, `headline`, `tagline`, `tagline_link`, `unavailable_link`, `logo`, `logo_text`, `logo_height`, `logo_alt`, `logo_href`, `favicon` |
 | **Theme** | `colors` (`primary`, text, surfaces, borders, `gradient_border_stop_1`–`_4` for the prompt glow ring), `radius` (`card`, `input`, `chip`), `fonts` |
 | **Content** | `suggestions` (landing page starter prompts), `footer` (text and links) |
 | **Structure** | `navigation` (header links), `metrics.tabs` (Key Metrics dashboard tiles), `analytics.ga_tag_id` |
@@ -469,8 +469,11 @@ Key Metrics dashboard, and shared stories online — for example, during:
   regression in generated answers without taking down the entire site.
 
 Chat availability is set by `chat.enabled` (default `true`) and
-`chat.unavailable_message` (default `"This Data Commons tool is temporarily
-unavailable due to high traffic."`) in `config/agent-config.json`:
+`chat.unavailable_message` (default `"Due to high traffic, this feature is
+temporarily paused. We are scaling capacity to restore service as quickly as
+possible. Please try again later."`) in `config/agent-config.json`, and the
+unavailable view shows the message under the fixed title "High demand right
+now":
 
 ```json
 {
