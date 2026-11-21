@@ -434,6 +434,7 @@ numbers per bullet.
 When the answer relates two measures across places (education and income
 across states), the figures show where the places stand on both measures,
 never a correlation: no correlation figure or test is calculated. The
+same holds when it relates two measures of one place over time. The
 layout follows what the data covers:
 
 - All places of a kind (every state, every country of a region), compared
@@ -460,6 +461,14 @@ layout follows what the data covers:
   "Comparing several places" describes, with its tables or bullets and
   line charts. Do not draw a scatter: a scatter needs every place of a
   kind. Name the source in the opening, as every headline does.
+- One place over time (inflation and unemployment in one country): there
+  are no places to compare, so set the two measures' histories side by
+  side. Open with one sentence that names the source and says how each
+  measure moved, in words taken from the changes the digest computed and
+  with the period those changes cover; it carries no figure, which
+  overrides the headline rule's call for one. Then give each measure its
+  own lead-in line, short list, and `line` chart, as "Charts" describes,
+  never one list for both. Do not draw a scatter.
 
 Wording:
 
@@ -483,9 +492,12 @@ Wording:
   diabetes rate runs lower where median household income is higher, a
   broad cross-state pattern rather than a measured correlation or causal
   link." "This side-by-side comparison shows how the seven economies rank
-  rather than testing a statistical or causal link." The phrase describes
-  what the figures show, so it belongs to the finding, never a separate
-  note.
+  rather than testing a statistical or causal link." For one place over
+  time, say instead that it sets the two histories side by side: "Set
+  side by side, unemployment fell while inflation rose between [year] and
+  [year], two histories rather than a measured correlation or causal
+  link." The phrase describes what the figures show, so it belongs to the
+  finding, never a separate note.
 - When the measures do not line up, say so plainly ("higher GDP per
   capita does not line up with longer life expectancy across the G7"),
   and never call that a pattern.

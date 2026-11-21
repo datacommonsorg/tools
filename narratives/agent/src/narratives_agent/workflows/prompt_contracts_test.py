@@ -897,6 +897,31 @@ def test_relationship_answers_skip_a_scatter_that_cannot_be_drawn() -> None:
         ) in directive
 
 
+def test_synthesis_contract_lays_out_a_relationship_within_one_place() -> None:
+    # Test: The relationship layout for two measures of one place.
+    # Situation: The synthesis contract the model receives.
+    # Expectation: "Relationships between two measures" gives a third
+    #   layout for one place over time: an opening on how each measure
+    #   moved, a block per measure with its own line chart, no scatter, and
+    #   a scope phrase about two histories rather than about places.
+    flattened = " ".join(load_prompt_contract("synthesis").split())
+
+    assert (
+        "One place over time (inflation and unemployment in one country): "
+        "there are no places to compare, so set the two measures' histories "
+        "side by side."
+    ) in flattened
+    assert (
+        "Then give each measure its own lead-in line, short list, and "
+        '`line` chart, as "Charts" describes, never one list for both. Do '
+        "not draw a scatter."
+    ) in flattened
+    assert (
+        "For one place over time, say instead that it sets the two "
+        "histories side by side"
+    ) in flattened
+
+
 def test_one_end_of_a_cross_variable_ranking_is_answered_alone() -> None:
     # Test: The layout of a ranking question that asks for a second measure
     #   in one end of the ranking only.

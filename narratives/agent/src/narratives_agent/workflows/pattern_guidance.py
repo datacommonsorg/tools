@@ -366,6 +366,20 @@ _NAMED_PLACE_CORRELATION_SYNTHESIS = (
     "show, and no cause."
 )
 
+# Replaces the `correlation` synthesis directive when no fetched table covers
+# a cohort and the question is about one place. The two indicators are then
+# two series of that place, so the answer has no places to compare.
+_SINGLE_PLACE_CORRELATION_SYNTHESIS = (
+    'Write the answer as "Relationships between two measures" describes '
+    "for one place over time: an opening that names the source and says "
+    "how each indicator moved over the period the digest's changes cover, "
+    "then each indicator's own lead-in line, short list, and chart, never "
+    "one list for both. Say once, inside the opening, that it sets the two "
+    "histories side by side rather than measuring a correlation or causal "
+    "link. Claim no strength or direction of association beyond what those "
+    "figures show, and no cause."
+)
+
 # Appended when the query compares a few named places side by side.
 _COMPARISON_DIRECTIVE = Directive(
     discovery=(
@@ -399,8 +413,9 @@ def build_pattern_directive(
         phase: The phase the text is rendered for.
         has_cohort_table: Whether a fetched table covers a cohort of child
             places. Only synthesis knows; when it is false, a `correlation`
-            question is written up as a comparison of named places, because
-            a `scatter` chart needs a cohort.
+            question is written up as a comparison of named places, or as
+            two histories of one place when the classification's shape is
+            `single_place`, because a `scatter` chart needs a cohort.
 
     Returns:
         The pattern's directive for the phase, followed by the comparison
@@ -411,7 +426,11 @@ def build_pattern_directive(
         and classification.pattern == "correlation"
         and not has_cohort_table
     ):
-        directive = _NAMED_PLACE_CORRELATION_SYNTHESIS
+        directive = (
+            _SINGLE_PLACE_CORRELATION_SYNTHESIS
+            if classification.geographic_shape == "single_place"
+            else _NAMED_PLACE_CORRELATION_SYNTHESIS
+        )
     else:
         directive = _DIRECTIVES[classification.pattern].get_phase_text(phase)
     if classification.geographic_shape == "comparison":
