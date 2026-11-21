@@ -56,6 +56,9 @@ Verifies that:
     in one `chat_disabled` terminal frame carrying the effective unavailable
     message before any model call, even without a configuration, and
     `ENABLE_CHAT=true` overrides a configuration that disables chat.
+11. Every phase of a turn reads one pinned date. The synthesis request opens
+    its final user message with the date line, while the signed turn and
+    the follow-up request carry no date.
 """
 
 import asyncio
@@ -64,6 +67,7 @@ import logging
 import re
 from collections.abc import AsyncGenerator, Iterator, Sequence
 from dataclasses import dataclass, field, replace
+from typing import Any
 
 import pytest
 
@@ -88,7 +92,7 @@ from narratives_agent.gemini.client import (
     GeminiError,
     GeminiStreamError,
 )
-from narratives_agent.gemini.response import StreamChunk
+from narratives_agent.gemini.response import GeminiResponse, StreamChunk
 from narratives_agent.gemini.schemas import QueryClassification
 from narratives_agent.json_value import JsonObject, JsonValue
 from narratives_agent.mcp import capabilities
@@ -107,6 +111,7 @@ from narratives_agent.telemetry import (
     TurnTelemetry,
 )
 from narratives_agent.workflows import chat_pipeline
+from narratives_agent.workflows import follow_up as follow_up_module
 from narratives_agent.workflows import transcript as transcript_module
 from narratives_agent.workflows.charts import PlaceList, ResolvedLineChart
 from narratives_agent.workflows.classify import (
@@ -151,8 +156,10 @@ from narratives_agent.workflows.sse_frames import (
     serialize_source,
 )
 from narratives_agent.workflows.transcript import (
+    CURRENT_DATE_LABEL,
     MAX_RESPONSE_CHARS,
     ConversationStateSlots,
+    SignedWindow,
     Transcript,
     Turn,
     load_transcript,
@@ -358,16 +365,22 @@ class _Turn:
             and isinstance(chart := block.get("chart"), dict)
         ]
 
-    def get_synthesis_context(self) -> str:
-        """Returns the text of the final user message synthesis received."""
+    def list_synthesis_parts(self) -> list[str]:
+        """Returns the text parts of the final user message of synthesis."""
         (messages,) = self.synthesis_messages
         parts = messages[-1]["parts"]
         assert isinstance(parts, list)
-        part = parts[0]
-        assert isinstance(part, dict)
-        text = part["text"]
-        assert isinstance(text, str)
-        return text
+        texts: list[str] = []
+        for part in parts:
+            assert isinstance(part, dict)
+            text = part["text"]
+            assert isinstance(text, str)
+            texts.append(text)
+        return texts
+
+    def get_synthesis_context(self) -> str:
+        """Returns the request text of the final user message of synthesis."""
+        return self.list_synthesis_parts()[-1]
 
 
 async def _run_accepted_loop(cache: TurnCache, **_: object) -> DiscoveryResult:
@@ -2588,29 +2601,27 @@ async def test_a_complete_turn_serializes_to_the_recorded_frames(
 
 
 @pytest.mark.asyncio
-async def test_every_phase_of_a_turn_reads_one_pinned_timestamp(
+async def test_every_phase_of_a_turn_reads_one_pinned_date(
     monkeypatch: pytest.MonkeyPatch, turn: _Turn
 ) -> None:
-    # Test: The timestamp the prompts of one turn render.
-    # Situation: The current time advances on every read, and the first and
+    # Test: The date the phases of one turn read.
+    # Situation: The current date advances on every read, and the first and
     #   last phases of a turn (classification and follow-ups) each read
-    #   `get_current_datetime`.
-    # Expectation: Both phases read the timestamp pinned when the turn
-    #   started, and a read after the turn sees the time advance again.
-    readings = iter(f"time {index}" for index in range(10))
-    monkeypatch.setattr(
-        config, "_format_current_datetime", lambda: next(readings)
-    )
+    #   `get_current_date`.
+    # Expectation: Both phases read the date pinned when the turn started,
+    #   and a read after the turn sees the date advance again.
+    readings = iter(f"date {index}" for index in range(10))
+    monkeypatch.setattr(config, "_format_current_date", lambda: next(readings))
     seen: list[str] = []
 
     async def classify(*args: object, **_: object) -> Admitted:
-        seen.append(config.get_current_datetime())
+        seen.append(config.get_current_date())
         await asyncio.sleep(0)
-        seen.append(config.get_current_datetime())
+        seen.append(config.get_current_date())
         return Admitted(_CLASSIFICATION)
 
     async def run_follow_ups(*args: object, **_: object) -> None:
-        seen.append(config.get_current_datetime())
+        seen.append(config.get_current_date())
 
     monkeypatch.setattr(chat_pipeline, "classify_query", classify)
     monkeypatch.setattr(chat_pipeline, "run_followups", run_follow_ups)
@@ -2618,8 +2629,124 @@ async def test_every_phase_of_a_turn_reads_one_pinned_timestamp(
     await chat_pipeline.run_turn(_TRANSCRIPT, turn.emit)
 
     assert turn.finished == [(TerminalState.COMPLETE, None)]
-    assert seen == ["time 0", "time 0", "time 0"]
-    assert config.get_current_datetime() == "time 1"
+    assert seen == ["date 0", "date 0", "date 0"]
+    assert config.get_current_date() == "date 1"
+
+
+@pytest.mark.asyncio
+async def test_synthesis_opens_the_current_request_with_the_pinned_date(
+    monkeypatch: pytest.MonkeyPatch, turn: _Turn
+) -> None:
+    # Test: The current date in the synthesis request.
+    # Situation: The turn starts on 2031-02-03, and the transcript holds one
+    #   earlier turn.
+    # Expectation: The final user message of the synthesis request has two
+    #   text parts: the date line of the pinned date, and then the request
+    #   text with the user query. Neither the earlier messages nor the
+    #   system instruction contain the date.
+    monkeypatch.setattr(config, "_format_current_date", lambda: "2031-02-03")
+    earlier = Turn(
+        turn_index=0,
+        idempotency_key="key-0",
+        user_query="Population of Spain?",
+        model_response="About 48 million.",
+        state_slots=ConversationStateSlots(),
+        hmac="0" * 64,
+    )
+    follow_up_transcript = replace(_TRANSCRIPT, turns=[earlier])
+
+    await chat_pipeline.run_turn(follow_up_transcript, turn.emit)
+
+    date_part, request_part = turn.list_synthesis_parts()
+    assert date_part == f"{CURRENT_DATE_LABEL} 2031-02-03\n\n"
+    assert request_part.startswith(f"User Query: {_QUESTION}")
+    (messages,) = turn.synthesis_messages
+    (instruction,) = turn.synthesis_instructions
+    assert "2031-02-03" not in f"{messages[:-1]!r}{instruction}"
+
+
+@pytest.mark.parametrize("is_clarification", [False, True])
+@pytest.mark.asyncio
+async def test_the_signed_turn_carries_the_query_without_the_date(
+    monkeypatch: pytest.MonkeyPatch, turn: _Turn, is_clarification: bool
+) -> None:
+    # Test: The signed fields of a turn that runs under a pinned date.
+    # Situation: The turn starts on 2031-02-03 and either completes through
+    #   discovery and synthesis or ends with a clarification question.
+    # Expectation: The signed turn's `user_query` equals the transcript's
+    #   `current_query`, and no signed field of the window contains the
+    #   date.
+    monkeypatch.setattr(config, "_format_current_date", lambda: "2031-02-03")
+    if is_clarification:
+
+        async def clarify(*args: object, **_: object) -> Clarification:
+            return Clarification(_CLARIFICATION_QUESTION, _CLASSIFICATION)
+
+        monkeypatch.setattr(chat_pipeline, "classify_query", clarify)
+    windows: list[SignedWindow | None] = []
+    finalize_turn = transcript_module.finalize_turn
+
+    async def record_window(*args: Any, **kwargs: Any) -> SignedWindow | None:
+        window = await finalize_turn(*args, **kwargs)
+        windows.append(window)
+        return window
+
+    monkeypatch.setattr(chat_pipeline, "finalize_turn", record_window)
+
+    await chat_pipeline.run_turn(_TRANSCRIPT, turn.emit)
+
+    (window,) = windows
+    assert window is not None
+    assert window.turn.user_query == _TRANSCRIPT.current_query
+    signed = [
+        signed_turn.model_dump(mode="json") for signed_turn in window.turns
+    ]
+    assert "2031-02-03" not in json.dumps([signed, window.compacted_summary])
+
+
+@pytest.mark.asyncio
+async def test_the_follow_up_request_carries_no_date(
+    monkeypatch: pytest.MonkeyPatch, turn: _Turn
+) -> None:
+    # Test: The follow-up request of a turn that runs under a pinned date.
+    # Situation: The turn starts on 2031-02-03, the `follow_up` prompt is
+    #   configured, and follow-up generation runs with only its model call
+    #   replaced.
+    # Expectation: The turn makes one follow-up request, and neither its
+    #   messages nor its system instruction contain the date label or the
+    #   date.
+    monkeypatch.setattr(config, "_format_current_date", lambda: "2031-02-03")
+    _use_config(
+        monkeypatch,
+        AgentConfig(
+            prompts=Prompts(
+                discovery="Gather data.",
+                synthesis="Write prose.",
+                follow_up="Suggest questions.",
+            )
+        ),
+    )
+    requests: list[dict[str, Any]] = []
+
+    async def record_request(**kwargs: Any) -> GeminiResponse:
+        requests.append(kwargs)
+        return GeminiResponse(text=json.dumps({"questions": _FOLLOW_UPS}))
+
+    monkeypatch.setattr(
+        follow_up_module, "async_gemini_request", record_request
+    )
+    monkeypatch.setattr(
+        chat_pipeline,
+        "generate_follow_up_questions",
+        follow_up_module.generate_follow_up_questions,
+    )
+
+    await chat_pipeline.run_turn(_TRANSCRIPT, turn.emit)
+
+    (request,) = requests
+    request_text = f"{request['messages']!r}{request['system_instruction']}"
+    assert CURRENT_DATE_LABEL not in request_text
+    assert "2031-02-03" not in request_text
 
 
 @pytest.mark.asyncio

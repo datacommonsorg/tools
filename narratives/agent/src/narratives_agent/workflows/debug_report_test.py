@@ -1013,7 +1013,7 @@ def test_build_debug_report_prompt_hashes_and_contracts() -> None:
     # Situation: build_debug_report is called with config=None and with an
     #   AgentConfig with distinct prompt text per slot.
     # Expectation: config=None produces empty prompt_hashes; populated config
-    #   hashes every slot in PROMPT_SLOTS and both packaged contracts using
+    #   hashes every slot in PROMPT_SLOTS and every packaged contract using
     #   SHA-256 hex digests, updating deterministically on edits.
     telemetry = _make_telemetry()
 
@@ -1041,6 +1041,7 @@ def test_build_debug_report_prompt_hashes_and_contracts() -> None:
     assert data_hashes == dict(hashes)
 
     expected_keys = set(PROMPT_SLOTS) | {
+        "classify_contract",
         "discovery_contract",
         "synthesis_contract",
         "synthesis_title_contract",
@@ -1062,6 +1063,11 @@ def test_build_debug_report_prompt_hashes_and_contracts() -> None:
     expected_synthesis = hashlib.sha256(
         load_prompt_contract("synthesis").encode("utf-8")
     ).hexdigest()
+    assert hashes["classify_contract"] == (
+        hashlib.sha256(
+            load_prompt_contract("classify").encode("utf-8")
+        ).hexdigest()
+    )
     assert hashes["discovery_contract"] == expected_discovery
     assert hashes["synthesis_contract"] == expected_synthesis
     for addendum in ("synthesis_title", "synthesis_no_title"):

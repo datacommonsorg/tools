@@ -38,9 +38,10 @@ from narratives_agent.analytics.provenance import Source
 from narratives_agent.analytics.tables import ObservationTable
 from narratives_agent.config import (
     get_chat_config,
+    get_current_date,
     get_debug_report_mode,
     load_config,
-    pin_current_datetime,
+    pin_current_date,
 )
 from narratives_agent.config_model import AgentConfig, GeminiRole
 from narratives_agent.gemini.client import (
@@ -701,7 +702,9 @@ async def run_synthesis_phase(
     if capture is not None:
         capture.rendered_prompt = rendered_prompt
     # Put the verified window first, then the query with the analysis context.
-    messages = transcript_contents(ctx.transcript, rendered_prompt)
+    messages = transcript_contents(
+        ctx.transcript, rendered_prompt, current_date=get_current_date()
+    )
     # A `scatter` chart is drawn only across a cohort, so the synthesis
     # directive of a correlation question depends on whether one was fetched.
     has_cohort_table = any(
@@ -1087,9 +1090,9 @@ async def run_turn(
             )
             return
         config = _require_turn_config(load_config())
-        # Every prompt of the turn renders `{{CURRENT_DATETIME}}` as one
-        # timestamp, isolated from concurrent turns.
-        with pin_current_datetime():
+        # The classify, discovery, and synthesis requests of the turn carry
+        # one current date, isolated from concurrent turns.
+        with pin_current_date():
             tracking_emit(
                 StatusFrame(phase="classify", message=CLASSIFY_STATUS)
             )

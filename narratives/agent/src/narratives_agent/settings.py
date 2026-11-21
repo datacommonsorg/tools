@@ -358,8 +358,8 @@ class Settings(BaseSettings):
     # GCS URL and caches the merged configuration in memory.
     config_url: str = ""
 
-    # Prompts render the current date and time in this IANA zone. An unknown
-    # zone falls back to UTC.
+    # The current date sent to the model is the date in this IANA zone. An
+    # unknown zone falls back to UTC.
     timezone: str = "UTC"
 
     # Short secret names in `gemini_api_key_secret`, `dc_api_key_secret`, and
