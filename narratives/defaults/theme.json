@@ -11,16 +11,32 @@
   "logo_href": "/",
   "logo_text": "Data Commons by Google",
   "logo_height": "28px",
-  "headline": "Data agent explorer",
-  "tagline": "powered by Google's Data Commons",
+  "headline": "Explore global public data in one place",
+  "tagline": "Answers draw from organized datasets in the Data Commons Knowledge Graph",
+  "tagline_link": {
+    "text": "Data Commons Knowledge Graph",
+    "sections": [
+      {
+        "title": "Data Commons Knowledge Graph",
+        "body": "The Data Commons Knowledge Graph is an open library of public data collected and standardized in advance, turning agency tables and reports into consistent, machine-readable series. It brings together datasets on population, the economy, health, education, crime, and the environment from institutions such as the U.S. Census Bureau, World Bank, United Nations, CDC, and NOAA. Each figure links to both its Data Commons record and the original agency release."
+      },
+      {
+        "title": "About this tool",
+        "body": "Gemini synthesizes data overviews from indicators available in the Data Commons Knowledge Graph, covering historical trends, rankings, regional comparisons, and breakdowns of totals. It calculates basic descriptive figures (such as medians, highs, lows, and changes over time) rather than running regressions, correlation tests, or custom data groupings. It does not offer opinions, policy analysis, or forecasts, and coverage depends on what agencies publish and which releases have been added to the graph so far. Please verify AI-generated summaries against the linked source records."
+      }
+    ],
+    "sources": {
+      "label": "See all the data sources",
+      "href": "https://datacommons.org/data"
+    }
+  },
+
   "colors": {
     "primary": "#0B57D0",
     "text": "#1B1C1D",
     "text_muted": "#444746",
     "background": "#FFFFFF",
     "surface": "#F9F9F9",
-    "gradient_start": "#0B57D0",
-    "gradient_end": "#0B57D0",
     "gradient_border_stop_1": "#0B57D0",
     "gradient_border_stop_2": "#0B84D0",
     "gradient_border_stop_3": "#0BACD0",

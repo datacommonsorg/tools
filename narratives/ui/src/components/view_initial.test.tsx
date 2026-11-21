@@ -144,6 +144,18 @@ describe('InitialView reCAPTCHA notice', () => {
 });
 
 describe('InitialView instance configuration', () => {
+  it('links the default tagline phrase to its dialog', () => {
+    // Test: Default instance configuration.
+    // Situation: #instance-config is absent, so the built-in tagline and
+    //   tagline link apply.
+    // Expectation: The phrase renders as a button that opens the dialog.
+    renderSearchBox('');
+    expect(
+      screen.getByRole('button', { name: 'Data Commons Knowledge Graph' }),
+    ).not.toBeNull();
+    expect(screen.getByRole('dialog', { hidden: true })).not.toBeNull();
+  });
+
   it('renders headline, tagline, and suggestions from #instance-config', () => {
     // Test: Custom instance configuration in index.html.
     // Situation: #instance-config defines a custom headline, tagline, and suggestions.
