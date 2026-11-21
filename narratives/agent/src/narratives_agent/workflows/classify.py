@@ -48,6 +48,9 @@ from narratives_agent.workflows.messages import (
     SAFETY_REFUSED_MESSAGE,
 )
 from narratives_agent.workflows.prefilter import prefilter_match
+from narratives_agent.workflows.prompt_contracts import (
+    compose_system_instruction,
+)
 from narratives_agent.workflows.transcript import (
     Transcript,
     transcript_contents,
@@ -160,7 +163,9 @@ async def _request_classification(
         async with asyncio.timeout(CLASSIFY_TIMEOUT_SECONDS):
             response = await async_gemini_request(
                 messages=messages,
-                system_instruction=prompt,
+                system_instruction=compose_system_instruction(
+                    prompt, "classify"
+                ),
                 model=role.model,
                 temperature=role.temperature,
                 thinking_level=role.thinking_level,

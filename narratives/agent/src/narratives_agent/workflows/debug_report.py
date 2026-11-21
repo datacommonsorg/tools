@@ -692,12 +692,10 @@ def _build_prompt_hashes(config: AgentConfig) -> Mapping[str, str]:
     for slot in PROMPT_SLOTS:
         text = getattr(config.prompts, slot)
         hashes[slot] = hashlib.sha256(text.encode("utf-8")).hexdigest()
-    hashes["discovery_contract"] = hashlib.sha256(
-        load_prompt_contract("discovery").encode("utf-8")
-    ).hexdigest()
-    hashes["synthesis_contract"] = hashlib.sha256(
-        load_prompt_contract("synthesis").encode("utf-8")
-    ).hexdigest()
+    for contract in ("classify", "discovery", "synthesis"):
+        hashes[f"{contract}_contract"] = hashlib.sha256(
+            load_prompt_contract(contract).encode("utf-8")
+        ).hexdigest()
     for addendum in ("synthesis_title", "synthesis_no_title"):
         hashes[f"{addendum}_contract"] = hashlib.sha256(
             load_prompt_contract(addendum).encode("utf-8")

@@ -332,7 +332,9 @@ grounding guidance rather than restating the citation or chart-block grammar.
 
 `classify.md` governs the admission phase that runs at the start of every turn
 to decide whether a question is served, refused, or answered with a
-clarification question, and which analytical pattern it follows. Each LLM stage
+clarification question, and which analytical pattern it follows. A short
+code-owned contract (`workflows/contracts/classify.md`) is appended after it on
+every request and tells the model which current date to use. Each LLM stage
 reads its own model key under `gemini` in `agent-config.json`:
 `gemini.classify_model` (default `gemini-3.5-flash-lite`), and
 `gemini.discovery_model`, `gemini.synthesis_model`, `gemini.follow_up_model`,

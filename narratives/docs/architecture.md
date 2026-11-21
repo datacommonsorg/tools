@@ -492,10 +492,10 @@ request text. The date is the calendar date in the `TIMEZONE` zone, and
 relative dates such as "this month" or "over the last decade" resolve
 against it. `run_turn` pins one date for the whole turn with
 `pin_current_date` (a context variable, so concurrent turns keep their own),
-and all three calls carry that same date. The `classify` prompt and the
-discovery and synthesis contracts state that this line is the authoritative
-current date, and an instance that overrides a prompt still receives the
-date, because the line is not part of any prompt. The signed turn, the
+and all three calls carry that same date. The code-owned classify,
+discovery, and synthesis contracts state that this line is the
+authoritative current date, so an instance that overrides a prompt keeps
+both the date and that rule. The signed turn, the
 messages of earlier turns, and the follow-up and compaction requests carry
 no date.
 

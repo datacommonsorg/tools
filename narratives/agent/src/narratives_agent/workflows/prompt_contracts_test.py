@@ -228,12 +228,15 @@ def _read_default_prompt(slot: str) -> str:
 def _compose_default_instruction(phase: str) -> str:
     """Returns the system instruction of `phase` under the default prompts.
 
-    The discovery and synthesis instructions carry their contract and a
-    pattern directive, and the synthesis instruction also carries its title
-    addendum, as on a classified turn with data.
+    Each instruction carries its phase contract. The discovery and synthesis
+    instructions also carry a pattern directive, and the synthesis
+    instruction carries its title addendum, as on a classified turn with
+    data.
     """
     if phase == "classify":
-        return _read_default_prompt("classify")
+        return compose_system_instruction(
+            _read_default_prompt("classify"), "classify"
+        )
     classification = QueryClassification.model_validate(
         {
             "serviceable": True,
@@ -362,17 +365,38 @@ def test_no_default_prompt_holds_the_datetime_placeholder(path: Path) -> None:
 def test_each_dated_phase_defines_the_date_line(phase: str) -> None:
     # Test: Agreement between the date line of the request and the text
     #   that defines it for the model.
-    # Situation: The default `classify` prompt, the discovery contract, or
-    #   the synthesis contract is read.
-    # Expectation: The text names the date line by the label that
+    # Situation: The classify, discovery, or synthesis contract is read.
+    # Expectation: The contract names the date line by the label that
     #   `transcript_contents` writes, with the `YYYY-MM-DD` format.
-    text = (
-        _read_default_prompt("classify")
-        if phase == "classify"
-        else load_prompt_contract(phase)
-    )
+    text = load_prompt_contract(phase)
 
     assert f"`{CURRENT_DATE_LABEL} YYYY-MM-DD` line" in text
+
+
+def test_the_classify_contract_follows_the_guidance_without_a_directive() -> (
+    None
+):
+    # Test: Composition of the classify system instruction.
+    # Situation: `compose_system_instruction` is called for `classify` with
+    #   custom guidance and a ranking classification.
+    # Expectation: The instruction is the guidance followed by the classify
+    #   contract, with no pattern directive.
+    classification = QueryClassification.model_validate(
+        {
+            "serviceable": True,
+            "pattern": "top_n_ranking",
+            "geographic_shape": "single_place",
+            "requires_computation": True,
+        }
+    )
+
+    composed = compose_system_instruction(
+        "Custom guidance.", "classify", classification
+    )
+
+    assert composed == (
+        f"Custom guidance.\n\n{load_prompt_contract('classify')}"
+    )
 
 
 def test_discovery_contract_tables_match_declared_tools_and_scripts() -> None:
