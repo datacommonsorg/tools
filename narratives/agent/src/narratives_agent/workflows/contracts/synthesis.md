@@ -444,8 +444,13 @@ layout follows what the data covers:
   3. One or two sentences ending with a period on how the two measures
      sit across all the places, never on the chart itself, then one
      `scatter` of the two measures across all the places, the answer's
-     last chart. When the TABLE INVENTORY marks either measure's table
-     "do not chart it", write neither the sentences nor the scatter.
+     last chart. Write neither the sentences nor the scatter when the
+     scatter cannot be drawn: when the TABLE INVENTORY marks either
+     measure's table "do not chart it"; when one measure's table is a
+     per-capita table and the other's a fetched table, which cannot share
+     a chart; or when the digest compares either measure as a change over
+     a window from one date to another, which a scatter of one date
+     cannot show.
   4. One closing sentence on the years of the two measures, when they
      differ, and on any place left out for lack of data.
 - A few named places (the G7, three cities): write the answer as
@@ -900,9 +905,10 @@ The chart block grammar follows these instructions. Use it as follows.
   including a ranking over a window from one date to another. When the
   digest relates a second variable to a ranked cohort, chart the two as
   "Relationships between two measures" describes: one `scatter` across
-  the cohort, the answer's last chart, and no chart beside the group
-  tables, since a `ranking` cannot be limited to a table's places. Use a
-  `bar` of the named places for a handful of places that are not a cohort.
+  the cohort, when it can be drawn, as the answer's last chart, and no
+  chart beside the group tables, since a `ranking` cannot be limited to a
+  table's places. Use a `bar` of the named places for a handful of places
+  that are not a cohort.
   When the digest summarizes a cohort over a multi-period window in another
   way (its coverage reads "from ... to ..."), such as a distribution, chart
   the trajectories behind it as a `line` of the places the answer names,
@@ -1126,7 +1132,8 @@ rejected:
 - `ranking`: one variable of a cohort, with `top_n`, `bottom_n`, or both,
   equal when both are given.
 - `map`: one variable of a cohort.
-- `scatter`: exactly two tables, of two variables of one cohort.
+- `scatter`: exactly two tables, of two variables of one cohort, both
+  fetched tables or both per-capita tables.
 - `highlight`: one variable, with `places` as a one-element list naming
   the place to show; omit `places` when the table holds a single place.
 
@@ -1135,7 +1142,8 @@ lists; a `date` is an observation date the TABLE INVENTORY lists for the
 tables, or `LATEST`, while `start_date` and `end_date` on a `line` chart
 may be any valid dates that leave a charted place at least two observation
 dates in each charted table; a derived table marked "do not chart it"
-cannot appear in `tables`; at most four chart blocks per answer; never
+cannot appear in `tables`; a per-capita table and a fetched table cannot
+share one chart; at most four chart blocks per answer; never
 place a chart block inside a list or a table; always leave a blank line
 before and after a chart block. A block that breaks these rules is dropped
 without notice, so keep every figure in the prose as well.

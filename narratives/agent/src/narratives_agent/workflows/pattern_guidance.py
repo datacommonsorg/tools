@@ -137,7 +137,9 @@ _DIRECTIVES: Mapping[QueryPattern, Directive] = {
             '"Relationships between two measures" describes instead: one '
             "table per group with both measures and no chart beside it, "
             "the places the result leaves out named once at the end, and "
-            "one `scatter` as the answer's last chart."
+            "one `scatter` as the answer's last chart when the two tables "
+            "can be charted together, as that section describes; otherwise "
+            "write no scatter and no sentences leading to one."
         ),
     ),
     "distribution": Directive(
@@ -219,7 +221,10 @@ _DIRECTIVES: Mapping[QueryPattern, Directive] = {
             'Write the answer as "Relationships between two measures" '
             "describes: the groups' medians in the opening, one table per "
             "group with both measures, and the `scatter` as the answer's "
-            "last chart. Say in plain words what the figures show and name "
+            "last chart when the two tables can be charted together, as "
+            "that section describes; otherwise write no scatter and no "
+            "sentences leading to one. Say in plain words what the figures "
+            "show and name "
             "the notable exception, without naming any place's ranking "
             "twice, and say once, inside that finding, that it compares the "
             "places side by side rather than measuring a correlation or "

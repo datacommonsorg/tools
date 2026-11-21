@@ -848,16 +848,48 @@ def test_synthesis_contract_lays_out_relationships_by_what_data_covers() -> (
     assert "go together" not in flattened
     assert "go hand in hand with" not in flattened
     assert "never on the chart itself" in flattened
-    assert (
-        'marks either measure\'s table "do not chart it", write neither the '
-        "sentences nor the scatter."
-    ) in flattened
     assert 'follow "Relationships between two measures" instead' in flattened
     assert "chart a `ranking` for each variable" not in directives
     assert "rather than measuring a correlation or causal link" in directives
     assert "rather than measuring a correlation or causal link" in (
         pattern_guidance._NAMED_PLACE_CORRELATION_SYNTHESIS
     )
+
+
+def test_relationship_answers_skip_a_scatter_that_cannot_be_drawn() -> None:
+    # Test: The cases in which a relationship answer writes no scatter.
+    # Situation: The synthesis contract and the relationship directives.
+    # Expectation: The contract leaves out the scatter and the sentences
+    #   leading to it when a table is marked "do not chart it", when a
+    #   per-capita table is paired with a fetched table, and when a measure
+    #   is compared as a change over a window; the chart grammar states
+    #   that a per-capita table and a fetched table cannot share a chart;
+    #   and both relationship directives ask for the scatter only when the
+    #   tables can be charted together.
+    flattened = " ".join(load_prompt_contract("synthesis").split())
+    directives = [
+        pattern_guidance._DIRECTIVES[pattern].synthesis
+        for pattern in ("top_n_ranking", "correlation")
+    ]
+
+    assert (
+        "Write neither the sentences nor the scatter when the scatter "
+        "cannot be drawn: when the TABLE INVENTORY marks either measure's "
+        'table "do not chart it"; when one measure\'s table is a per-capita '
+        "table and the other's a fetched table, which cannot share a chart; "
+        "or when the digest compares either measure as a change over a "
+        "window from one date to another"
+    ) in flattened
+    assert (
+        "a per-capita table and a fetched table cannot share one chart"
+    ) in flattened
+    assert ("both fetched tables or both per-capita tables.") in flattened
+    for directive in directives:
+        assert (
+            "when the two tables can be charted together, as that section "
+            "describes; otherwise write no scatter and no sentences leading "
+            "to one."
+        ) in directive
 
 
 def test_synthesis_contract_keeps_names_sources_and_headings_consistent() -> (
