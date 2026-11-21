@@ -30,6 +30,7 @@ from pydantic import ValidationError
 from narratives_agent.analytics.alignment import WindowCohort
 from narratives_agent.analytics.derived import derive_observation_table
 from narratives_agent.analytics.digest import AnalysisDigest, ScriptResult
+from narratives_agent.analytics.metrics import RelationMetrics
 from narratives_agent.analytics.provenance import Provenance
 from narratives_agent.analytics.ranking import rank_cohort
 from narratives_agent.analytics.relations import relate_cohorts
@@ -1502,6 +1503,86 @@ def test_a_relation_over_per_capita_tables_sets_the_scatter_axes(
     assert chart is not None
     assert chart["variable_dcids"] == ["Count_Crime", "Count_Doctor"]
     assert chart["per_capita"] is True
+
+
+@pytest.mark.parametrize("tables", [["t1", "t2"], ["t2", "t1"]])
+def test_a_scatter_of_tables_aligned_on_different_dates_pins_no_date(
+    tables: list[str],
+) -> None:
+    # Test: The default date of a scatter whose tables are aligned on
+    #   different dates.
+    # Situation: Income (`t1`) holds 2021 and 2023 and is aligned on 2023,
+    #   diabetes (`t2`) holds only 2021, the digest relates the two, and the
+    #   model lists the tables in either order without a date.
+    # Expectation: The chart carries no date in either order, so the
+    #   component draws each variable at its latest date, which is the date
+    #   the digest reports for it, rather than income at 2021.
+    income = _make_table(
+        "t1",
+        "Median_Income",
+        name="Income",
+        places=_STATES,
+        dates=("2021", "2023"),
+        parent="country/USA",
+        child_type="State",
+    )
+    diabetes = _make_table(
+        "t2",
+        "Percent_Diabetes",
+        name="Diabetes",
+        unit="Percent",
+        places=_STATES,
+        dates=("2021",),
+        parent="country/USA",
+        child_type="State",
+    )
+    analysis = _make_spec(
+        step_id="s1", script="relate_cohorts", target="t2", by="t1", n=2
+    )
+    relation = relate_cohorts(diabetes.table, income.table, n=2, step_id="s1")
+    assert isinstance(relation.metrics, RelationMetrics)
+    assert relation.metrics.by_reference_date == "2023"
+    assert relation.metrics.target_reference_date == "2021"
+
+    chart = _resolve_chart_wire(
+        "scatter",
+        tables,
+        _make_cache(income, diabetes),
+        _make_digest(relation),
+        analysis,
+    )
+
+    assert chart is not None
+    assert "date" not in chart
+
+
+@pytest.mark.parametrize("tables", [["t1", "t2"], ["t2", "t1"]])
+def test_a_default_date_ignores_a_table_no_result_describes(
+    tables: list[str],
+) -> None:
+    # Test: The default date of a chart of two tables when a result gives
+    #   a date for only one of them.
+    # Situation: Two population tables hold 2022 and 2023, one for France
+    #   and Germany (`t1`) and one for Italy and Spain (`t2`). The digest
+    #   ranks `t1` on 2022 and holds no result over `t2`. A bar lists the
+    #   tables in either order without a date.
+    # Expectation: The bar is drawn at 2022 in either order: the table
+    #   without a result sets no date, and it holds the date of the other.
+    ranked = _make_table("t1")
+    other = _make_table("t2", places=("country/ITA", "country/ESP"))
+    analysis = _make_spec(
+        step_id="s1", script="rank_cohort", table="t1", target_date="2022"
+    )
+    digest = _make_digest(
+        rank_cohort(ranked.table, target_date="2022", step_id="s1")
+    )
+
+    chart = _resolve_chart_wire(
+        "bar", tables, _make_cache(ranked, other), digest, analysis
+    )
+
+    assert chart is not None
+    assert chart["date"] == "2022"
 
 
 def test_a_ranking_of_the_variable_slices_before_a_relation() -> None:

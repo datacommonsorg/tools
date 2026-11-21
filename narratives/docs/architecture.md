@@ -267,7 +267,11 @@ Otherwise, the request runs through the agent loop in five steps:
    (`relate_cohorts`), the resolver orders them from the relation, the
    compared `target` first and the grouping `by` second, so the component
    draws the grouping variable on the horizontal axis whatever order the
-   model listed the tables in.
+   model listed the tables in. A single-date chart without a `date` is drawn
+   at the reference date of the results over its tables only when those
+   tables agree on one date; a relation whose two tables are aligned on
+   different dates leaves the date unset, so the component draws each
+   variable at its latest date.
    The date bounds are checked with the comparison `<datacommons-line>`
    applies, so a `start_date` of `2005-06` excludes an annual `2005`. Each
    resolved chart carries `facet_ids` mapping its variables to the facets that
