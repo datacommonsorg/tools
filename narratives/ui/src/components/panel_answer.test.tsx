@@ -115,6 +115,18 @@ const INTERLEAVED_BLOCKS: ChatTurn['blocks'] = [
   { index: 2, type: 'text', markdown: 'The population grew 0.3% last year.' },
 ];
 
+/** The Data gaps block of an answer, as the agent sends it parsed. */
+const DATA_GAPS_BLOCK = {
+  index: 1,
+  type: 'text',
+  markdown:
+    '**Data gaps**\\\nThese measures are not available in Data Commons:\n- Antenatal care coverage\n- Screening coverage',
+  dataGaps: {
+    intro: 'These measures are not available in Data Commons:',
+    items: ['Antenatal care coverage', 'Screening coverage'],
+  },
+} satisfies ChatTurn['blocks'][number];
+
 /** Reads the answer's text bodies and chart cards in document order. */
 const readAnswerParts = (container: HTMLElement): string[] =>
   Array.from(container.querySelectorAll('.markdown-body, .dc-chart-card')).map(
@@ -831,6 +843,131 @@ describe('AnswerPanel', () => {
       'Population of France',
       'What is the population of France?',
     ]);
+  });
+
+  it('shows the data gaps block as a section after the answer', () => {
+    // Test: Placement and content of the Data gaps section.
+    // Situation: A finished turn whose blocks are a paragraph, the Data
+    //   gaps block with its parsed list, and a chart the server appended
+    //   after the text.
+    // Expectation: A region named "Data gaps" holds the intro and one item
+    //   per measure; it follows the chart tile in the body; and the
+    //   block's Markdown does not also render as answer text.
+    const { container } = render(
+      <AnswerPanel
+        turn={buildTurnWithBlocks([
+          { index: 0, type: 'text', markdown: 'Life expectancy reached 84.' },
+          DATA_GAPS_BLOCK,
+          { index: 2, type: 'chart', chart: LINE_CHART, standalone: true },
+        ])}
+        isStreaming={false}
+      />,
+    );
+
+    const section = screen.getByRole('region', { name: 'Data gaps' });
+    expect(section.querySelector('p')?.textContent).toBe(
+      'These measures are not available in Data Commons:',
+    );
+    expect(
+      Array.from(section.querySelectorAll('li')).map((li) => li.textContent),
+    ).toEqual(['Antenatal care coverage', 'Screening coverage']);
+    const children = Array.from(getBody(container).children);
+    const chartTile = container.querySelector('.dc-charts-container');
+    expect(chartTile).not.toBeNull();
+    expect(children.indexOf(section)).toBeGreaterThan(
+      children.indexOf(chartTile as Element),
+    );
+    expect(readAnswerParts(container)).toEqual([
+      'text:Life expectancy reached 84.',
+      'chart:Population, France',
+    ]);
+  });
+
+  it('keeps the data gaps section out of the text reveal', () => {
+    // Test: The reveal of an answer that ends with a Data gaps block.
+    // Situation: A panel mounts mid-stream with a five-word paragraph and
+    //   the Data gaps block.
+    // Expectation: The section is a child of the body that the body hides
+    //   while the text reveals; the paragraph's words are 20ms apart, as
+    //   in an answer without the block; and the hiding ends once the five
+    //   words' duration passes.
+    vi.useFakeTimers();
+    const { container } = render(
+      <AnswerPanel
+        turn={buildTurnWithBlocks([
+          { index: 0, type: 'text', markdown: 'one two three four five' },
+          { ...DATA_GAPS_BLOCK, index: 1 },
+        ])}
+        isStreaming
+      />,
+    );
+
+    const body = getBody(container);
+    const section = screen.getByRole('region', { name: 'Data gaps' });
+    expect(section.parentElement).toBe(body);
+    expect(section.classList.contains('answer-section')).toBe(false);
+    expect(body.className).toContain(HIDE_NON_TEXT_CLASS);
+    expect(
+      Array.from(container.querySelectorAll<HTMLElement>('.stream-word')).map(
+        (word) => word.style.animationDelay,
+      ),
+    ).toEqual(['0ms', '20ms', '40ms', '60ms', '80ms']);
+
+    act(() => {
+      vi.advanceTimersByTime(
+        calculateStreamDurationMs('one two three four five'),
+      );
+    });
+
+    expect(body.className).not.toContain(HIDE_NON_TEXT_CLASS);
+  });
+
+  it('labels the data gaps section of each turn by its own heading', () => {
+    // Test: Heading ids across the turns of one thread.
+    // Situation: Two panels render turns whose Data gaps blocks sit at the
+    //   same block index.
+    // Expectation: Each section is labeled by a heading inside it, and
+    //   the two heading ids differ.
+    const turn = buildTurnWithBlocks([
+      { index: 0, type: 'text', markdown: 'Life expectancy reached 84.' },
+      DATA_GAPS_BLOCK,
+    ]);
+    render(
+      <>
+        <AnswerPanel turn={turn} isStreaming={false} turnIndex={0} />
+        <AnswerPanel turn={turn} isStreaming={false} turnIndex={1} />
+      </>,
+    );
+
+    const sections = screen.getAllByRole('region', { name: 'Data gaps' });
+    const headingIds = sections.map(
+      (section) => section.querySelector('h2')?.id,
+    );
+    expect(sections).toHaveLength(2);
+    expect(
+      sections.map((section) => section.getAttribute('aria-labelledby')),
+    ).toEqual(headingIds);
+    expect(new Set(headingIds).size).toBe(2);
+  });
+
+  it('renders a data gaps block without a parsed list as answer text', () => {
+    // Test: A Data gaps block the agent did not parse.
+    // Situation: A finished turn whose last text block holds the Data gaps
+    //   Markdown and no parsed list.
+    // Expectation: No Data gaps section renders, and the block renders
+    //   through the Markdown renderer as the answer's other text does.
+    const { container } = render(
+      <AnswerPanel
+        turn={buildTurnWithBlocks([
+          { index: 0, type: 'text', markdown: 'Life expectancy reached 84.' },
+          { index: 1, type: 'text', markdown: DATA_GAPS_BLOCK.markdown },
+        ])}
+        isStreaming={false}
+      />,
+    );
+
+    expect(screen.queryByRole('region', { name: 'Data gaps' })).toBeNull();
+    expect(container.querySelectorAll('.markdown-body')).toHaveLength(2);
   });
 
   describe('stats and chart pairing', () => {

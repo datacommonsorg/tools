@@ -30,12 +30,18 @@ from narratives_agent.config_model import AgentConfig
 from narratives_agent.gemini import client as gemini_client
 from narratives_agent.gemini.schemas import QueryClassification
 from narratives_agent.workflows import pattern_guidance, prompt_contracts
+from narratives_agent.workflows.blocks import (
+    BlockSplitter,
+    SynthesisBlock,
+    TextBlock,
+)
 from narratives_agent.workflows.charts import (
     MAX_CHARTS_PER_TURN,
     BarSort,
     ChartKind,
     ChartSpecification,
 )
+from narratives_agent.workflows.data_gaps import DataGaps
 from narratives_agent.workflows.mcp_loop import (
     DISCOVERY_TOOL_NAMES,
     SERVER_FUNCTION_NAMES,
@@ -1074,6 +1080,38 @@ def test_synthesis_contract_keeps_no_data_answers_free_of_headings() -> None:
     assert "submit a data request" not in contract
     assert "docs.datacommons.org/contributing" not in contract
     assert "docs.google.com/forms" not in contract
+
+
+def test_synthesis_contract_data_gaps_example_parses_as_data_gaps() -> None:
+    # Test: The contract's Data gaps wording against the server's parser.
+    # Situation: The worked Data gaps example in the synthesis contract,
+    #   from its label line to the end of its list, is fed to a
+    #   `BlockSplitter`.
+    # Expectation: The splitter emits it as one text block that carries
+    #   the example's intro and its two measures, so a change to the
+    #   label or the layout the contract prescribes fails here.
+    contract = load_prompt_contract("synthesis")
+    start = contract.index("**Data gaps**\\\nThese measures are not available")
+    example = contract[start : contract.index("\n\n", start)]
+    blocks: list[SynthesisBlock] = []
+    splitter = BlockSplitter(blocks.append, lambda specification: None)
+
+    splitter.feed(example)
+    splitter.finish()
+
+    assert blocks == [
+        TextBlock(
+            index=0,
+            markdown=example,
+            data_gaps=DataGaps(
+                intro="These measures are not available in Data Commons:",
+                items=(
+                    "Antenatal care coverage",
+                    "Cervical cancer screening coverage",
+                ),
+            ),
+        )
+    ]
 
 
 def test_synthesis_contract_keeps_data_gaps_out_of_no_data_answers() -> None:

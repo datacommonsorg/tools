@@ -139,18 +139,24 @@ class BlockContentFrame:
 
         Returns:
             A JSON object with `block` (`index`, `type`, and either `markdown`
-            or `chart`), plus `standalone: true` on a chart the server
-            supplied.
+            or `chart`), plus `data_gaps` (`intro` and `items`) on the text
+            block that is the answer's Data gaps block, and
+            `standalone: true` on a chart the server supplied.
         """
+        block: JsonObject
         if isinstance(self.block, TextBlock):
-            return {
-                "block": {
-                    "index": self.block.index,
-                    "type": "text",
-                    "markdown": self.block.markdown,
-                }
+            block = {
+                "index": self.block.index,
+                "type": "text",
+                "markdown": self.block.markdown,
             }
-        block: JsonObject = {
+            if self.block.data_gaps is not None:
+                block["data_gaps"] = {
+                    "intro": self.block.data_gaps.intro,
+                    "items": list(self.block.data_gaps.items),
+                }
+            return {"block": block}
+        block = {
             "index": self.block.index,
             "type": "chart",
             "chart": serialize_resolved_chart(self.block.chart),

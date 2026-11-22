@@ -37,6 +37,7 @@ from narratives_agent.workflows.charts import (
     ResolvedChart,
     ResolvedLineChart,
 )
+from narratives_agent.workflows.data_gaps import DataGaps
 
 
 def _make_line_chart(title: str) -> ResolvedLineChart:
@@ -869,3 +870,169 @@ def test_a_heading_line_is_a_block_of_its_own(
         if isinstance(block, TextBlock)
     ] == expected
     assert splitter.text == "\n\n".join(expected)
+
+
+_GAPS_INTRO = "These measures are not available in Data Commons:"
+_GAPS = DataGaps(intro=_GAPS_INTRO, items=("Antenatal care", "Screening"))
+
+
+@pytest.mark.parametrize(
+    ("text", "expected", "gaps_position"),
+    [
+        (
+            "Japan leads.\n\n"
+            f"**Data gaps**\\\n{_GAPS_INTRO}\n- Antenatal care\n- Screening",
+            [
+                "Japan leads.",
+                f"**Data gaps**\\\n{_GAPS_INTRO}\n"
+                "- Antenatal care\n- Screening",
+            ],
+            1,
+        ),
+        (
+            "- **Latest:** 5\n"
+            f"**Data gaps**\\\n\n{_GAPS_INTRO}\n\n"
+            "- Antenatal care\n\n- Screening\n",
+            [
+                "- **Latest:** 5",
+                f"**Data gaps**\\\n\n{_GAPS_INTRO}\n\n"
+                "- Antenatal care\n\n- Screening",
+            ],
+            1,
+        ),
+        (
+            f"**Data gaps**\\\n{_GAPS_INTRO}\n- Antenatal care\n- Screening"
+            "\n\nRelated figures are above.",
+            [
+                f"**Data gaps**\\\n{_GAPS_INTRO}\n"
+                "- Antenatal care\n- Screening",
+                "Related figures are above.",
+            ],
+            0,
+        ),
+        (
+            f"**Data gaps**\\\n{_GAPS_INTRO}\n- Antenatal care\n- Screening"
+            "\n## Rates\n- **A:** 1",
+            [
+                f"**Data gaps**\\\n{_GAPS_INTRO}\n"
+                "- Antenatal care\n- Screening",
+                "## Rates",
+                "- **A:** 1",
+            ],
+            0,
+        ),
+        (
+            f"**Data gaps**\\\n{_GAPS_INTRO}\n- Antenatal care\n- Screening"
+            "\n```text\ncode\n```",
+            [
+                f"**Data gaps**\\\n{_GAPS_INTRO}\n"
+                "- Antenatal care\n- Screening",
+                "```text\ncode\n```",
+            ],
+            0,
+        ),
+    ],
+    ids=[
+        "contract_form",
+        "blank_lines_inside",
+        "ended_by_a_paragraph",
+        "ended_by_a_heading",
+        "ended_by_a_fence",
+    ],
+)
+def test_a_data_gaps_block_is_one_text_block_with_its_parsed_list(
+    text: str, expected: list[str], gaps_position: int
+) -> None:
+    # Test: The Data gaps block, which the app shows as its own section.
+    # Situation: The block in the contract's form after a paragraph; the
+    #   block directly under a list, with a blank line after the label,
+    #   before the list, and between the items; and the block followed by
+    #   a paragraph, a heading line, and a code fence.
+    # Expectation: The block is one text block holding its Markdown as
+    #   written and the parsed intro and items, whatever blank lines it
+    #   holds; the text before and after it is split as usual; no other
+    #   block carries a parsed list; and the answer text is the text
+    #   blocks joined by blank lines.
+    splitter, recorder = _split(text, chunk=3)
+
+    blocks = [
+        block for block in recorder.blocks if isinstance(block, TextBlock)
+    ]
+    assert [block.markdown for block in blocks] == expected
+    assert [block.data_gaps for block in blocks] == [
+        _GAPS if position == gaps_position else None
+        for position in range(len(blocks))
+    ]
+    assert splitter.text == "\n\n".join(expected)
+
+
+def test_a_chart_after_the_data_gaps_block_is_still_a_chart() -> None:
+    # Test: A chart block written after the Data gaps block.
+    # Situation: A chart fence directly follows the last list item.
+    # Expectation: The fence ends the Data gaps block and resolves to a
+    #   chart block after it.
+    _, recorder = _split(
+        f"**Data gaps**\\\n{_GAPS_INTRO}\n- Antenatal care\n- Screening\n"
+        f"```chart\n{_CHART}\n```"
+    )
+
+    assert [_get_block_kind(block) for block in recorder.blocks] == [
+        "text",
+        "chart",
+    ]
+    assert isinstance(recorder.blocks[0], TextBlock)
+    assert recorder.blocks[0].data_gaps == _GAPS
+
+
+@pytest.mark.parametrize(
+    ("text", "expected"),
+    [
+        (
+            f"Japan leads.\n\n**Data gaps**\\\n{_GAPS_INTRO}\n\nNo list.",
+            ["Japan leads.", f"**Data gaps**\\\n{_GAPS_INTRO}", "No list."],
+        ),
+        ("**Data gaps**\\", ["**Data gaps**\\"]),
+        (
+            "```text\n**Data gaps**\n- A\n```",
+            ["```text\n**Data gaps**\n- A\n```"],
+        ),
+    ],
+    ids=["no_list", "label_only", "label_inside_code_fence"],
+)
+def test_a_label_without_a_list_stays_ordinary_text(
+    text: str, expected: list[str]
+) -> None:
+    # Test: A Data gaps label that opens no Data gaps block.
+    # Situation: A label followed by prose and no list, a label that ends
+    #   the stream, and a label inside a fenced code block.
+    # Expectation: The lines are split into paragraphs as any other text,
+    #   and no block carries a parsed list.
+    splitter, recorder = _split(text, chunk=3)
+
+    blocks = [
+        block for block in recorder.blocks if isinstance(block, TextBlock)
+    ]
+    assert [block.markdown for block in blocks] == expected
+    assert all(block.data_gaps is None for block in blocks)
+    assert splitter.text == "\n\n".join(expected)
+
+
+def test_only_the_first_label_opens_a_data_gaps_block() -> None:
+    # Test: A second Data gaps label in one answer.
+    # Situation: A complete Data gaps block, a paragraph, and a second
+    #   label with its own list.
+    # Expectation: The first block carries its parsed list, and the second
+    #   label and its list are ordinary text.
+    _, recorder = _split(
+        "**Data gaps**\n- A\n\nMore prose.\n\n**Data gaps**\n- B"
+    )
+
+    assert [
+        (block.markdown, block.data_gaps)
+        for block in recorder.blocks
+        if isinstance(block, TextBlock)
+    ] == [
+        ("**Data gaps**\n- A", DataGaps(intro="", items=("A",))),
+        ("More prose.", None),
+        ("**Data gaps**\n- B", None),
+    ]

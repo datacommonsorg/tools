@@ -31,6 +31,11 @@ from narratives_agent.workflows.charts import (
     ResolvedChart,
     parse_chart_specification,
 )
+from narratives_agent.workflows.data_gaps import (
+    DataGaps,
+    DataGapsCollector,
+    is_data_gaps_label,
+)
 
 __all__ = [
     "BlockCallback",
@@ -71,10 +76,14 @@ class TextBlock:
     Attributes:
         index: The block's position among all emitted blocks, from 0.
         markdown: The block's Markdown, stripped of surrounding whitespace.
+        data_gaps: The parsed list of missing measures when the block is the
+            answer's Data gaps block, else `None`. `markdown` holds the
+            block as the model wrote it either way.
     """
 
     index: int
     markdown: str
+    data_gaps: DataGaps | None = None
 
 
 @dataclass(frozen=True)
@@ -144,7 +153,13 @@ class BlockSplitter:
     heading or a lead-in and the list or table under it are therefore
     separate blocks even without a blank line between them; the app shows a
     heading block as a section heading and pairs a list or table block with
-    the chart after it. A chart block opens
+    the chart after it. The first Data gaps label line outside a fenced
+    block ends the paragraph before it and opens the Data gaps block, which
+    `DataGapsCollector` reads across blank lines until a line that is not
+    part of it, a fence line, a heading line, or the end of the stream. The
+    block is emitted as one text block that also carries the parsed
+    `DataGaps`; when it lists no measure, its lines are split into
+    paragraphs as any other text. A chart block opens
     on a line that is only a fence with the `chart` info string, which ends the
     paragraph before it, and closes on a line that is only a bare fence. A JSON
     string cannot span lines, so no line of a chart body is a bare fence. When
@@ -183,6 +198,10 @@ class BlockSplitter:
     _open: _ChartFence | _CodeFence | None = field(
         default=None, init=False, repr=False
     )
+    _data_gaps: DataGapsCollector | None = field(
+        default=None, init=False, repr=False
+    )
+    _has_seen_data_gaps: bool = field(default=False, init=False, repr=False)
     _next_index: int = field(default=0, init=False, repr=False)
     _finished: bool = field(default=False, init=False, repr=False)
 
@@ -235,7 +254,8 @@ class BlockSplitter:
         """Flushes the buffered text once the stream has ended.
 
         Processes the last line, drops a chart fence that is still open and
-        counts it in `charts_rejected`, and emits the last paragraph. After
+        counts it in `charts_rejected`, and emits the Data gaps block that
+        is still open or the last paragraph. After
         it, `feed` raises and a second `finish` does nothing, while
         `append_chart` may still add server-supplied charts.
 
@@ -248,6 +268,8 @@ class BlockSplitter:
         if self._pending:
             self._consume_line(self._pending.removesuffix("\r"))
             self._pending = ""
+        if self._data_gaps is not None:
+            self._close_data_gaps(self._data_gaps)
         if isinstance(self._open, _ChartFence):
             # The stream ended inside a chart block, so the block is dropped
             # rather than shown to the reader as raw JSON.
@@ -273,8 +295,16 @@ class BlockSplitter:
         )
 
     def _consume_line(self, line: str) -> None:
-        """Routes one complete line to the open fence or the paragraph."""
+        """Routes one complete line to the open block or the paragraph."""
         fence = _FENCE_LINE.fullmatch(line)
+        if self._data_gaps is not None:
+            if (
+                fence is None
+                and _HEADING_LINE.fullmatch(line) is None
+                and self._data_gaps.add(line)
+            ):
+                return
+            self._close_data_gaps(self._data_gaps)
         if fence is None:
             self._consume_plain_line(line)
             return
@@ -314,7 +344,8 @@ class BlockSplitter:
         Outside a fenced block, a blank line ends the paragraph, and so does a
         list item or table row after a one-line lead-in paragraph. A Markdown
         heading line ends the paragraph before it and is a paragraph of its
-        own.
+        own. The first Data gaps label line ends the paragraph before it and
+        opens the Data gaps block.
         """
         match self._open:
             case _ChartFence() as chart:
@@ -324,6 +355,11 @@ class BlockSplitter:
             case None:
                 if not line.strip():
                     self._flush_paragraph()
+                    return
+                if not self._has_seen_data_gaps and is_data_gaps_label(line):
+                    self._has_seen_data_gaps = True
+                    self._flush_paragraph()
+                    self._data_gaps = DataGapsCollector([line])
                     return
                 if _HEADING_LINE.fullmatch(line) is not None:
                     self._flush_paragraph()
@@ -383,14 +419,37 @@ class BlockSplitter:
             return None
         return self.resolve_chart(spec)
 
+    def _close_data_gaps(self, collector: DataGapsCollector) -> None:
+        """Emits the collected Data gaps block, or its lines as paragraphs.
+
+        A block that lists no measure is not a Data gaps block, so its
+        lines are split as ordinary text; the label line does not open a
+        second block.
+        """
+        self._data_gaps = None
+        data_gaps = collector.build()
+        if data_gaps is None:
+            for line in collector.lines:
+                self._consume_plain_line(line)
+            return
+        self._emit_text("\n".join(collector.lines).strip(), data_gaps)
+
     def _flush_paragraph(self) -> None:
         """Emits the buffered paragraph as a text block, unless it is blank."""
         text = "\n".join(self._paragraph).strip()
         self._paragraph = []
         if not text:
             return
+        self._emit_text(text)
+
+    def _emit_text(self, text: str, data_gaps: DataGaps | None = None) -> None:
+        """Records `text` in the answer text and emits it as a text block."""
         self._text_blocks.append(text)
-        self._emit(TextBlock(index=self._next_index, markdown=text))
+        self._emit(
+            TextBlock(
+                index=self._next_index, markdown=text, data_gaps=data_gaps
+            )
+        )
 
     def _emit(self, block: SynthesisBlock) -> None:
         """Passes a block to `on_block` and advances the block index."""
