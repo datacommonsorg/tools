@@ -1204,13 +1204,16 @@ def test_a_relation_supplies_the_floor_ahead_of_an_earlier_ranking() -> None:
     assert chart["title"] == "Diabetes, Income"
 
 
-def test_a_mixed_per_capita_relation_falls_back_to_its_ranking() -> None:
-    # Test: Fallback when a `relate_cohorts` scatter mixes per-capita and
+def test_a_mixed_per_capita_relation_gets_no_default_chart() -> None:
+    # Test: The floor when a `relate_cohorts` scatter mixes per-capita and
     #   raw tables.
     # Situation: `s1` derives crimes per person, `s2` ranks `s1`, and `s3`
     #   relates `s1` to raw income `t3` across states.
-    # Expectation: Because a single scatter cannot mix per-capita and raw
-    #   variables, `s3` is rejected and `s2` supplies the per-capita ranking.
+    # Expectation: A single scatter cannot mix per-capita and raw
+    #   variables, so `s3` yields no chart, and the floor adds none rather
+    #   than the per-capita ranking from `s2`. The answer is about the two
+    #   measures together, and a ranking of one of them would show places
+    #   its group tables do not.
     cache, per_capita, derived_result = _make_per_capita_case(is_cohort=True)
     income = _make_cohort("t3", variable_dcid="Median_Income", name="Income")
     cache.store_fetched(income)
@@ -1233,12 +1236,97 @@ def test_a_mixed_per_capita_relation_falls_back_to_its_ranking() -> None:
     )
     digest = _make_digest(derived_result, ranked, related)
 
-    chart = _resolve_default_wire(digest, analysis, cache)
+    assert build_default_charts(digest, analysis, cache) == ()
+
+
+def _make_ranking_and_relation_spec() -> AnalysisSpecification:
+    """Ranks income (`t1`) in `s1` and relates diabetes (`t2`) to it in `s2`."""
+    return AnalysisSpecification.model_validate(
+        {
+            "steps": [
+                {"step_id": "s1", "script": "rank_cohort", "table": "t1"},
+                {
+                    "step_id": "s2",
+                    "script": "relate_cohorts",
+                    "target": "t2",
+                    "by": "t1",
+                    "n": 2,
+                },
+            ]
+        }
+    )
+
+
+def test_a_relation_with_one_cohort_measure_gets_no_fallback_chart() -> None:
+    # Test: The floor when only one measure of a relation covers a cohort.
+    # Situation: Income (`t1`) was fetched across the states for 2022 and
+    #   2023, diabetes (`t2`) for the same six states by name, `s1` ranks
+    #   income, and `s2` relates diabetes to income.
+    # Expectation: No default chart. One cohort table is enough for
+    #   synthesis to write the cohort layout of a relationship answer, so
+    #   the floor is the relation's scatter or nothing, and the scatter
+    #   needs both measures across the cohort. The line of the income
+    #   ranking is not added in its place.
+    income = _make_cohort(
+        "t1",
+        variable_dcid="Median_Income",
+        name="Income",
+        dates=("2022", "2023"),
+    )
+    diabetes = _make_table(
+        "t2",
+        "Percent_Diabetes",
+        name="Diabetes",
+        unit="Percent",
+        places=_STATES,
+        dates=("2023",),
+    )
+    relation = relate_cohorts(diabetes.table, income.table, n=2, step_id="s2")
+    assert relation.status == "ok"
+    digest = _make_digest(rank_cohort(income.table, step_id="s1"), relation)
+
+    charts = build_default_charts(
+        digest, _make_ranking_and_relation_spec(), _make_cache(income, diabetes)
+    )
+
+    assert charts == ()
+
+
+def test_a_ranking_beside_a_refused_relation_is_charted_as_a_line() -> None:
+    # Test: The default chart of a cohort ranking whose specification also
+    #   holds a relation that was refused.
+    # Situation: Income (`t1`) covers six states for 2022 and 2023 and is
+    #   ranked in `s1`. Diabetes (`t2`) covers one of the states, so the
+    #   relation in `s2` is refused for coverage.
+    # Expectation: The floor charts the ranking as a line of its first five
+    #   states, as for any cohort ranking, not as a `ranking` chart.
+    income = _make_cohort(
+        "t1",
+        variable_dcid="Median_Income",
+        name="Income",
+        dates=("2022", "2023"),
+    )
+    diabetes = _make_table(
+        "t2",
+        "Percent_Diabetes",
+        name="Diabetes",
+        unit="Percent",
+        places=_STATES[:1],
+        dates=("2023",),
+        parent="country/USA",
+        child_type="State",
+    )
+    relation = relate_cohorts(diabetes.table, income.table, n=2, step_id="s2")
+    assert relation.status == "refused"
+    digest = _make_digest(rank_cohort(income.table, step_id="s1"), relation)
+
+    chart = _resolve_default_wire(
+        digest, _make_ranking_and_relation_spec(), _make_cache(income, diabetes)
+    )
 
     assert chart is not None
-    assert chart["viz_type"] == "ranking"
-    assert chart["title"] == "Crimes per person"
-    assert chart["per_capita"] is True
+    assert chart["viz_type"] == "line"
+    assert chart["place_dcids"] == list(reversed(_STATES))[:5]
 
 
 def test_a_staggered_single_point_series_charts_as_a_latest_bar() -> None:
