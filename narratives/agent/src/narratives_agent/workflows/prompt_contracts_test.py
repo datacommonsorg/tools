@@ -772,6 +772,250 @@ def test_synthesis_contract_writes_lead_in_lines_as_labels() -> None:
     assert "introduce them in one short sentence" not in flattened
 
 
+def test_synthesis_contract_keeps_introducing_sentences_out_of_headings() -> (
+    None
+):
+    # Test: Only labels become section headings.
+    # Situation: The synthesis contract the model receives.
+    # Expectation: A sentence that introduces a list or table ends with a
+    #   period, so the app never shows it as a heading; a table of all
+    #   places opens with a short label and names any places of another
+    #   type in a sentence; the ranking's note on such places is a sentence
+    #   with a period; the old sentence-with-colon example is gone; and the
+    #   worked example introduces its second list with a label, not with a
+    #   sentence ending in a colon.
+    contract = load_prompt_contract("synthesis")
+    flattened = " ".join(contract.split())
+
+    assert (
+        "Any other sentence that introduces a list or table ends with a "
+        "period, never a colon, so it stays text and never becomes a heading"
+    ) in flattened
+    assert '("Dengue cases by state:")' in flattened
+    assert "by dengue cases in [year]:" not in flattened
+    assert (
+        'in a sentence ending with a period: "The ten highest are Puerto '
+        'Rico and nine states."'
+    ) in flattened
+    assert "\n\nLabor force participation by sex:\n\n- **Women:**" in contract
+    assert "differs by sex:" not in flattened
+
+
+def test_synthesis_contract_compares_groups_by_their_medians() -> None:
+    # Test: The figure a group comparison reports.
+    # Situation: The synthesis contract the model receives.
+    # Expectation: A comparison of two groups of places reports each
+    #   group's median, never its mean, names "median" once, and gives no
+    #   gap between the groups, which the digest does not calculate.
+    flattened = " ".join(load_prompt_contract("synthesis").split())
+
+    assert (
+        'each group\'s median, never its mean, naming "median" once, on the '
+        "first figure"
+    ) in flattened
+    assert (
+        "Give no gap or difference between the two groups: the digest does "
+        "not calculate one between medians."
+    ) in flattened
+
+
+def test_synthesis_contract_lays_out_relationships_by_what_data_covers() -> (
+    None
+):
+    # Test: The two relationship layouts and their wording.
+    # Situation: The synthesis contract and the relationship directives.
+    # Expectation: All places of a kind get one two-measure table per group
+    #   with no chart beside it and one scatter as the last chart; a few
+    #   named places follow "Comparing several places" with no scatter; the
+    #   finding carries a woven scope phrase instead of a separate note,
+    #   never a yes or no on correlation; ranking charts no longer sit
+    #   beside group tables; and the directives say the same.
+    flattened = " ".join(load_prompt_contract("synthesis").split())
+    directives = " ".join(
+        directive.synthesis
+        for directive in pattern_guidance._DIRECTIVES.values()
+    )
+
+    assert "Write no chart after either table." in flattened
+    assert "one `scatter` of the two measures across all the places, the " in (
+        flattened
+    )
+    assert (
+        "Do not draw a scatter: a scatter needs every place of a kind."
+    ) in flattened
+    assert (
+        "say once, in a few words, that it compares the places side by side "
+        "rather than measuring a correlation or causal link"
+    ) in flattened
+    assert "belongs to the finding, never a separate note" in flattened
+    assert 'Never answer "yes" or "no" to whether one exists' in flattened
+    assert "chart each variable as its own `ranking`" not in flattened
+    assert "go together" not in flattened
+    assert "go hand in hand with" not in flattened
+    assert "never on the chart itself" in flattened
+    assert 'follow "Relationships between two measures" instead' in flattened
+    assert "chart a `ranking` for each variable" not in directives
+    assert "rather than measuring a correlation or causal link" in directives
+    assert "rather than measuring a correlation or causal link" in (
+        pattern_guidance._NAMED_PLACE_CORRELATION_SYNTHESIS
+    )
+
+
+def test_relationship_answers_skip_a_scatter_that_cannot_be_drawn() -> None:
+    # Test: The cases in which a relationship answer writes no scatter.
+    # Situation: The synthesis contract and the relationship directives.
+    # Expectation: The contract leaves out the scatter and the sentences
+    #   leading to it when a table is marked "do not chart it", when a
+    #   per-capita table is paired with a fetched table, and when a measure
+    #   is compared as a change over a window; the chart grammar states
+    #   that a per-capita table and a fetched table cannot share a chart;
+    #   and both relationship directives ask for the scatter only when the
+    #   tables can be charted together.
+    flattened = " ".join(load_prompt_contract("synthesis").split())
+    directives = [
+        pattern_guidance._DIRECTIVES[pattern].synthesis
+        for pattern in ("top_n_ranking", "correlation")
+    ]
+
+    assert (
+        "Write neither the sentences nor the scatter when the scatter "
+        "cannot be drawn: when the TABLE INVENTORY marks either measure's "
+        'table "do not chart it"; when one measure\'s table is a per-capita '
+        "table and the other's a fetched table, which cannot share a chart; "
+        "or when the digest compares either measure as a change over a "
+        "window from one date to another"
+    ) in flattened
+    assert (
+        "a per-capita table and a fetched table cannot share one chart"
+    ) in flattened
+    assert ("both fetched tables or both per-capita tables.") in flattened
+    for directive in directives:
+        assert (
+            "when the two tables can be charted together, as that section "
+            "describes; otherwise write no scatter and no sentences leading "
+            "to one."
+        ) in directive
+
+
+def test_synthesis_contract_lays_out_a_relationship_within_one_place() -> None:
+    # Test: The relationship layout for two measures of one place.
+    # Situation: The synthesis contract the model receives.
+    # Expectation: "Relationships between two measures" gives a third
+    #   layout for one place over time: an opening on how each measure
+    #   moved, a block per measure with its own line chart, no scatter, and
+    #   a scope phrase about two histories rather than about places.
+    flattened = " ".join(load_prompt_contract("synthesis").split())
+
+    assert (
+        "One place over time (inflation and unemployment in one country): "
+        "there are no places to compare, so set the two measures' histories "
+        "side by side."
+    ) in flattened
+    assert (
+        "Then give each measure its own lead-in line, short list, and "
+        '`line` chart, as "Charts" describes, never one list for both. Do '
+        "not draw a scatter."
+    ) in flattened
+    assert (
+        "For one place over time, say instead that it sets the two "
+        "histories side by side"
+    ) in flattened
+
+
+def test_one_end_of_a_cross_variable_ranking_is_answered_alone() -> None:
+    # Test: The layout of a ranking question that asks for a second measure
+    #   in one end of the ranking only.
+    # Situation: The synthesis contract and the `top_n_ranking` directive.
+    # Expectation: "Rankings" sends a question about how the two measures
+    #   relate to "Relationships between two measures", and a question
+    #   about one end to its own section; that section gives one table with
+    #   both measures and a `bar` of the second measure for the same
+    #   places, with no scatter and nothing about correlation; and the
+    #   directive draws the same line between the two cases.
+    flattened = " ".join(load_prompt_contract("synthesis").split())
+    directive = pattern_guidance._DIRECTIVES["top_n_ranking"].synthesis
+
+    assert (
+        "When the question asks for the second measure in one end of the "
+        'ranking only ("the unemployment rate in the ten most populous '
+        'states"), follow "A second measure in one end of a ranking" '
+        "instead."
+    ) in flattened
+    assert "### A second measure in one end of a ranking" in flattened
+    assert (
+        "add one `bar` of the second measure for the same places"
+    ) in flattened
+    assert (
+        "Write no `ranking` chart, which cannot be limited to the table's "
+        "places, and no `scatter`."
+    ) in flattened
+    assert (
+        "state no pattern between them, and leave out what "
+        '"Relationships between two measures" asks an answer to say about '
+        "correlation"
+    ) in flattened
+    assert (
+        "the question asks for that variable in one end of the ranking "
+        'only, answer for that end alone, as "A second measure in one end '
+        'of a ranking" describes'
+    ) in directive
+    assert (
+        "When the question asks how the two variables relate, or sets the "
+        "two ends side by side, write the answer as "
+        '"Relationships between two measures" describes instead'
+    ) in directive
+
+
+def test_synthesis_contract_keeps_names_sources_and_headings_consistent() -> (
+    None
+):
+    # Test: Naming, attribution, and heading length.
+    # Situation: The synthesis contract the model receives.
+    # Expectation: An indicator keeps one name throughout, and that name
+    #   keeps the word for its statistic, such as "median"; a comparison's
+    #   figure-free opening still names the source; a lead-in label is a
+    #   few words long; and the worked examples give each indicator one
+    #   name in the prose, the lead-in line or column header, and the chart
+    #   title.
+    contract = load_prompt_contract("synthesis")
+    flattened = " ".join(contract.split())
+    examples = contract[
+        contract.index("A comparison of several places:") : contract.index(
+            "### Chart blocks"
+        )
+    ]
+
+    assert "Call an indicator by one name throughout the answer" in flattened
+    assert (
+        "Keep in that name the word that says which statistic the figure is "
+        '("median", "average", "per capita"): "median household income", '
+        'never "household income" alone'
+    ) in flattened
+    assert "Median gross rent" not in examples
+    for name in ("Median household income", "Median rent"):
+        assert f"| City | {name} (USD, [year])" in examples
+        assert f'"title": "{name} in [city A]' in examples
+    assert (
+        "median rent rises with median household income across the four cities"
+    ) in " ".join(examples.split())
+    for name in (
+        "Skilled birth attendance",
+        "Family planning coverage",
+        "Maternal mortality",
+    ):
+        assert f"\n\n{name}:\n\n- **Latest:** {name}" in examples
+        assert f'"title": "{name} worldwide"' in examples
+    assert "Keep the official name for table headers and chart" not in (
+        flattened
+    )
+    assert "in the prose, table headers, and chart titles alike" in flattened
+    assert "the nine highest-income states and the District of Columbia" in (
+        flattened
+    )
+    assert "though it still names the source" in flattened
+    assert "as a short label of a few words, in sentence case" in flattened
+
+
 def test_prompts_carry_no_conflicting_instructions() -> None:
     # Test: The contradictions found in the prompt review stay resolved.
     # Situation: The synthesis contract and the pattern directives.
@@ -780,7 +1024,10 @@ def test_prompts_carry_no_conflicting_instructions() -> None:
     #   A and Y in B" shape; trend answers take the change measure the
     #   contract gives; a peer comparison spans two sentences; the ranking
     #   chart bullet appears once; caveats never split a stats-chart pair;
-    #   and exploratory answers follow the per-indicator block shape.
+    #   exploratory answers follow the per-indicator block shape; and a
+    #   comparison of several indicators names its source in the rule for
+    #   its first sentence and in the worked example, as the headline rule
+    #   asks.
     flattened = " ".join(load_prompt_contract("synthesis").split())
     directives = " ".join(
         directive.synthesis
@@ -802,6 +1049,18 @@ def test_prompts_carry_no_conflicting_instructions() -> None:
     assert "each indicator's own lead-in line, short list, and chart" in (
         directives
     )
+    assert (
+        "The first sentence names the source and states the pattern"
+    ) in flattened
+    assert (
+        '"According to [source], median rent rises with median household '
+        'income across all four cities, led by Austin." Nothing more'
+    ) in flattened
+    assert (
+        "According to [source], median rent rises with median household "
+        "income across the four cities, led by [city A]."
+    ) in flattened
+    assert "Rents rise with household incomes" not in flattened
 
 
 # The spelled-out chart caps the contracts may state, and their ordinals.
