@@ -329,7 +329,10 @@ Otherwise, the request runs through the agent loop in five steps:
    first block. Only a Markdown heading (`#` to `######`) or a line starting
    with a `Title:` label counts as a title line. A turn without data gets the
    `synthesis_no_title` addendum and no title, even when the model writes
-   one. The signed `model_response` is the text blocks joined by blank lines,
+   one. The model does not write a closing line or link on such a turn. When
+   the search finished, the app shows its own link to the dataset intake form
+   under the answer (`SUGGEST_DATASET_URL` in `ui/src/config/copy_chat.ts`).
+   The signed `model_response` is the text blocks joined by blank lines,
    with the chart blocks and the title line stripped, matching the text
    blocks emitted in `content` frames. A stream that stalls for 60 seconds
    waiting for a chunk ends the turn with `synthesis_stream_error`.

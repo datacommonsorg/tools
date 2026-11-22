@@ -50,6 +50,7 @@ from narratives_agent.workflows.prompt_contracts import (
 from narratives_agent.workflows.specification import (
     _MAX_SPECIFICATION_STEPS,
     AnalysisSpecification,
+    UnavailableReport,
 )
 from narratives_agent.workflows.transcript import CURRENT_DATE_LABEL
 
@@ -1021,10 +1022,10 @@ def test_synthesis_contract_keeps_no_data_answers_free_of_headings() -> None:
     # Situation: The synthesis contract's section for a digest with no data.
     # Expectation: The section asks for the exact-match opening that ends
     #   with a period rather than a colon and never addresses the reader,
-    #   names search terms in plain words rather than identifiers, forbids a
-    #   label line above the related statistics and a Data gaps section, and
-    #   closes with the dataset intake form instead of the old data request
-    #   link.
+    #   names at most three search terms in plain words rather than
+    #   identifiers or sources, forbids a label line above the related
+    #   statistics, and forbids a closing line or link, which the app shows
+    #   itself. The contract holds no link for requesting or suggesting data.
     contract = load_prompt_contract("synthesis")
     start = contract.index("### When the digest holds no data")
     end = contract.index("### Example", start)
@@ -1035,20 +1036,61 @@ def test_synthesis_contract_keeps_no_data_answers_free_of_headings() -> None:
         "[term 2], and [term 3]) did not return an exact match in Data "
         'Commons. These related statistics are available instead."'
     ) in section
+    assert "at most three of the related terms searched" in section
     assert 'Never address the reader as "you" or "your".' in section
     assert "Never write an identifier, such as a variable DCID" in section
+    assert "Leave out the name of a source or an organization" in section
     assert "with a period, never a colon" in section
     assert "Never write a separate label line" in section
-    assert "Write no `**Data gaps**` section" in section
     assert (
-        "Know of a public dataset to add to the Data Commons Knowledge "
-        "Graph? [Suggest a dataset](https://docs.google.com/forms/d/e/"
-        "1FAIpQLScC8MMm1PXchOwBiVJv7gG08M3pEL21-4-xa6IELU0toh7iWQ/"
-        'viewform?usp=dialog)"'
+        "no closing line, no link, and no invitation to request or suggest data"
     ) in section
-    assert " we " not in section
+    assert re.search(r"\bwe\b", section, re.IGNORECASE) is None
     assert "submit a data request" not in contract
     assert "docs.datacommons.org/contributing" not in contract
+    assert "docs.google.com/forms" not in contract
+
+
+def test_synthesis_contract_keeps_data_gaps_out_of_no_data_answers() -> None:
+    # Test: The `**Data gaps**` list and the no-data answer.
+    # Situation: The synthesis contract's general rules that send missing
+    #   measures to a `**Data gaps**` list, and its rules for a digest with
+    #   no data, whose MISSING DATA notes are always present.
+    # Expectation: The no-data case and its section ask for no list, and
+    #   both general rules apply only to an answer that has data.
+    flattened = " ".join(load_prompt_contract("synthesis").split())
+
+    assert (
+        "which names what was searched in the opening and writes no "
+        "`**Data gaps**` list"
+    ) in flattened
+    assert "Write no `**Data gaps**` section" in flattened
+    assert (
+        "Except in a no-data answer, the full list of what is missing goes "
+        "once, at the end, under `**Data gaps**`"
+    ) in flattened
+    assert (
+        "When the digest holds data and the MISSING DATA notes name measures"
+    ) in flattened
+    assert "- When the MISSING DATA notes name measures" not in flattened
+
+
+def test_the_unavailable_report_is_asked_for_in_plain_words() -> None:
+    # Test: The instructions for the `report_unavailable` call, whose fields
+    #   the answer quotes to the reader.
+    # Situation: The discovery contract's fallback protocol and the field
+    #   descriptions the model receives with the function declaration.
+    # Expectation: The contract asks for plain words and never a DCID or
+    #   code, and every field description rules out a DCID.
+    flattened = " ".join(load_prompt_contract("discovery").split())
+
+    assert (
+        "naming what you searched and what related data does exist in plain "
+        "words, as a reader would say them, never by DCID or code"
+    ) in flattened
+    for name, field in UnavailableReport.model_fields.items():
+        assert field.description is not None, name
+        assert "no DCID" in field.description, name
 
 
 def test_prompts_carry_no_conflicting_instructions() -> None:

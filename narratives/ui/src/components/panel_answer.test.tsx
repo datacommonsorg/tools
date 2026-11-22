@@ -35,6 +35,11 @@ import {
 } from '@/src/components/panel_answer';
 import { DEBUG_PANEL_COPY } from '@/src/components/panel_debug/copy_debug';
 import { EXIT_MS, VISIBLE_MS } from '@/src/components/toast';
+import {
+  SUGGEST_DATASET_LINK_LABEL,
+  SUGGEST_DATASET_PROMPT,
+  SUGGEST_DATASET_URL,
+} from '@/src/config/copy_chat';
 import { resetDebugModeCacheForTests } from '@/src/hooks/use_debug_mode';
 import type { ChartItem, ChatTurn } from '@/src/hooks/use_sse_chat';
 import { parseServerDebugReport } from '@/src/types/debug_report';
@@ -686,6 +691,54 @@ describe('AnswerPanel', () => {
     const header = container.querySelector('.print-heading');
 
     expect(header?.textContent).toBe('Search ended before finding data');
+  });
+
+  it('closes an answer without data with the dataset suggestion', () => {
+    // Test: The closing the app adds to an answer whose search found no data.
+    // Situation: A finished answer whose turn has `hasData` false and whose
+    //   search was not cut short.
+    // Expectation: The question shows under the answer, and its link opens
+    //   the dataset intake form in a new tab.
+    render(
+      <AnswerPanel
+        turn={buildTurnWithBlocks(
+          [{ index: 0, type: 'text', markdown: 'No data was found.' }],
+          { hasData: false },
+        )}
+        isStreaming={false}
+      />,
+    );
+    const link = screen.getByRole('link', { name: SUGGEST_DATASET_LINK_LABEL });
+
+    expect(screen.getByText(SUGGEST_DATASET_PROMPT)).not.toBeNull();
+    expect(link.getAttribute('href')).toBe(SUGGEST_DATASET_URL);
+    expect(link.getAttribute('target')).toBe('_blank');
+  });
+
+  it.each<[string, Partial<ChatTurn>]>([
+    ['has data', { hasData: true }],
+    ['never reports data', {}],
+    ['ended its search early', { hasData: false, truncated: true }],
+    ['is still being written', { hasData: false, status: 'synthesis' }],
+  ])('shows no dataset suggestion when the answer %s', (_, overrides) => {
+    // Test: Answers that do not end with the dataset suggestion.
+    // Situation: An answer that has data, one that reports no data status,
+    //   one whose search ended early without data, and one without data
+    //   whose turn has not finished.
+    // Expectation: The link to the dataset intake form does not render.
+    render(
+      <AnswerPanel
+        turn={buildTurnWithBlocks(
+          [{ index: 0, type: 'text', markdown: 'An answer.' }],
+          overrides,
+        )}
+        isStreaming={false}
+      />,
+    );
+
+    expect(
+      screen.queryByRole('link', { name: SUGGEST_DATASET_LINK_LABEL }),
+    ).toBeNull();
   });
 
   it('leaves the header empty when the answer never reports data', () => {

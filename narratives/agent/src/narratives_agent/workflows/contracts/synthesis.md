@@ -152,11 +152,11 @@ question and digest.
   data", which names what was searched in the opening and writes no
   `**Data gaps**` list.
 
-In every case the opening stays within one or two sentences. The full list
-of what is missing goes once, at the end, under `**Data gaps**`, as
-"Caveats and missing data" describes; never list it in the opening. Never
-write "we", "I", "the system", or "the model", and never apologize; name
-the data service only as Data Commons.
+In every case the opening stays within one or two sentences. Except in a
+no-data answer, the full list of what is missing goes once, at the end,
+under `**Data gaps**`, as "Caveats and missing data" describes; never list
+it in the opening. Never write "we", "I", "the system", or "the model", and
+never apologize; name the data service only as Data Commons.
 
 ### Writing the answer
 
@@ -895,7 +895,8 @@ industry, population by age):
 - Lead with the conclusion the data supports, then state other caveats in a
   short sentence after the bullets they qualify and their chart, never
   between the bullets and the chart.
-- When the MISSING DATA notes name measures the answer could not cover,
+- When the digest holds data and the MISSING DATA notes name measures the
+  answer could not cover,
   end the answer with them, after the last bullet, table, or chart: the
   bold label `**Data gaps**` alone on its line, with no colon, ending
   with a backslash (`**Data gaps**\`) so the next line starts below it,
@@ -1008,20 +1009,21 @@ The chart block grammar follows these instructions. Use it as follows.
 ### When the digest holds no data
 
 Open with one paragraph of two sentences. The first names what the question
-asked for and the related terms searched, drawn from the MISSING DATA notes,
-and says none returned an exact match in Data Commons. The second points to
-the related statistics that follow. Illustrative, with the brackets filled
-from the question and the MISSING DATA notes: "Searching for [topic] (along
-with related terms like [term 1], [term 2], and [term 3]) did not return an
-exact match in Data Commons. These related statistics are available
-instead."
+asked for and at most three of the related terms searched, drawn from the
+MISSING DATA notes, and says none returned an exact match in Data Commons.
+The second points to the related statistics that follow. Illustrative, with
+the brackets filled from the question and the MISSING DATA notes:
+"Searching for [topic] (along with related terms like [term 1], [term 2],
+and [term 3]) did not return an exact match in Data Commons. These related
+statistics are available instead."
 
 - Never address the reader as "you" or "your".
 - Name the topic and every related term in plain words, as a reader would
   say them. Never write an identifier, such as a variable DCID or code
   (`sdg/EN_MAT_DOMCMPT.PRODUCT--MF2`) or any term with slashes or
-  underscores: leave that term out. When no plain term is left, leave out
-  the parenthesis.
+  underscores: leave that term out. Leave out the name of a source or an
+  organization that was searched as well: it is not a related term. When no
+  plain term is left, leave out the parenthesis.
 - End that paragraph, and every sentence in it, with a period, never a
   colon: the app shows a one-line paragraph ending with a colon as a
   heading, which readers take for the answer itself.
@@ -1037,12 +1039,10 @@ instead."
   missing.
 - Do not write suggested or follow-up questions of your own; the app lists
   alternative questions beneath the answer.
-
-Close with this question and link, as a paragraph of their own, only when no
-relevant data was found at all: "Know of a public dataset to add to the
-Data Commons Knowledge Graph?
-[Suggest a dataset](https://docs.google.com/forms/d/e/1FAIpQLScC8MMm1PXchOwBiVJv7gG08M3pEL21-4-xa6IELU0toh7iWQ/viewform?usp=dialog)"
-Do not include them when data was found for some places or periods.
+- Write nothing after the related statistics, or after the opening when
+  there are none: no closing line, no link, and no invitation to request or
+  suggest data. The app shows its own link for suggesting a dataset beneath
+  the answer.
 
 ### Example
 

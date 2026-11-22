@@ -35,6 +35,7 @@ import {
   SectionHeading,
 } from '@/src/components/heading_section';
 import { ExportIcon } from '@/src/components/icons';
+import { Link } from '@/src/components/link';
 import { CitationsList } from '@/src/components/list_citations';
 import { DisclaimerNote } from '@/src/components/note_disclaimer';
 import { DebugPanel } from '@/src/components/panel_debug/panel_debug';
@@ -44,7 +45,12 @@ import { AnswerSection } from '@/src/components/section_answer';
 import { ChartTile } from '@/src/components/tile_chart';
 import { Toast } from '@/src/components/toast';
 import { Tooltip } from '@/src/components/tooltip';
-import { formatAnswerHeader } from '@/src/config/copy_chat';
+import {
+  formatAnswerHeader,
+  SUGGEST_DATASET_LINK_LABEL,
+  SUGGEST_DATASET_PROMPT,
+  SUGGEST_DATASET_URL,
+} from '@/src/config/copy_chat';
 import { IS_PDF_EXPORT_ENABLED } from '@/src/config/features';
 import { REDUCED_MOTION_QUERY } from '@/src/config/motion';
 import { useDebugMode } from '@/src/hooks/use_debug_mode';
@@ -234,6 +240,11 @@ export function AnswerPanel({
     isTruncated: turn.truncated === true,
     citationCount: turn.provenance.length,
   });
+  // A search that finished without matching data ends with the link for
+  // proposing a dataset. A search that ended early does not, because the
+  // data may exist.
+  const shouldSuggestDataset =
+    turn.status === 'done' && turn.hasData === false && turn.truncated !== true;
   // One export state for the card: the toolbar pill and the in-content button
   // are the same action in two placements, so they share a busy flag and a
   // single confirmation rather than each raising their own.
@@ -330,7 +341,22 @@ export function AnswerPanel({
             onChartSettled={markChartSettled}
           />
 
-          {/* 2. Truncation notice: the agent ran out of research steps, so
+          {/* 2. Dataset suggestion: the app's own closing for an answer
+            without data, so its wording and link do not depend on the
+            model. */}
+          {shouldSuggestDataset && (
+            <p className="text-body-regular text-on-surface">
+              {SUGGEST_DATASET_PROMPT}{' '}
+              <Link
+                href={SUGGEST_DATASET_URL}
+                className="text-theme-primary hover:underline"
+              >
+                {SUGGEST_DATASET_LINK_LABEL}
+              </Link>
+            </p>
+          )}
+
+          {/* 3. Truncation notice: the agent ran out of research steps, so
             this answer rests on less data than it meant to gather. Not styled
             as an error: the answer is usable, just less complete. */}
           {turn.truncated && (
@@ -343,7 +369,7 @@ export function AnswerPanel({
             </p>
           )}
 
-          {/* 3. Citations: at the end of the document, above the disclaimer,
+          {/* 4. Citations: at the end of the document, above the disclaimer,
             where a reader who has finished the answer looks for them. */}
           {hasCitations && (
             <CitationsList
@@ -353,10 +379,10 @@ export function AnswerPanel({
             />
           )}
 
-          {/* 4. Disclaimer */}
+          {/* 5. Disclaimer */}
           {(hasCharts || hasCitations) && <DisclaimerNote />}
 
-          {/* 5. Export PDF (filled, in-content) */}
+          {/* 6. Export PDF (filled, in-content) */}
           {isExportVisible && (
             <ExportPdfButton onExport={onExport} busy={exporting} />
           )}
