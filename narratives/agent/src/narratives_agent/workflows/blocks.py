@@ -56,9 +56,12 @@ _FENCE_LINE = re.compile(
 # Matches a line that opens a list item or a table row.
 _STATS_LINE_START = re.compile(r"\s*(?:[-*+]\s|\d+[.)]\s|\|)")
 # Matches a lead-in line: one line, not a heading, quote, list item, or table
-# row, that ends with a colon, optionally inside bold or italics. The UI's
-# `LEAD_IN_LINE` in `heading_section.tsx` matches the same lines.
+# row, that ends with a colon, optionally inside bold or italics.
 _LEAD_IN_LINE = re.compile(r"(?![#>|]|[-*+]\s|\d+[.)]\s).*:[*_]*")
+# Matches a Markdown ATX heading line, which the synthesis contract uses for
+# a section heading (`## Population by sex`). The UI's `SECTION_HEADING_LINE`
+# in `heading_section.tsx` reads the same lines.
+_HEADING_LINE = re.compile(r" {0,3}#{1,6}[ \t]+\S.*")
 
 
 @dataclass(frozen=True)
@@ -135,11 +138,13 @@ class BlockSplitter:
     stream ends; a splitter reads one stream. Outside a fenced block, prose
     is split into paragraphs at blank lines, so a list or a table without
     internal blank lines stays in one block; inside a fenced block that is
-    not a chart, blank lines are kept. A paragraph that is one lead-in line
-    ending with a colon is also ended by a list item or table row on the
-    next line, so the lead-in and its list or table are separate blocks even
-    without the blank line the synthesis contract asks for between them; the
-    app pairs a list or table block with the chart after it. A chart block opens
+    not a chart, blank lines are kept. A Markdown heading line is a block of
+    its own, and a paragraph that is one lead-in line ending with a colon is
+    also ended by a list item or table row on the next line. A section
+    heading or a lead-in and the list or table under it are therefore
+    separate blocks even without a blank line between them; the app shows a
+    heading block as a section heading and pairs a list or table block with
+    the chart after it. A chart block opens
     on a line that is only a fence with the `chart` info string, which ends the
     paragraph before it, and closes on a line that is only a bare fence. A JSON
     string cannot span lines, so no line of a chart body is a bare fence. When
@@ -307,7 +312,9 @@ class BlockSplitter:
         """Adds a line that is not a fence to the open block or paragraph.
 
         Outside a fenced block, a blank line ends the paragraph, and so does a
-        list item or table row after a one-line lead-in paragraph.
+        list item or table row after a one-line lead-in paragraph. A Markdown
+        heading line ends the paragraph before it and is a paragraph of its
+        own.
         """
         match self._open:
             case _ChartFence() as chart:
@@ -316,6 +323,11 @@ class BlockSplitter:
                 self._paragraph.append(line)
             case None:
                 if not line.strip():
+                    self._flush_paragraph()
+                    return
+                if _HEADING_LINE.fullmatch(line) is not None:
+                    self._flush_paragraph()
+                    self._paragraph.append(line)
                     self._flush_paragraph()
                     return
                 if self._is_lead_in_before(line):

@@ -60,8 +60,8 @@ const ROW_TOP_SPACE_CLASS =
 const STATS_COLUMN_CLASS = 'flex flex-col gap-6 min-w-0';
 
 interface AnswerSectionProps {
-  /** The lead-in line that heads the section, as the model wrote it. */
-  leadIn?: string;
+  /** The heading line that heads the section, as the model wrote it. */
+  heading?: string;
   /** The stats block: a bullet list or a table. */
   stats: ReactNode;
   /** Whether the stats block is a table rather than a bullet list. */
@@ -72,7 +72,7 @@ interface AnswerSectionProps {
 
 /**
  * One section of an answer: the stats on the left and their chart on the
- * right, both from the top, under the heading when the model wrote a lead-in
+ * right, both from the top, under the heading when the model wrote a heading
  * line. A list's heading opens its stats column; a table's spans the full
  * width above the row, so the table's card stays level with the chart's. The
  * stats come first in the document too, so a narrow answer stacks them above
@@ -82,31 +82,31 @@ interface AnswerSectionProps {
  * nothing and the tile is gone, the stats take the full width.
  */
 export function AnswerSection({
-  leadIn,
+  heading,
   stats,
   isTable,
   chart,
 }: AnswerSectionProps) {
   const headingId = useId();
-  const heading =
-    leadIn === undefined ? null : (
-      <SectionHeading id={headingId} markdown={leadIn} />
+  const headingElement =
+    heading === undefined ? null : (
+      <SectionHeading id={headingId} markdown={heading} />
     );
-  const isHeadingInColumn = heading !== null && !isTable;
+  const isHeadingInColumn = headingElement !== null && !isTable;
   return (
     <section
       className={
         isTable ? SECTION_CLASS : `${SECTION_CLASS} ${LIST_SURFACE_CLASS}`
       }
-      aria-labelledby={heading === null ? undefined : headingId}
+      aria-labelledby={headingElement === null ? undefined : headingId}
     >
-      {!isHeadingInColumn && heading}
+      {!isHeadingInColumn && headingElement}
       <div
         className={isTable ? ROW_CLASS : `${ROW_CLASS} ${ROW_TOP_SPACE_CLASS}`}
       >
         {isHeadingInColumn ? (
           <div className={STATS_COLUMN_CLASS}>
-            {heading}
+            {headingElement}
             {stats}
           </div>
         ) : (

@@ -50,6 +50,7 @@ from narratives_agent.workflows.prompt_contracts import (
 from narratives_agent.workflows.specification import (
     _MAX_SPECIFICATION_STEPS,
     AnalysisSpecification,
+    UnavailableReport,
 )
 from narratives_agent.workflows.transcript import CURRENT_DATE_LABEL
 
@@ -718,7 +719,7 @@ def test_synthesis_contract_gives_related_measures_their_own_charts() -> None:
     # Test: Related measures follow the chart rule.
     # Situation: The synthesis contract the model receives.
     # Expectation: With three or more related measures, each indicator gets
-    #   its own lead-in line, short list, and chart rather than a bullet in
+    #   its own section heading, short list, and chart rather than a bullet in
     #   one shared list; the series rule defers to the chart rule; and the
     #   broad-question example shows a chart after each indicator's list.
     contract = load_prompt_contract("synthesis")
@@ -733,7 +734,7 @@ def test_synthesis_contract_gives_related_measures_their_own_charts() -> None:
         flattened
     )
     assert (
-        "get their own lead-in line, short list, and chart instead of a "
+        "get their own section heading, short list, and chart instead of a "
         "bullet in one shared list"
     ) in flattened
     example = contract[
@@ -742,62 +743,76 @@ def test_synthesis_contract_gives_related_measures_their_own_charts() -> None:
         )
     ]
     assert example.count("```chart") == 3
-    assert "Skilled birth attendance:\n\n- **Latest:**" in example
+    assert "## Skilled birth attendance\n\n- **Latest:**" in example
 
 
-def test_synthesis_contract_writes_lead_in_lines_as_labels() -> None:
-    # Test: Lead-in lines read as the headings the app shows them as.
-    # Situation: The synthesis contract the model receives.
-    # Expectation: The contract says the app shows a lead-in line as a
-    #   heading and asks for a short label rather than a sentence, leaving
-    #   the line under the Data gaps label as written; no rule
-    #   still asks for a lead-in sentence; and the groups that share one
-    #   chart are introduced by such a lead-in line rather than by a short
-    #   sentence.
+def test_synthesis_contract_writes_section_headings_as_labels() -> None:
+    # Test: Section headings are written as Markdown heading lines.
+    # Situation: The synthesis contract the model receives and its title
+    #   addendum.
+    # Expectation: The contract asks for a `## ` line holding a short label
+    #   rather than a sentence, with no colon, and keeps the Data gaps
+    #   label a bold label; no rule still asks for a lead-in line or a
+    #   lead-in sentence; the groups that share one chart are introduced
+    #   by a section heading; and the title addendum allows `## ` headings
+    #   below the title.
     flattened = " ".join(load_prompt_contract("synthesis").split())
+    title = " ".join(load_prompt_contract("synthesis_title").split())
 
     assert (
-        "The app shows a lead-in line, a paragraph of one line ending with a "
-        "colon, as the heading of the list or table and chart under it."
+        "The app shows a section heading above the list or table and chart "
+        "under it. Write it on a line of its own as `## ` followed by a "
+        "short label of a few words"
     ) in flattened
     assert (
-        "The line under `**Data gaps**` is part of that paragraph, not a "
-        "lead-in line, and keeps its wording."
+        "(`## Population by sex`, `## Skilled birth attendance`), never a "
+        "sentence (`## Population figures also break down by sex`), and "
+        "with no colon, no figure, no citation marker, and no bold."
     ) in flattened
-    assert '("Population by sex:", "Skilled birth attendance:")' in flattened
-    assert "lead-in sentence" not in flattened
-    assert "introduce them with a lead-in line that names the breakdown" in (
-        flattened
-    )
+    assert (
+        'Write the `**Data gaps**` label as "Caveats and missing data" '
+        "describes, never as a `## ` heading."
+    ) in flattened
+    assert "lead-in" not in flattened
+    assert (
+        "introduce them with a section heading that names the breakdown"
+    ) in flattened
     assert "introduce them in one short sentence" not in flattened
+    assert (
+        "Write no other `# ` heading: a section heading, where the answer "
+        "has one, starts with `## `."
+    ) in title
 
 
 def test_synthesis_contract_keeps_introducing_sentences_out_of_headings() -> (
     None
 ):
-    # Test: Only labels become section headings.
+    # Test: Only `## ` lines become section headings.
     # Situation: The synthesis contract the model receives.
-    # Expectation: A sentence that introduces a list or table ends with a
-    #   period, so the app never shows it as a heading; a table of all
-    #   places opens with a short label and names any places of another
-    #   type in a sentence; the ranking's note on such places is a sentence
-    #   with a period; the old sentence-with-colon example is gone; and the
-    #   worked example introduces its second list with a label, not with a
-    #   sentence ending in a colon.
+    # Expectation: A sentence that leads into a list or table ends with a
+    #   colon and stays text, and no rule asks for a period in its place;
+    #   a table of all places opens with a section heading and names any
+    #   places of another type in a sentence; the ranking's note on such
+    #   places is a sentence with a period; the old sentence-with-colon
+    #   example is gone; and the worked example introduces its second list
+    #   with a section heading, not with a sentence ending in a colon.
     contract = load_prompt_contract("synthesis")
     flattened = " ".join(contract.split())
 
     assert (
-        "Any other sentence that introduces a list or table ends with a "
-        "period, never a colon, so it stays text and never becomes a heading"
+        "Only a `## ` line is a heading. A sentence that ends with a colon "
+        "stays text, so a sentence that leads into a list or table ends "
+        'with a colon ("These related statistics are available instead:").'
     ) in flattened
-    assert '("Dengue cases by state:")' in flattened
+    assert "never a colon" not in flattened
+    assert "never becomes a heading" not in flattened
+    assert "(`## Dengue cases by state`)" in flattened
     assert "by dengue cases in [year]:" not in flattened
     assert (
         'in a sentence ending with a period: "The ten highest are Puerto '
         'Rico and nine states."'
     ) in flattened
-    assert "\n\nLabor force participation by sex:\n\n- **Women:**" in contract
+    assert "\n\n## Labor force participation by sex\n\n- **Women:**" in contract
     assert "differs by sex:" not in flattened
 
 
@@ -912,7 +927,7 @@ def test_synthesis_contract_lays_out_a_relationship_within_one_place() -> None:
         "side by side."
     ) in flattened
     assert (
-        "Then give each measure its own lead-in line, short list, and "
+        "Then give each measure its own section heading, short list, and "
         '`line` chart, as "Charts" describes, never one list for both. Do '
         "not draw a scatter."
     ) in flattened
@@ -973,10 +988,10 @@ def test_synthesis_contract_keeps_names_sources_and_headings_consistent() -> (
     # Situation: The synthesis contract the model receives.
     # Expectation: An indicator keeps one name throughout, and that name
     #   keeps the word for its statistic, such as "median"; a comparison's
-    #   figure-free opening still names the source; a lead-in label is a
-    #   few words long; and the worked examples give each indicator one
-    #   name in the prose, the lead-in line or column header, and the chart
-    #   title.
+    #   figure-free opening still names the source; a section heading's
+    #   label is a few words long; and the worked examples give each
+    #   indicator one name in the prose, the section heading or column
+    #   header, and the chart title.
     contract = load_prompt_contract("synthesis")
     flattened = " ".join(contract.split())
     examples = contract[
@@ -1003,7 +1018,7 @@ def test_synthesis_contract_keeps_names_sources_and_headings_consistent() -> (
         "Family planning coverage",
         "Maternal mortality",
     ):
-        assert f"\n\n{name}:\n\n- **Latest:** {name}" in examples
+        assert f"\n\n## {name}\n\n- **Latest:** {name}" in examples
         assert f'"title": "{name} worldwide"' in examples
     assert "Keep the official name for table headers and chart" not in (
         flattened
@@ -1013,7 +1028,94 @@ def test_synthesis_contract_keeps_names_sources_and_headings_consistent() -> (
         flattened
     )
     assert "though it still names the source" in flattened
-    assert "as a short label of a few words, in sentence case" in flattened
+    assert (
+        "followed by a short label of a few words, in sentence case"
+    ) in flattened
+
+
+def test_synthesis_contract_keeps_no_data_answers_free_of_headings() -> None:
+    # Test: The no-data answer introduces related statistics in its prose.
+    # Situation: The synthesis contract's section for a digest with no data.
+    # Expectation: The section asks for the exact-match opening, whose
+    #   second sentence ends with a colon when a list follows and with a
+    #   period when it names the statistics itself, never addresses the
+    #   reader,
+    #   names at most three search terms in plain words rather than
+    #   identifiers or sources, forbids a label line above the related
+    #   statistics, and forbids a closing line or link, which the app shows
+    #   itself. The contract holds no link for requesting or suggesting data.
+    contract = load_prompt_contract("synthesis")
+    start = contract.index("### When the digest holds no data")
+    end = contract.index("### Example", start)
+    section = " ".join(contract[start:end].split())
+
+    assert (
+        '"Searching for [topic] (along with related terms like [term 1], '
+        "[term 2], and [term 3]) did not return an exact match in Data "
+        'Commons. These related statistics are available instead:"'
+    ) in section
+    assert "at most three of the related terms searched" in section
+    assert 'Never address the reader as "you" or "your".' in section
+    assert "Never write an identifier, such as a variable DCID" in section
+    assert "Leave out the name of a source or an organization" in section
+    assert (
+        "Keep both sentences in one paragraph. End the second with a "
+        "colon, because it introduces the list under it."
+    ) in section
+    assert (
+        'and end it with a period ("[statistic 1] and [statistic 2] are '
+        'available instead.")'
+    ) in section
+    assert "Never write a separate label line" in section
+    assert (
+        "no closing line, no link, and no invitation to request or suggest data"
+    ) in section
+    assert re.search(r"\bwe\b", section, re.IGNORECASE) is None
+    assert "submit a data request" not in contract
+    assert "docs.datacommons.org/contributing" not in contract
+    assert "docs.google.com/forms" not in contract
+
+
+def test_synthesis_contract_keeps_data_gaps_out_of_no_data_answers() -> None:
+    # Test: The `**Data gaps**` list and the no-data answer.
+    # Situation: The synthesis contract's general rules that send missing
+    #   measures to a `**Data gaps**` list, and its rules for a digest with
+    #   no data, whose MISSING DATA notes are always present.
+    # Expectation: The no-data case and its section ask for no list, and
+    #   both general rules apply only to an answer that has data.
+    flattened = " ".join(load_prompt_contract("synthesis").split())
+
+    assert (
+        "which names what was searched in the opening and writes no "
+        "`**Data gaps**` list"
+    ) in flattened
+    assert "Write no `**Data gaps**` section" in flattened
+    assert (
+        "Except in a no-data answer, the full list of what is missing goes "
+        "once, at the end, under `**Data gaps**`"
+    ) in flattened
+    assert (
+        "When the digest holds data and the MISSING DATA notes name measures"
+    ) in flattened
+    assert "- When the MISSING DATA notes name measures" not in flattened
+
+
+def test_the_unavailable_report_is_asked_for_in_plain_words() -> None:
+    # Test: The instructions for the `report_unavailable` call, whose fields
+    #   the answer quotes to the reader.
+    # Situation: The discovery contract's fallback protocol and the field
+    #   descriptions the model receives with the function declaration.
+    # Expectation: The contract asks for plain words and never a DCID or
+    #   code, and every field description rules out a DCID.
+    flattened = " ".join(load_prompt_contract("discovery").split())
+
+    assert (
+        "naming what you searched and what related data does exist in plain "
+        "words, as a reader would say them, never by DCID or code"
+    ) in flattened
+    for name, field in UnavailableReport.model_fields.items():
+        assert field.description is not None, name
+        assert "no DCID" in field.description, name
 
 
 def test_prompts_carry_no_conflicting_instructions() -> None:
@@ -1046,7 +1148,7 @@ def test_prompts_carry_no_conflicting_instructions() -> None:
         flattened.count("A ranking of places on one indicator is charted") == 1
     )
     assert "after the bullets they qualify and their chart" in flattened
-    assert "each indicator's own lead-in line, short list, and chart" in (
+    assert "each indicator's own section heading, short list, and chart" in (
         directives
     )
     assert (
@@ -1124,8 +1226,8 @@ def test_discovery_fetches_the_indicators_an_answer_reports() -> None:
     assert "up to four, one table each" in exploratory
     assert (
         "When the digest gives more because the question itself names them, "
-        "give every named indicator its block, with a lead-in line and list "
-        "but no chart past the fourth"
+        "give every named indicator its block, with a section heading and "
+        "list but no chart past the fourth"
     ) in synthesis
     assert "Keep to four indicators" not in synthesis
 

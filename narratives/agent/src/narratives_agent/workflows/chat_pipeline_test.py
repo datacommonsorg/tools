@@ -2090,8 +2090,8 @@ async def test_the_classify_phase_opens_the_stream_and_guides_the_turn(
             RefusedReason.OFF_DOMAIN,
             'The topic "brand-specific coffee prices" falls outside the '
             "public statistics Data Commons is built to explore. Try asking "
-            "about a demographic, economic, health, climate, or social "
-            "measure for a country, state, or city.",
+            "about statistics on population, the economy, health, climate, "
+            "or society for any country, state, or city.",
         ),
     ],
 )

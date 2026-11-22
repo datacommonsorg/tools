@@ -797,7 +797,6 @@ def test_crlf_streams_parse_chart_fences_and_paragraphs() -> None:
         ),
         ("Japan leads.\n- **A:** 1", ["Japan leads.\n- **A:** 1"]),
         ("- **A:** 1:\n- **B:** 2", ["- **A:** 1:\n- **B:** 2"]),
-        ("## Rates:\n- **A:** 1", ["## Rates:\n- **A:** 1"]),
         ("Rates:\nNext line.", ["Rates:\nNext line."]),
     ],
     ids=[
@@ -807,7 +806,6 @@ def test_crlf_streams_parse_chart_fences_and_paragraphs() -> None:
         "two_line_paragraph",
         "sentence_without_colon",
         "list_item_ending_with_colon",
-        "heading",
         "lead_in_and_prose",
     ],
 )
@@ -819,10 +817,50 @@ def test_a_lead_in_line_is_split_from_the_list_under_it(
     # Situation: A one-line lead-in ending with a colon (plain or as a bold
     #   label) directly above bullets, a numbered list, or a table; and
     #   lookalikes: a two-line paragraph ending with a colon, a sentence
-    #   with no colon, a list item ending with a colon, a heading, and a
-    #   lead-in followed by prose.
+    #   with no colon, a list item ending with a colon, and a lead-in
+    #   followed by prose.
     # Expectation: Only a one-line lead-in directly above a list or table
     #   becomes its own block; every lookalike stays one block.
+    splitter, recorder = _split(text, chunk=3)
+
+    assert [
+        block.markdown
+        for block in recorder.blocks
+        if isinstance(block, TextBlock)
+    ] == expected
+    assert splitter.text == "\n\n".join(expected)
+
+
+@pytest.mark.parametrize(
+    ("text", "expected"),
+    [
+        ("## Rates\n- **A:** 1", ["## Rates", "- **A:** 1"]),
+        ("## Rates\n| A |\n| - |", ["## Rates", "| A |\n| - |"]),
+        ("Japan leads.\n## Rates\n\n- A", ["Japan leads.", "## Rates", "- A"]),
+        ("###### Rates\nProse.", ["###### Rates", "Prose."]),
+        ("#Rates\n- A", ["#Rates\n- A"]),
+        ("```text\n## Rates\n- A\n```", ["```text\n## Rates\n- A\n```"]),
+    ],
+    ids=[
+        "heading_and_bullets",
+        "heading_and_table",
+        "heading_after_prose",
+        "deepest_heading_and_prose",
+        "hash_without_space",
+        "heading_inside_code_fence",
+    ],
+)
+def test_a_heading_line_is_a_block_of_its_own(
+    text: str, expected: list[str]
+) -> None:
+    # Test: The split around a Markdown heading line, which the app shows
+    #   as a section heading.
+    # Situation: A heading line directly above bullets, a table, or prose,
+    #   and directly below prose, with no blank line between them; and
+    #   lookalikes: a line that starts with a hash and no space, and a
+    #   heading line inside a fenced code block.
+    # Expectation: A heading line is its own block whatever surrounds it;
+    #   every lookalike stays in the block it was written in.
     splitter, recorder = _split(text, chunk=3)
 
     assert [
