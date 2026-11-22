@@ -931,6 +931,15 @@ _GAPS = DataGaps(intro=_GAPS_INTRO, items=("Antenatal care", "Screening"))
             ],
             0,
         ),
+        (
+            f"Japan leads.\n## Data gaps\n{_GAPS_INTRO}\n"
+            "- Antenatal care\n- Screening",
+            [
+                "Japan leads.",
+                f"## Data gaps\n{_GAPS_INTRO}\n- Antenatal care\n- Screening",
+            ],
+            1,
+        ),
     ],
     ids=[
         "contract_form",
@@ -938,6 +947,7 @@ _GAPS = DataGaps(intro=_GAPS_INTRO, items=("Antenatal care", "Screening"))
         "ended_by_a_paragraph",
         "ended_by_a_heading",
         "ended_by_a_fence",
+        "label_written_as_a_heading",
     ],
 )
 def test_a_data_gaps_block_is_one_text_block_with_its_parsed_list(
@@ -946,8 +956,9 @@ def test_a_data_gaps_block_is_one_text_block_with_its_parsed_list(
     # Test: The Data gaps block, which the app shows as its own section.
     # Situation: The block in the contract's form after a paragraph; the
     #   block directly under a list, with a blank line after the label,
-    #   before the list, and between the items; and the block followed by
-    #   a paragraph, a heading line, and a code fence.
+    #   before the list, and between the items; the block followed by a
+    #   paragraph, a heading line, and a code fence; and the block with its
+    #   label written as a heading line.
     # Expectation: The block is one text block holding its Markdown as
     #   written and the parsed intro and items, whatever blank lines it
     #   holds; the text before and after it is split as usual; no other
@@ -992,19 +1003,26 @@ def test_a_chart_after_the_data_gaps_block_is_still_a_chart() -> None:
             ["Japan leads.", f"**Data gaps**\\\n{_GAPS_INTRO}", "No list."],
         ),
         ("**Data gaps**\\", ["**Data gaps**\\"]),
+        ("## Data gaps\nNo list.", ["## Data gaps", "No list."]),
         (
             "```text\n**Data gaps**\n- A\n```",
             ["```text\n**Data gaps**\n- A\n```"],
         ),
     ],
-    ids=["no_list", "label_only", "label_inside_code_fence"],
+    ids=[
+        "no_list",
+        "label_only",
+        "heading_label_without_a_list",
+        "label_inside_code_fence",
+    ],
 )
 def test_a_label_without_a_list_stays_ordinary_text(
     text: str, expected: list[str]
 ) -> None:
     # Test: A Data gaps label that opens no Data gaps block.
     # Situation: A label followed by prose and no list, a label that ends
-    #   the stream, and a label inside a fenced code block.
+    #   the stream, a label written as a heading line with no list, and a
+    #   label inside a fenced code block.
     # Expectation: The lines are split into paragraphs as any other text,
     #   and no block carries a parsed list.
     splitter, recorder = _split(text, chunk=3)

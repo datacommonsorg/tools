@@ -38,8 +38,12 @@ _ITEM_MARKER = re.compile(r"\s*(?:[-*+]|\d+[.)])\s+")
 # Citation markers such as `[1]` or `[1, 2]`.
 _CITATIONS = re.compile(r"\s*\[\d+(?:\s*,\s*\d+)*\]")
 # A backslash escape, whose character is captured, a backslash that ends a
-# line as a hard break, or an emphasis or code mark.
-_ESCAPE_OR_MARK = re.compile(r"\\([^\w\s])|\\(?=\s|$)|[*_`]")
+# line as a hard break, or an emphasis or code mark. An underscore is a mark
+# only at the edge of a word, so an identifier such as `Count_Person` keeps
+# its underscores.
+_ESCAPE_OR_MARK = re.compile(
+    r"\\([^\w\s]|_)|\\(?=\s|$)|[*`]|(?<!\w)_+|_+(?!\w)"
+)
 
 
 def is_data_gaps_label(line: str) -> bool:

@@ -46,14 +46,11 @@ export function DataGapsSection({ intro, items }: DataGapsSectionProps) {
         {DATA_GAPS_HEADING}
       </h2>
       {intro && (
-        <p className="m-0 mb-2 text-body-medium text-on-surface">{intro}</p>
+        <p className="mb-2 text-body-medium text-on-surface">{intro}</p>
       )}
       <ul className="list-disc ml-6 flex flex-col gap-1 text-body-medium text-on-surface">
         {items.map((item, index) => (
-          <li
-            key={`${item}-${index}`}
-            className="min-w-0 wrap-anywhere leading-5"
-          >
+          <li key={`${item}-${index}`} className="wrap-anywhere">
             {item}
           </li>
         ))}

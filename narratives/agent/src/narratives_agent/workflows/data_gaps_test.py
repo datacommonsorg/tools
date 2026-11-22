@@ -134,6 +134,37 @@ def test_items_and_intro_are_cleaned_to_plain_text() -> None:
     assert rest == []
 
 
+@pytest.mark.parametrize(
+    ("item", "expected"),
+    [
+        (r"Count\_Person", "Count_Person"),
+        ("`Count_Person`", "Count_Person"),
+        ("PM2_5 concentration", "PM2_5 concentration"),
+        ("_Screening_ coverage", "Screening coverage"),
+        ("__Antenatal__ care", "Antenatal care"),
+    ],
+    ids=[
+        "escaped_underscore",
+        "underscore_in_code",
+        "underscore_inside_a_word",
+        "underscore_italics",
+        "underscore_bold",
+    ],
+)
+def test_an_underscore_is_removed_only_as_an_emphasis_mark(
+    item: str, expected: str
+) -> None:
+    # Test: Underscores in an item.
+    # Situation: An escaped underscore, an identifier in a code span, an
+    #   underscore inside a word, and underscores used as italic and bold
+    #   marks.
+    # Expectation: An underscore inside a word stays, an escaped one loses
+    #   only its backslash, and the emphasis marks are removed.
+    gaps, _ = _collect(f"**Data gaps**\n- {item}")
+
+    assert gaps == DataGaps(intro="", items=(expected,))
+
+
 def test_a_paragraph_after_the_list_ends_the_block() -> None:
     # Test: Where the block ends.
     # Situation: A blank line and a sentence follow the list.

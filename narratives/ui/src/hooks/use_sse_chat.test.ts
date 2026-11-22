@@ -660,15 +660,22 @@ describe('applyEvent', () => {
   it('keeps the parsed list of a data gaps block', () => {
     // Test: Mapping of `data_gaps` on text blocks.
     // Situation: A turn receives a paragraph, a text block whose
-    //   `data_gaps` holds an intro and two items, and text blocks whose
-    //   `data_gaps` has no items, an empty item, or no intro.
-    // Expectation: Only the well-formed object is kept, as `dataGaps`; the
+    //   `data_gaps` holds an intro and two items, one whose intro is empty,
+    //   and text blocks whose `data_gaps` has no items, an empty item, or
+    //   no intro.
+    // Expectation: The two well-formed objects are kept, as `dataGaps`; the
     //   malformed ones leave ordinary text blocks; and `text` holds every
     //   block's markdown, so the signed answer is unchanged.
     const dataGaps = { intro: 'Not available:', items: ['A', 'B'] };
+    const dataGapsWithoutIntro = { intro: '', items: ['A'] };
     const turn = [
       { type: 'text', markdown: 'Analysis.' },
       { type: 'text', markdown: 'Gaps.', data_gaps: dataGaps },
+      {
+        type: 'text',
+        markdown: 'Empty intro.',
+        data_gaps: dataGapsWithoutIntro,
+      },
       {
         type: 'text',
         markdown: 'No items.',
@@ -692,12 +699,18 @@ describe('applyEvent', () => {
     expect(turn.blocks).toEqual([
       { index: 0, type: 'text', markdown: 'Analysis.' },
       { index: 1, type: 'text', markdown: 'Gaps.', dataGaps },
-      { index: 2, type: 'text', markdown: 'No items.' },
-      { index: 3, type: 'text', markdown: 'Empty item.' },
-      { index: 4, type: 'text', markdown: 'No intro.' },
+      {
+        index: 2,
+        type: 'text',
+        markdown: 'Empty intro.',
+        dataGaps: dataGapsWithoutIntro,
+      },
+      { index: 3, type: 'text', markdown: 'No items.' },
+      { index: 4, type: 'text', markdown: 'Empty item.' },
+      { index: 5, type: 'text', markdown: 'No intro.' },
     ]);
     expect(turn.text).toBe(
-      'Analysis.\n\nGaps.\n\nNo items.\n\nEmpty item.\n\nNo intro.',
+      'Analysis.\n\nGaps.\n\nEmpty intro.\n\nNo items.\n\nEmpty item.\n\nNo intro.',
     );
   });
 
