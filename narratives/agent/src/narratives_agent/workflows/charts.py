@@ -1488,6 +1488,45 @@ def _require_two_variables(
             )
 
 
+def _order_scatter_axes(
+    variables: tuple[str, str],
+    tables: Sequence[_ResolvedTable],
+    context: _ChartContext,
+) -> tuple[str, str]:
+    """Returns a scatter's two variables in axis order: vertical, horizontal.
+
+    The Data Commons scatter component plots its first variable on the
+    vertical axis and its second on the horizontal one. When the digest
+    relates the two variables, the variable the places were grouped by
+    (`by`) goes on the horizontal axis and the variable compared across
+    those groups (`target`) on the vertical one, as a reader expects,
+    whatever order the model listed the tables in. The order comes from the
+    analysis, not from the model, as the figures do. Without such a
+    relation, the model's order stands.
+
+    A relation names the variables of the tables it read, so a relation
+    over per-capita tables names their derived variables, while the chart
+    draws their fetched numerators. Each related variable is therefore
+    matched through the table it belongs to.
+    """
+    charted_variables = {
+        item.analysis_table.variable_dcid: item.chart_table.variable_dcid
+        for item in tables
+    }
+    for item in tables:
+        for result in _list_bound_results(
+            item.analysis_entry.table_id, context
+        ):
+            metrics = result.metrics
+            if not isinstance(metrics, RelationMetrics):
+                continue
+            target = charted_variables.get(metrics.target_variable_dcid)
+            by = charted_variables.get(metrics.by_variable_dcid)
+            if target is not None and by is not None and target != by:
+                return (target, by)
+    return variables
+
+
 def _require_variables(
     variable_dcids: Sequence[str],
 ) -> tuple[str, *tuple[str, ...]]:
@@ -1664,10 +1703,14 @@ def _resolve_date(
     so that no table is empty at the drawn date and no two precisions
     (`2023` and `2023-06`) are mixed at it. Without an explicit date, the
     chart defaults to the aligned reference date of the first result over
-    the primary table when every table has that date, and otherwise to None,
-    which the web components read as the latest date. A ranked bar slice
-    replaces this default with the date it was ranked at
-    (`_resolve_bar_slice`).
+    each charted table, when those tables agree on one date and every table
+    has it, and otherwise to None, which the web components read as the
+    latest date. A table that no result describes sets no date. The default
+    reads every table rather than the first, so it does not depend on the
+    order the tables are listed in: a relation aligns each of its tables on
+    its own date, and pinning one table's date would draw the other table
+    at a date the prose does not report. A ranked bar slice replaces this
+    default with the date it was ranked at (`_resolve_bar_slice`).
 
     Raises:
         _ChartRejectedError: If an explicit literal date is not in every
@@ -1679,7 +1722,15 @@ def _resolve_date(
         if spec.date not in shared_dates:
             raise _ChartRejectedError("the date is not in every table")
         return spec.date
-    reference = _find_reference_date(tables[0].analysis_entry, context)
+    references = {
+        reference
+        for item in tables
+        if (reference := _find_reference_date(item.analysis_entry, context))
+        is not None
+    }
+    if len(references) != 1:
+        return None
+    (reference,) = references
     return reference if reference in shared_dates else None
 
 
@@ -1827,7 +1878,9 @@ def _resolve(spec: ChartSpecification, context: _ChartContext) -> ResolvedChart:
             return ResolvedScatterChart(
                 **shared,
                 date=date,
-                variable_dcids=_require_two_variables(kind, variables),
+                variable_dcids=_order_scatter_axes(
+                    _require_two_variables(kind, variables), tables, context
+                ),
                 cohort=_resolve_cohort(kind, tables),
             )
         case HighlightChartSpecification():
