@@ -7,6 +7,7 @@ import react from '@vitejs/plugin-react';
 import { defineConfig, loadEnv, type Plugin } from 'vite';
 import {
   copyAgentRuntimeConfig,
+  type DevRecaptchaKeys,
   resolveAgentShellUrl,
 } from './src/config/runtime_config_dev';
 
@@ -14,16 +15,19 @@ import {
 const DEFAULT_AGENT_URL = 'http://localhost:5001';
 
 /**
- * Copies the agent's chat availability into `#runtime-config` each time the
- * Vite dev server serves index.html, reading the shell the agent at
- * `agentShellUrl` stamps, so the agent stays the only source of truth.
- * `apply: 'serve'` keeps it out of `vite build`, so the built index.html
- * keeps the empty slot for the agent to stamp.
+ * Copies the agent's `#runtime-config` (plus any fallback `RECAPTCHA_*` keys
+ * from `narratives/.env.local`) each time the Vite dev server serves
+ * `index.html`. `apply: 'serve'` keeps it out of `vite build`, so the built
+ * `index.html` keeps the empty slot for the agent to populate.
  */
-const createRuntimeConfigDevPlugin = (agentShellUrl: string): Plugin => ({
+const createRuntimeConfigDevPlugin = (
+  agentShellUrl: string,
+  fallbackRecaptchaKeys?: Readonly<DevRecaptchaKeys>,
+): Plugin => ({
   name: 'narratives-runtime-config',
   apply: 'serve',
-  transformIndexHtml: (html) => copyAgentRuntimeConfig(html, agentShellUrl),
+  transformIndexHtml: (html) =>
+    copyAgentRuntimeConfig(html, agentShellUrl, fallbackRecaptchaKeys),
 });
 
 export default defineConfig(({ command, mode }) => {
@@ -62,7 +66,10 @@ export default defineConfig(({ command, mode }) => {
     plugins: [
       react(),
       tailwindcss(),
-      createRuntimeConfigDevPlugin(agentShellUrl),
+      createRuntimeConfigDevPlugin(agentShellUrl, {
+        sessionSiteKey: env.RECAPTCHA_SESSION_SITE_KEY,
+        checkboxSiteKey: env.RECAPTCHA_CHECKBOX_SITE_KEY,
+      }),
     ],
     // No GEMINI_API_KEY (or any secret) is injected into the client bundle.
     // All LLM calls go through the server-side agent proxy (/agent/*); the key

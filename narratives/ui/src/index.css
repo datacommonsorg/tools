@@ -473,7 +473,7 @@ select:not(:disabled) {
   letter-spacing: 0;
 }
 
-/* The heading of an answer section, from the lead-in line that opens it. */
+/* The heading of an answer section, from the heading line that opens it. */
 .text-section-heading {
   font-family: var(--static-section-heading-font, 'Google Sans');
   font-size: var(--static-section-heading-size, 18px);
@@ -871,4 +871,11 @@ select:not(:disabled) {
 ::view-transition-old(root),
 ::view-transition-new(root) {
   animation-duration: 300ms;
+}
+
+/* Hide the floating reCAPTCHA badge in favor of inline disclaimer attribution.
+   `visibility: hidden` (never `display: none`) keeps Google's Session-Token
+   iframe active while preventing overlap with the sticky composer and mobile chips. */
+.grecaptcha-badge {
+  visibility: hidden;
 }

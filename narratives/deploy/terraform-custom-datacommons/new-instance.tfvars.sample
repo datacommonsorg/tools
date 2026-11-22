@@ -20,7 +20,7 @@ config_base_url = "https://storage.googleapis.com/REPLACE_CONFIG_BUCKET"
 # Flip to "prod" before sharing the URL with end users.
 agent_config_mode = "dev"
 
-# Local timezone — used to render {{CURRENT_DATETIME}} in prompts.
+# The local timezone sets the current date the agent sends to the model.
 # Common values: "Asia/Kolkata" (India), "America/Los_Angeles" (US), "UTC" (default).
 timezone = "UTC"
 

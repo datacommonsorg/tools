@@ -31,15 +31,12 @@ import { CardHeader } from '@/src/components/card_header';
 import { ResponseCard } from '@/src/components/card_response';
 import { CitationNumberingProvider } from '@/src/components/chip_citation';
 import {
-  isLeadInHeading,
+  isSectionHeading,
   SectionHeading,
 } from '@/src/components/heading_section';
 import { ExportIcon } from '@/src/components/icons';
+import { Link } from '@/src/components/link';
 import { CitationsList } from '@/src/components/list_citations';
-import {
-  DATA_GAPS_LABEL,
-  DataGapsSection,
-} from '@/src/components/list_data_gaps';
 import { DisclaimerNote } from '@/src/components/note_disclaimer';
 import { DebugPanel } from '@/src/components/panel_debug/panel_debug';
 import { isTurnSettled } from '@/src/components/panel_debug/report_debug';
@@ -48,7 +45,12 @@ import { AnswerSection } from '@/src/components/section_answer';
 import { ChartTile } from '@/src/components/tile_chart';
 import { Toast } from '@/src/components/toast';
 import { Tooltip } from '@/src/components/tooltip';
-import { formatAnswerHeader } from '@/src/config/copy_chat';
+import {
+  formatAnswerHeader,
+  SUGGEST_DATASET_LINK_LABEL,
+  SUGGEST_DATASET_PROMPT,
+  SUGGEST_DATASET_URL,
+} from '@/src/config/copy_chat';
 import { IS_PDF_EXPORT_ENABLED } from '@/src/config/features';
 import { REDUCED_MOTION_QUERY } from '@/src/config/motion';
 import { useDebugMode } from '@/src/hooks/use_debug_mode';
@@ -238,6 +240,11 @@ export function AnswerPanel({
     isTruncated: turn.truncated === true,
     citationCount: turn.provenance.length,
   });
+  // A search that finished without matching data ends with the link for
+  // proposing a dataset. A search that ended early does not, because the
+  // data may exist.
+  const shouldSuggestDataset =
+    turn.status === 'done' && turn.hasData === false && turn.truncated !== true;
   // One export state for the card: the toolbar pill and the in-content button
   // are the same action in two placements, so they share a busy flag and a
   // single confirmation rather than each raising their own.
@@ -334,7 +341,22 @@ export function AnswerPanel({
             onChartSettled={markChartSettled}
           />
 
-          {/* 2. Truncation notice: the agent ran out of research steps, so
+          {/* 2. Dataset suggestion: the app's own closing for an answer
+            without data, so its wording and link do not depend on the
+            model. */}
+          {shouldSuggestDataset && (
+            <p className="text-body-regular text-on-surface">
+              {SUGGEST_DATASET_PROMPT}{' '}
+              <Link
+                href={SUGGEST_DATASET_URL}
+                className="text-theme-primary hover:underline"
+              >
+                {SUGGEST_DATASET_LINK_LABEL}
+              </Link>
+            </p>
+          )}
+
+          {/* 3. Truncation notice: the agent ran out of research steps, so
             this answer rests on less data than it meant to gather. Not styled
             as an error: the answer is usable, just less complete. */}
           {turn.truncated && (
@@ -347,7 +369,7 @@ export function AnswerPanel({
             </p>
           )}
 
-          {/* 3. Citations: at the end of the document, above the disclaimer,
+          {/* 4. Citations: at the end of the document, above the disclaimer,
             where a reader who has finished the answer looks for them. */}
           {hasCitations && (
             <CitationsList
@@ -357,10 +379,10 @@ export function AnswerPanel({
             />
           )}
 
-          {/* 4. Disclaimer */}
+          {/* 5. Disclaimer */}
           {(hasCharts || hasCitations) && <DisclaimerNote />}
 
-          {/* 5. Export PDF (filled, in-content) */}
+          {/* 6. Export PDF (filled, in-content) */}
           {isExportVisible && (
             <ExportPdfButton onExport={onExport} busy={exporting} />
           )}
@@ -413,12 +435,12 @@ interface TextRevealWindow {
 
 /**
  * Renders a turn's blocks in emission order, as direct children of the
- * panel body: each text block through the Markdown renderer, a lead-in line
+ * panel body: each text block through the Markdown renderer, a heading line
  * as a section heading, and each run of consecutive chart blocks through one
  * chart tile, which sets two or three charts side by side when there is room
  * and gives each scatter chart a row of its own, except that a bullet list or
  * table directly followed by a chart renders beside it, stats first, in a
- * section headed by its lead-in line (see `groupAnswerBlocks`). A tile
+ * section headed by its heading line (see `groupAnswerBlocks`). A tile
  * reports every chart in its run as settled once all of them have. The text
  * blocks share one reveal in reading order, and the word animations start
  * only once `phase` is `revealing`.
@@ -463,30 +485,21 @@ function AnswerBlocks({
           );
         }
         const block = group.block;
-        if (group.type === 'text' && DATA_GAPS_LABEL.test(block.markdown)) {
-          return (
-            <DataGapsSection
-              key={block.index}
-              id={`data-gaps-${block.index}`}
-              markdown={block.markdown}
-            />
-          );
-        }
         if (group.type === 'text') {
-          // A lead-in line reads as a heading whether or not its section
+          // A heading line reads as a heading whether or not its section
           // has formed yet, so it does not change shape when its chart
           // arrives while the answer streams.
-          return isLeadInHeading(block.markdown) ? (
+          return isSectionHeading(block.markdown) ? (
             <SectionHeading key={block.index} markdown={block.markdown} />
           ) : (
             renderText(block)
           );
         }
-        const { chartIndex, leadIn } = group;
+        const { chartIndex, heading } = group;
         return (
           <AnswerSection
-            key={leadIn?.index ?? block.index}
-            leadIn={leadIn?.markdown}
+            key={heading?.index ?? block.index}
+            heading={heading?.markdown}
             stats={renderText(block)}
             isTable={TABLE_BLOCK_START.test(block.markdown)}
             chart={
@@ -518,8 +531,8 @@ type AnswerBlockGroup =
       block: TextAnswerBlock;
       chart: ChartItem;
       chartIndex: number;
-      /** The one-line lead-in above the stats, heading their section. */
-      leadIn?: TextAnswerBlock;
+      /** The heading line above the stats, heading their section. */
+      heading?: TextAnswerBlock;
     };
 
 /** Chart kinds that need the full width and are never paired with text. */
@@ -556,12 +569,12 @@ function isStatsChartPair(
 /**
  * Groups a turn's blocks in order. A bullet list or table directly followed
  * by a chart becomes a pair with that chart, rendered side by side in one
- * section, and a one-line lead-in ending with a colon directly above the
- * list or table joins the pair as its section's heading. Any other run of
+ * section, and a Markdown heading line directly above the list or table
+ * joins the pair as its section's heading. Any other run of
  * consecutive chart blocks, including the charts after a pair's chart,
  * becomes one group that renders in a single chart tile. As blocks stream
  * in, the last group may still grow, and a trailing stats block (with its
- * lead-in) becomes a pair when its chart arrives; a pair, once formed, is
+ * heading) becomes a pair when its chart arrives; a pair, once formed, is
  * never regrouped.
  */
 export function groupAnswerBlocks(blocks: AnswerBlock[]): AnswerBlockGroup[] {
@@ -574,17 +587,17 @@ export function groupAnswerBlocks(blocks: AnswerBlock[]): AnswerBlockGroup[] {
     const last = groups.at(-1);
     if (last?.type === 'text' && isStatsChartPair(last.block, block)) {
       const beforeStats = groups.at(-2);
-      const leadIn =
+      const heading =
         beforeStats?.type === 'text' &&
-        isLeadInHeading(beforeStats.block.markdown)
+        isSectionHeading(beforeStats.block.markdown)
           ? beforeStats.block
           : undefined;
-      groups.splice(leadIn ? -2 : -1, leadIn ? 2 : 1, {
+      groups.splice(heading ? -2 : -1, heading ? 2 : 1, {
         type: 'pair',
         block: last.block,
         chart: block.chart,
         chartIndex: block.index,
-        leadIn,
+        heading,
       });
       continue;
     }
@@ -605,7 +618,7 @@ export function groupAnswerBlocks(blocks: AnswerBlock[]): AnswerBlockGroup[] {
 /**
  * Splits one reveal of `totalMs` across the text blocks in reading order, in
  * proportion to their word counts, so each block starts where the previous
- * one ends. A lead-in line renders as a heading, which shows at once, so it
+ * one ends. A heading line renders as a heading, which shows at once, so it
  * takes no share. Returns each revealed text block's window keyed by its
  * block index.
  */
@@ -614,9 +627,7 @@ function scheduleTextReveal(
   totalMs: number,
 ): Map<number, TextRevealWindow> {
   const wordCounts = blocks.map((block) =>
-    block.type === 'text' &&
-    !isLeadInHeading(block.markdown) &&
-    !DATA_GAPS_LABEL.test(block.markdown)
+    block.type === 'text' && !isSectionHeading(block.markdown)
       ? countWords(block.markdown)
       : 0,
   );

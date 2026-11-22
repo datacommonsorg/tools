@@ -35,6 +35,11 @@ import {
 } from '@/src/components/panel_answer';
 import { DEBUG_PANEL_COPY } from '@/src/components/panel_debug/copy_debug';
 import { EXIT_MS, VISIBLE_MS } from '@/src/components/toast';
+import {
+  SUGGEST_DATASET_LINK_LABEL,
+  SUGGEST_DATASET_PROMPT,
+  SUGGEST_DATASET_URL,
+} from '@/src/config/copy_chat';
 import { resetDebugModeCacheForTests } from '@/src/hooks/use_debug_mode';
 import type { ChartItem, ChatTurn } from '@/src/hooks/use_sse_chat';
 import { parseServerDebugReport } from '@/src/types/debug_report';
@@ -347,18 +352,19 @@ describe('AnswerPanel', () => {
     expect(readDelays(second)[0]).toBe('60ms');
   });
 
-  it('gives a lead-in heading no share of the reveal', () => {
+  it('gives a section heading no share of the reveal', () => {
     // Test: Section headings show at once.
     // Situation: A text-only panel mounts mid-stream with a three-word
-    //   paragraph, a lead-in line, and a two-word list item; the stream
-    //   duration covers every word, the lead-in's included.
-    // Expectation: The lead-in renders as a heading with no word animation,
+    //   paragraph, a heading line, and a two-word list item; the stream
+    //   duration covers every word, the heading's included.
+    // Expectation: The heading line renders as a heading with no word
+    //   animation,
     //   and the list's first word starts right after the paragraph's last.
     const { container } = render(
       <AnswerPanel
         turn={buildTurnWithBlocks([
           { index: 0, type: 'text', markdown: 'one two three' },
-          { index: 1, type: 'text', markdown: 'Population by sex:' },
+          { index: 1, type: 'text', markdown: '## Population by sex' },
           { index: 2, type: 'text', markdown: '- four five' },
         ])}
         isStreaming
@@ -651,7 +657,7 @@ describe('AnswerPanel', () => {
   it('labels the header when the answer found no matching data', () => {
     // Test: Card header of an answer without data.
     // Situation: A finished answer whose turn has `hasData` false.
-    // Expectation: The header reads "No matching data found" with no ghost
+    // Expectation: The header reads "No exact data match found" with no ghost
     //   line, and the question is not repeated under the user's bubble.
     const { container } = render(
       <AnswerPanel
@@ -664,7 +670,7 @@ describe('AnswerPanel', () => {
     );
     const header = container.querySelector('.print-heading');
 
-    expect(header?.textContent).toBe('No matching data found');
+    expect(header?.textContent).toBe('No exact data match found');
     expect(header?.querySelector('[aria-hidden="true"]')).toBeNull();
   });
 
@@ -673,7 +679,7 @@ describe('AnswerPanel', () => {
     // Situation: A finished answer whose turn has `hasData` false and
     //   `truncated` true.
     // Expectation: The header reads "Search ended before finding data", not
-    //   "No matching data found".
+    //   "No exact data match found".
     const { container } = render(
       <AnswerPanel
         turn={buildTurnWithBlocks(
@@ -686,6 +692,54 @@ describe('AnswerPanel', () => {
     const header = container.querySelector('.print-heading');
 
     expect(header?.textContent).toBe('Search ended before finding data');
+  });
+
+  it('closes an answer without data with the dataset suggestion', () => {
+    // Test: The closing the app adds to an answer whose search found no data.
+    // Situation: A finished answer whose turn has `hasData` false and whose
+    //   search was not cut short.
+    // Expectation: The question shows under the answer, and its link opens
+    //   the dataset intake form in a new tab.
+    render(
+      <AnswerPanel
+        turn={buildTurnWithBlocks(
+          [{ index: 0, type: 'text', markdown: 'No data was found.' }],
+          { hasData: false },
+        )}
+        isStreaming={false}
+      />,
+    );
+    const link = screen.getByRole('link', { name: SUGGEST_DATASET_LINK_LABEL });
+
+    expect(screen.getByText(SUGGEST_DATASET_PROMPT)).not.toBeNull();
+    expect(link.getAttribute('href')).toBe(SUGGEST_DATASET_URL);
+    expect(link.getAttribute('target')).toBe('_blank');
+  });
+
+  it.each<[string, Partial<ChatTurn>]>([
+    ['has data', { hasData: true }],
+    ['never reports data', {}],
+    ['ended its search early', { hasData: false, truncated: true }],
+    ['is still being written', { hasData: false, status: 'synthesis' }],
+  ])('shows no dataset suggestion when the answer %s', (_, overrides) => {
+    // Test: Answers that do not end with the dataset suggestion.
+    // Situation: An answer that has data, one that reports no data status,
+    //   one whose search ended early without data, and one without data
+    //   whose turn has not finished.
+    // Expectation: The link to the dataset intake form does not render.
+    render(
+      <AnswerPanel
+        turn={buildTurnWithBlocks(
+          [{ index: 0, type: 'text', markdown: 'An answer.' }],
+          overrides,
+        )}
+        isStreaming={false}
+      />,
+    );
+
+    expect(
+      screen.queryByRole('link', { name: SUGGEST_DATASET_LINK_LABEL }),
+    ).toBeNull();
   });
 
   it('leaves the header empty when the answer never reports data', () => {
@@ -821,7 +875,7 @@ describe('AnswerPanel', () => {
         ),
       ).toEqual(['text', 'chart']);
       expect(pairs[0].textContent).not.toContain('Life expectancy reached 84.');
-      // With no lead-in line, the section has no heading.
+      // With no heading line, the section has no heading.
       expect(container.querySelector('.answer-heading')).toBeNull();
       // Only bullet stats, not a table, sit lower than the chart's top edge.
       expect(pairs[0].className.includes('[&>:first-child]:pt-1')).toBe(
@@ -832,19 +886,18 @@ describe('AnswerPanel', () => {
     it.each([
       ['a bullet list', BULLETS],
       ['a table', TABLE],
-    ])('heads the section of %s with its lead-in line', (_, markdown) => {
-      // Test: A lead-in line becomes the heading of its section.
-      // Situation: A headline paragraph, a one-line lead-in ending with a
-      //   colon, then a bullet list or a table directly followed by its
-      //   chart.
+    ])('heads the section of %s with its heading line', (_, markdown) => {
+      // Test: A heading line becomes the heading of its section.
+      // Situation: A headline paragraph, a Markdown heading line, then a
+      //   bullet list or a table directly followed by its chart.
       // Expectation: One section renders, on the section surface for a
       //   bullet list and with no surface for a table, labeled by an h2
-      //   that holds the lead-in without its colon: at the top of a list's
+      //   that holds the heading's label: at the top of a list's
       //   stats column, or above a table's row. The row's children are the
       //   stats and the chart; the headline stays outside the section.
       const container = renderBlocks([
         { index: 0, type: 'text', markdown: 'Life expectancy reached 84.' },
-        { index: 1, type: 'text', markdown: '**Population by sex:**' },
+        { index: 1, type: 'text', markdown: '## Population by sex' },
         { index: 2, type: 'text', markdown },
         { index: 3, type: 'chart', chart: LINE_CHART },
       ]);
@@ -879,90 +932,17 @@ describe('AnswerPanel', () => {
       );
     });
 
-    it('renders the data gaps block as a titled section', () => {
-      // Test: The closing `**Data gaps**` block renders as its own section.
-      // Situation: An answer ends with the Data gaps label, its intro line,
-      //   and a bulleted list of missing measures.
-      // Expectation: A section labeled by an h2 "Data gaps" holds the
-      //   intro and one list item per measure, and the bold label does not
-      //   render as text.
-      const container = renderBlocks([
-        { index: 0, type: 'text', markdown: 'Life expectancy reached 84.' },
-        {
-          index: 1,
-          type: 'text',
-          markdown:
-            '**Data gaps**\\\nThese measures are not available in Data Commons:\n- Antenatal care coverage',
-        },
-      ]);
-
-      const section = container.querySelector(
-        'section[aria-labelledby^="data-gaps-"]',
-      );
-      const heading = section?.querySelector('h2');
-      expect(heading?.textContent).toBe('Data gaps');
-      expect(section?.getAttribute('aria-labelledby')).toBe(heading?.id);
-      expect(section?.querySelector('p')?.textContent).toBe(
-        'These measures are not available in Data Commons:',
-      );
-      expect(section?.querySelector('li')?.textContent).toBe(
-        'Antenatal care coverage',
-      );
-      expect(section?.querySelector('strong')).toBeNull();
-    });
-
-    it('renders no list for a data gaps label without bullets', () => {
-      // Test: A data gaps block with no bullets yet.
-      // Situation: The block holds only the label, as while it streams or
-      //   when the model puts a blank line between the label and its list.
-      // Expectation: The section shows its heading and no empty list.
-      const container = renderBlocks([
-        { index: 0, type: 'text', markdown: '**Data gaps**' },
-      ]);
-
-      const section = container.querySelector(
-        'section[aria-labelledby^="data-gaps-"]',
-      );
-      expect(section?.querySelector('h2')?.textContent).toBe('Data gaps');
-      expect(section?.querySelector('ul')).toBeNull();
-    });
-
-    it.each([
-      ['a space before the backslash', '**Data gaps** \\\n'],
-      ['a space after the backslash', '**Data gaps**\\ \n'],
-      ['a two-space hard break', '**Data gaps**  \n'],
-    ])('reads a data gaps label with %s', (_, label) => {
-      // Test: Whitespace on the label line.
-      // Situation: The model writes the label with spaces around the
-      //   backslash, or ends it with a Markdown hard break instead.
-      // Expectation: The block still renders as the data gaps section.
-      const container = renderBlocks([
-        {
-          index: 0,
-          type: 'text',
-          markdown: `${label}These measures are not available:\n- Antenatal care coverage`,
-        },
-      ]);
-
-      const section = container.querySelector(
-        'section[aria-labelledby^="data-gaps-"]',
-      );
-      expect(section?.querySelector('li')?.textContent).toBe(
-        'Antenatal care coverage',
-      );
-    });
-
-    it('shows a lead-in line as a heading before its section forms', () => {
-      // Test: A lead-in line keeps its shape while the answer streams.
-      // Situation: A streaming turn holds a lead-in line and the bullet list
+    it('shows a heading line as a heading before its section forms', () => {
+      // Test: A heading line keeps its shape while the answer streams.
+      // Situation: A streaming turn holds a heading line and the bullet list
       //   under it, and its chart has not arrived.
-      // Expectation: The lead-in renders as an h2 heading outside any
+      // Expectation: The heading line renders as an h2 heading outside any
       //   section, and the bullets render as plain text.
       const { container } = render(
         <AnswerPanel
           turn={buildTurnWithBlocks(
             [
-              { index: 0, type: 'text', markdown: 'Population by sex:' },
+              { index: 0, type: 'text', markdown: '## Population by sex' },
               { index: 1, type: 'text', markdown: BULLETS },
             ],
             { status: 'synthesis' },
@@ -978,14 +958,14 @@ describe('AnswerPanel', () => {
     });
 
     it('heads a list without a chart outside any section', () => {
-      // Test: A lead-in whose list has no chart in a finished answer.
-      // Situation: A finished turn holds a lead-in line and its bullets with
+      // Test: A heading whose list has no chart in a finished answer.
+      // Situation: A finished turn holds a heading line and its bullets with
       //   no chart after them, as the contract allows past the chart limit.
-      // Expectation: The lead-in renders as an h2 heading on the narrative
+      // Expectation: The heading line renders as an h2 heading on the narrative
       //   surface, the bullets render as text below it, and no section
       //   renders.
       const container = renderBlocks([
-        { index: 0, type: 'text', markdown: 'Adolescent births:' },
+        { index: 0, type: 'text', markdown: '## Adolescent births' },
         { index: 1, type: 'text', markdown: BULLETS },
       ]);
 
@@ -997,40 +977,45 @@ describe('AnswerPanel', () => {
       expect(container.querySelector('.answer-section')).toBeNull();
     });
 
-    it('keeps a lead-in with inline Markdown as text', () => {
-      // Test: Only a plain label renders as a heading.
-      // Situation: A lead-in whose label holds a citation marker sits above
-      //   a bullet list and its chart.
-      // Expectation: No heading renders; the lead-in renders as text, with
-      //   its marker, outside the section, which has no accessible name.
+    it('renders a heading with inline Markdown through the Markdown renderer', () => {
+      // Test: Only a plain label renders as a section heading.
+      // Situation: A heading line whose label holds a citation marker sits
+      //   above a bullet list and its chart.
+      // Expectation: No section heading renders. The line renders through
+      //   the Markdown renderer, with its marker, outside the section, which
+      //   has no accessible name.
       const container = renderBlocks([
-        { index: 0, type: 'text', markdown: 'Population by sex [1]:' },
+        { index: 0, type: 'text', markdown: '## Population by sex [1]' },
         { index: 1, type: 'text', markdown: BULLETS },
         { index: 2, type: 'chart', chart: LINE_CHART },
       ]);
 
       expect(container.querySelector('h2.answer-heading')).toBeNull();
-      expect(readAnswerParts(container)[0]).toBe('text:Population by sex [1]:');
+      expect(readAnswerParts(container)[0]).toBe('text:Population by sex [1]');
       const section = container.querySelector('.answer-section');
       expect(section?.textContent).not.toContain('Population by sex');
       expect(section?.hasAttribute('aria-labelledby')).toBe(false);
     });
 
-    it('leaves a paragraph that is not a lead-in line outside the row', () => {
-      // Test: Only a one-line lead-in ending with a colon joins the row.
-      // Situation: A sentence that ends with a full stop sits directly above
-      //   a bullet list and its chart.
-      // Expectation: The sentence renders full width, outside the paired row.
+    it.each([
+      ['a period', 'Japan leads on both measures.'],
+      ['a colon', 'Japan leads on both measures:'],
+    ])('leaves a sentence ending with %s outside the row, as text', (_, sentence) => {
+      // Test: Only a Markdown heading line heads a section.
+      // Situation: A sentence that ends with a period or with a colon sits
+      //   directly above a bullet list and its chart.
+      // Expectation: The sentence renders as text, with its punctuation,
+      //   full width and outside the paired row. No section heading renders.
       const container = renderBlocks([
-        { index: 0, type: 'text', markdown: 'Japan leads on both measures.' },
+        { index: 0, type: 'text', markdown: sentence },
         { index: 1, type: 'text', markdown: BULLETS },
         { index: 2, type: 'chart', chart: LINE_CHART },
       ]);
 
+      expect(container.querySelector('.answer-heading')).toBeNull();
+      expect(readAnswerParts(container)[0]).toBe(`text:${sentence}`);
       const section = container.querySelector('.answer-section');
-      expect(section?.textContent).not.toContain(
-        'Japan leads on both measures.',
-      );
+      expect(section?.textContent).not.toContain(sentence);
       expect(section?.querySelector('h2')).toBeNull();
       expect(section?.hasAttribute('aria-labelledby')).toBe(false);
     });

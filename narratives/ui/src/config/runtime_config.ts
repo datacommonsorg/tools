@@ -15,11 +15,12 @@
  */
 
 /**
- * @fileoverview Runtime settings: the chat availability and the hosts of the
- * Data Commons chart web components. {@link getRuntimeConfig} reads the JSON
- * that the agent server stamps into `<script id="runtime-config">`.
- * `runtime_config_dev.ts` imports this module, and `vite.config.ts` loads that
- * module in Node before the `@/` alias exists, so this module has no imports.
+ * @fileoverview Runtime settings: chat availability, Data Commons chart web
+ * component hosts, and optional reCAPTCHA Enterprise site keys.
+ * {@link getRuntimeConfig} reads the JSON that the agent server stamps into
+ * `<script id="runtime-config">`. `runtime_config_dev.ts` imports this module,
+ * and `vite.config.ts` loads that module in Node before the `@/` alias exists,
+ * so this module has no imports.
  */
 
 /**
@@ -45,23 +46,29 @@ export interface RuntimeConfig {
    * invalid.
    */
   webComponentApiRoot: string;
+  /** Optional reCAPTCHA Enterprise session-token site key (`waf=session`). */
+  recaptchaSessionSiteKey: string;
+  /** Optional reCAPTCHA Enterprise checkbox challenge site key. */
+  recaptchaCheckboxSiteKey: string;
 }
 
 /**
  * Settings used when the page carries no runtime configuration. Chart hosts
- * remain empty until stamped by the agent so no script or chart data loads
- * from an unconfigured origin.
+ * and reCAPTCHA site keys remain empty until injected by the agent so no
+ * script or chart data loads from an unconfigured origin.
  */
 export const DEFAULT_RUNTIME_CONFIG: Readonly<RuntimeConfig> = Object.freeze({
   isChatEnabled: true,
   unavailableMessage: DEFAULT_UNAVAILABLE_MESSAGE,
   webComponentUrl: '',
   webComponentApiRoot: '',
+  recaptchaSessionSiteKey: '',
+  recaptchaCheckboxSiteKey: '',
 });
 
 /**
  * Settings used when a runtime configuration is present but malformed. Chat
- * is disabled and chart hosts remain empty.
+ * is disabled and chart hosts and reCAPTCHA keys remain empty.
  */
 const DISABLED_RUNTIME_CONFIG: Readonly<RuntimeConfig> = Object.freeze({
   ...DEFAULT_RUNTIME_CONFIG,
@@ -197,10 +204,28 @@ const readWebComponentApiRoot = (value: unknown): string => {
 };
 
 /**
+ * Returns the trimmed optional reCAPTCHA site key, or `""` when absent,
+ * `null`, or non-string (logging a warning on non-string values without
+ * disabling chat).
+ */
+const readOptionalSiteKey = (key: string, value: unknown): string => {
+  if (value === undefined || value === null) {
+    return '';
+  }
+  if (typeof value === 'string') {
+    return value.trim();
+  }
+  console.warn(
+    `${RUNTIME_CONFIG_LOG_PREFIX} "${key}" is not a string; ignoring.`,
+  );
+  return '';
+};
+
+/**
  * Parses the text of `#runtime-config`. Empty or absent text gives
  * {@link DEFAULT_RUNTIME_CONFIG}; text that is not a JSON object, or an
  * `enable_chat` that is not a boolean, disables chat. Missing or invalid
- * chart hosts resolve to `""` without affecting chat.
+ * chart hosts and reCAPTCHA site keys resolve to `""` without affecting chat.
  */
 export const parseRuntimeConfigText = (
   text: string | undefined,
@@ -229,6 +254,14 @@ export const parseRuntimeConfigText = (
     unavailableMessage: readUnavailableMessage(parsed.unavailable_message),
     webComponentUrl: readWebComponentUrl(parsed.web_component_url),
     webComponentApiRoot: readWebComponentApiRoot(parsed.web_component_api_root),
+    recaptchaSessionSiteKey: readOptionalSiteKey(
+      'recaptcha_session_site_key',
+      parsed.recaptcha_session_site_key,
+    ),
+    recaptchaCheckboxSiteKey: readOptionalSiteKey(
+      'recaptcha_checkbox_site_key',
+      parsed.recaptcha_checkbox_site_key,
+    ),
   });
 };
 

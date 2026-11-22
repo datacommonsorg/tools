@@ -42,7 +42,7 @@ variable "agent_config_mode" {
 }
 
 variable "timezone" {
-  description = "IANA timezone the agent uses when rendering {{CURRENT_DATETIME}}. Override per-instance (e.g. \"Asia/Kolkata\" for India)."
+  description = "IANA timezone of the current date the agent sends to the model. Override per-instance (e.g. \"Asia/Kolkata\" for India)."
   type        = string
   default     = "UTC"
 }

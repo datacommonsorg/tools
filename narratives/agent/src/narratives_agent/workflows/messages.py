@@ -43,8 +43,8 @@ SAFETY_REFUSED_MESSAGE = (
 # `OFF_DOMAIN_UNNAMED_SUBJECT` when no premise is available.
 OFF_DOMAIN_TEMPLATE = (
     "{subject} falls outside the public statistics Data Commons is built to "
-    "explore. Try asking about a demographic, economic, health, climate, or "
-    "social measure for a country, state, or city."
+    "explore. Try asking about statistics on population, the economy, "
+    "health, climate, or society for any country, state, or city."
 )
 OFF_DOMAIN_NAMED_SUBJECT = 'The topic "{premise}"'
 OFF_DOMAIN_UNNAMED_SUBJECT = "This topic"

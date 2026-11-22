@@ -58,6 +58,10 @@ UNAVAILABLE_MESSAGE_ENV = "UNAVAILABLE_MESSAGE"
 # Environment variable name of the debug report mode override.
 DEBUG_REPORT_ENV = "DEBUG_REPORT"
 
+# Environment variable names of the optional reCAPTCHA Enterprise site keys.
+RECAPTCHA_SESSION_SITE_KEY_ENV = "RECAPTCHA_SESSION_SITE_KEY"
+RECAPTCHA_CHECKBOX_SITE_KEY_ENV = "RECAPTCHA_CHECKBOX_SITE_KEY"
+
 # Environment variable names of the browser-side chart hosts.
 DC_WEB_COMPONENT_URL_ENV = "DC_WEB_COMPONENT_URL"
 DC_WEB_COMPONENT_API_ROOT_ENV = "DC_WEB_COMPONENT_API_ROOT"
@@ -354,8 +358,8 @@ class Settings(BaseSettings):
     # GCS URL and caches the merged configuration in memory.
     config_url: str = ""
 
-    # Prompts render the current date and time in this IANA zone. An unknown
-    # zone falls back to UTC.
+    # The current date sent to the model is the date in this IANA zone. An
+    # unknown zone falls back to UTC.
     timezone: str = "UTC"
 
     # Short secret names in `gemini_api_key_secret`, `dc_api_key_secret`, and
@@ -398,6 +402,14 @@ class Settings(BaseSettings):
 
     # Optional commit or build SHA surfaced in turn debug reports.
     build_sha: str | None = None
+
+    # Optional reCAPTCHA Enterprise session-token site key (`waf=session`)
+    # injected into `#runtime-config` when serving `index.html`.
+    recaptcha_session_site_key: str = ""
+
+    # Optional reCAPTCHA Enterprise checkbox challenge site key injected into
+    # `#runtime-config` when serving `index.html`.
+    recaptcha_checkbox_site_key: str = ""
 
     # The browser loads the Data Commons chart web components
     # (`datacommons.js`) from this absolute http(s) URL, and the page's

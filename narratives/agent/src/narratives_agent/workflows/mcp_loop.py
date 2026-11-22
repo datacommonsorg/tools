@@ -31,6 +31,7 @@ from google.genai import types
 from pydantic import ValidationError
 
 from narratives_agent.analytics.digest import AnalysisDigest
+from narratives_agent.config import get_current_date
 from narratives_agent.config_model import AgentConfig, GeminiRole, RoleConfig
 from narratives_agent.gemini.client import (
     GeminiBlockedError,
@@ -369,8 +370,8 @@ def _format_count(count: int, singular: str, plural: str | None = None) -> str:
     return f"{count} {noun}"
 
 
-def _collect_candidate_names(result_text: str) -> list[str]:
-    """Returns the variable names a search result offered.
+def _read_candidate_names(result_text: str) -> dict[str, str]:
+    """Returns the variables a search result offered, by DCID.
 
     A 1.3.x search result maps every DCID it mentions to a display name in
     `dcidNameMappings` and lists the place DCIDs among them in
@@ -381,24 +382,25 @@ def _collect_candidate_names(result_text: str) -> list[str]:
         result_text: The raw JSON text returned by a search tool call.
 
     Returns:
-        The non-place display names offered in `dcidNameMappings`.
+        The display name of each non-place DCID in `dcidNameMappings`, keyed
+        by that DCID.
     """
     try:
         parsed = json.loads(result_text)
     except ValueError:
-        return []
+        return {}
     if not isinstance(parsed, dict):
-        return []
+        return {}
     names = parsed.get("dcidNameMappings")
     places = parsed.get("dcidPlaceTypeMappings")
     if not isinstance(names, dict):
-        return []
+        return {}
     place_dcids = set(places) if isinstance(places, dict) else set()
-    return [
-        name
+    return {
+        dcid: name
         for dcid, name in names.items()
         if dcid not in place_dcids and isinstance(name, str) and name
-    ]
+    }
 
 
 def _build_server_report(
@@ -411,7 +413,9 @@ def _build_server_report(
     queries and places tried, the variables the searches offered that were
     never confirmed to have data, and the variables that were fetched and
     came back empty, so that the answer can say what was looked for rather
-    than only that nothing was found.
+    than only that nothing was found. The answer quotes the report to the
+    reader, so the report names each variable by the display name a search
+    gave it and only counts a variable that no search named.
 
     Args:
         records: The completed tool-call records from the discovery loop.
@@ -422,7 +426,7 @@ def _build_server_report(
     """
     queries: list[str] = []
     places: list[str] = []
-    candidates: list[str] = []
+    names: dict[str, str] = {}
     empty: list[str] = []
     for record in records:
         raw_args = record.get("arguments")
@@ -441,24 +445,28 @@ def _build_server_report(
             parent = arguments.get("parent_place")
             if isinstance(parent, str) and parent:
                 places.append(parent)
-            candidates.extend(
-                _collect_candidate_names(str(record.get("result", "")))
-            )
+            for dcid, candidate in _read_candidate_names(
+                str(record.get("result", ""))
+            ).items():
+                names.setdefault(dcid, candidate)
         elif name in FETCH_FUNCTION_NAMES and record.get("status") == "success":
             variable = arguments.get("variable_dcid")
             if isinstance(variable, str) and variable:
                 empty.append(variable)
     if empty:
         unique_empty = list(dict.fromkeys(empty))
-        fetched = unique_empty[:_REPORT_LIST_CAP]
-        listed = ", ".join(fetched)
-        if len(unique_empty) > len(fetched):
-            extra = len(unique_empty) - len(fetched)
-            listed += f", and {_format_count(extra, 'other variable')}"
         tested = (
             f"the {_format_count(len(unique_empty), 'variable')} fetched had "
-            f"no rows for the requested entities ({listed})"
+            "no rows for the requested entities"
         )
+        named = [names[dcid] for dcid in unique_empty if dcid in names]
+        named = named[:_REPORT_LIST_CAP]
+        if named:
+            listed = ", ".join(named)
+            extra = len(unique_empty) - len(named)
+            if extra:
+                listed += f", and {_format_count(extra, 'other variable')}"
+            tested += f" ({listed})"
     else:
         tested = "no candidate variable was fetched to confirm it has data"
     return UnavailableReport(
@@ -467,7 +475,9 @@ def _build_server_report(
         reason=(
             f"No data was found in {rounds} rounds of discovery: {tested}."
         ),
-        related_available=_select_unique(candidates, _REPORT_LIST_CAP),
+        related_available=_select_unique(
+            list(names.values()), _REPORT_LIST_CAP
+        ),
     )
 
 
@@ -1147,6 +1157,7 @@ async def _iterate(
         transcript_contents(
             transcript,
             transcript.current_query,
+            current_date=get_current_date(),
             max_response_chars=MCP_HISTORY_RESPONSE_CHARS,
         )
     )

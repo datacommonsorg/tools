@@ -332,7 +332,9 @@ grounding guidance rather than restating the citation or chart-block grammar.
 
 `classify.md` governs the admission phase that runs at the start of every turn
 to decide whether a question is served, refused, or answered with a
-clarification question, and which analytical pattern it follows. Each LLM stage
+clarification question, and which analytical pattern it follows. A short
+code-owned contract (`workflows/contracts/classify.md`) is appended after it on
+every request and tells the model which current date to use. Each LLM stage
 reads its own model key under `gemini` in `agent-config.json`:
 `gemini.classify_model` (default `gemini-3.5-flash-lite`), and
 `gemini.discovery_model`, `gemini.synthesis_model`, `gemini.follow_up_model`,
@@ -342,7 +344,6 @@ Prompts support runtime template placeholders:
 
 | Placeholder | Substitution |
 | :--- | :--- |
-| `{{CURRENT_DATETIME}}` | Current date and time in the `TIMEZONE` environment variable's zone |
 | `{{instance.<key>}}` | Matching key from `template_vars` in `agent-config.json` (keys starting with `_` are ignored) |
 
 For example, given `config/agent-config.json`:
@@ -551,6 +552,42 @@ screening before the `classify` Gemini call:
 
 When `MODEL_ARMOR_TEMPLATE` is unset, Model Armor screening is skipped. When
 set, it works with both `GEMINI_API_KEY` and Vertex AI deployments.
+
+### Protecting traffic with reCAPTCHA Enterprise (optional)
+
+Public deployments behind Cloud Armor or an external Application Load Balancer
+can configure Google Cloud reCAPTCHA Enterprise public site keys through
+optional container environment variables:
+
+- `RECAPTCHA_SESSION_SITE_KEY`: Public WAF session-token site key injected as
+  `recaptcha_session_site_key` in `#runtime-config`. When set and chat is
+  enabled, the UI loads Google's `enterprise.js?render=<key>&waf=session`
+  script on the Data Agent view so browsers silently mint and refresh the
+  `recaptcha-ca-t` session cookie.
+- `RECAPTCHA_CHECKBOX_SITE_KEY`: Public WAF checkbox site key injected as
+  `recaptcha_checkbox_site_key` in `#runtime-config`. When set and a chat
+  `POST /agent/chat/stream` returns HTTP `403`, the UI pauses the pending turn,
+  opens an in-app checkbox verification dialog (`RecaptchaModal`), caches the
+  solved token in memory for 25 minutes, and retries the same request once with
+  the `X-Recaptcha-Token` header. Subsequent turns within that 25-minute window
+  attach the cached `X-Recaptcha-Token` automatically; any HTTP `403` clears
+  the cached token.
+
+When serving `index.html`, the backend includes any non-empty
+`RECAPTCHA_SESSION_SITE_KEY` and `RECAPTCHA_CHECKBOX_SITE_KEY` values inside
+`<script id="runtime-config" type="application/json">` alongside `enable_chat`,
+`unavailable_message`, and the chart hosts, recomputing the response `ETag`.
+When both variables are unset or blank, those keys are omitted from
+`#runtime-config`.
+
+When either reCAPTCHA site key is configured at startup, `spa.py` automatically
+adds Google's reCAPTCHA endpoints to the HTML shell's `Content-Security-Policy`
+(`script-src`, `frame-src`, and `connect-src`) — and omits them when neither
+key is set:
+
+- `https://www.google.com/recaptcha/`
+- `https://www.gstatic.com/recaptcha/`
+- `https://recaptcha.google.com/recaptcha/`
 
 ### Turn debug reports (`DEBUG_REPORT` and `BUILD_SHA`)
 

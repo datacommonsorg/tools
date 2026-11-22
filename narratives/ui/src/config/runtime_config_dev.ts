@@ -16,8 +16,9 @@
 
 /**
  * @fileoverview Vite dev-server helpers that copy the agent's runtime
- * settings (chat availability and chart hosts) into the page the dev server
- * serves. Only `vite.config.ts` and this module's tests import it.
+ * settings (chat availability, chart hosts, and reCAPTCHA site keys) into the
+ * page the dev server serves. Only `vite.config.ts` and this module's tests
+ * import it.
  * `vite.config.ts` loads it in Node before the `@/` alias exists, so its
  * imports are relative (`biome.json` exempts this file from the
  * relative-import rule), and the modules it imports, `runtime_config.ts` and
@@ -26,6 +27,7 @@
 
 import { trimTrailingSlashes } from './base_url';
 import {
+  DEFAULT_RUNTIME_CONFIG,
   parseRuntimeConfigText,
   RUNTIME_CONFIG_ELEMENT_ID,
   RUNTIME_CONFIG_LOG_PREFIX,
@@ -39,6 +41,12 @@ const AGENT_SHELL_TIMEOUT_MS = 5_000;
 const RUNTIME_CONFIG_OPEN_TAG = `<script id="${RUNTIME_CONFIG_ELEMENT_ID}" type="application/json">`;
 const SCRIPT_CLOSE_TAG = '</script>';
 const RUNTIME_CONFIG_SLOT = `${RUNTIME_CONFIG_OPEN_TAG}${SCRIPT_CLOSE_TAG}`;
+
+/** Optional reCAPTCHA Enterprise public site keys read from `.env.local` in dev. */
+export interface DevRecaptchaKeys {
+  sessionSiteKey?: string;
+  checkboxSiteKey?: string;
+}
 
 /**
  * Escapes for JSON embedded in a `<script>` element, matching
@@ -99,10 +107,10 @@ export const extractRuntimeConfigText = (html: string): string | undefined => {
 };
 
 /**
- * Serializes `config` to the wire JSON that the agent stamps, with
- * `enable_chat`, `unavailable_message`, and any non-empty `web_component_url`
- * and `web_component_api_root` in the agent's order, escaped for a `<script>`
- * element.
+ * Serializes `config` to the wire JSON that the agent injects into
+ * `#runtime-config` (`enable_chat`, `unavailable_message`, and any non-empty
+ * chart hosts and reCAPTCHA site keys in the agent's order), escaped for a
+ * `<script>` element.
  */
 const serializeRuntimeConfig = (config: Readonly<RuntimeConfig>): string => {
   const payload: Record<string, boolean | string> = {
@@ -114,6 +122,12 @@ const serializeRuntimeConfig = (config: Readonly<RuntimeConfig>): string => {
   }
   if (config.webComponentApiRoot !== '') {
     payload.web_component_api_root = config.webComponentApiRoot;
+  }
+  if (config.recaptchaSessionSiteKey !== '') {
+    payload.recaptcha_session_site_key = config.recaptchaSessionSiteKey;
+  }
+  if (config.recaptchaCheckboxSiteKey !== '') {
+    payload.recaptcha_checkbox_site_key = config.recaptchaCheckboxSiteKey;
   }
   return JSON.stringify(payload).replace(
     HTML_JSON_ESCAPE_PATTERN,
@@ -202,26 +216,76 @@ const fetchAgentRuntimeConfigText = async (
 };
 
 /**
+ * Fills in any blank reCAPTCHA site keys on `base` using values read by Vite
+ * from `narratives/.env.local` (`fallback`). Keys injected by the Python agent
+ * take precedence; `.env.local` only fills in missing keys (for example, when
+ * running `pnpm dev:ui` standalone or against an agent without reCAPTCHA keys).
+ */
+const withFallbackRecaptchaKeys = (
+  base: Readonly<RuntimeConfig>,
+  fallback?: Readonly<DevRecaptchaKeys>,
+): Readonly<RuntimeConfig> =>
+  Object.freeze({
+    ...base,
+    recaptchaSessionSiteKey:
+      base.recaptchaSessionSiteKey || fallback?.sessionSiteKey?.trim() || '',
+    recaptchaCheckboxSiteKey:
+      base.recaptchaCheckboxSiteKey || fallback?.checkboxSiteKey?.trim() || '',
+  });
+
+const hasRecaptchaKeys = (config: Readonly<RuntimeConfig>): boolean =>
+  config.recaptchaSessionSiteKey !== '' ||
+  config.recaptchaCheckboxSiteKey !== '';
+
+/**
+ * Warns that the agent shell could not be read and stamps local `.env.local`
+ * reCAPTCHA keys into `html` when present, or leaves `#runtime-config` empty.
+ */
+const applyOfflineFallback = (
+  html: string,
+  shellUrl: string,
+  failure: ShellReadFailure,
+  fallbackRecaptchaKeys?: Readonly<DevRecaptchaKeys>,
+): string => {
+  const fallbackConfig = withFallbackRecaptchaKeys(
+    DEFAULT_RUNTIME_CONFIG,
+    fallbackRecaptchaKeys,
+  );
+  const hasLocalKeys = hasRecaptchaKeys(fallbackConfig);
+  const action = hasLocalKeys
+    ? `Stamping default settings with local reCAPTCHA keys into #${RUNTIME_CONFIG_ELEMENT_ID}.`
+    : `Leaving #${RUNTIME_CONFIG_ELEMENT_ID} empty.`;
+  console.warn(
+    `${RUNTIME_CONFIG_LOG_PREFIX} cannot read the runtime settings from ` +
+      `${shellUrl}: ${failure.reason}. ${failure.hint} ${action}`,
+  );
+  return hasLocalKeys ? stampRuntimeConfigHtml(html, fallbackConfig) : html;
+};
+
+/**
  * Returns `html` with the runtime settings of the agent whose HTML shell is
- * at `shellUrl` stamped into its empty `#runtime-config`, so the Vite dev
- * server shows the same chat availability and chart hosts as the agent. The
- * copied text is parsed with {@link parseRuntimeConfigText} and
- * re-serialized, so a malformed payload disables chat and escaping is always
- * applied here. When the shell cannot be read, `html` is returned unchanged
- * with one warning.
+ * at `shellUrl` injected into its empty `#runtime-config`, filling in any
+ * local `fallbackRecaptchaKeys` from `.env.local` when the agent omits them or
+ * cannot be reached. The copied text is parsed with
+ * {@link parseRuntimeConfigText} and re-serialized, so a malformed payload
+ * disables chat and escaping is always applied here. When the shell cannot be
+ * read and no local keys are set, `html` is returned unchanged with one
+ * warning.
  */
 export const copyAgentRuntimeConfig = async (
   html: string,
   shellUrl: string,
+  fallbackRecaptchaKeys?: Readonly<DevRecaptchaKeys>,
 ): Promise<string> => {
   const result = await fetchAgentRuntimeConfigText(shellUrl);
   if (typeof result !== 'string') {
-    console.warn(
-      `${RUNTIME_CONFIG_LOG_PREFIX} cannot read the runtime settings from ` +
-        `${shellUrl}: ${result.reason}. ${result.hint} ` +
-        `Leaving #${RUNTIME_CONFIG_ELEMENT_ID} empty.`,
-    );
-    return html;
+    return applyOfflineFallback(html, shellUrl, result, fallbackRecaptchaKeys);
   }
-  return stampRuntimeConfigHtml(html, parseRuntimeConfigText(result));
+  const parsed = parseRuntimeConfigText(result);
+  return stampRuntimeConfigHtml(
+    html,
+    parsed.isChatEnabled
+      ? withFallbackRecaptchaKeys(parsed, fallbackRecaptchaKeys)
+      : parsed,
+  );
 };

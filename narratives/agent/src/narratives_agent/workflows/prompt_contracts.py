@@ -37,7 +37,7 @@ __all__ = [
 ]
 
 # The packaged phase contracts under `narratives_agent.workflows.contracts`.
-type ContractName = Literal["discovery", "synthesis"]
+type ContractName = Literal["classify", "discovery", "synthesis"]
 # The packaged addenda appended after a phase contract when they apply to the
 # turn: the synthesis title line, chosen by whether the turn has data.
 type ContractAddendumName = Literal["synthesis_title", "synthesis_no_title"]
@@ -100,7 +100,9 @@ def compose_system_instruction(
     Returns:
         The composed system instruction with `guidance` first, the packaged
         contract and its addendum second, and the pattern directive last
-        when `classification` is present.
+        when `classification` is present. The `classify` contract gets no
+        pattern directive, because the classify phase produces the
+        classification.
 
     Raises:
         RuntimeError: If the packaged file for `contract` or `addendum` is
@@ -110,6 +112,8 @@ def compose_system_instruction(
     if addendum is not None:
         contract_text = f"{contract_text}\n\n{load_prompt_contract(addendum)}"
     composed = f"{guidance}\n\n{contract_text}" if guidance else contract_text
+    if contract == "classify":
+        return composed
     return append_pattern_guidance(
         composed, classification, contract, has_cohort_table=has_cohort_table
     )

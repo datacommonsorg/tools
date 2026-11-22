@@ -47,6 +47,12 @@ export const REASONING_PHASE_LABELS: Partial<Record<TurnStatus, string>> = {
 /** Reasoning header label while streaming in a status with no phase label. */
 export const REASONING_DEFAULT_PHASE_LABEL = 'Thinking';
 
+/** Reasoning header label while paused awaiting reCAPTCHA verification. */
+export const REASONING_VERIFYING_LABEL = 'Verifying…';
+
+/** Reasoning body shown while paused awaiting reCAPTCHA verification. */
+export const REASONING_PLACEHOLDER_VERIFYING = 'Waiting for security check…';
+
 /** Reasoning body shown during classification, before any thought arrives. */
 export const REASONING_PLACEHOLDER_CLASSIFY = 'Reviewing your question…';
 
@@ -88,10 +94,72 @@ export const DEFAULT_TURN_ERROR =
   'Data Commons ran into an unexpected problem.';
 
 /**
+ * Error message shown when the user dismisses the reCAPTCHA verification modal
+ * before completing the security check for a pending chat turn.
+ */
+export const VERIFICATION_CANCELED_ERROR =
+  'Verification was canceled before Data Commons could send your question.';
+
+/**
+ * Error message shown when a chat submission is still rejected with HTTP 403
+ * after completing the reCAPTCHA checkbox check.
+ */
+export const VERIFICATION_FAILED_ERROR =
+  'Security verification could not be completed.';
+
+/** Heading of the fallback reCAPTCHA checkbox verification dialog. */
+export const RECAPTCHA_MODAL_TITLE = 'Quick security check';
+
+/** Supporting copy explaining why the reCAPTCHA verification dialog opened. */
+export const RECAPTCHA_MODAL_DESCRIPTION =
+  'Complete the check below to continue sending your question.';
+
+/** Accessible label for the button that dismisses the verification dialog. */
+export const RECAPTCHA_MODAL_CLOSE_LABEL = 'Cancel verification';
+
+/** Status label announced while the reCAPTCHA checkbox widget is loading. */
+export const RECAPTCHA_MODAL_LOADING_LABEL = 'Loading security check…';
+
+/**
+ * Error message shown inside the verification dialog when `enterprise.js`
+ * fails to load (for example, blocked by a content blocker or offline network).
+ */
+export const RECAPTCHA_MODAL_LOAD_ERROR =
+  'Unable to load the security check. Disable any content blocker for this site or check your connection, then try again.';
+
+/**
+ * Error message shown inside the verification dialog if the reCAPTCHA widget
+ * reports a transient error before producing a token.
+ */
+export const RECAPTCHA_MODAL_WIDGET_ERROR =
+  'The security check ran into an error. Please try again.';
+
+/**
+ * Inline status note shown inside the verification dialog when a solved token
+ * expires before submission and the user needs to check the box again.
+ */
+export const RECAPTCHA_MODAL_EXPIRED_NOTE =
+  'Verification expired. Please complete the check again.';
+
+/**
  * Label in the answer card's header when the agent's search finished and
  * found no matching data.
  */
-export const NO_MATCHING_DATA_HEADER = 'No matching data found';
+export const NO_MATCHING_DATA_HEADER = 'No exact data match found';
+
+/**
+ * Question shown under an answer whose search finished and found no matching
+ * data. The {@link SUGGEST_DATASET_LINK_LABEL} link follows it.
+ */
+export const SUGGEST_DATASET_PROMPT =
+  'Know of a public dataset to add to the Data Commons Knowledge Graph?';
+
+/** Label of the link to the dataset intake form. */
+export const SUGGEST_DATASET_LINK_LABEL = 'Suggest a dataset';
+
+/** Address of the form for proposing a dataset to Data Commons. */
+export const SUGGEST_DATASET_URL =
+  'https://docs.google.com/forms/d/e/1FAIpQLScC8MMm1PXchOwBiVJv7gG08M3pEL21-4-xa6IELU0toh7iWQ/viewform';
 
 /**
  * Label in the answer card's header when the agent's search ended early, at

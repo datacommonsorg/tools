@@ -22,6 +22,7 @@ import { act, renderHook } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { INTERRUPTED_TURN_ERROR } from '@/src/config/copy_chat';
+import { resetRuntimeConfigForTests } from '@/src/config/runtime_config';
 import {
   ChatSessionProvider,
   useChatSession,
@@ -148,6 +149,8 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.unstubAllGlobals();
+  document.getElementById('runtime-config')?.remove();
+  resetRuntimeConfigForTests();
 });
 
 describe('ChatSessionProvider', () => {
@@ -266,5 +269,73 @@ describe('ChatSessionProvider', () => {
     ]);
     expect(result.current.isStreaming).toBe(false);
     expect(result.current.error).toBeNull();
+  });
+
+  it('closes an open verification modal and clears turns on New chat', async () => {
+    // Test: Starting a new chat while waiting on the reCAPTCHA modal.
+    // Situation: A chat POST receives HTTP 403 with a checkbox site key
+    //   configured, opening `verificationModal`, and the user clicks New chat.
+    // Expectation: `verificationModal` closes cleanly, turns and error clear,
+    //   `isStreaming` resets to false, and a subsequent question streams normally.
+    const slot = document.createElement('script');
+    slot.id = 'runtime-config';
+    slot.type = 'application/json';
+    slot.textContent = JSON.stringify({
+      enable_chat: true,
+      recaptcha_checkbox_site_key: '6Lc_new_chat',
+    });
+    document.head.appendChild(slot);
+    resetRuntimeConfigForTests();
+
+    const next = openStream();
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce({
+        ok: false,
+        status: 403,
+        statusText: 'Forbidden',
+        body: null,
+      })
+      .mockImplementationOnce(async (_url: string, init: RequestInit) => {
+        init.signal?.addEventListener('abort', next.abort);
+        return { ok: true, status: 200, statusText: 'OK', body: next.body };
+      });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const { result } = renderHook(() => useChatSession(), { wrapper });
+    let pendingSend!: Promise<void>;
+    await act(async () => {
+      pendingSend = result.current.send('What is the population of France?');
+    });
+    expect(result.current.verificationModal).toEqual({
+      status: 'open',
+      checkboxSiteKey: '6Lc_new_chat',
+    });
+
+    await act(async () => {
+      result.current.newChat();
+      await pendingSend;
+    });
+    expect(result.current.verificationModal).toEqual({ status: 'closed' });
+    expect(result.current.turns).toEqual([]);
+    expect(result.current.isStreaming).toBe(false);
+    expect(result.current.error).toBeNull();
+
+    await act(async () => {
+      const answered = result.current.send('What is the population of Spain?');
+      next.push('content', {
+        block: { index: 0, type: 'text', markdown: 'About 48 million.' },
+      });
+      next.push('terminal', { state: 'complete', idempotency_key: 'key-2' });
+      next.end();
+      await answered;
+    });
+    expect(result.current.turns).toMatchObject([
+      {
+        userMessage: 'What is the population of Spain?',
+        status: 'done',
+        text: 'About 48 million.',
+      },
+    ]);
   });
 });
