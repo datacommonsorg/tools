@@ -255,9 +255,10 @@ Otherwise, the request runs through the agent loop in five steps:
    bounds that clamp the drawn series.
    The server splits the stream at paragraph boundaries and at the closing fence
    of each chart block, and emits one `content {block}` frame per completed
-   paragraph and per chart that resolves. A one-line lead-in ending with a
-   colon directly above a list item or table row is a paragraph of its own,
-   even without a blank line between them. Resolution is set membership against
+   paragraph and per chart that resolves. A Markdown heading line is a
+   paragraph of its own, and so is a one-line lead-in ending with a colon
+   directly above a list item or table row, even without a blank line
+   between them. Resolution is set membership against
    the turn cache: an unknown table, a place or date the table does not hold, a
    unit mismatch across the tables on one axis, a `line` whose date bounds
    leave a charted table without a place holding two dates, or a kind the
@@ -289,12 +290,14 @@ Otherwise, the request runs through the agent loop in five steps:
    are not chartable. At most four charts are accepted per answer. The model
    writes each chart directly after the bullet list or table holding its
    figures, and the app shows that list or table beside the chart in one
-   section, headed by its one-line lead-in when it has one. A list's section
+   section, headed by its section heading when it has one. A list's section
    sits on its own surface (`--color-surface-section`, white by default),
    with the heading at the top of the list's column; a table's section has
    no surface, since the table carries its own card, and its heading spans
-   the full width above the table and chart. The app renders a lead-in line
-   whose label is plain text as an h2 section heading, without its colon.
+   the full width above the table and chart. The model writes a section
+   heading as a Markdown heading line (`## Population by sex`), and the app
+   renders one whose label is plain text as an h2 section heading. A line
+   that only ends with a colon is text, never a heading.
    Maps, scatter charts, and a chart after prose render full width. When the
    digest has data and no chart is
    emitted, the default chart floor appends at most one chart projected directly
