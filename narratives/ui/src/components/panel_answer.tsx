@@ -42,6 +42,7 @@ import { DebugPanel } from '@/src/components/panel_debug/panel_debug';
 import { isTurnSettled } from '@/src/components/panel_debug/report_debug';
 import { FollowUpQuestions } from '@/src/components/questions_follow_up';
 import { AnswerSection } from '@/src/components/section_answer';
+import { DataGapsSection } from '@/src/components/section_data_gaps';
 import { ChartTile } from '@/src/components/tile_chart';
 import { Toast } from '@/src/components/toast';
 import { Tooltip } from '@/src/components/tooltip';
@@ -58,6 +59,7 @@ import {
   type AnswerBlock,
   type ChartItem,
   type ChatTurn,
+  type DataGaps,
   getTurnCharts,
 } from '@/src/hooks/use_sse_chat';
 import { downloadPdf } from '@/src/utils/download_pdf';
@@ -168,8 +170,12 @@ export function AnswerPanel({
   const [phase, setPhase] = useState<RevealPhase>(() =>
     getInitialPhase(shouldReveal, onSettled !== undefined),
   );
+  // The Data gaps block shows as a section after the answer, so it is not
+  // one of the answer's blocks and its words are not part of the reveal.
+  const dataGapsBlock = turn.blocks.find(isDataGapsBlock);
+  const answerBlocks = turn.blocks.filter((block) => block !== dataGapsBlock);
   const streamMs = shouldReveal
-    ? calculateStreamDurationMs(turn.text)
+    ? calculateStreamDurationMs(joinTextBlocks(answerBlocks))
     : undefined;
   const [settledChartIndices, setSettledChartIndices] = useState<
     ReadonlySet<number>
@@ -336,12 +342,23 @@ export function AnswerPanel({
           {/* 1. The answer: text and chart blocks in emission order. */}
           <AnswerBlocks
             turn={turn}
+            blocks={answerBlocks}
             phase={phase}
             streamMs={streamMs}
             onChartSettled={markChartSettled}
           />
 
-          {/* 2. Dataset suggestion: the app's own closing for an answer
+          {/* 2. Data gaps: the measures the answer could not cover, after
+            every block of the answer, including a chart the server appended
+            after the text. */}
+          {dataGapsBlock && (
+            <DataGapsSection
+              intro={dataGapsBlock.dataGaps.intro}
+              items={dataGapsBlock.dataGaps.items}
+            />
+          )}
+
+          {/* 3. Dataset suggestion: the app's own closing for an answer
             without data, so its wording and link do not depend on the
             model. */}
           {shouldSuggestDataset && (
@@ -356,7 +373,7 @@ export function AnswerPanel({
             </p>
           )}
 
-          {/* 3. Truncation notice: the agent ran out of research steps, so
+          {/* 4. Truncation notice: the agent ran out of research steps, so
             this answer rests on less data than it meant to gather. Not styled
             as an error: the answer is usable, just less complete. */}
           {turn.truncated && (
@@ -369,7 +386,7 @@ export function AnswerPanel({
             </p>
           )}
 
-          {/* 4. Citations: at the end of the document, above the disclaimer,
+          {/* 5. Citations: at the end of the document, above the disclaimer,
             where a reader who has finished the answer looks for them. */}
           {hasCitations && (
             <CitationsList
@@ -379,10 +396,10 @@ export function AnswerPanel({
             />
           )}
 
-          {/* 5. Disclaimer */}
+          {/* 6. Disclaimer */}
           {(hasCharts || hasCitations) && <DisclaimerNote />}
 
-          {/* 6. Export PDF (filled, in-content) */}
+          {/* 7. Export PDF (filled, in-content) */}
           {isExportVisible && (
             <ExportPdfButton onExport={onExport} busy={exporting} />
           )}
@@ -421,6 +438,8 @@ export function AnswerPanel({
 
 interface AnswerBlocksProps {
   turn: ChatTurn;
+  /** The turn's blocks without its Data gaps block. */
+  blocks: AnswerBlock[];
   phase: RevealPhase;
   /** Duration of the whole text reveal; undefined when the panel does not reveal. */
   streamMs?: number;
@@ -434,7 +453,7 @@ interface TextRevealWindow {
 }
 
 /**
- * Renders a turn's blocks in emission order, as direct children of the
+ * Renders the answer's blocks in emission order, as direct children of the
  * panel body: each text block through the Markdown renderer, a heading line
  * as a section heading, and each run of consecutive chart blocks through one
  * chart tile, which sets two or three charts side by side when there is room
@@ -447,11 +466,11 @@ interface TextRevealWindow {
  */
 function AnswerBlocks({
   turn,
+  blocks,
   phase,
   streamMs,
   onChartSettled,
 }: AnswerBlocksProps) {
-  const blocks = turn.blocks;
   const schedule =
     streamMs === undefined ? undefined : scheduleTextReveal(blocks, streamMs);
   const renderText = (block: TextAnswerBlock) => {
@@ -518,6 +537,22 @@ function AnswerBlocks({
 
 type TextAnswerBlock = Extract<AnswerBlock, { type: 'text' }>;
 type ChartAnswerBlock = Extract<AnswerBlock, { type: 'chart' }>;
+type DataGapsBlock = TextAnswerBlock & { dataGaps: DataGaps };
+
+/** Whether `block` is the answer's Data gaps block. */
+function isDataGapsBlock(block: AnswerBlock): block is DataGapsBlock {
+  return block.type === 'text' && block.dataGaps !== undefined;
+}
+
+/**
+ * Returns the Markdown of the text blocks, joined by blank lines as the
+ * agent joins the answer text.
+ */
+function joinTextBlocks(blocks: AnswerBlock[]): string {
+  return blocks
+    .flatMap((block) => (block.type === 'text' ? [block.markdown] : []))
+    .join('\n\n');
+}
 
 /**
  * One rendered unit of an answer: a text block, a run of chart blocks, or a
