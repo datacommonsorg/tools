@@ -112,7 +112,7 @@ export const RECAPTCHA_MODAL_TITLE = 'Quick security check';
 
 /** Supporting copy explaining why the reCAPTCHA verification dialog opened. */
 export const RECAPTCHA_MODAL_DESCRIPTION =
-  'Complete the check below to continue sending your question.';
+  'Please complete the verification below to continue exploring Data Commons.';
 
 /** Status label announced while the reCAPTCHA checkbox widget is loading. */
 export const RECAPTCHA_MODAL_LOADING_LABEL = 'Loading security check…';
