@@ -40,9 +40,12 @@ from narratives_agent.analytics.timeseries import (
     reduce_series,
 )
 from narratives_agent.json_value import JsonObject
+from narratives_agent.workflows import charts
 from narratives_agent.workflows.charts import (
     BarChartSpecification,
     ChartKind,
+    ChartRejection,
+    ChartRejectionReason,
     ChartSpecification,
     ChildCohort,
     HighlightChartSpecification,
@@ -164,6 +167,27 @@ def _make_series_digest(entry: CachedTable) -> AnalysisDigest:
     return _make_digest(analyze_timeseries(entry.table, step_id="s1"))
 
 
+def _resolve_chart(
+    kind: str,
+    tables: Sequence[str],
+    cache: TurnCache,
+    digest: AnalysisDigest | None = None,
+    analysis: AnalysisSpecification | None = None,
+    **fields: object,
+) -> ResolvedChart | ChartRejection:
+    """Resolves a specification built from keyword fields."""
+    payload: dict[str, object] = {
+        "kind": kind,
+        "tables": list(tables),
+        "title": fields.pop("title", "A chart"),
+        **fields,
+    }
+    spec = parse_chart_specification(json.dumps(payload))
+    return resolve_chart_specification(
+        spec, cache, digest or AnalysisDigest((), ()), analysis
+    )
+
+
 def _resolve_chart_wire(
     kind: str,
     tables: Sequence[str],
@@ -172,18 +196,11 @@ def _resolve_chart_wire(
     analysis: AnalysisSpecification | None = None,
     **fields: object,
 ) -> JsonObject | None:
-    """Resolves a specification built from keyword fields to wire format."""
-    payload: dict[str, object] = {
-        "kind": kind,
-        "tables": list(tables),
-        "title": fields.pop("title", "A chart"),
-        **fields,
-    }
-    spec = parse_chart_specification(json.dumps(payload))
-    resolved = resolve_chart_specification(
-        spec, cache, digest or AnalysisDigest((), ()), analysis
-    )
-    return serialize_resolved_chart(resolved) if resolved is not None else None
+    """Resolves a specification to wire format, or None when it is rejected."""
+    resolved = _resolve_chart(kind, tables, cache, digest, analysis, **fields)
+    if isinstance(resolved, ChartRejection):
+        return None
+    return serialize_resolved_chart(resolved)
 
 
 def test_a_subset_of_places_resolves_to_a_line_chart() -> None:
@@ -2534,3 +2551,269 @@ def test_a_bounded_line_counts_only_the_named_places() -> None:
         )
         is not None
     )
+
+
+@pytest.mark.parametrize(
+    ("kind", "tables", "fields", "reason"),
+    [
+        ("line", ["t9"], {}, ChartRejectionReason.TABLE_UNAVAILABLE),
+        ("bar", ["s1"], {}, ChartRejectionReason.DERIVED_TABLE_NOT_CHARTABLE),
+        (
+            "line",
+            ["s2", "t1"],
+            {},
+            ChartRejectionReason.MIXED_PER_CAPITA_AND_RAW,
+        ),
+        ("bar", ["t1", "t2"], {}, ChartRejectionReason.UNIT_MISMATCH),
+        ("map", ["t1"], {}, ChartRejectionReason.COHORT_REQUIRED),
+        (
+            "bar",
+            ["t4", "t1"],
+            {"cohort": True},
+            ChartRejectionReason.COHORT_MISMATCH,
+        ),
+        (
+            "line",
+            ["t1"],
+            {"places": ["country/FRA", "country/ESP"]},
+            ChartRejectionReason.UNKNOWN_PLACE,
+        ),
+        (
+            "highlight",
+            ["t1"],
+            {},
+            ChartRejectionReason.PLACE_COUNT_OUT_OF_RANGE,
+        ),
+        ("line", ["t3"], {}, ChartRejectionReason.INSUFFICIENT_LINE_DATES),
+        ("bar", ["t1"], {"date": "1999"}, ChartRejectionReason.DATE_NOT_SHARED),
+        (
+            "ranking",
+            ["t1", "t2"],
+            {},
+            ChartRejectionReason.VARIABLE_COUNT_MISMATCH,
+        ),
+        ("scatter", ["t1"], {}, ChartRejectionReason.VARIABLE_COUNT_MISMATCH),
+        ("bar", ["t1"], {"title": " "}, ChartRejectionReason.EMPTY_TITLE),
+    ],
+    ids=[
+        "unknown_table",
+        "ratio_derived_table",
+        "per_capita_with_raw_table",
+        "tables_in_different_units",
+        "map_without_cohort",
+        "cohort_bar_with_a_table_outside_the_cohort",
+        "place_not_in_table",
+        "highlight_with_two_places",
+        "line_with_one_date",
+        "date_not_in_table",
+        "ranking_of_two_variables",
+        "scatter_of_one_variable",
+        "blank_title",
+    ],
+)
+def test_a_rejection_holds_the_reason_of_the_check_that_failed(
+    kind: ChartKind,
+    tables: list[str],
+    fields: dict[str, object],
+    reason: ChartRejectionReason,
+) -> None:
+    # Test: The reason code and the kind of a rejected specification.
+    # Situation: Each specification is valid grammar and fails one check
+    #   against `_make_rejection_cache`.
+    # Expectation: Resolution returns a rejection that holds the reason
+    #   code of that check and the specification's kind.
+    cache, analysis = _make_rejection_cache()
+
+    rejection = _resolve_chart(kind, tables, cache, None, analysis, **fields)
+
+    assert rejection == ChartRejection(reason, kind)
+
+
+def test_tables_that_differ_only_in_scaling_factor_give_that_reason() -> None:
+    # Test: The reason code of tables that agree in unit and differ in
+    #   scaling factor.
+    # Situation: Two population tables report in persons, one of them with a
+    #   scaling factor of 1,000, and a bar charts both.
+    # Expectation: The rejection holds the scaling mismatch reason, not the
+    #   unit mismatch reason.
+    persons = _make_table("t1")
+    thousands = CachedTable(
+        "t2", replace(_make_table("t2").table, scaling_factor=1000.0)
+    )
+
+    rejection = _resolve_chart(
+        "bar", ["t1", "t2"], _make_cache(persons, thousands)
+    )
+
+    assert rejection == ChartRejection(
+        ChartRejectionReason.SCALING_MISMATCH, "bar"
+    )
+
+
+def test_a_line_over_too_many_places_gives_the_place_count_reason() -> None:
+    # Test: The reason code of a line that would draw too many places.
+    # Situation: A table holds thirty places, more than the place cap, and a
+    #   line does not say which places to draw.
+    # Expectation: The rejection holds the place count reason.
+    table = _make_table("t1", places=_COUNTIES)
+
+    rejection = _resolve_chart("line", ["t1"], _make_cache(table))
+
+    assert rejection == ChartRejection(
+        ChartRejectionReason.PLACE_COUNT_OUT_OF_RANGE, "line"
+    )
+
+
+@pytest.mark.parametrize(
+    ("kind", "tables", "place", "fields", "reason"),
+    [
+        (
+            "bar",
+            ["t1", "t2"],
+            "country/FRA",
+            {"date": "2023"},
+            ChartRejectionReason.NO_VALUE_AT_DATE,
+        ),
+        (
+            "highlight",
+            ["t2"],
+            "country/FRA",
+            {"date": "2023"},
+            ChartRejectionReason.NO_VALUE_AT_DATE,
+        ),
+        (
+            "bar",
+            ["t1", "t2"],
+            "country/ITA",
+            {},
+            ChartRejectionReason.NO_VALUE_FOR_PLACE,
+        ),
+    ],
+    ids=[
+        "bar_table_without_the_place_at_the_date",
+        "highlight_place_without_the_date",
+        "bar_table_without_the_place",
+    ],
+)
+def test_a_named_place_without_a_value_gives_its_reason(
+    kind: ChartKind,
+    tables: list[str],
+    place: str,
+    fields: dict[str, object],
+    reason: ChartRejectionReason,
+) -> None:
+    # Test: The reason codes of a chart whose named place lacks a value.
+    # Situation: `t1` holds France and Germany in 2022 and 2023 and Italy in
+    #   2023, and `t2` holds France in 2022 and Germany in 2023. A bar of
+    #   both tables names France at 2023, a highlight of `t2` names France
+    #   at 2023, and a bar of both tables names Italy without a date.
+    # Expectation: A place without a value at the named date gives the
+    #   date reason, and a table without any value for the place gives the
+    #   place reason.
+    cache, digest, analysis = _make_bar_coverage_case(
+        ObservationRow("country/ITA", "ITA", "2023", 59.0)
+    )
+
+    rejection = _resolve_chart(
+        kind, tables, cache, digest, analysis, places=[place], **fields
+    )
+
+    assert rejection == ChartRejection(reason, kind)
+
+
+@pytest.mark.parametrize(
+    ("kind", "top_n", "reason"),
+    [
+        ("ranking", 3, ChartRejectionReason.WINDOW_DATE_REQUIRED),
+        ("line", 5, ChartRejectionReason.EMPTY_RANKED_SLICE),
+    ],
+    ids=["undated_ranking", "line_slice_beyond_the_ranking"],
+)
+def test_a_chart_of_a_window_ranked_table_gives_its_reason(
+    kind: ChartKind, top_n: int, reason: ChartRejectionReason
+) -> None:
+    # Test: The reason codes of charts of a table ranked over a date window.
+    # Situation: The digest ranks the top three of six states only by their
+    #   change from 2020 to 2024. A ranking of the table does not give a
+    #   date, and a line asks for the top five.
+    # Expectation: The undated ranking gives the reason that a date is
+    #   required, and the line gives the reason that its slice is empty.
+    cache, digest, analysis = _make_window_case()
+
+    rejection = _resolve_chart(
+        kind, ["t1"], cache, digest, analysis, top_n=top_n
+    )
+
+    assert rejection == ChartRejection(reason, kind)
+
+
+def test_a_bar_slice_ranked_at_a_date_a_table_lacks_gives_that_reason() -> None:
+    # Test: The reason code of a bar whose slice date is missing from a
+    #   table.
+    # Situation: The digest ranks six states at 2022, and a bar of the top
+    #   two also charts a table that holds only 2023.
+    # Expectation: The rejection holds the reason that the date is not in
+    #   every table.
+    table = _make_crossing_table()
+    other = _make_table("t2", places=("geoId/07",), dates=("2023",))
+    analysis = _make_spec(step_id="s1", script="rank_cohort", table="t1")
+    digest = _make_digest(
+        rank_cohort(table.table, target_date="2022", step_id="s1")
+    )
+
+    rejection = _resolve_chart(
+        "bar",
+        ["t1", "t2"],
+        _make_cache(table, other),
+        digest,
+        analysis,
+        top_n=2,
+    )
+
+    assert rejection == ChartRejection(
+        ChartRejectionReason.DATE_NOT_SHARED, "bar"
+    )
+
+
+def test_a_bar_slice_that_cannot_be_ranked_gives_the_empty_reason() -> None:
+    # Test: The reason code of a bar whose slice does not select any place.
+    # Situation: Six states report in 2022 and one of them in 2023, and a
+    #   bar asks for the top two at 2023, a date too few states cover to
+    #   rank the table.
+    # Expectation: The rejection holds the reason that the slice is empty.
+    full = _make_table(
+        "t1", places=_STATES, parent="country/USA", child_type="State"
+    )
+    sparse = replace(
+        full.table,
+        rows=tuple(
+            row
+            for row in full.table.rows
+            if row.date == "2022" or row.place_dcid == _STATES[0]
+        ),
+    )
+
+    rejection = _resolve_chart(
+        "bar",
+        ["t1"],
+        _make_cache(CachedTable("t1", sparse)),
+        top_n=2,
+        date="2023",
+    )
+
+    assert rejection == ChartRejection(
+        ChartRejectionReason.EMPTY_RANKED_SLICE, "bar"
+    )
+
+
+def test_a_chart_without_a_variable_gives_the_variable_count_reason() -> None:
+    # Test: The reason code of the variable check of a line or bar chart.
+    # Situation: `_require_variables` is called without a variable. A
+    #   specification names at least one table, so
+    #   `resolve_chart_specification` cannot reach this check.
+    # Expectation: The check raises the internal rejection with the
+    #   variable count reason.
+    with pytest.raises(charts._ChartRejectedError) as raised:
+        charts._require_variables(())
+
+    assert raised.value.reason is ChartRejectionReason.VARIABLE_COUNT_MISMATCH

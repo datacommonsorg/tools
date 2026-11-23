@@ -23,6 +23,7 @@ import logging
 from collections.abc import Mapping, Sequence
 from collections.abc import Set as AbstractSet
 from dataclasses import dataclass
+from enum import StrEnum
 from typing import Annotated, ClassVar, Literal, Protocol, Self, TypedDict
 
 from pydantic import (
@@ -38,6 +39,7 @@ from narratives_agent.analytics.digest import (
     PERCENT_SCALE,
     AnalysisDigest,
     ScriptResult,
+    UnitMismatchReason,
 )
 from narratives_agent.analytics.metrics import (
     CompositionMetrics,
@@ -75,6 +77,8 @@ __all__ = [
     "BarChartSpecification",
     "BarSort",
     "ChartKind",
+    "ChartRejection",
+    "ChartRejectionReason",
     "ChartScope",
     "ChartSpecification",
     "ChildCohort",
@@ -848,8 +852,94 @@ def get_chart_cohort(table: ObservationTable) -> ChildCohort | None:
     return None
 
 
+class ChartRejectionReason(StrEnum):
+    """Why a chart block was dropped. The server defines every value."""
+
+    # The block names a table ID that is not in the cache or whose table
+    # does not have rows.
+    TABLE_UNAVAILABLE = "table_unavailable"
+    # A derived table the block names is not a chartable per-capita table.
+    DERIVED_TABLE_NOT_CHARTABLE = "derived_table_not_chartable"
+    # The block names both per-capita and raw tables.
+    MIXED_PER_CAPITA_AND_RAW = "mixed_per_capita_and_raw"
+    # Tables that share an axis differ in unit.
+    UNIT_MISMATCH = "unit_mismatch"
+    # Tables that share an axis agree in unit and differ in scaling factor.
+    SCALING_MISMATCH = "scaling_mismatch"
+    # The chart draws a cohort and its first table was not fetched across one.
+    COHORT_REQUIRED = "cohort_required"
+    # The chart draws a cohort and its tables are not one cohort.
+    COHORT_MISMATCH = "cohort_mismatch"
+    # The tables do not have data for a place the block names.
+    UNKNOWN_PLACE = "unknown_place"
+    # The chart would draw more or fewer places than its kind allows.
+    PLACE_COUNT_OUT_OF_RANGE = "place_count_out_of_range"
+    # A table of a line chart does not have a place with two dates in the
+    # drawn range.
+    INSUFFICIENT_LINE_DATES = "insufficient_line_dates"
+    # A highlight chart does not have a value for its place at the date the
+    # block names, or a bar table does not have one for any named place.
+    NO_VALUE_AT_DATE = "no_value_at_date"
+    # A table of a bar chart does not have a value for any place the block
+    # names.
+    NO_VALUE_FOR_PLACE = "no_value_for_place"
+    # The `top_n` or `bottom_n` slice did not select any place.
+    EMPTY_RANKED_SLICE = "empty_ranked_slice"
+    # The date the chart would be drawn at is not in every table.
+    DATE_NOT_SHARED = "date_not_shared"
+    # The tables hold more or fewer variables than the kind draws.
+    VARIABLE_COUNT_MISMATCH = "variable_count_mismatch"
+    # The title is empty once it is cleaned.
+    EMPTY_TITLE = "empty_title"
+    # A single-date chart of a table ranked over a date window does not
+    # give a date.
+    WINDOW_DATE_REQUIRED = "window_date_required"
+    # The answer already holds `MAX_CHARTS_PER_TURN` charts.
+    CHART_LIMIT_REACHED = "chart_limit_reached"
+    # The block's body is not valid JSON or does not match the chart grammar.
+    INVALID_SPECIFICATION = "invalid_specification"
+    # The answer ended before the block was closed.
+    UNCLOSED_BLOCK = "unclosed_block"
+    # The turn does not have any data to chart.
+    TURN_WITHOUT_DATA = "turn_without_data"
+    # The block names a table that is not among the tables the answer used.
+    TABLE_NOT_IN_ANSWER = "table_not_in_answer"
+
+
+@dataclass(frozen=True)
+class ChartRejection:
+    """A chart block that was dropped, and the reason it was dropped.
+
+    A rejection does not hold any text written by the model. The kind is
+    one of the six values the chart grammar allows.
+
+    Attributes:
+        reason: Why the block was dropped.
+        kind: The chart kind from the parsed block, or None when the block
+            was dropped before it was parsed.
+    """
+
+    reason: ChartRejectionReason
+    kind: ChartKind | None
+
+
+# The rejection reason for each way tables that share an axis can disagree.
+_UNIT_MISMATCH_REASONS: Mapping[UnitMismatchReason, ChartRejectionReason] = {
+    "unit_mismatch": ChartRejectionReason.UNIT_MISMATCH,
+    "scaling_mismatch": ChartRejectionReason.SCALING_MISMATCH,
+}
+
+
 class _ChartRejectedError(Exception):
-    """Raised inside resolution when a specification fails a check."""
+    """Raised inside resolution when a specification fails a check.
+
+    Attributes:
+        reason: The reason code of the check that failed.
+    """
+
+    def __init__(self, reason: ChartRejectionReason, message: str) -> None:
+        super().__init__(message)
+        self.reason = reason
 
 
 @dataclass(frozen=True)
@@ -950,14 +1040,16 @@ def _resolve_tables(
         analysis_entry = context.cache.get(table_id)
         if analysis_entry is None or not analysis_entry.table.rows:
             raise _ChartRejectedError(
-                f"{table_id} is not a cached table with rows"
+                ChartRejectionReason.TABLE_UNAVAILABLE,
+                f"{table_id} is not a cached table with rows",
             )
         chart_entry = find_chart_entry(
             table_id, context.analysis, context.cache
         )
         if chart_entry is None or not chart_entry.table.rows:
             raise _ChartRejectedError(
-                f"{table_id} is derived and not chartable"
+                ChartRejectionReason.DERIVED_TABLE_NOT_CHARTABLE,
+                f"{table_id} is derived and not chartable",
             )
         if chart_entry.table_id == table_id:
             raw += 1
@@ -966,7 +1058,8 @@ def _resolve_tables(
         resolved.append(_ResolvedTable(chart_entry, analysis_entry))
     if mapped and raw:
         raise _ChartRejectedError(
-            "per-capita and raw tables cannot share a chart"
+            ChartRejectionReason.MIXED_PER_CAPITA_AND_RAW,
+            "per-capita and raw tables cannot share a chart",
         )
     return resolved, mapped > 0
 
@@ -990,7 +1083,9 @@ def _check_shared_axis(
     for group in groups:
         mismatch = find_unit_mismatch(*group) if len(group) > 1 else None
         if mismatch is not None:
-            raise _ChartRejectedError(mismatch.message)
+            raise _ChartRejectedError(
+                _UNIT_MISMATCH_REASONS[mismatch.reason], mismatch.message
+            )
 
 
 def _get_raw_result_reference_date(
@@ -1222,10 +1317,16 @@ def _resolve_cohort(
     """
     cohort = get_chart_cohort(tables[0].chart_table)
     if cohort is None:
-        raise _ChartRejectedError(f"a {kind} chart needs a cohort")
+        raise _ChartRejectedError(
+            ChartRejectionReason.COHORT_REQUIRED,
+            f"a {kind} chart needs a cohort",
+        )
     for item in tables:
         if get_chart_cohort(item.chart_table) != cohort:
-            raise _ChartRejectedError("the tables are not one cohort")
+            raise _ChartRejectedError(
+                ChartRejectionReason.COHORT_MISMATCH,
+                "the tables are not one cohort",
+            )
     return cohort
 
 
@@ -1251,7 +1352,8 @@ def _check_known_places(
     unknown = [place for place in places if place not in available]
     if unknown:
         raise _ChartRejectedError(
-            f"named places not in the tables: {len(unknown)}"
+            ChartRejectionReason.UNKNOWN_PLACE,
+            f"named places not in the tables: {len(unknown)}",
         )
 
 
@@ -1264,8 +1366,9 @@ def _build_place_list(kind: ChartKind, places: Sequence[str]) -> PlaceList:
     """
     if not 1 <= len(places) <= INVENTORY_PLACE_CAP:
         raise _ChartRejectedError(
+            ChartRejectionReason.PLACE_COUNT_OUT_OF_RANGE,
             f"a {kind} chart shows between 1 and {INVENTORY_PLACE_CAP} "
-            f"places, not {len(places)}"
+            f"places, not {len(places)}",
         )
     return PlaceList(tuple(places))
 
@@ -1334,8 +1437,9 @@ def _check_line_dates(
         for item in tables
     ):
         raise _ChartRejectedError(
+            ChartRejectionReason.INSUFFICIENT_LINE_DATES,
             "each table of a line chart needs a place with at least "
-            f"{MIN_LINE_CHART_DATES} dates in the drawn range"
+            f"{MIN_LINE_CHART_DATES} dates in the drawn range",
         )
 
 
@@ -1360,7 +1464,10 @@ def _resolve_places_date(
     ):
         return date
     if has_explicit_date:
-        raise _ChartRejectedError("no named place has a value at the date")
+        raise _ChartRejectedError(
+            ChartRejectionReason.NO_VALUE_AT_DATE,
+            "no named place has a value at the date",
+        )
     return None
 
 
@@ -1400,14 +1507,16 @@ def _resolve_bar_places_date(
     ):
         if has_explicit_date:
             raise _ChartRejectedError(
-                "a charted table has no value for a named place at the date"
+                ChartRejectionReason.NO_VALUE_AT_DATE,
+                "a charted table has no value for a named place at the date",
             )
         date = None
     if not all(
         _has_place_value(item.analysis_table, places, None) for item in tables
     ):
         raise _ChartRejectedError(
-            "each table of a bar chart needs a value for a named place"
+            ChartRejectionReason.NO_VALUE_FOR_PLACE,
+            "each table of a bar chart needs a value for a named place",
         )
     return date
 
@@ -1445,11 +1554,15 @@ def _resolve_bar_slice(
         use_latest=use_latest,
     )
     if not places:
-        raise _ChartRejectedError("the ranked slice selected no place")
+        raise _ChartRejectedError(
+            ChartRejectionReason.EMPTY_RANKED_SLICE,
+            "the ranked slice selected no place",
+        )
     scope = _build_place_list(spec.kind, places)
     if ranked_at not in shared_dates:
         raise _ChartRejectedError(
-            "the ranked slice's date is not in every table"
+            ChartRejectionReason.DATE_NOT_SHARED,
+            "the ranked slice's date is not in every table",
         )
     return scope, ranked_at
 
@@ -1467,7 +1580,8 @@ def _require_one_variable(
             return (only,)
         case _:
             raise _ChartRejectedError(
-                f"a {kind} chart shows one variable, not {len(variable_dcids)}"
+                ChartRejectionReason.VARIABLE_COUNT_MISMATCH,
+                f"a {kind} chart shows one variable, not {len(variable_dcids)}",
             )
 
 
@@ -1484,7 +1598,9 @@ def _require_two_variables(
             return (first, second)
         case _:
             raise _ChartRejectedError(
-                f"a {kind} chart shows two variables, not {len(variable_dcids)}"
+                ChartRejectionReason.VARIABLE_COUNT_MISMATCH,
+                f"a {kind} chart shows two variables, "
+                f"not {len(variable_dcids)}",
             )
 
 
@@ -1539,7 +1655,10 @@ def _require_variables(
         case (first, *rest):
             return (first, *rest)
         case _:
-            raise _ChartRejectedError("a chart shows at least one variable")
+            raise _ChartRejectedError(
+                ChartRejectionReason.VARIABLE_COUNT_MISMATCH,
+                "a chart shows at least one variable",
+            )
 
 
 def _resolve_line_scope(
@@ -1575,7 +1694,10 @@ def _resolve_line_scope(
                 tables[0].analysis_entry, context, slice_choice, None
             )
             if not ranked_places:
-                raise _ChartRejectedError("the ranked slice selected no place")
+                raise _ChartRejectedError(
+                    ChartRejectionReason.EMPTY_RANKED_SLICE,
+                    "the ranked slice selected no place",
+                )
             scope = _build_place_list(spec.kind, ranked_places)
         case _DefaultPlaces():
             scope = _build_place_list(spec.kind, available)
@@ -1667,7 +1789,8 @@ def _resolve_highlight(
         place = available[0]
     else:
         raise _ChartRejectedError(
-            f"a highlight chart shows one place, not {len(available)}"
+            ChartRejectionReason.PLACE_COUNT_OUT_OF_RANGE,
+            f"a highlight chart shows one place, not {len(available)}",
         )
     resolved_date = _resolve_places_date(
         {place},
@@ -1720,7 +1843,10 @@ def _resolve_date(
         if spec.date.upper() in _LATEST_DATE_KEYWORDS:
             return None
         if spec.date not in shared_dates:
-            raise _ChartRejectedError("the date is not in every table")
+            raise _ChartRejectedError(
+                ChartRejectionReason.DATE_NOT_SHARED,
+                "the date is not in every table",
+            )
         return spec.date
     references = {
         reference
@@ -1779,7 +1905,9 @@ def _resolve_basics(
     """
     title = clean_display_name(spec.title, "")
     if not title:
-        raise _ChartRejectedError("the title is empty")
+        raise _ChartRejectedError(
+            ChartRejectionReason.EMPTY_TITLE, "the title is empty"
+        )
     chart_tables = [item.chart_table for item in tables]
     _check_shared_axis(spec, chart_tables)
     unit = clean_display_name(spec.unit, "") if spec.unit else ""
@@ -1823,8 +1951,9 @@ def _check_window_snapshot(
         )
     ):
         raise _ChartRejectedError(
+            ChartRejectionReason.WINDOW_DATE_REQUIRED,
             f"a {spec.kind} chart of a table ranked over a date window needs "
-            "a date; chart the window's places as a line"
+            "a date; chart the window's places as a line",
         )
 
 
@@ -1895,13 +2024,13 @@ def _resolve(spec: ChartSpecification, context: _ChartContext) -> ResolvedChart:
 
 def _resolve_or_reject(
     spec: ChartSpecification, context: _ChartContext
-) -> ResolvedChart | None:
-    """Resolves a specification, or logs the reason and returns None."""
+) -> ResolvedChart | ChartRejection:
+    """Resolves a specification, or logs the reason and returns a rejection."""
     try:
         return _resolve(spec, context)
     except _ChartRejectedError as rejection:
         logger.info("Chart block rejected: %s", rejection)
-        return None
+        return ChartRejection(rejection.reason, spec.kind)
 
 
 def resolve_chart_specification(
@@ -1909,7 +2038,7 @@ def resolve_chart_specification(
     cache: TurnCache,
     digest: AnalysisDigest,
     analysis: AnalysisSpecification | None,
-) -> ResolvedChart | None:
+) -> ResolvedChart | ChartRejection:
     """Resolves a chart specification against the turn cache.
 
     Args:
@@ -1921,8 +2050,9 @@ def resolve_chart_specification(
             supplies a date or a slice.
 
     Returns:
-        The resolved chart of the specification's kind, or None if a check
-        fails; the reason is logged.
+        The resolved chart of the specification's kind. If a check fails,
+        returns a `ChartRejection` that holds the reason code and the
+        specification's kind, and logs the reason.
     """
     return _resolve_or_reject(
         spec, _build_chart_context(cache, digest, analysis)
