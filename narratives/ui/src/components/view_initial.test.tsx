@@ -14,7 +14,7 @@
  * permissions and limitations under the License.
  */
 
-import { cleanup, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import {
   afterAll,
   afterEach,
@@ -144,6 +144,19 @@ describe('InitialView reCAPTCHA notice', () => {
 });
 
 describe('InitialView instance configuration', () => {
+  it('links the default tagline phrase to its dialog', () => {
+    // Test: Default instance configuration.
+    // Situation: #instance-config is absent, so the built-in tagline and
+    //   tagline link apply.
+    // Expectation: The phrase renders as a button that opens the dialog.
+    renderSearchBox('');
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Data Commons Knowledge Graph' }),
+    );
+    const dialog = screen.getByRole('dialog') as HTMLDialogElement;
+    expect(dialog.open).toBe(true);
+  });
+
   it('renders headline, tagline, and suggestions from #instance-config', () => {
     // Test: Custom instance configuration in index.html.
     // Situation: #instance-config defines a custom headline, tagline, and suggestions.

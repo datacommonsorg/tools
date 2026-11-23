@@ -126,6 +126,43 @@ def test_stdlib_fallback_checks_type_required_pattern_enum_and_nested_paths(
     ]
 
 
+_TAGLINE_SECTION = {"title": "Graph", "body": "Body."}
+
+
+@pytest.mark.parametrize(
+    "link",
+    [
+        {"text": "Graph", "sections": []},
+        {"text": "", "sections": [_TAGLINE_SECTION]},
+        {"text": "Graph", "sections": [{"title": "", "body": "Body."}]},
+    ],
+    ids=["no-sections", "empty-phrase", "empty-title"],
+)
+@pytest.mark.usefixtures("run_under_each_validator")
+def test_tagline_link_rejects_empty_sections_and_strings(
+    schema: dict[str, Any], link: dict[str, Any]
+) -> None:
+    """Enforces `minItems` and `minLength` on `tagline_link`."""
+    # Test: The `minItems` and `minLength` keywords on `tagline_link`.
+    # Situation: Under jsonschema and under the stdlib fallback, the theme's
+    #   `tagline_link` has no sections, an empty phrase, or an empty section
+    #   title.
+    # Expectation: Validation reports a violation.
+    assert validate_theme.validate({"tagline_link": link}, schema) != []
+
+
+@pytest.mark.usefixtures("run_under_each_validator")
+def test_tagline_link_accepts_minimal_link(schema: dict[str, Any]) -> None:
+    """Accepts a `tagline_link` with a phrase and one titled section."""
+    # Test: The smallest valid `tagline_link`.
+    # Situation: Under jsonschema and under the stdlib fallback, the theme's
+    #   `tagline_link` has a phrase and one section.
+    # Expectation: Validation reports no violation, so the rejections above
+    #   come from the empty values alone.
+    link = {"text": "Graph", "sections": [_TAGLINE_SECTION]}
+    assert validate_theme.validate({"tagline_link": link}, schema) == []
+
+
 def test_matches_type_covers_all_json_schema_primitives() -> None:
     """Checks each JSON Schema primitive type in _matches_type."""
     # Test: Primitive type predicates in _matches_type.

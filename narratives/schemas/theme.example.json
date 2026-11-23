@@ -11,14 +11,24 @@
   "logo_href": "/",
   "favicon": "/dc-logo.svg",
 
+  "tagline": "Answers draw from the Example Data Commons",
+  "tagline_link": {
+    "text": "Example Data Commons",
+    "sections": [
+      {
+        "title": "Example Data Commons",
+        "body": "What the data covers and where it comes from."
+      }
+    ],
+    "sources": { "label": "See all the data sources", "href": "/sources" }
+  },
+
   "colors": {
     "primary": "#175C75",
     "text": "#1B1C1D",
     "text_muted": "#444746",
     "background": "#FFFFFF",
-    "surface": "#F9F9F9",
-    "gradient_start": "#65A782",
-    "gradient_end": "#6FAEC0"
+    "surface": "#F9F9F9"
   },
 
   "fonts": {

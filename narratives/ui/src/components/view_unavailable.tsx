@@ -49,7 +49,7 @@ export function UnavailableView() {
       >
         <m.h1
           variants={INTRO_FADE_UP_VARIANTS}
-          className={`text-display-small-gradient ${headlineMarginClass} tracking-tight text-center`}
+          className={`text-display-medium text-headline ${headlineMarginClass} text-center`}
         >
           {headline}
         </m.h1>

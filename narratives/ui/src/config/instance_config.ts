@@ -33,6 +33,22 @@ export interface NavLink {
   href: string;
 }
 
+/** One headed section of the tagline dialog. */
+export interface TaglineLinkSection {
+  title: string;
+  body: string;
+}
+
+/** A phrase in the tagline that opens a modal dialog. */
+export interface TaglineLink {
+  /** Exact phrase in the tagline that becomes the link. */
+  text: string;
+  /** Dialog sections; the first title also names the dialog. */
+  sections: TaglineLinkSection[];
+  /** Optional link to the data sources, shown in the dialog's action bar. */
+  sources?: NavLink;
+}
+
 export interface InstanceConfig {
   /** Name of the deployment, usually the organization name. */
   instanceName: string;
@@ -52,6 +68,8 @@ export interface InstanceConfig {
   headline: string;
   /** Subtitle displayed below the headline on the landing view. */
   tagline: string;
+  /** Tagline phrase that opens a dialog. */
+  taglineLink: TaglineLink;
   /** Primary navigation links rendered in the header and mobile drawer. */
   navigation: NavLink[];
   /** Starter prompt queries rendered as suggestion chips on the landing view. */
@@ -68,8 +86,26 @@ export const DEFAULT_INSTANCE_CONFIG: Readonly<InstanceConfig> = {
   logoHref: '/',
   thinkingIndicatorUrl: '/agent-thinking.svg',
   doneIndicatorUrl: '/agent-done-thinking.svg',
-  headline: 'Data agent explorer',
-  tagline: "powered by Google's Data Commons",
+  headline: 'Explore global public data in one place',
+  tagline:
+    'Answers draw from organized datasets in the Data Commons Knowledge Graph',
+  taglineLink: {
+    text: 'Data Commons Knowledge Graph',
+    sections: [
+      {
+        title: 'Data Commons Knowledge Graph',
+        body: 'The Data Commons Knowledge Graph is an open library of public data collected and standardized in advance, turning agency tables and reports into consistent, machine-readable series. It brings together datasets on population, the economy, health, education, crime, and the environment from institutions such as the U.S. Census Bureau, World Bank, United Nations, CDC, and NOAA. Each figure links to both its Data Commons record and the original agency release.',
+      },
+      {
+        title: 'About this tool',
+        body: 'Gemini synthesizes data overviews from indicators available in the Data Commons Knowledge Graph, covering historical trends, rankings, regional comparisons, and breakdowns of totals. It calculates basic descriptive figures (such as medians, highs, lows, and changes over time) rather than running regressions, correlation tests, or custom data groupings. It does not offer opinions, policy analysis, or forecasts, and coverage depends on what agencies publish and which releases have been added to the graph so far. Please verify AI-generated summaries against the linked source records.',
+      },
+    ],
+    sources: {
+      label: 'See all the data sources',
+      href: 'https://datacommons.org/data',
+    },
+  },
   navigation: [],
   suggestions: [
     'How has renewable energy adoption changed in Spain?',
@@ -95,6 +131,9 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value);
 
 const isString = (value: unknown): value is string => typeof value === 'string';
+
+const isNonEmptyString = (value: unknown): value is string =>
+  isString(value) && value.length > 0;
 
 const isStringArray = (value: unknown): value is string[] =>
   Array.isArray(value) && value.every(isString);
@@ -130,6 +169,19 @@ const isNavHref = (value: unknown): value is string =>
 
 const isNavLink = (value: unknown): value is NavLink =>
   isRecord(value) && isString(value.label) && isNavHref(value.href);
+
+const isTaglineLink = (value: unknown): value is TaglineLink =>
+  isRecord(value) &&
+  isNonEmptyString(value.text) &&
+  Array.isArray(value.sections) &&
+  value.sections.length > 0 &&
+  value.sections.every(
+    (section) =>
+      isRecord(section) &&
+      isNonEmptyString(section.title) &&
+      isString(section.body),
+  ) &&
+  (value.sources === undefined || isNavLink(value.sources));
 
 const isNavLinkArray = (value: unknown): value is NavLink[] =>
   Array.isArray(value) && value.every(isNavLink);
@@ -334,6 +386,20 @@ const mergeOverrides = (raw: Record<string, unknown>): InstanceConfig => {
     isRawMetricsConfig,
     null,
   );
+  const tagline = pick('tagline', raw.tagline, isString, defaults.tagline);
+  const taglineLink = pick(
+    'tagline_link',
+    raw.tagline_link,
+    isTaglineLink,
+    defaults.taglineLink,
+  );
+  // Only a link the theme sets is expected to match its tagline; a custom
+  // tagline without the default phrase is normal.
+  if (isTaglineLink(raw.tagline_link) && !tagline.includes(taglineLink.text)) {
+    console.warn(
+      `${LOG_PREFIX} "tagline_link.text" does not appear in "tagline"; the tagline renders as plain text.`,
+    );
+  }
   return {
     instanceName: pick(
       'instance_name',
@@ -380,7 +446,8 @@ const mergeOverrides = (raw: Record<string, unknown>): InstanceConfig => {
       defaults.doneIndicatorUrl,
     ),
     headline: pick('headline', raw.headline, isString, defaults.headline),
-    tagline: pick('tagline', raw.tagline, isString, defaults.tagline),
+    tagline,
+    taglineLink,
     navigation: pick(
       'navigation',
       raw.navigation,
