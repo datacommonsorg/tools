@@ -64,6 +64,16 @@ class TurnRecord:
     the agent loop assigns it. `cache` is created with the record and
     discarded with it, so nothing is shared across turns or requests.
 
+    Some fields hold text from the conversation or the model. `thoughts`,
+    `synthesis_prompt`, and `synthesis_raw_output` hold only text and are
+    only used by the debug report. `loop_result`, `default_diagnostics`,
+    `specification`, `digest`, and `cache` hold text alongside identifiers,
+    codes, and counts. For example, a tool's name and its arguments and
+    result are next to each other in a tool call record. The `chat_turn`
+    log line must not contain any text from the conversation, so anything
+    written to it from these fields has to be an identifier, a code, or a
+    count.
+
     Attributes:
         telemetry: The turn's timings, token counts, and counters.
         cache: The turn's fetched and derived observation tables and its
