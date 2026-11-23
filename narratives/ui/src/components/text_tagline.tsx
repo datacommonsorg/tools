@@ -27,7 +27,7 @@ import type { TaglineLink } from '@/src/config/instance_config';
 
 interface TaglineTextProps {
   tagline: string;
-  link: TaglineLink | null;
+  link: TaglineLink;
 }
 
 /**
@@ -38,12 +38,9 @@ interface TaglineTextProps {
  */
 export function TaglineText({ tagline, link }: TaglineTextProps) {
   const dialogRef = useRef<HTMLDialogElement>(null);
-  // Whether the current press started on the backdrop, so a text selection
-  // that starts inside the dialog and ends outside it does not close it.
-  const isPressOnBackdropRef = useRef(false);
   const titleId = useId();
-  const start = link ? tagline.indexOf(link.text) : -1;
-  if (!link || !link.text || start === -1) {
+  const start = link.text ? tagline.indexOf(link.text) : -1;
+  if (start === -1) {
     return tagline;
   }
 
@@ -51,9 +48,8 @@ export function TaglineText({ tagline, link }: TaglineTextProps) {
   return (
     <>
       {tagline.slice(0, start)}
-      {/* The phrase keeps the tagline color; the highlight marks it as a
-          link. The 50% applies to the background only, so the text keeps its
-          contrast. */}
+      {/* The button text has the same color as the surrounding text. It is
+          marked as clickable by the highlight behind it. */}
       <button
         type="button"
         className="hover:text-theme-primary text-subtle bg-tagline-link/50 rounded-sm px-1"
@@ -64,31 +60,20 @@ export function TaglineText({ tagline, link }: TaglineTextProps) {
       </button>
       {tagline.slice(end)}
       {createPortal(
-        // biome-ignore lint/a11y/useKeyWithClickEvents: the click only dismisses on the backdrop; the native dialog already closes on Escape.
         <dialog
           ref={dialogRef}
           aria-labelledby={titleId}
-          // A press and a release both on the backdrop target the dialog
-          // itself; only that click closes it.
-          onPointerDown={(event) => {
-            isPressOnBackdropRef.current = event.target === event.currentTarget;
-          }}
-          onClick={(event) => {
-            if (
-              isPressOnBackdropRef.current &&
-              event.target === event.currentTarget
-            ) {
-              event.currentTarget.close();
-            }
-          }}
-          // The width keeps a 16px gutter on each side on narrow screens.
+          // A click on the backdrop closes the dialog.
+          closedby="any"
+          // On narrow screens, the dialog is 2rem narrower than the viewport,
+          // which leaves 16px of space on each side.
           className="m-auto w-[calc(100%-2rem)] max-w-198 rounded-dialog dialog-surface dialog-motion text-left shadow-elevated backdrop:bg-scrim/30"
         >
           <div className="flex flex-col gap-6 px-11 pt-14">
             {link.sections.map((section, index) => (
-              <section key={section.title} className="flex flex-col gap-3">
+              <section key={index} className="flex flex-col gap-3">
                 <h2
-                  // The first heading names the dialog.
+                  // The dialog uses the first heading as its accessible name.
                   id={index === 0 ? titleId : undefined}
                   className="text-headline-small-emphasized text-headline"
                 >
@@ -111,7 +96,7 @@ export function TaglineText({ tagline, link }: TaglineTextProps) {
             )}
             <button
               type="button"
-              className="h-14 px-6 rounded-full text-body-large-emphasized bg-theme-primary text-white hover:opacity-90 transition-opacity"
+              className="h-14 px-6 rounded-full text-body-large-emphasized bg-theme-primary text-on-theme-primary hover:opacity-90 transition-opacity"
               onClick={() => dialogRef.current?.close()}
             >
               {TAGLINE_DIALOG_DISMISS_LABEL}

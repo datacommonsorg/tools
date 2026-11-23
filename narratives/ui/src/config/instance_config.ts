@@ -68,8 +68,8 @@ export interface InstanceConfig {
   headline: string;
   /** Subtitle displayed below the headline on the landing view. */
   tagline: string;
-  /** Tagline phrase that opens a dialog, or null for plain text. */
-  taglineLink: TaglineLink | null;
+  /** Tagline phrase that opens a dialog. */
+  taglineLink: TaglineLink;
   /** Action of the note shown while chat is disabled. */
   unavailableLink: NavLink;
   /** Primary navigation links rendered in the header and mobile drawer. */
@@ -138,6 +138,9 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
 
 const isString = (value: unknown): value is string => typeof value === 'string';
 
+const isNonEmptyString = (value: unknown): value is string =>
+  isString(value) && value.length > 0;
+
 const isStringArray = (value: unknown): value is string[] =>
   Array.isArray(value) && value.every(isString);
 
@@ -175,12 +178,14 @@ const isNavLink = (value: unknown): value is NavLink =>
 
 const isTaglineLink = (value: unknown): value is TaglineLink =>
   isRecord(value) &&
-  isString(value.text) &&
+  isNonEmptyString(value.text) &&
   Array.isArray(value.sections) &&
   value.sections.length > 0 &&
   value.sections.every(
     (section) =>
-      isRecord(section) && isString(section.title) && isString(section.body),
+      isRecord(section) &&
+      isNonEmptyString(section.title) &&
+      isString(section.body),
   ) &&
   (value.sources === undefined || isNavLink(value.sources));
 
@@ -387,6 +392,20 @@ const mergeOverrides = (raw: Record<string, unknown>): InstanceConfig => {
     isRawMetricsConfig,
     null,
   );
+  const tagline = pick('tagline', raw.tagline, isString, defaults.tagline);
+  const taglineLink = pick(
+    'tagline_link',
+    raw.tagline_link,
+    isTaglineLink,
+    defaults.taglineLink,
+  );
+  // Only a link the theme sets is expected to match its tagline; a custom
+  // tagline without the default phrase is normal.
+  if (isTaglineLink(raw.tagline_link) && !tagline.includes(taglineLink.text)) {
+    console.warn(
+      `${LOG_PREFIX} "tagline_link.text" does not appear in "tagline"; the tagline renders as plain text.`,
+    );
+  }
   return {
     instanceName: pick(
       'instance_name',
@@ -433,13 +452,8 @@ const mergeOverrides = (raw: Record<string, unknown>): InstanceConfig => {
       defaults.doneIndicatorUrl,
     ),
     headline: pick('headline', raw.headline, isString, defaults.headline),
-    tagline: pick('tagline', raw.tagline, isString, defaults.tagline),
-    taglineLink: pick(
-      'tagline_link',
-      raw.tagline_link,
-      isTaglineLink,
-      defaults.taglineLink,
-    ),
+    tagline,
+    taglineLink,
     unavailableLink: pick(
       'unavailable_link',
       raw.unavailable_link,

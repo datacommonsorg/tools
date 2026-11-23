@@ -44,12 +44,11 @@ const renderOpenDialog = (link: TaglineLink): HTMLDialogElement => {
 afterEach(cleanup);
 
 describe('TaglineText', () => {
-  it('opens the dialog from the linked phrase and closes it from the backdrop', () => {
+  it('opens the dialog from the linked phrase', () => {
     // Test: Tagline containing the configured link phrase.
-    // Situation: The phrase is clicked, then the backdrop is pressed and
-    //   released, which targets the dialog element itself.
+    // Situation: The phrase is clicked.
     // Expectation: The dialog opens with the configured sections, named by
-    //   the first title, then closes.
+    //   the first title, and opts into light dismiss (`closedby="any"`).
     const dialog = renderOpenDialog(LINK);
     expect(dialog.open).toBe(true);
     expect(screen.getByRole('dialog', { name: 'About the graph' })).toBe(
@@ -58,21 +57,7 @@ describe('TaglineText', () => {
     expect(dialog.textContent).toContain('Graph description.');
     expect(dialog.textContent).toContain('About this tool');
     expect(dialog.textContent).toContain('Tool description.');
-
-    fireEvent.pointerDown(dialog);
-    fireEvent.click(dialog);
-    expect(dialog.open).toBe(false);
-  });
-
-  it('stays open when a press inside the dialog is released on the backdrop', () => {
-    // Test: Text selection dragged out of the dialog.
-    // Situation: The press starts on a section's text and the click lands on
-    //   the dialog element, as when a drag ends over the backdrop.
-    // Expectation: The dialog stays open.
-    const dialog = renderOpenDialog(LINK);
-    fireEvent.pointerDown(screen.getByText('Graph description.'));
-    fireEvent.click(dialog);
-    expect(dialog.open).toBe(true);
+    expect(dialog.getAttribute('closedby')).toBe('any');
   });
 
   it('links to the sources and closes from the action bar', () => {
@@ -101,10 +86,11 @@ describe('TaglineText', () => {
 
   it.each([
     ['the phrase is absent', 'Custom tagline', LINK],
-    ['no link is configured', 'Custom tagline', null],
+    ['the phrase is empty', 'Custom tagline', { ...LINK, text: '' }],
   ])('renders plain text when %s', (_, tagline, link) => {
     // Test: Tagline that cannot carry the link.
-    // Situation: The tagline does not contain `link.text`, or `link` is null.
+    // Situation: The tagline does not contain `link.text`, or `link.text` is
+    //   empty.
     // Expectation: The text renders with no button and no dialog.
     render(<TaglineText tagline={tagline} link={link} />);
     expect(screen.getByText(tagline)).not.toBeNull();

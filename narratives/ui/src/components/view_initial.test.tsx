@@ -14,7 +14,7 @@
  * permissions and limitations under the License.
  */
 
-import { cleanup, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import {
   afterAll,
   afterEach,
@@ -150,10 +150,11 @@ describe('InitialView instance configuration', () => {
     //   tagline link apply.
     // Expectation: The phrase renders as a button that opens the dialog.
     renderSearchBox('');
-    expect(
+    fireEvent.click(
       screen.getByRole('button', { name: 'Data Commons Knowledge Graph' }),
-    ).not.toBeNull();
-    expect(screen.getByRole('dialog', { hidden: true })).not.toBeNull();
+    );
+    const dialog = screen.getByRole('dialog') as HTMLDialogElement;
+    expect(dialog.open).toBe(true);
   });
 
   it('renders headline, tagline, and suggestions from #instance-config', () => {

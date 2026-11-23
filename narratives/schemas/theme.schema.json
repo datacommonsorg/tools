@@ -344,6 +344,7 @@
       "properties": {
         "text": {
           "type": "string",
+          "minLength": 1,
           "description": "Exact phrase in `tagline` that becomes the link."
         },
         "sections": {
@@ -355,7 +356,11 @@
             "additionalProperties": false,
             "required": ["title", "body"],
             "properties": {
-              "title": { "type": "string", "description": "Section heading." },
+              "title": {
+                "type": "string",
+                "minLength": 1,
+                "description": "Section heading."
+              },
               "body": { "type": "string", "description": "Section text." }
             }
           }
