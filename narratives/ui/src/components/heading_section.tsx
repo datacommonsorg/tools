@@ -15,18 +15,22 @@
  */
 
 /**
- * @fileoverview Renders an answer's lead-in line as the heading of the section it opens.
+ * @fileoverview Renders a section heading the model wrote as the heading of the section it opens.
  */
 
 /**
- * Matches a lead-in line: one line, not a heading, quote, list item, or table
- * row, that ends with a colon (optionally inside bold or italics). The
- * agent's `_LEAD_IN_LINE` in `workflows/blocks.py` matches the same lines.
+ * Matches a section heading: one line holding a Markdown ATX heading, such
+ * as `## Population by sex`, and captures its label. The agent's
+ * `_HEADING_LINE` in `workflows/blocks.py` emits such a line as a block of
+ * its own.
  */
-const LEAD_IN_LINE = /^(?![#>|]|[-*+]\s|\d+[.)]\s)[^\n]*:[*_]*$/;
+const SECTION_HEADING_LINE = /^#{1,6}[ \t]+([^\n]*?)(?:[ \t]+#+)?$/;
 
-/** Matches the emphasis markers and colon around a lead-in line's label. */
-const LEAD_IN_WRAPPING = /^[*_]+|[*_]*:[*_]*$/g;
+/**
+ * Matches the emphasis markers around a heading's label and a colon that
+ * closes it, which the heading shows without.
+ */
+const LABEL_WRAPPING = /^[*_]+|[*_]*:?[*_]*$/g;
 
 /**
  * Matches inline Markdown, a backslash escape, an HTML entity, or a citation
@@ -46,42 +50,43 @@ const SECTION_HEADING_CLASS =
   'text-section-heading text-on-surface wrap-break-word';
 
 /**
- * Returns the label of a lead-in line: its text without the closing colon or
- * the bold or italic markers around it.
+ * Returns the label of a section heading line: its text without the leading
+ * hashes, the bold or italic markers around it, or a closing colon. Returns
+ * an empty string when `markdown` is not one heading line.
  */
-export function readLeadInLabel(markdown: string): string {
-  return markdown.trim().replace(LEAD_IN_WRAPPING, '').trim();
+export function readSectionHeadingLabel(markdown: string): string {
+  const label = SECTION_HEADING_LINE.exec(markdown.trim())?.[1] ?? '';
+  return label.replace(LABEL_WRAPPING, '').trim();
 }
 
 /**
- * Whether `markdown` renders as a section heading: a one-line lead-in that
- * ends with a colon, whose label holds a letter or digit and no inline
- * Markdown or citation marker.
+ * Whether `markdown` renders as a section heading: one Markdown heading line
+ * whose label holds a letter or digit and no inline Markdown or citation
+ * marker. A line that only ends with a colon is text, never a heading.
  */
-export function isLeadInHeading(markdown: string): boolean {
-  if (!LEAD_IN_LINE.test(markdown.trim())) return false;
-  const label = readLeadInLabel(markdown);
+export function isSectionHeading(markdown: string): boolean {
+  const label = readSectionHeadingLabel(markdown);
   return LABEL_CHARACTER.test(label) && !INLINE_MARKUP.test(label);
 }
 
 interface SectionHeadingProps {
-  /** The lead-in line, as the model wrote it. */
+  /** The heading line, as the model wrote it. */
   markdown: string;
   /** Id that the section it opens points its `aria-labelledby` at. */
   id?: string;
 }
 
 /**
- * The heading of an answer section, from the lead-in line that opens it. It
+ * The heading of an answer section, from the heading line that opens it. It
  * is an h2: the answer panel's intro block owns the h1. Callers render only
- * a line that `isLeadInHeading` accepts. The heading is not part of the
+ * a line that `isSectionHeading` accepts. The heading is not part of the
  * word-by-word reveal, so it shows at once, as the title and the chart
  * skeletons do.
  */
 export function SectionHeading({ markdown, id }: SectionHeadingProps) {
   return (
     <h2 id={id} className={`answer-heading ${SECTION_HEADING_CLASS}`}>
-      {readLeadInLabel(markdown)}
+      {readSectionHeadingLabel(markdown)}
     </h2>
   );
 }

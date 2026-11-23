@@ -33,6 +33,7 @@ from narratives_agent.telemetry import ErrorType, TurnTelemetry
 from narratives_agent.workflows.blocks import ChartBlock, TextBlock
 from narratives_agent.workflows.charts import PlaceList, ResolvedLineChart
 from narratives_agent.workflows.classify import RefusedReason
+from narratives_agent.workflows.data_gaps import DataGaps
 from narratives_agent.workflows.debug_report import build_debug_report
 from narratives_agent.workflows.sse_frames import (
     BlockContentFrame,
@@ -162,6 +163,25 @@ _WINDOW_FIELD = (
                 '"markdown": "About 68 million."}}',
             ),
             id="text_block",
+        ),
+        pytest.param(
+            BlockContentFrame(
+                block=TextBlock(
+                    index=3,
+                    markdown="**Data gaps**\\\nNot available:\n- A\n- B",
+                    data_gaps=DataGaps(
+                        intro="Not available:", items=("A", "B")
+                    ),
+                )
+            ),
+            (
+                "content",
+                '{"block": {"index": 3, "type": "text", "markdown": '
+                '"**Data gaps**\\\\\\nNot available:\\n- A\\n- B", '
+                '"data_gaps": {"intro": "Not available:", '
+                '"items": ["A", "B"]}}}',
+            ),
+            id="data_gaps_text_block",
         ),
         pytest.param(
             BlockContentFrame(

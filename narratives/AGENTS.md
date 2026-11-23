@@ -81,7 +81,8 @@ process and PR expectations: [`CONTRIBUTING.md`](../CONTRIBUTING.md).
       (`debug_report.py`), the chart grammar, resolver, and wire serializer
       (`charts.py`), the default chart floor (`chart_defaults.py`), the
       synthesis prompt builder (`synthesis.py`), the streaming block splitter
-      (`blocks.py`), the selection of the title-line addendum and the
+      (`blocks.py`), the parser of the answer's closing Data gaps block
+      (`data_gaps.py`), the selection of the title-line addendum and the
       extractor that takes the title line off the synthesis stream
       (`title.py`), follow-up generation (`follow_up.py`), user-visible
       messages (`messages.py`), the typed SSE frames the agent loop sends

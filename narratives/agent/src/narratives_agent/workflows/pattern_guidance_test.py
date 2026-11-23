@@ -525,7 +525,7 @@ def test_a_single_place_correlation_is_written_as_two_histories() -> None:
     assert (
         '"Relationships between two measures" describes for one place over time'
     ) in directive
-    assert "each indicator's own lead-in line, short list, and chart" in (
+    assert "each indicator's own section heading, short list, and chart" in (
         directive
     )
     assert "rather than measuring a correlation or causal link" in directive

@@ -374,7 +374,8 @@ When a fetch comes back empty, escalate deliberately rather than giving up:
 4. Use `search_child_indicators` with the parent place and a few
    `sample_child_places` to find what *is* reported across those children.
 5. Only then call `report_unavailable`, naming what you searched and what
-   related data does exist.
+   related data does exist in plain words, as a reader would say them,
+   never by DCID or code: the answer quotes these names to the reader.
 
 Never fabricate a number, and never ask for a meaningless calculation to
 manufacture one.

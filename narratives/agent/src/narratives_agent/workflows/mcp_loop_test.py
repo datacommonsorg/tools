@@ -1279,7 +1279,8 @@ async def test_the_server_reports_no_data_when_every_fetch_is_empty(
     #   table that has rows, with eight more rounds available.
     # Expectation: The loop ends after the seventh round without another
     #   model call, not truncated, with an unavailable report that names the
-    #   queries, the place, the empty variable, and the offered candidate;
+    #   queries, the place, the empty variable by the name the search gave
+    #   it, and the offered candidate;
     #   the report is streamed as a `report_unavailable` record filed by the
     #   server, and telemetry counts it under its own name.
     empty_t1 = _make_table("t1", {}, requested=("wd/Q1490",))
@@ -1342,7 +1343,7 @@ async def test_the_server_reports_no_data_when_every_fetch_is_empty(
     assert report.reason == (
         "No data was found in 7 rounds of discovery: the 1 variable "
         "fetched had no rows for the requested entities "
-        "(Median_Income_Household)."
+        "(Median household income)."
     )
     filed = result.tool_calls[-1]
     assert filed["name"] == "report_unavailable"
@@ -1352,6 +1353,43 @@ async def test_the_server_reports_no_data_when_every_fetch_is_empty(
         "filed_by": "server",
     }
     assert telemetry.tool_calls["server_report_unavailable"] == 1
+
+
+def test_the_server_report_only_counts_a_variable_no_search_named() -> None:
+    # Test: The identifiers in the server's own no-data report.
+    # Situation: Two fetched variables came back empty. A search named one
+    #   of them and no search mentioned the other.
+    # Expectation: The reason gives the count of both variables, lists the
+    #   named one by its display name, counts the other, and holds neither
+    #   DCID.
+    search_result = json.dumps(
+        {"dcidNameMappings": {"Count_Person": "Population"}}
+    )
+    records: list[dict[str, JsonValue]] = [
+        {
+            "name": "search_indicators",
+            "arguments": {"query": "population"},
+            "result": search_result,
+        },
+        {
+            "name": "fetch_observations",
+            "arguments": {"variable_dcid": "Count_Person"},
+            "status": "success",
+        },
+        {
+            "name": "fetch_observations",
+            "arguments": {"variable_dcid": "sdg/SP_POP_TOTL"},
+            "status": "success",
+        },
+    ]
+
+    report = mcp_loop._build_server_report(records, 7)
+
+    assert report.reason == (
+        "No data was found in 7 rounds of discovery: the 2 variables "
+        "fetched had no rows for the requested entities (Population, and "
+        "1 other variable)."
+    )
 
 
 @pytest.mark.asyncio

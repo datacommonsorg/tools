@@ -327,8 +327,8 @@ _DIRECTIVES: Mapping[QueryPattern, Directive] = {
         synthesis=(
             'Write the answer as "Matching the answer to the question" '
             "describes for related measures: an opening that names the "
-            "indicators, then each indicator's own lead-in line, short list, "
-            "and chart, never one list for all of them."
+            "indicators, then each indicator's own section heading, short "
+            "list, and chart, never one list for all of them."
         ),
     ),
     "data_availability": Directive(
@@ -373,11 +373,11 @@ _SINGLE_PLACE_CORRELATION_SYNTHESIS = (
     'Write the answer as "Relationships between two measures" describes '
     "for one place over time: an opening that names the source and says "
     "how each indicator moved over the period the digest's changes cover, "
-    "then each indicator's own lead-in line, short list, and chart, never "
-    "one list for both. Say once, inside the opening, that it sets the two "
-    "histories side by side rather than measuring a correlation or causal "
-    "link. Claim no strength or direction of association beyond what those "
-    "figures show, and no cause."
+    "then each indicator's own section heading, short list, and chart, "
+    "never one list for both. Say once, inside the opening, that it sets "
+    "the two histories side by side rather than measuring a correlation or "
+    "causal link. Claim no strength or direction of association beyond what "
+    "those figures show, and no cause."
 )
 
 # Appended when the query compares a few named places side by side.

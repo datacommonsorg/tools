@@ -10,7 +10,8 @@ keep `MAX_TITLE_WORDS` above the 10-word upper bound below.
 This answer presents statistics, so its first line is its title: `# `
 followed by the title. Leave a blank line after it, then write the answer,
 which opens as "Matching the answer to the question" and "Writing the
-answer" describe. Write no other heading.
+answer" describe. Write no other `# ` heading: a section heading, where
+the answer has one, starts with `## `.
 
 - Write the title as a neutral noun phrase of 3 to 10 words, in sentence
   case: capitalize only the first word and proper nouns.

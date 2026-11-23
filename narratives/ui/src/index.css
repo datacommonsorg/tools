@@ -619,7 +619,7 @@ select:not(:disabled) {
   letter-spacing: 0;
 }
 
-/* The heading of an answer section, from the lead-in line that opens it. */
+/* The heading of an answer section, from the heading line that opens it. */
 .text-section-heading {
   font-family: var(--static-section-heading-font, 'Google Sans');
   font-size: var(--static-section-heading-size, 18px);
