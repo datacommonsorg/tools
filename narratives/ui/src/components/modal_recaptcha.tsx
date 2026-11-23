@@ -19,11 +19,9 @@
  * a chat POST receives HTTP 403 and pauses awaiting user verification.
  */
 
-import { X } from 'lucide-react';
 import { useCallback, useEffect, useId, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import {
-  RECAPTCHA_MODAL_CLOSE_LABEL,
   RECAPTCHA_MODAL_DESCRIPTION,
   RECAPTCHA_MODAL_EXPIRED_NOTE,
   RECAPTCHA_MODAL_LOAD_ERROR,
@@ -95,7 +93,8 @@ const trapDialogFocus = (
   }
   const first = focusables[0];
   const last = focusables[focusables.length - 1];
-  if (!dialog.contains(active)) {
+  // The dialog itself holds focus on open; Tab enters its first control.
+  if (active === dialog || !dialog.contains(active)) {
     event.preventDefault();
     first.focus();
     return;
@@ -169,21 +168,20 @@ function RecaptchaModalDialog({
 }: Readonly<RecaptchaModalDialogProps>) {
   const dialogRef = useRef<HTMLDivElement | null>(null);
   const titleId = useId();
-  const closeButtonRef = useRef<HTMLButtonElement | null>(null);
   const descriptionId = useId();
   const [renderAttempt, setRenderAttempt] = useState(0);
 
   const handleRetry = useCallback(() => {
     setRenderAttempt((attempt) => attempt + 1);
     // Keep focus inside the dialog as the Retry button unmounts.
-    closeButtonRef.current?.focus();
+    dialogRef.current?.focus();
   }, []);
 
   // Move initial focus into the dialog on mount. Capturing and restoring prior
   // focus lives in `useRecaptchaVerification` so it reads `activeElement`
   // before `AppLayout` becomes `inert` and restores it after `inert` clears.
   useEffect(() => {
-    closeButtonRef.current?.focus();
+    dialogRef.current?.focus();
   }, []);
 
   // Dismiss on Escape and trap Tab/Shift+Tab within the dialog.
@@ -205,10 +203,10 @@ function RecaptchaModalDialog({
 
   return (
     <>
-      {/* Pointer-only backdrop; Escape and the close button serve the keyboard. */}
+      {/* Pointer-only backdrop; Escape serves the keyboard. */}
       <div
         data-non-print="true"
-        className="fixed inset-0 z-50 bg-scrim/30"
+        className="fixed inset-0 z-50 bg-scrim/30 motion-safe:animate-fade-in"
         onClick={onCancel}
         aria-hidden="true"
       />
@@ -225,41 +223,29 @@ function RecaptchaModalDialog({
           aria-modal="true"
           aria-labelledby={titleId}
           aria-describedby={descriptionId}
-          className="pointer-events-auto w-full max-w-sm bg-surface rounded-card border border-outline shadow-elevated p-4 sm:p-6 motion-safe:animate-fade-in"
+          tabIndex={-1}
+          className="pointer-events-auto outline-none w-full max-w-xl rounded-dialog dialog-surface shadow-elevated py-8 px-10 flex flex-col gap-2 motion-safe:animate-enter items-start"
         >
-          <div className="flex items-start justify-between gap-3">
-            <h2
-              id={titleId}
-              className="text-section-heading text-on-surface pt-1"
-            >
-              {RECAPTCHA_MODAL_TITLE}
-            </h2>
-            <button
-              ref={closeButtonRef}
-              type="button"
-              aria-label={RECAPTCHA_MODAL_CLOSE_LABEL}
-              onClick={onCancel}
-              className="w-11 h-11 -mr-2 -mt-2 flex items-center justify-center rounded-full text-subtle hover:bg-button-hover transition-colors shrink-0"
-            >
-              <X strokeWidth={1.5} aria-hidden="true" />
-            </button>
-          </div>
+          <h2
+            id={titleId}
+            className="text-headline-small-emphasized text-headline"
+          >
+            {RECAPTCHA_MODAL_TITLE}
+          </h2>
 
           <p
             id={descriptionId}
-            className="mt-2 text-body-medium text-on-surface-variant"
+            className="mb-2 text-body-large text-on-surface-variant"
           >
             {RECAPTCHA_MODAL_DESCRIPTION}
           </p>
 
-          <div className="mt-5">
-            <RecaptchaCheckboxWidget
-              key={renderAttempt}
-              checkboxSiteKey={checkboxSiteKey}
-              onComplete={onComplete}
-              onRetry={handleRetry}
-            />
-          </div>
+          <RecaptchaCheckboxWidget
+            key={renderAttempt}
+            checkboxSiteKey={checkboxSiteKey}
+            onComplete={onComplete}
+            onRetry={handleRetry}
+          />
         </div>
       </div>
     </>
@@ -383,7 +369,7 @@ function RecaptchaCheckboxWidget({
         <button
           type="button"
           onClick={onRetry}
-          className="min-h-11 px-4 rounded-full bg-theme-container text-on-theme-container text-label-large hover:opacity-90 transition-opacity"
+          className="h-14 px-6 rounded-full text-body-large-emphasized bg-theme-primary text-on-theme-primary hover:opacity-90 transition-opacity"
         >
           {RETRY_LABEL}
         </button>
