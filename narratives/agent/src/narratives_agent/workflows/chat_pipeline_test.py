@@ -1118,6 +1118,34 @@ async def test_run_discovery_phase_records_the_specification_and_its_origin(
     assert ctx.record.specification_origin == "model"
 
 
+@pytest.mark.asyncio
+async def test_run_discovery_phase_records_the_results_it_returns(
+    turn: _Turn,
+) -> None:
+    # Test: Agreement between the turn's record and the result that
+    #   `run_discovery_phase` returns.
+    # Situation: The loop fetches one table and has a series specification
+    #   accepted.
+    # Expectation: The record holds the same digest and specification
+    #   objects as the returned result, and its used table IDs are the IDs
+    #   of the result's tables.
+    ctx = chat_pipeline.TurnContext(
+        transcript=_TRANSCRIPT,
+        config=AgentConfig(),
+        record=TurnRecord(telemetry=TurnTelemetry("test-turn-id")),
+        emit=turn.emit,
+        classification=_CLASSIFICATION,
+    )
+
+    result = await chat_pipeline.run_discovery_phase(ctx)
+
+    assert ctx.record.digest is result.digest
+    assert ctx.record.specification is result.spec
+    result_table_ids = {table.table_id for table in result.tables}
+    assert result_table_ids == {"t1"}
+    assert ctx.record.used_table_ids == result_table_ids
+
+
 def test_tables_used_skips_a_stale_derived_table() -> None:
     # Test: The tables a specification used.
     # Situation: The cache holds `t1`, `t2`, and a derived `s1` left by an
