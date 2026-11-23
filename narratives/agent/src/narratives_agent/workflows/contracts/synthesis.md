@@ -110,15 +110,16 @@ question and digest.
   - With three or more indicators, the opening carries the indicators and
     their direction but no figure. This overrides the headline rule's call
     for a figure in the first sentence. Each indicator then gets its own
-    block in the same shape, never one list for all of them: a lead-in line
-    naming the indicator and ending with a colon ("Skilled birth
-    attendance:"), then a short list of its latest value (`**Latest:**`)
+    block in the same shape, never one list for all of them: a section
+    heading naming the indicator (`## Skilled birth attendance`), then a
+    short list of its latest value (`**Latest:**`)
     followed by its change over the period asked (`**Long-term trend:**`,
     or `**Recent trend:**` when the question asks about recent years),
     followed directly by its chart, as "Charts" describes. Chart at most
     four indicators, the chart limit. When the digest gives more because
     the question itself names them, give every named indicator its block,
-    with a lead-in line and list but no chart past the fourth; otherwise
+    with a section heading and list but no chart past the fourth;
+    otherwise
     keep the four that answer the question most directly.
   - Describe what the reported indicators cover, never what Data Commons
     lacks, unless the MISSING DATA notes name it: "which measure
@@ -149,13 +150,14 @@ question and digest.
   [last year]. It is reported as one total for all of these diseases
   together."
 - **No data.** The digest holds no data. Follow "When the digest holds no
-  data".
+  data", which names what was searched in the opening and writes no
+  `**Data gaps**` list.
 
-In every case the opening stays within one or two sentences. The full list
-of what is missing goes once, at the end, under `**Data gaps**`, as
-"Caveats and missing data" describes; never list it in the opening. Never
-write "we", "I", "the system", or "the model", and never apologize; name
-the data service only as Data Commons.
+In every case the opening stays within one or two sentences. Except in a
+no-data answer, the full list of what is missing goes once, at the end,
+under `**Data gaps**`, as "Caveats and missing data" describes; never list
+it in the opening. Never write "we", "I", "the system", or "the model", and
+never apologize; name the data service only as Data Commons.
 
 ### Writing the answer
 
@@ -223,13 +225,13 @@ the data service only as Data Commons.
   word and proper nouns, as in `**Long-term trend:**` or
   `**United Kingdom:**`, never title case such as "Long-Term Trend".
 - When the answer covers groups that share one chart, such as female and
-  male for a single place, introduce them with a lead-in line that names
-  the breakdown ("Population by sex:"), then give
+  male for a single place, introduce them with a section heading that
+  names the breakdown (`## Population by sex`), then give
   each group a bullet with a bold label naming it (`**Female:**`). Do not
   list every group's figures in one paragraph. Series that each get their
   own chart, as "Charts" requires of each indicator and of each breakdown
-  across two or more places, get their own lead-in line, short list, and
-  chart instead of a bullet in one shared list.
+  across two or more places, get their own section heading, short list,
+  and chart instead of a bullet in one shared list.
 - When two or three places share the same measures (Texas and the United
   States, cases and rate), group the bullets by measure, not by place: one
   bullet per measure that sets the places side by side ("Between [year]
@@ -420,8 +422,8 @@ numbers per bullet.
   so the reader knows which measure it describes, and never use the same
   label twice: `**Total trend:**` and `**Per-person trend:**` (or the
   rate's own scale, `**Rate per 1,000 trend:**`), never `**Long-term
-  trend:**` for both. When each has its own lead-in line, list, and chart,
-  the lead-in names the measure and the standard labels apply. Give the
+  trend:**` for both. When each has its own section heading, list, and
+  chart, the heading names the measure and the standard labels apply. Give the
   unit with a total's peak or low ("peaked at [value] people [1]"), so it
   is never taken for the rate.
 - In a comparison, the total and the rate are two indicators, so each gets
@@ -441,10 +443,11 @@ layout follows what the data covers:
   through the digest's highest and lowest groups:
   1. The opening gives the group comparison, with the year of each measure,
      then the sentence that states the pattern.
-  2. One table per group, each with both measures, after a lead-in line
-     naming the group by the measure it is grouped by ("Highest median
-     household income:", then "Lowest median household income:"). Write
-     no chart after either table.
+  2. One table per group, each with both measures, after a section
+     heading naming the group by the measure it is grouped by
+     (`## Highest median household income`, then
+     `## Lowest median household income`). Write no chart after either
+     table.
   3. One or two sentences ending with a period on how the two measures
      sit across all the places, never on the chart itself, then one
      `scatter` of the two measures across all the places, the answer's
@@ -467,8 +470,8 @@ layout follows what the data covers:
   measure moved, in words taken from the changes the digest computed and
   with the period those changes cover; it carries no figure, which
   overrides the headline rule's call for one. Then give each measure its
-  own lead-in line, short list, and `line` chart, as "Charts" describes,
-  never one list for both. Do not draw a scatter.
+  own section heading, short list, and `line` chart, as "Charts"
+  describes, never one list for both. Do not draw a scatter.
 
 Wording:
 
@@ -589,8 +592,8 @@ comparison covers:
   population of [value], a median household income of [value], and a
   median rent of [value]". Each indicator then gets a table or bullets,
   never both:
-  - Two or three places: no tables. Each indicator gets its own lead-in
-    line, short list, and chart, as "Charts" describes; its
+  - Two or three places: no tables. Each indicator gets its own section
+    heading, short list, and chart, as "Charts" describes; its
     `**Latest:**` bullet sets the places side by side ("The rate was
     higher in [place A] ([value A] [1]) than in [place B] ([value B] [1])
     in [year]"), followed by its trend and peak bullets.
@@ -689,9 +692,9 @@ For a ranking of one indicator:
   country, state, or world) when its table is in the table inventory and
   the indicator is a rate, share, per-person value, or average, never when
   it is a total or count (see "Charts"). When the question asks for both
-  ends, give each end its own table, introduced by a short lead-in line
-  ending with a colon, such as "Highest [indicator]:" and "Lowest
-  [indicator]:", each table followed directly by a `line` chart of its
+  ends, give each end its own table, introduced by a short section
+  heading, such as `## Highest [indicator]` and `## Lowest [indicator]`,
+  each table followed directly by a `line` chart of its
   first five places. For a ranking of one indicator, do not add a
   `ranking` chart; the table already lists the places. When the parent
   place's figure exists in the digest, the headline must give it once,
@@ -749,8 +752,9 @@ country in Europe"), honor it:
 
 - The table lists every place the digest gives a figure for, however many,
   in the order of the indicator the question leads with; the ten-row limit
-  does not apply. Introduce it with a short lead-in line that names what it
-  covers ("Dengue cases by state:"), after the headline; when the places
+  does not apply. Introduce it with a short section heading that names
+  what it covers (`## Dengue cases by state`), after the headline; when the
+  places
   include ones of another type, name them in a sentence ending with a
   period ("The table covers all the states, the District of Columbia, and
   Puerto Rico."). Never describe the places as
@@ -894,7 +898,8 @@ industry, population by age):
 - Lead with the conclusion the data supports, then state other caveats in a
   short sentence after the bullets they qualify and their chart, never
   between the bullets and the chart.
-- When the MISSING DATA notes name measures the answer could not cover,
+- When the digest holds data and the MISSING DATA notes name measures the
+  answer could not cover,
   end the answer with them, after the last bullet, table, or chart: the
   bold label `**Data gaps**` alone on its line, with no colon, ending
   with a backslash (`**Data gaps**\`) so the next line starts below it,
@@ -915,24 +920,22 @@ The chart block grammar follows these instructions. Use it as follows.
 - Place a chart block immediately after the bullet list or table that holds
   the figures it shows, with a blank line before and after it and no text
   between them: the app shows the list or table beside its chart. Introduce
-  the list or table with its lead-in line above it, separated by a blank
+  the list or table with its section heading above it, separated by a blank
   line, never on the line directly before the first bullet or row. Put any
   sentence about the figures (a caveat, a missing place, leftover
   categories) after the chart, never between the list or table and its
   chart. When a chart illustrates a sentence rather than a list or table,
   place it directly after that sentence; the app shows it full width.
-- The app shows a lead-in line, a paragraph of one line ending with a
-  colon, as the heading of the list or table and chart under it. Write it
-  as a short label of a few words, in sentence case, that names the
-  indicator or breakdown ("Population by sex:", "Skilled birth
-  attendance:"), never as a sentence
-  ("Population figures also break down by sex:"), and with no figure, no
-  citation marker, and no bold. The line under `**Data gaps**` is part of
-  that paragraph, not a lead-in line, and keeps its wording. Any other
-  sentence that introduces a list or table ends with a period, never a
-  colon, so it stays text and never becomes a heading: "The ten highest
-  are Puerto Rico and nine states.", never "The population is distributed
-  as follows:".
+- The app shows a section heading above the list or table and chart
+  under it. Write it on a line of its own as `## ` followed by a short
+  label of a few words, in sentence case, that names the indicator or
+  breakdown (`## Population by sex`, `## Skilled birth attendance`), never
+  a sentence (`## Population figures also break down by sex`), and with no
+  colon, no figure, no citation marker, and no bold. Only a `## ` line is
+  a heading. A sentence that ends with a colon stays text, so a sentence
+  that leads into a list or table ends with a colon ("These related
+  statistics are available instead:"). Write the `**Data gaps**` label as
+  "Caveats and missing data" describes, never as a `## ` heading.
 - Each indicator gets its own list or table and its own chart; never write
   two chart blocks one directly after the other. Two related measures are
   the exception: "Relationships between two measures" sets them in one
@@ -1006,17 +1009,41 @@ The chart block grammar follows these instructions. Use it as follows.
 
 ### When the digest holds no data
 
-State clearly, first, that the specific indicator asked about is not
-available in Data Commons. Then say what was searched and what related data
-exists, drawn from the MISSING DATA notes, in a short sentence and, for
-three or more items, a short bulleted list. Do not write suggested or
-follow-up questions of your own; the app lists alternative questions
-beneath the answer.
-Include this sentence only when no relevant data was found at all: "If
-you'd like to see this data in Data Commons, you can
-[submit a data request](https://docs.datacommons.org/contributing)."
-Do not include it when data was found for some places, periods, or related
-indicators.
+Open with one paragraph of two sentences. The first names what the question
+asked for and at most three of the related terms searched, drawn from the
+MISSING DATA notes, and says none returned an exact match in Data Commons.
+The second points to the related statistics that follow. Illustrative, with
+the brackets filled from the question and the MISSING DATA notes:
+"Searching for [topic] (along with related terms like [term 1], [term 2],
+and [term 3]) did not return an exact match in Data Commons. These related
+statistics are available instead:"
+
+- Never address the reader as "you" or "your".
+- Name the topic and every related term in plain words, as a reader would
+  say them. Never write an identifier, such as a variable DCID or code
+  (`sdg/EN_MAT_DOMCMPT.PRODUCT--MF2`) or any term with slashes or
+  underscores: leave that term out. Leave out the name of a source or an
+  organization that was searched as well: it is not a related term. When no
+  plain term is left, leave out the parenthesis.
+- Keep both sentences in one paragraph. End the second with a colon,
+  because it introduces the list under it.
+- Never write a separate label line, heading, or bold line above the
+  related statistics, such as "Related measures available in Data Commons
+  include".
+- Then list the related statistics the MISSING DATA notes name as a short
+  bulleted list, one statistic per bullet, in plain text. When they name
+  fewer than three, name them in the second sentence instead of a list,
+  and end it with a period ("[statistic 1] and [statistic 2] are available
+  instead.").
+  When they name none, leave out the second sentence and the list.
+- Write no `**Data gaps**` section; the opening already says what is
+  missing.
+- Do not write suggested or follow-up questions of your own; the app lists
+  alternative questions beneath the answer.
+- Write nothing after the related statistics, or after the opening when
+  there are none: no closing line, no link, and no invitation to request or
+  suggest data. The app shows its own link for suggesting a dataset beneath
+  the answer.
 
 ### Example
 
@@ -1037,7 +1064,7 @@ According to [source], [state]'s population reached [value] [1] in
 {"kind": "line", "tables": ["t1"], "title": "Population of [state]"}
 ```
 
-Labor force participation by sex:
+## Labor force participation by sex
 
 - **Women:** Participation (share of people aged 16 and over) reached
   [value] [2] in [year], up [change] percentage points from [year]. It
@@ -1120,7 +1147,7 @@ reproductive health services and outcomes rather than laws or funding:
 between [year] and [year], skilled birth attendance and family planning
 coverage rose, while maternal mortality fell.
 
-Skilled birth attendance:
+## Skilled birth attendance
 
 - **Latest:** Skilled birth attendance, the share of births attended by
   skilled health personnel, reached [value] [1] in [year].
@@ -1131,7 +1158,7 @@ Skilled birth attendance:
 {"kind": "line", "tables": ["t1"], "title": "Skilled birth attendance worldwide"}
 ```
 
-Family planning coverage:
+## Family planning coverage
 
 - **Latest:** Family planning coverage, the share of women whose need was
   met with modern methods, reached [value] [2] in [year].
@@ -1142,7 +1169,7 @@ Family planning coverage:
 {"kind": "line", "tables": ["t2"], "title": "Family planning coverage worldwide"}
 ```
 
-Maternal mortality:
+## Maternal mortality
 
 - **Latest:** Maternal mortality reached [value] deaths per 100,000 live
   births [3] in [year].
@@ -1159,8 +1186,8 @@ These measures are not available in Data Commons:
 
 Note the opening sentence that names the indicators, what they measure of
 the topic, and how they moved over a named period, with no figure; each
-indicator's own lead-in line, short list, marker, and chart, under the one
-name the opening gave it; and the missing measures listed once, at the
+indicator's own section heading, short list, marker, and chart, under the
+one name the opening gave it; and the missing measures listed once, at the
 end, only as the MISSING DATA notes name them.
 
 ### Chart blocks

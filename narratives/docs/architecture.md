@@ -255,9 +255,18 @@ Otherwise, the request runs through the agent loop in five steps:
    bounds that clamp the drawn series.
    The server splits the stream at paragraph boundaries and at the closing fence
    of each chart block, and emits one `content {block}` frame per completed
-   paragraph and per chart that resolves. A one-line lead-in ending with a
-   colon directly above a list item or table row is a paragraph of its own,
-   even without a blank line between them. Resolution is set membership against
+   paragraph and per chart that resolves. A Markdown heading line is a
+   paragraph of its own, and so is a one-line lead-in ending with a colon
+   directly above a list item or table row, even without a blank line
+   between them. The Data gaps block that closes an answer (a `**Data gaps**`
+   label line, an introducing line, and a list of the measures the answer
+   could not cover) is one text block even when the model leaves blank lines
+   inside it. The server (`workflows/data_gaps.py`) parses it, and its
+   `content {block}` frame also carries `data_gaps`: the introducing line as
+   `intro` and the measures as `items`, both in plain text. The app shows
+   that list as a "Data gaps" section after the answer's blocks and above
+   the citations, and does not render the block's Markdown. A label that no
+   list follows stays ordinary text. Resolution is set membership against
    the turn cache: an unknown table, a place or date the table does not hold, a
    unit mismatch across the tables on one axis, a `line` whose date bounds
    leave a charted table without a place holding two dates, or a kind the
@@ -289,12 +298,14 @@ Otherwise, the request runs through the agent loop in five steps:
    are not chartable. At most four charts are accepted per answer. The model
    writes each chart directly after the bullet list or table holding its
    figures, and the app shows that list or table beside the chart in one
-   section, headed by its one-line lead-in when it has one. A list's section
+   section, headed by its section heading when it has one. A list's section
    sits on its own surface (`--color-surface-section`, white by default),
    with the heading at the top of the list's column; a table's section has
    no surface, since the table carries its own card, and its heading spans
-   the full width above the table and chart. The app renders a lead-in line
-   whose label is plain text as an h2 section heading, without its colon.
+   the full width above the table and chart. The model writes a section
+   heading as a Markdown heading line (`## Population by sex`), and the app
+   renders one whose label is plain text as an h2 section heading. A line
+   that only ends with a colon is text, never a heading.
    Maps, scatter charts, and a chart after prose render full width. When the
    digest has data and no chart is
    emitted, the default chart floor appends at most one chart projected directly
@@ -329,7 +340,10 @@ Otherwise, the request runs through the agent loop in five steps:
    first block. Only a Markdown heading (`#` to `######`) or a line starting
    with a `Title:` label counts as a title line. A turn without data gets the
    `synthesis_no_title` addendum and no title, even when the model writes
-   one. The signed `model_response` is the text blocks joined by blank lines,
+   one. The model does not write a closing line or link on such a turn. When
+   the search finished, the app shows its own link to the dataset intake form
+   under the answer (`SUGGEST_DATASET_URL` in `ui/src/config/copy_chat.ts`).
+   The signed `model_response` is the text blocks joined by blank lines,
    with the chart blocks and the title line stripped, matching the text
    blocks emitted in `content` frames. A stream that stalls for 60 seconds
    waiting for a chunk ends the turn with `synthesis_stream_error`.
@@ -352,7 +366,7 @@ for `heartbeat`) a sequential `id` starting at `1`:
 | :--- | :--- |
 | `status` | Current step (`classify`, `discovery`, `processing`, or `synthesis`) and status message |
 | `thought` | Model reasoning summary from the `discovery` or `synthesis` step |
-| `content` | Answer title (`{title}`, before the first block, only when the answer has data), answer block (`{block}` of type `text` or `chart`; a server-supplied default chart adds `standalone: true`), tool call details (`{tool_call}`), citations (`{sources}`), or data status (`{data_status}`) |
+| `content` | Answer title (`{title}`, before the first block, only when the answer has data), answer block (`{block}` of type `text` or `chart`; the Data gaps text block adds `data_gaps: {intro, items}`; a server-supplied default chart adds `standalone: true`), tool call details (`{tool_call}`), citations (`{sources}`), or data status (`{data_status}`) |
 | `terminal` | Final turn status (`state: "complete"`, `"refused"`, or `"error"`), plus the signed conversation state on completion, `{reason, message}` (with no `error` key) on refusal, or `{error, reason, is_retryable}` on failure |
 | `follow_ups` | `{follow_up_questions}`, sent after `terminal` when available |
 | `debug_report` | Gated turn debug report, sent as the final frame when the debug report mode is `on`, or `flag` with `"debug": true` |

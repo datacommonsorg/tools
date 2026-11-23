@@ -21,6 +21,9 @@
 
 import type { TurnStatus } from '@/src/hooks/use_sse_chat';
 
+/** Heading of the answer's closing list of measures Data Commons lacks. */
+export const DATA_GAPS_HEADING = 'Data gaps';
+
 /** Label of the inline button that resubmits a retryable failed turn's query. */
 export const RETRY_LABEL = 'Try again';
 
@@ -142,7 +145,21 @@ export const RECAPTCHA_MODAL_EXPIRED_NOTE =
  * Label in the answer card's header when the agent's search finished and
  * found no matching data.
  */
-export const NO_MATCHING_DATA_HEADER = 'No matching data found';
+export const NO_MATCHING_DATA_HEADER = 'No exact data match found';
+
+/**
+ * Question shown under an answer whose search finished and found no matching
+ * data. The {@link SUGGEST_DATASET_LINK_LABEL} link follows it.
+ */
+export const SUGGEST_DATASET_PROMPT =
+  'Know of a public dataset to add to the Data Commons Knowledge Graph?';
+
+/** Label of the link to the dataset intake form. */
+export const SUGGEST_DATASET_LINK_LABEL = 'Suggest a dataset';
+
+/** Address of the form for proposing a dataset to Data Commons. */
+export const SUGGEST_DATASET_URL =
+  'https://docs.google.com/forms/d/e/1FAIpQLScC8MMm1PXchOwBiVJv7gG08M3pEL21-4-xa6IELU0toh7iWQ/viewform';
 
 /**
  * Label in the answer card's header when the agent's search ended early, at
