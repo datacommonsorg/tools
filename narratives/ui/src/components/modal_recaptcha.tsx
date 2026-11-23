@@ -378,8 +378,8 @@ function RecaptchaCheckboxWidget({
   }
 
   return (
-    <div className="flex flex-col items-center gap-3">
-      <div className="grid place-items-center min-h-20 w-full">
+    <div className="flex flex-col items-start gap-3">
+      <div className="grid place-items-star min-h-20 w-full">
         {widgetState.status === 'loading' && (
           <div
             role="status"
