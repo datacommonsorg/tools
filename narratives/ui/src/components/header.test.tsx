@@ -86,8 +86,10 @@ describe('Header', () => {
     // Test: Custom header navigation tabs.
     // Situation: The theme document declares two navigation tabs and the current
     //            hash route is empty (which maps to the `agent` route).
-    // Expectation: A "Primary" navigation landmark renders both links in order, and
-    //              only the active route link has `aria-current="page"`.
+    // Expectation: A "Primary" navigation landmark hidden below `lg` renders both
+    //              links in order, marks only the active route link with
+    //              `aria-current="page"` and active styling, and applies hover
+    //              styling to the inactive link.
     writeSlot({
       navigation: [
         { label: 'Explore', href: '#/agent' },
@@ -96,13 +98,19 @@ describe('Header', () => {
     });
     renderHeader();
     const nav = screen.getByRole('navigation', { name: 'Primary' });
+    expect(nav.classList.contains('hidden')).toBe(true);
+    expect(nav.classList.contains('lg:flex')).toBe(true);
     const links = within(nav).getAllByRole('link');
     expect(links.map((link) => link.textContent)).toEqual([
       'Explore',
       'Dashboards',
     ]);
     expect(links[0].getAttribute('aria-current')).toBe('page');
+    expect(links[0].classList.contains('text-nav-active')).toBe(true);
+    expect(links[0].classList.contains('hover:text-on-surface')).toBe(false);
     expect(links[1].getAttribute('aria-current')).toBeNull();
+    expect(links[1].classList.contains('hover:text-on-surface')).toBe(true);
+    expect(links[1].classList.contains('text-nav-active')).toBe(false);
   });
 
   it('opens every navigation link in the current tab', () => {
@@ -138,14 +146,13 @@ describe('Header', () => {
     ['data:', 'data:text/html,x'],
     ['vbscript:', 'vbscript:msgbox(1)'],
     ['relative', 'relative/path'],
-  ])('renders a %s navigation href as plain text without hover styling', (_, href) => {
+  ])('renders a %s navigation href as an unstyled fallback span', (_, href) => {
     // Test: Header navigation entry with an unsafe href.
     // Situation: The instance configuration is stubbed so that a navigation
     //            entry carries a script, data, or relative URL, which
     //            `getInstanceConfig` would otherwise discard.
-    // Expectation: The entry renders its label on a fallback span that keeps
-    //              layout visibility classes and omits interactive hover
-    //              classes.
+    // Expectation: The entry renders its label on an unstyled fallback span
+    //              with no link role and no class attribute.
     vi.spyOn(instanceConfig, 'getInstanceConfig').mockReturnValue({
       ...DEFAULT_INSTANCE_CONFIG,
       navigation: [{ label: 'Evil', href }],
@@ -155,9 +162,7 @@ describe('Header', () => {
     expect(within(nav).queryByRole('link')).toBeNull();
     const fallback = within(nav).getByText('Evil');
     expect(fallback.tagName).toBe('SPAN');
-    expect(fallback.classList.contains('hidden')).toBe(true);
-    expect(fallback.classList.contains('lg:block')).toBe(true);
-    expect(fallback.classList.contains('hover:text-on-surface')).toBe(false);
+    expect(fallback.getAttribute('class')).toBeNull();
   });
 
   it.each([
