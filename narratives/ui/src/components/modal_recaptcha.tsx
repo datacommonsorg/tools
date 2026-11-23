@@ -224,7 +224,7 @@ function RecaptchaModalDialog({
           aria-labelledby={titleId}
           aria-describedby={descriptionId}
           tabIndex={-1}
-          className="pointer-events-auto outline-none w-full max-w-xl rounded-dialog dialog-surface shadow-elevated p-6 sm:py-8 sm:px-10 flex flex-col gap-2 motion-safe:animate-enter items-start"
+          className="pointer-events-auto outline-none w-full max-w-xl rounded-dialog dialog-surface shadow-elevated p-6 sm:py-8 sm:px-10 flex flex-col gap-2 motion-safe:animate-enter"
         >
           <h2
             id={titleId}
@@ -379,7 +379,7 @@ function RecaptchaCheckboxWidget({
 
   return (
     <div className="flex flex-col items-start gap-3">
-      <div className="grid place-items-star min-h-20 w-full">
+      <div className="grid place-items-start min-h-20 w-full">
         {widgetState.status === 'loading' && (
           <div
             role="status"
