@@ -23,6 +23,7 @@ import { SuggestionChip } from '@/src/components/chip_suggestion';
 import { PromptInput } from '@/src/components/input_prompt';
 import { RECAPTCHA_NOTICE_TEXT } from '@/src/components/note_composer';
 import { TaglineText } from '@/src/components/text_tagline';
+import { PROMPT_PLACEHOLDER } from '@/src/config/copy_landing';
 import { getInstanceConfig } from '@/src/config/instance_config';
 import {
   INTRO_CASCADE_VARIANTS,
@@ -67,7 +68,7 @@ export function InitialView({ query, setQuery, onSend }: InitialViewProps) {
         <m.div variants={INTRO_FADE_UP_VARIANTS} className="w-full">
           <PromptInput
             value={query}
-            placeholder="Ask a question to explore relevant statistical data"
+            placeholder={PROMPT_PLACEHOLDER}
             onValueChange={setQuery}
             onSubmit={() => onSend()}
           />

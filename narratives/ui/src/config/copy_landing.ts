@@ -20,3 +20,7 @@
 
 /** Label of the button that closes the tagline dialog. */
 export const TAGLINE_DIALOG_DISMISS_LABEL = 'Got it';
+
+/** Placeholder of the landing view's prompt input. */
+export const PROMPT_PLACEHOLDER =
+  'Ask a question to explore relevant statistical data';

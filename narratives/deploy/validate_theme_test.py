@@ -126,6 +126,27 @@ def test_stdlib_fallback_checks_type_required_pattern_enum_and_nested_paths(
     ]
 
 
+@pytest.mark.usefixtures("run_under_each_validator")
+def test_tagline_link_rejects_empty_sections_and_strings(
+    schema: dict[str, Any],
+) -> None:
+    """Enforces `minItems` and `minLength` on `tagline_link`."""
+    # Test: The `minItems` and `minLength` keywords on `tagline_link`.
+    # Situation: Under jsonschema and under the stdlib fallback, one theme has
+    #   no dialog sections, and another has an empty phrase and an empty
+    #   section title.
+    # Expectation: Both themes are rejected; a valid link is accepted.
+    section = {"title": "Graph", "body": "Body."}
+    for link in (
+        {"text": "Graph", "sections": []},
+        {"text": "", "sections": [section]},
+        {"text": "Graph", "sections": [{"title": "", "body": "Body."}]},
+    ):
+        assert validate_theme.validate({"tagline_link": link}, schema) != []
+    valid = {"text": "Graph", "sections": [section]}
+    assert validate_theme.validate({"tagline_link": valid}, schema) == []
+
+
 def test_matches_type_covers_all_json_schema_primitives() -> None:
     """Checks each JSON Schema primitive type in _matches_type."""
     # Test: Primitive type predicates in _matches_type.

@@ -28,6 +28,8 @@
   );
 
   --color-theme-primary: var(--theme-primary, #0b57d0);
+  /* Text and icons on a theme-primary fill, such as a filled button. */
+  --color-on-theme-primary: #ffffff;
   /* Selected-item pills and active tabs tint the theme primary at 14% opacity
      when no explicit container color is set. */
   --color-theme-container: var(
