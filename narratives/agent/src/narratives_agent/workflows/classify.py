@@ -18,7 +18,9 @@ injections and exploit payloads before any external call, optionally screens
 the query against Google Cloud Model Armor (`model_armor.py`), and then
 requests a structured `QueryClassification` from Gemini at temperature zero to
 refuse adversarial or off-domain queries, return a clarification question, or
-admit the query with its analytical pattern.
+admit the query with its analytical pattern. When Model Armor does not return a
+complete result or the classifier does not return a valid verdict, the phase
+raises `ScreeningUnavailableError` and the turn ends without reaching discovery.
 """
 
 import asyncio
@@ -37,8 +39,11 @@ from narratives_agent.gemini.client import (
     async_gemini_request,
 )
 from narratives_agent.gemini.schemas import QueryClassification
-from narratives_agent.model_armor import screen_user_prompt
-from narratives_agent.telemetry import TurnTelemetry
+from narratives_agent.model_armor import (
+    ModelArmorUnavailableError,
+    screen_user_prompt,
+)
+from narratives_agent.telemetry import ErrorType, TurnTelemetry
 from narratives_agent.workflows.mcp_loop import MCP_HISTORY_RESPONSE_CHARS
 from narratives_agent.workflows.messages import (
     OFF_DOMAIN_NAMED_SUBJECT,
@@ -67,9 +72,13 @@ class RefusedReason(StrEnum):
     SAFETY_BLOCKED = "safety_blocked"
 
 
-# Upper bound in seconds for the classification model call before the turn
-# proceeds unclassified.
+# Upper bound in seconds for one classification model call. A call that
+# exceeds it counts as a failed attempt.
 CLASSIFY_TIMEOUT_SECONDS = 10
+
+# Maximum classification model calls in one turn. A failed attempt that a
+# repeated call can fix is followed by one more attempt, without a delay.
+_MAX_CLASSIFY_ATTEMPTS = 2
 
 # Maximum character length for the sanitized premise quoted in an off-domain
 # refusal message.
@@ -90,6 +99,40 @@ class TurnRefusedError(Exception):
         self.reason: RefusedReason = reason
 
 
+class ScreeningUnavailableError(Exception):
+    """Raised when the classify phase cannot screen the query.
+
+    Model Armor did not return a complete result, or the classifier did not
+    return a valid verdict. The message is an internal description of the
+    failure and is not shown to the user.
+
+    Attributes:
+        error_type: Short machine-readable failure category for telemetry.
+        is_retryable: False only when the failure is identified as
+            permanent. Every other failure is retryable.
+    """
+
+    def __init__(
+        self, error_type: ErrorType, message: str, *, is_retryable: bool
+    ) -> None:
+        super().__init__(message)
+        self.error_type = error_type
+        self.is_retryable = is_retryable
+
+
+class _ClassifierAttemptError(Exception):
+    """Raised when one classifier attempt does not return a valid verdict.
+
+    Attributes:
+        is_retryable: Whether a repeated request can succeed. False only
+            when Gemini rejected the request permanently.
+    """
+
+    def __init__(self, message: str, *, is_retryable: bool) -> None:
+        super().__init__(message)
+        self.is_retryable = is_retryable
+
+
 @dataclass(frozen=True)
 class Clarification:
     """Represents a serviceable query that requires disambiguation first.
@@ -106,12 +149,11 @@ class Clarification:
 class Admitted:
     """Represents a query admitted into the discovery phase.
 
-    `classification` is `None` when the classifier call failed, in which case
-    the turn proceeds without a pattern directive and is recorded as
-    `exploratory`.
+    `classification` is the classifier's verdict. Its pattern is recorded in
+    telemetry and selects the pattern directive of the later phases.
     """
 
-    classification: QueryClassification | None
+    classification: QueryClassification
 
 
 def off_domain_message(premise: str) -> str:
@@ -131,27 +173,31 @@ def off_domain_message(premise: str) -> str:
     return OFF_DOMAIN_TEMPLATE.format(subject=subject)
 
 
-async def _request_classification(
-    transcript: Transcript, config: AgentConfig, telemetry: TurnTelemetry
-) -> QueryClassification | None:
-    """Requests a `QueryClassification` from the configured classifier model.
+async def _attempt_classification(
+    transcript: Transcript,
+    prompt: str,
+    config: AgentConfig,
+    telemetry: TurnTelemetry,
+) -> QueryClassification:
+    """Sends one classifier request and validates its reply.
+
+    Args:
+        transcript: Verified transcript holding the current query and prior
+            conversation context.
+        prompt: The configured classify prompt, which is not empty.
+        config: The agent configuration that selects the classifier model.
+        telemetry: Turn telemetry accumulator receiving token counts.
 
     Returns:
-        The validated classification, or `None` when the prompt is unconfigured,
-        the request fails or times out, the reply carries no text, or the
-        output fails schema validation.
+        The validated classification.
 
     Raises:
-        GeminiBlockedError: If Gemini blocks the prompt or stops the candidate
-            with a safety finish reason. The error propagates so that the
-            turn ends as `refused`.
+        _ClassifierAttemptError: If the request times out or fails, the
+            reply is empty, or the output fails schema validation.
+        GeminiBlockedError: If Gemini blocks the prompt or stops the
+            candidate with a safety finish reason. The error propagates so
+            that the turn ends as `refused`.
     """
-    prompt = config.prompts.classify
-    if not prompt:
-        logger.warning(
-            "The classify prompt is not configured; proceeding unclassified"
-        )
-        return None
     messages = transcript_contents(
         transcript,
         transcript.current_query,
@@ -173,37 +219,128 @@ async def _request_classification(
                 token_usage=telemetry.tokens,
                 token_phase=GeminiRole.CLASSIFY.value,
             )
-    except TimeoutError:
+    except TimeoutError as error:
         logger.warning(
-            "Classifier request timed out after %d seconds; proceeding "
-            "unclassified",
+            "Classifier request timed out after %d seconds",
             CLASSIFY_TIMEOUT_SECONDS,
         )
-        return None
+        raise _ClassifierAttemptError(
+            "The classifier request timed out", is_retryable=True
+        ) from error
     except GeminiBlockedError:
         # Propagates to `run_turn`, which ends the turn as `refused`.
         raise
-    except GeminiError:
+    except GeminiError as error:
         # The Gemini client has already logged the redacted upstream error.
-        logger.warning("Classifier request failed; proceeding unclassified")
-        return None
+        logger.warning(
+            "Classifier request failed (retryable: %s)", error.is_retryable
+        )
+        raise _ClassifierAttemptError(
+            "The classifier request failed", is_retryable=error.is_retryable
+        ) from error
     if not response.text.strip():
         logger.warning(
-            "Classifier returned no text (finish reason: %s); proceeding "
-            "unclassified",
+            "Classifier returned no text (finish reason: %s)",
             response.finish_reason,
         )
-        return None
+        raise _ClassifierAttemptError(
+            "The classifier returned an empty reply", is_retryable=True
+        )
     try:
         return QueryClassification.model_validate_json(response.text)
     except ValidationError as error:
         # Raw output is omitted from logs because it may contain query text.
         logger.warning(
-            "Classifier output failed validation (%d errors); proceeding "
-            "unclassified",
+            "Classifier output failed validation (%d errors)",
             error.error_count(),
         )
-        return None
+        raise _ClassifierAttemptError(
+            "The classifier output failed validation", is_retryable=True
+        ) from error
+
+
+async def _request_classification(
+    transcript: Transcript, config: AgentConfig, telemetry: TurnTelemetry
+) -> QueryClassification:
+    """Requests a `QueryClassification` from the configured classifier model.
+
+    Makes at most `_MAX_CLASSIFY_ATTEMPTS` requests. A retryable failed
+    attempt is followed by the next attempt at once, and every attempt adds
+    its token counts to `telemetry`.
+
+    Args:
+        transcript: Verified transcript holding the current query and prior
+            conversation context.
+        config: The agent configuration. `prompts.classify` is the system
+            instruction and `gemini.classify_model` is the model.
+        telemetry: Turn telemetry accumulator receiving token counts.
+
+    Returns:
+        The validated classification.
+
+    Raises:
+        ScreeningUnavailableError: With `classifier_unavailable`. The error
+            is not retryable if the classify prompt is empty, in which case
+            a request is not sent, or if Gemini rejects a request
+            permanently. It is retryable if `_MAX_CLASSIFY_ATTEMPTS`
+            attempts fail for other reasons.
+        GeminiBlockedError: If Gemini blocks the prompt or stops the
+            candidate with a safety finish reason. The error propagates so
+            that the turn ends as `refused`.
+    """
+    prompt = config.prompts.classify
+    if not prompt.strip():
+        logger.warning("The classify prompt is not configured")
+        raise ScreeningUnavailableError(
+            ErrorType.CLASSIFIER_UNAVAILABLE,
+            "The classify prompt is not configured",
+            is_retryable=False,
+        )
+    attempt = 1
+    while True:
+        try:
+            return await _attempt_classification(
+                transcript, prompt, config, telemetry
+            )
+        except _ClassifierAttemptError as error:
+            if not error.is_retryable or attempt >= _MAX_CLASSIFY_ATTEMPTS:
+                raise ScreeningUnavailableError(
+                    ErrorType.CLASSIFIER_UNAVAILABLE,
+                    f"Classifier attempt {attempt} failed: {error}",
+                    is_retryable=error.is_retryable,
+                ) from error
+            # The failed attempt is logged, and the next attempt replaces it.
+        attempt += 1
+
+
+async def _screen_with_model_armor(query: str) -> None:
+    """Screens `query` with Model Armor and refuses the turn on a match.
+
+    Args:
+        query: The user query text to screen.
+
+    Raises:
+        TurnRefusedError: If a Model Armor filter matches.
+        ScreeningUnavailableError: With `model_armor_unavailable`
+            (retryable), if a template is configured and Model Armor did
+            not return a complete result.
+    """
+    try:
+        model_armor_match = await screen_user_prompt(query)
+    except ModelArmorUnavailableError as error:
+        # `screen_user_prompt` has already logged the failure.
+        raise ScreeningUnavailableError(
+            ErrorType.MODEL_ARMOR_UNAVAILABLE,
+            "Model Armor did not return a complete result",
+            is_retryable=True,
+        ) from error
+    if model_armor_match is not None:
+        logger.warning(
+            "Model Armor matched %s; refusing turn", model_armor_match
+        )
+        raise TurnRefusedError(
+            RefusedReason.SAFETY_BLOCKED, SAFETY_REFUSED_MESSAGE
+        )
 
 
 async def classify_query(
@@ -225,6 +362,9 @@ async def classify_query(
     Raises:
         TurnRefusedError: If the pre-filter or Model Armor matches, or the
             classifier marks the query unserviceable.
+        ScreeningUnavailableError: If Model Armor does not return a
+            complete result (`model_armor_unavailable`) or the classifier
+            does not return a valid verdict (`classifier_unavailable`).
         GeminiBlockedError: If Gemini blocks the classification call.
     """
     family = prefilter_match(transcript.current_query)
@@ -233,19 +373,10 @@ async def classify_query(
         raise TurnRefusedError(
             RefusedReason.ADVERSARIAL, SAFETY_REFUSED_MESSAGE
         )
-    model_armor_match = await screen_user_prompt(transcript.current_query)
-    if model_armor_match is not None:
-        logger.warning(
-            "Model Armor matched %s; refusing turn", model_armor_match
-        )
-        raise TurnRefusedError(
-            RefusedReason.SAFETY_BLOCKED, SAFETY_REFUSED_MESSAGE
-        )
+    await _screen_with_model_armor(transcript.current_query)
     classification = await _request_classification(
         transcript, config, telemetry
     )
-    if classification is None:
-        return Admitted(None)
     if not classification.serviceable:
         if classification.refusal_reason == "off_domain":
             raise TurnRefusedError(

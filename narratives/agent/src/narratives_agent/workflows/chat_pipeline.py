@@ -52,7 +52,7 @@ from narratives_agent.gemini.client import (
     async_gemini_stream,
 )
 from narratives_agent.gemini.response import StreamChunk
-from narratives_agent.gemini.schemas import QueryClassification, QueryPattern
+from narratives_agent.gemini.schemas import QueryClassification
 from narratives_agent.json_value import JsonObject
 from narratives_agent.mcp import client as mcp_client
 from narratives_agent.mcp.capabilities import (
@@ -77,8 +77,10 @@ from narratives_agent.workflows.charts import (
     resolve_chart_specification,
 )
 from narratives_agent.workflows.classify import (
+    Admitted,
     Clarification,
     RefusedReason,
+    ScreeningUnavailableError,
     TurnRefusedError,
     classify_query,
 )
@@ -105,6 +107,7 @@ from narratives_agent.workflows.messages import (
     MCP_UNAVAILABLE,
     NO_DATA_MESSAGE,
     SAFETY_REFUSED_MESSAGE,
+    SCREENING_UNAVAILABLE,
     SYNTHESIS_FAILED,
     SYNTHESIS_STATUS,
     SYNTHESIS_TRANSIENT_ERROR,
@@ -190,9 +193,6 @@ _DIAGNOSTIC_NOTE_PREFIXES = (
     _DEFAULT_FAILED_NOTE_PREFIX,
 )
 
-# Default pattern recorded in telemetry when the classifier call failed.
-_UNCLASSIFIED_PATTERN: QueryPattern = "exploratory"
-
 # Pre-turn lockout reasons that end the turn before classification and omit
 # debug report emission.
 _PRE_TURN_REASONS = frozenset(
@@ -230,8 +230,8 @@ class TurnAbortedError(Exception):
 class TurnContext:
     """Holds the inputs and callbacks shared across every phase of a turn.
 
-    `classification` is the classify phase's verdict, or `None` when the
-    classifier failed and the turn proceeds without a pattern directive.
+    `classification` is the classify phase's verdict. `run_turn` always
+    sets it. Only tests build a context without one.
     `record` is the only holder of the turn's telemetry and of the cache of
     observation tables the turn fetches; `telemetry` and `cache` return the
     record's own objects.
@@ -241,7 +241,8 @@ class TurnContext:
         config: The loaded agent configuration.
         record: The turn's record, on which the phases record what they did.
         emit: Callback invoked with each SSE frame of the turn.
-        classification: The classify phase's verdict, or `None` on fallback.
+        classification: The classify phase's verdict, or `None` in a context
+            that a test builds without one.
     """
 
     transcript: Transcript
@@ -1002,6 +1003,42 @@ def _require_turn_config(config: AgentConfig | None) -> AgentConfig:
     return config
 
 
+async def _run_classify_phase(
+    transcript: Transcript,
+    config: AgentConfig,
+    telemetry: TurnTelemetry,
+    unavailable_message: str,
+) -> Clarification | Admitted:
+    """Runs the classify phase and converts its screening failure.
+
+    Args:
+        transcript: The verified transcript holding the current query.
+        config: The loaded agent configuration.
+        telemetry: The turn's telemetry collector.
+        unavailable_message: The effective `chat.unavailable_message`, sent
+            to the user when the failure is permanent.
+
+    Returns:
+        The classify phase's outcome: a clarification or an admitted query.
+
+    Raises:
+        TurnAbortedError: If Model Armor or the classifier could not screen
+            the query. A retryable failure carries `SCREENING_UNAVAILABLE`
+            and a permanent failure carries `unavailable_message`.
+        TurnRefusedError: If the classify phase refuses the query.
+        GeminiBlockedError: If Gemini blocks the classification call.
+    """
+    try:
+        return await classify_query(transcript, config, telemetry)
+    except ScreeningUnavailableError as error:
+        message = (
+            SCREENING_UNAVAILABLE if error.is_retryable else unavailable_message
+        )
+        raise TurnAbortedError(
+            error.error_type, message, is_retryable=error.is_retryable
+        ) from error
+
+
 async def run_turn(
     transcript: Transcript,
     emit: Emit,
@@ -1020,6 +1057,9 @@ async def run_turn(
     model call that Gemini blocks in any of those phases ends the turn as
     `refused` with reason `safety_blocked`; the phases let
     `GeminiBlockedError` propagate here rather than each translating it.
+    A query that Model Armor or the classifier cannot screen ends the turn
+    as `error` with reason `model_armor_unavailable` or
+    `classifier_unavailable` before the discovery loop runs.
     Every non-canceled turn ends in one `terminal` frame (`complete`,
     `refused`, or `error`) and records its outcome and classified pattern
     in telemetry. Only `asyncio.CancelledError` is re-raised to the caller;
@@ -1084,12 +1124,10 @@ async def run_turn(
                 StatusFrame(phase="classify", message=CLASSIFY_STATUS)
             )
             with telemetry.phase("classify"):
-                admission = await classify_query(transcript, config, telemetry)
-            telemetry.pattern = (
-                admission.classification.pattern
-                if admission.classification is not None
-                else _UNCLASSIFIED_PATTERN
-            )
+                admission = await _run_classify_phase(
+                    transcript, config, telemetry, chat.unavailable_message
+                )
+            telemetry.pattern = admission.classification.pattern
             ctx = TurnContext(
                 transcript,
                 config,

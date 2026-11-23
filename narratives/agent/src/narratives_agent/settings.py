@@ -382,7 +382,8 @@ class Settings(BaseSettings):
     # Resource name of the Google Cloud Model Armor template used to screen
     # user queries before classification
     # (`projects/<project>/locations/<location>/templates/<template>`). When
-    # unset, Model Armor screening is skipped.
+    # unset, Model Armor screening is skipped. When set, a turn that Model
+    # Armor cannot screen ends with a retryable error.
     model_armor_template: str = ""
 
     # When set, overrides `chat.enabled` in agent-config.json in either
@@ -393,8 +394,9 @@ class Settings(BaseSettings):
     enable_chat: _OptionalEnvBool = None
 
     # When set, overrides `chat.unavailable_message` in agent-config.json,
-    # the message returned when chat is disabled or an instance's daily Gemini
-    # token budget is exhausted.
+    # the message returned when chat is disabled, an instance's daily Gemini
+    # token budget is exhausted, or a turn's query permanently cannot be
+    # screened.
     unavailable_message: str = ""
 
     # Optional per-instance daily Gemini token limit, resetting at UTC midnight.

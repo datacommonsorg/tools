@@ -104,6 +104,7 @@ class ErrorType(StrEnum):
     """Machine-readable reason codes for turns that end in an error frame."""
 
     CHAT_DISABLED = "chat_disabled"
+    CLASSIFIER_UNAVAILABLE = "classifier_unavailable"
     CONFIG_MISSING = "config_missing"
     DAILY_TOKEN_BUDGET_EXHAUSTED = "daily_token_budget_exhausted"
     INTERNAL_ERROR = "internal_error"
@@ -112,6 +113,7 @@ class ErrorType(StrEnum):
     MCP_TIMEOUT = "mcp_timeout"
     MCP_TRANSPORT_ERROR = "mcp_transport_error"
     MCP_UNAVAILABLE = "mcp_unavailable"
+    MODEL_ARMOR_UNAVAILABLE = "model_armor_unavailable"
     SYNTHESIS_EMPTY = "synthesis_empty"
     SYNTHESIS_ERROR = "synthesis_error"
     SYNTHESIS_STREAM_ERROR = "synthesis_stream_error"

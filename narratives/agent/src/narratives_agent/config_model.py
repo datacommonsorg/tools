@@ -55,10 +55,10 @@ DEFAULT_GEMINI_CLASSIFY_MODEL = "gemini-3.5-flash-lite"
 # `"default"` that `schemas/agent-config.schema.json` declares for both keys.
 DEFAULT_THINKING_LEVEL = types.ThinkingLevel.MEDIUM
 
-# Message returned when chat is disabled or an instance's daily Gemini token
-# budget is exhausted and `chat.unavailable_message` is absent, blank, or not a
-# string. It matches the `"default"` that `schemas/agent-config.schema.json`
-# declares for the key.
+# Message returned when chat is disabled, an instance's daily Gemini token
+# budget is exhausted, or a turn's query permanently cannot be screened, and
+# `chat.unavailable_message` is absent, blank, or not a string. It matches the
+# `"default"` that `schemas/agent-config.schema.json` declares for the key.
 DEFAULT_UNAVAILABLE_MESSAGE = (
     "This Data Commons tool is temporarily unavailable due to high traffic."
 )
@@ -215,9 +215,10 @@ class ChatConfig:
     """Holds the `chat` section: chat availability settings.
 
     `enabled` set to `False` ends every chat turn with a `chat_disabled`
-    error carrying `unavailable_message`; the same message is returned when
-    an instance's daily Gemini token budget is exhausted. `get_chat_config`
-    in `config.py` applies the environment overrides to these values.
+    error carrying `unavailable_message`. The same message is returned when
+    an instance's daily Gemini token budget is exhausted or when a turn's
+    query permanently cannot be screened. `get_chat_config` in `config.py`
+    applies the environment overrides to these values.
     """
 
     enabled: bool = True
@@ -306,8 +307,8 @@ class AgentConfig:
         `_FIXED_THINKING_LEVELS`. A level below the lowest the role's model
         accepts is raised to that floor, so the classifier runs at `LOW` on
         a model that rejects `MINIMAL` rather than failing its call on every
-        turn and leaving the turn unclassified. Every role samples at its
-        temperature in `_ROLE_TEMPERATURES`.
+        turn, which would end every turn in an error. Every role samples at
+        its temperature in `_ROLE_TEMPERATURES`.
         """
         model: str = getattr(self.gemini, _ROLE_MODEL_ATTRS[role])
         if role is GeminiRole.DISCOVERY:
@@ -425,7 +426,7 @@ def _read_unavailable_message(chat: Mapping[str, Any]) -> str:
 
     A blank message is reported and replaced by
     `DEFAULT_UNAVAILABLE_MESSAGE`, like a message of the wrong type, because
-    a disabled turn always carries text for the reader.
+    a turn that sends this message always carries text for the reader.
     """
     message = _read_string(
         chat, "chat", "unavailable_message", DEFAULT_UNAVAILABLE_MESSAGE

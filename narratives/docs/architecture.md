@@ -198,8 +198,27 @@ Otherwise, the request runs through the agent loop in five steps:
      `sequential_stages`, `clustering`, `forecasting`, `exploratory`, or
      `data_availability`) recorded in telemetry and its directive from
      `workflows/pattern_guidance.py` appended to the system instructions of both
-     calls. If the classifier call fails, the turn falls through as
-     `exploratory` without a directive.
+     calls.
+
+   A query that cannot be screened ends the turn in a single `terminal` error
+   frame, before any discovery or synthesis call:
+   - **Model Armor unavailable:** When `MODEL_ARMOR_TEMPLATE` is configured
+     and the Model Armor request fails, times out, or returns a response that
+     is neither a match nor a `NO_MATCH_FOUND` result with `invocationResult`
+     `SUCCESS`, the turn ends with `reason: "model_armor_unavailable"` and
+     `is_retryable: true`. A response that omits either field does not pass.
+   - **Classifier unavailable:** A classifier call that does not finish within
+     10 seconds, fails with a temporary Gemini error, returns an empty reply,
+     or returns output that does not validate is repeated once, without a
+     delay. If the second call also fails, the turn ends with
+     `reason: "classifier_unavailable"` and `is_retryable: true`. A request
+     that Gemini rejects permanently, or an empty `classify` prompt, ends the
+     turn with `reason: "classifier_unavailable"` and `is_retryable: false`
+     without a second call.
+
+   A retryable failure carries the message "Data Commons is experiencing
+   unusually high traffic right now.", and a permanent failure carries
+   `chat.unavailable_message`.
 2. **Discovery and processing (`discovery` / `processing`):** Gemini runs the
    discovery loop (`workflows/mcp_loop.py`) with the three MCP discovery tools
    (`search_indicators`, `search_child_indicators`, `get_variable_metadata`),

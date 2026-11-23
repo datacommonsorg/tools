@@ -33,7 +33,8 @@ from narratives_agent.config_model import (
 from narratives_agent.gemini.client import GeminiBlockedError, GeminiError
 from narratives_agent.gemini.response import GeminiResponse
 from narratives_agent.gemini.schemas import QueryClassification
-from narratives_agent.telemetry import TerminalState, TurnTelemetry
+from narratives_agent.model_armor import ModelArmorUnavailableError
+from narratives_agent.telemetry import ErrorType, TerminalState, TurnTelemetry
 from narratives_agent.workflows import classify
 from narratives_agent.workflows.mcp_loop import MCP_HISTORY_RESPONSE_CHARS
 from narratives_agent.workflows.messages import (
@@ -63,6 +64,13 @@ _SERVICEABLE: dict[str, Any] = {
     "requires_computation": False,
     "off_topic_premise": "",
 }
+# Text that the stub classifier returns or raises in the failure tests. A
+# log line or an error message of the classify phase must not contain it.
+_MODEL_AND_UPSTREAM_TEXT = (
+    "not json",
+    "upstream detail",
+    "premise from the model",
+)
 _SENTENCE_END = (
     " falls outside the public statistics Data Commons is built to explore. "
     "Try asking about statistics on population, the economy, health, "
@@ -96,15 +104,17 @@ def telemetry() -> Iterator[TurnTelemetry]:
 
 @pytest.fixture
 def model(monkeypatch: pytest.MonkeyPatch) -> Callable[..., list[Any]]:
-    """Installs a stub classifier response and returns the recorded requests.
+    """Installs stub classifier replies and returns the recorded requests.
 
-    An exception installed as the reply is raised by the stub, as the Gemini
-    client raises on a failed or blocked request.
+    Each request receives the next reply in order, and the last reply answers
+    every later request. An exception installed as a reply is raised by the
+    stub, as the Gemini client raises on a failed or blocked request.
     """
     requests: list[dict[str, Any]] = []
 
-    def install(reply: GeminiResponse | Exception) -> list[Any]:
+    def install(*replies: GeminiResponse | Exception) -> list[Any]:
         async def request(**kwargs: Any) -> GeminiResponse:
+            reply = replies[min(len(requests), len(replies) - 1)]
             requests.append(kwargs)
             if isinstance(reply, Exception):
                 raise reply
@@ -318,7 +328,6 @@ async def test_a_serviceable_verdict_is_admitted_with_its_classification(
     outcome = await classify.classify_query(_transcript(), _CONFIG, telemetry)
 
     assert isinstance(outcome, classify.Admitted)
-    assert outcome.classification is not None
     assert outcome.classification.pattern == "trend_delta"
     assert outcome.classification.geographic_shape == "comparison"
     (request,) = requests
@@ -441,6 +450,35 @@ async def test_the_classifier_request_opens_with_the_pinned_date(
     assert "2031-02-03" not in f"{history!r}{request['system_instruction']}"
 
 
+@pytest.mark.asyncio
+async def test_unavailable_model_armor_ends_the_turn_without_a_model_call(
+    monkeypatch: pytest.MonkeyPatch,
+    model: Callable[..., list[Any]],
+    telemetry: TurnTelemetry,
+) -> None:
+    # Test: A Model Armor failure in `classify_query`.
+    # Situation: The query passes the regex pre-filter, and
+    #   `screen_user_prompt` raises `ModelArmorUnavailableError`.
+    # Expectation: `ScreeningUnavailableError` is raised with
+    #   `model_armor_unavailable`, marked retryable and chained from the
+    #   Model Armor error, and the Gemini classifier is not called.
+    requests = model(_verdict())
+    failure = ModelArmorUnavailableError("Model Armor request failed")
+
+    async def _raise_unavailable(query: str) -> str | None:
+        raise failure
+
+    monkeypatch.setattr(classify, "screen_user_prompt", _raise_unavailable)
+
+    with pytest.raises(classify.ScreeningUnavailableError) as raised:
+        await classify.classify_query(_transcript(), _CONFIG, telemetry)
+
+    assert raised.value.error_type == ErrorType.MODEL_ARMOR_UNAVAILABLE
+    assert raised.value.is_retryable is True
+    assert raised.value.__cause__ is failure
+    assert requests == []
+
+
 @pytest.mark.parametrize(
     "reply",
     [
@@ -451,7 +489,11 @@ async def test_the_classifier_request_opens_with_the_pinned_date(
         pytest.param(GeminiResponse(), id="empty"),
         pytest.param(GeminiResponse(text="{not json"), id="invalid-json"),
         pytest.param(
-            _verdict(serviceable=False, refusal_reason=None),
+            _verdict(
+                serviceable=False,
+                refusal_reason=None,
+                off_topic_premise="premise from the model",
+            ),
             id="does-not-validate",
         ),
         pytest.param(
@@ -460,84 +502,159 @@ async def test_the_classifier_request_opens_with_the_pinned_date(
     ],
 )
 @pytest.mark.asyncio
-async def test_a_classifier_failure_admits_the_query_unclassified(
+async def test_a_classifier_that_fails_twice_ends_the_turn_as_retryable(
     model: Callable[..., list[Any]],
     telemetry: TurnTelemetry,
     caplog: pytest.LogCaptureFixture,
     reply: GeminiResponse | Exception,
 ) -> None:
-    # Test: Fall-through when the classifier request or validation fails.
-    # Situation: The classifier raises `GeminiError`, or returns an empty
-    #   reply, malformed JSON, JSON that fails `QueryClassification`
-    #   validation, or an empty reply stopped for recitation.
-    # Expectation: `Admitted(None)` is returned and a warning is logged without
-    #   leaking the raw model output.
-    model(reply)
+    # Test: A temporary classifier failure on both attempts.
+    # Situation: On every request the classifier raises a retryable
+    #   `GeminiError`, or returns an empty reply, malformed JSON, JSON that
+    #   fails `QueryClassification` validation, or an empty reply stopped
+    #   for recitation.
+    # Expectation: `ScreeningUnavailableError` is raised with
+    #   `classifier_unavailable`, marked retryable, after exactly two
+    #   requests. One warning is logged per attempt, and neither the log nor
+    #   the error message contains the raw model output, the upstream error
+    #   text, or the question.
+    requests = model(reply)
 
-    with caplog.at_level(logging.WARNING, logger=classify.logger.name):
-        outcome = await classify.classify_query(
-            _transcript(), _CONFIG, telemetry
-        )
+    with (
+        caplog.at_level(logging.WARNING, logger=classify.logger.name),
+        pytest.raises(classify.ScreeningUnavailableError) as raised,
+    ):
+        await classify.classify_query(_transcript(), _CONFIG, telemetry)
 
-    assert outcome == classify.Admitted(None)
-    assert len(caplog.records) == 1
-    assert "not json" not in caplog.text
+    assert raised.value.error_type == ErrorType.CLASSIFIER_UNAVAILABLE
+    assert raised.value.is_retryable is True
+    assert len(requests) == 2
+    assert len(caplog.records) == 2
+    reported = f"{caplog.text}{raised.value}"
+    for content in (*_MODEL_AND_UPSTREAM_TEXT, _QUESTION):
+        assert content not in reported
     if isinstance(reply, GeminiResponse) and not reply.text:
         assert f"finish reason: {reply.finish_reason}" in caplog.text
 
 
 @pytest.mark.asyncio
-async def test_a_slow_classifier_admits_the_query_unclassified(
+async def test_a_classifier_that_hangs_twice_ends_the_turn_as_retryable(
     monkeypatch: pytest.MonkeyPatch,
     telemetry: TurnTelemetry,
     caplog: pytest.LogCaptureFixture,
 ) -> None:
-    # Test: Classifier timeout fall-through.
-    # Situation: `CLASSIFY_TIMEOUT_SECONDS` is set to 10 ms and the Gemini
+    # Test: Classifier timeout on both attempts.
+    # Situation: `CLASSIFY_TIMEOUT_SECONDS` is set to 10 ms and every Gemini
     #   request blocks indefinitely.
-    # Expectation: `Admitted(None)` is returned, the in-flight request is
-    #   canceled, and a timeout warning is logged.
-    canceled = asyncio.Event()
+    # Expectation: `ScreeningUnavailableError` is raised with
+    #   `classifier_unavailable`, marked retryable, both in-flight requests
+    #   are canceled, and a timeout warning is logged.
+    canceled_requests: list[int] = []
 
-    async def hung_request(**kwargs: Any) -> GeminiResponse:
+    async def hang_request(**kwargs: Any) -> GeminiResponse:
         try:
             await asyncio.Event().wait()
         except asyncio.CancelledError:
-            canceled.set()
+            canceled_requests.append(len(canceled_requests) + 1)
             raise
         raise AssertionError("unreachable")
 
     monkeypatch.setattr(classify, "CLASSIFY_TIMEOUT_SECONDS", 0.01)
-    monkeypatch.setattr(classify, "async_gemini_request", hung_request)
+    monkeypatch.setattr(classify, "async_gemini_request", hang_request)
 
-    with caplog.at_level(logging.WARNING, logger=classify.logger.name):
-        outcome = await classify.classify_query(
-            _transcript(), _CONFIG, telemetry
-        )
+    with (
+        caplog.at_level(logging.WARNING, logger=classify.logger.name),
+        pytest.raises(classify.ScreeningUnavailableError) as raised,
+    ):
+        await classify.classify_query(_transcript(), _CONFIG, telemetry)
 
-    assert outcome == classify.Admitted(None)
-    assert canceled.is_set()
+    assert raised.value.error_type == ErrorType.CLASSIFIER_UNAVAILABLE
+    assert raised.value.is_retryable is True
+    assert canceled_requests == [1, 2]
     assert "timed out" in caplog.text
 
 
 @pytest.mark.asyncio
-async def test_a_missing_prompt_admits_the_query_without_a_call(
+async def test_a_second_attempt_that_succeeds_admits_the_query(
+    model: Callable[..., list[Any]], telemetry: TurnTelemetry
+) -> None:
+    # Test: Recovery on the second classifier attempt.
+    # Situation: The first request returns an empty reply, and the second
+    #   returns a serviceable verdict with the `trend_delta` pattern.
+    # Expectation: `Admitted` carries the classification of the second
+    #   reply after exactly two requests, and both requests receive the
+    #   turn's token accumulator, so the client counts the tokens of both.
+    requests = model(GeminiResponse(), _verdict(pattern="trend_delta"))
+
+    outcome = await classify.classify_query(_transcript(), _CONFIG, telemetry)
+
+    assert isinstance(outcome, classify.Admitted)
+    assert outcome.classification.pattern == "trend_delta"
+    assert len(requests) == 2
+    assert all(
+        request["token_usage"] is telemetry.tokens for request in requests
+    )
+
+
+@pytest.mark.asyncio
+async def test_a_permanent_classifier_error_ends_the_turn_without_a_retry(
     model: Callable[..., list[Any]],
     telemetry: TurnTelemetry,
     caplog: pytest.LogCaptureFixture,
 ) -> None:
-    # Test: Classifier fall-through when the `classify` prompt slot is empty.
-    # Situation: The configuration contains no `classify` prompt.
-    # Expectation: `Admitted(None)` is returned without calling Gemini and a
-    #   warning is logged.
+    # Test: A permanent Gemini rejection of the classifier request.
+    # Situation: `async_gemini_request` raises a `GeminiError` with
+    #   `is_retryable=False`.
+    # Expectation: `ScreeningUnavailableError` is raised with
+    #   `classifier_unavailable`, marked not retryable, after one request.
+    #   Neither the log nor the error message contains the upstream error
+    #   text or the question.
+    requests = model(
+        GeminiError("HTTP 400: upstream detail", is_retryable=False)
+    )
+
+    with (
+        caplog.at_level(logging.WARNING, logger=classify.logger.name),
+        pytest.raises(classify.ScreeningUnavailableError) as raised,
+    ):
+        await classify.classify_query(_transcript(), _CONFIG, telemetry)
+
+    assert raised.value.error_type == ErrorType.CLASSIFIER_UNAVAILABLE
+    assert raised.value.is_retryable is False
+    assert len(requests) == 1
+    reported = f"{caplog.text}{raised.value}"
+    assert "upstream detail" not in reported
+    assert _QUESTION not in reported
+
+
+@pytest.mark.parametrize(
+    "prompt",
+    [pytest.param("", id="empty"), pytest.param("  \n\t ", id="whitespace")],
+)
+@pytest.mark.asyncio
+async def test_a_missing_prompt_ends_the_turn_without_a_call(
+    model: Callable[..., list[Any]],
+    telemetry: TurnTelemetry,
+    caplog: pytest.LogCaptureFixture,
+    prompt: str,
+) -> None:
+    # Test: An empty `classify` prompt slot.
+    # Situation: The `classify` prompt of the configuration is empty or
+    #   holds only whitespace.
+    # Expectation: `ScreeningUnavailableError` is raised with
+    #   `classifier_unavailable`, marked not retryable, without calling
+    #   Gemini, and a warning is logged.
     requests = model(_verdict())
+    config = AgentConfig(prompts=Prompts(classify=prompt))
 
-    with caplog.at_level(logging.WARNING, logger=classify.logger.name):
-        outcome = await classify.classify_query(
-            _transcript(), AgentConfig(), telemetry
-        )
+    with (
+        caplog.at_level(logging.WARNING, logger=classify.logger.name),
+        pytest.raises(classify.ScreeningUnavailableError) as raised,
+    ):
+        await classify.classify_query(_transcript(), config, telemetry)
 
-    assert outcome == classify.Admitted(None)
+    assert raised.value.error_type == ErrorType.CLASSIFIER_UNAVAILABLE
+    assert raised.value.is_retryable is False
     assert requests == []
     assert "not configured" in caplog.text
 
@@ -551,9 +668,10 @@ async def test_a_blocked_classifier_prompt_propagates_the_block(
     # Test: Blocked prompt handling in `classify_query`.
     # Situation: `async_gemini_request` raises `GeminiBlockedError("SAFETY")`.
     # Expectation: The same `GeminiBlockedError` propagates out of
-    #   `classify_query` so that the turn ends `refused`, and the fail-open
-    #   path for other client errors does not run (no warning is logged).
-    model(GeminiBlockedError("SAFETY"))
+    #   `classify_query` after one request so that the turn ends `refused`,
+    #   and the handling of other client errors does not run (no warning is
+    #   logged).
+    requests = model(GeminiBlockedError("SAFETY"))
 
     with (
         caplog.at_level(logging.WARNING, logger=classify.logger.name),
@@ -562,6 +680,7 @@ async def test_a_blocked_classifier_prompt_propagates_the_block(
         await classify.classify_query(_transcript(), _CONFIG, telemetry)
 
     assert raised.value.block_reason == "SAFETY"
+    assert len(requests) == 1
     assert caplog.records == []
 
 
@@ -578,4 +697,4 @@ async def test_a_normal_finish_reason_is_not_a_refusal(
     outcome = await classify.classify_query(_transcript(), _CONFIG, telemetry)
 
     assert isinstance(outcome, classify.Admitted)
-    assert outcome.classification is not None
+    assert outcome.classification.pattern == "single_point"

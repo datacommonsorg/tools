@@ -303,7 +303,7 @@ async def test_match_found_returns_matched_filter_names(
     ],
 )
 @pytest.mark.asyncio
-async def test_upstream_errors_fail_open_without_logging_query(
+async def test_upstream_errors_raise_unavailable_without_logging_query(
     monkeypatch: pytest.MonkeyPatch,
     install_transport: Callable[
         [Callable[[httpx.Request], httpx.Response]], list[httpx.Request]
@@ -312,22 +312,26 @@ async def test_upstream_errors_fail_open_without_logging_query(
     response_factory: Callable[[httpx.Request], httpx.Response],
     expected_log: str,
 ) -> None:
-    # Test: Fail-open error handling on upstream Model Armor failures.
+    # Test: Error handling on upstream Model Armor failures.
     # Situation: The Model Armor call encounters an HTTP 503 error, a network
     #   timeout, malformed JSON, a non-object JSON payload, or a response
     #   missing `sanitizationResult`.
-    # Expectation: `screen_user_prompt` logs a warning containing the failure
-    #   summary (without leaking the user query text) and returns `None`.
+    # Expectation: `screen_user_prompt` raises `ModelArmorUnavailableError`
+    #   and logs a warning containing the failure summary. Neither the log
+    #   nor the error message contains the user query text.
     monkeypatch.setenv(MODEL_ARMOR_TEMPLATE_ENV, _TEMPLATE)
     monkeypatch.setattr(model_armor, "get_adc_auth_headers", _stub_auth_headers)
     install_transport(response_factory)
 
-    with caplog.at_level(logging.WARNING, logger=model_armor.logger.name):
-        result = await model_armor.screen_user_prompt(_QUERY)
+    with (
+        caplog.at_level(logging.WARNING, logger=model_armor.logger.name),
+        pytest.raises(model_armor.ModelArmorUnavailableError) as raised,
+    ):
+        await model_armor.screen_user_prompt(_QUERY)
 
-    assert result is None
     assert expected_log in caplog.text
     assert _QUERY not in caplog.text
+    assert _QUERY not in str(raised.value)
 
 
 @pytest.mark.parametrize(
@@ -348,7 +352,7 @@ async def test_upstream_errors_fail_open_without_logging_query(
     ],
 )
 @pytest.mark.asyncio
-async def test_auth_errors_fail_open_without_http_or_logging_query(
+async def test_auth_errors_raise_unavailable_without_http_or_logging_query(
     monkeypatch: pytest.MonkeyPatch,
     install_transport: Callable[
         [Callable[[httpx.Request], httpx.Response]], list[httpx.Request]
@@ -357,12 +361,12 @@ async def test_auth_errors_fail_open_without_http_or_logging_query(
     error: Exception,
     expected_log: str,
 ) -> None:
-    # Test: Fail-open error handling on ADC credential failures.
+    # Test: Error handling on ADC credential failures.
     # Situation: Resolving ADC headers raises `GoogleAuthError` or
     #   `RuntimeError`.
-    # Expectation: `screen_user_prompt` logs a warning with the exception type
-    #   (without leaking the user query text), makes no HTTP request, and
-    #   returns `None`.
+    # Expectation: `screen_user_prompt` raises `ModelArmorUnavailableError`,
+    #   logs a warning with the exception type (without leaking the user
+    #   query text), and does not send an HTTP request.
     async def _failing_headers() -> dict[str, str]:
         raise error
 
@@ -370,17 +374,19 @@ async def test_auth_errors_fail_open_without_http_or_logging_query(
     monkeypatch.setattr(model_armor, "get_adc_auth_headers", _failing_headers)
     requests = install_transport(lambda req: httpx.Response(200, json={}))
 
-    with caplog.at_level(logging.WARNING, logger=model_armor.logger.name):
-        result = await model_armor.screen_user_prompt(_QUERY)
+    with (
+        caplog.at_level(logging.WARNING, logger=model_armor.logger.name),
+        pytest.raises(model_armor.ModelArmorUnavailableError),
+    ):
+        await model_armor.screen_user_prompt(_QUERY)
 
-    assert result is None
     assert requests == []
     assert expected_log in caplog.text
     assert _QUERY not in caplog.text
 
 
 @pytest.mark.asyncio
-async def test_auth_header_timeout_fails_open_without_http_or_logging_query(
+async def test_auth_header_timeout_raises_unavailable_without_http(
     monkeypatch: pytest.MonkeyPatch,
     install_transport: Callable[
         [Callable[[httpx.Request], httpx.Response]], list[httpx.Request]
@@ -391,9 +397,9 @@ async def test_auth_header_timeout_fails_open_without_http_or_logging_query(
     #   `screen_user_prompt`.
     # Situation: `get_adc_auth_headers` stalls longer than
     #   `_REQUEST_TIMEOUT_SECONDS`.
-    # Expectation: `screen_user_prompt` times out, logs a `TimeoutError`
-    #   warning (without the query text), makes no HTTP request, and returns
-    #   `None`.
+    # Expectation: `screen_user_prompt` times out, raises
+    #   `ModelArmorUnavailableError`, logs a `TimeoutError` warning (without
+    #   the query text), and does not send an HTTP request.
     async def _slow_headers() -> dict[str, str]:
         await asyncio.sleep(1.0)
         return {"Authorization": "Bearer late"}
@@ -403,60 +409,83 @@ async def test_auth_header_timeout_fails_open_without_http_or_logging_query(
     monkeypatch.setattr(model_armor, "get_adc_auth_headers", _slow_headers)
     requests = install_transport(lambda req: httpx.Response(200, json={}))
 
-    with caplog.at_level(logging.WARNING, logger=model_armor.logger.name):
-        result = await model_armor.screen_user_prompt(_QUERY)
+    with (
+        caplog.at_level(logging.WARNING, logger=model_armor.logger.name),
+        pytest.raises(model_armor.ModelArmorUnavailableError),
+    ):
+        await model_armor.screen_user_prompt(_QUERY)
 
-    assert result is None
     assert requests == []
     assert "TimeoutError" in caplog.text
     assert _QUERY not in caplog.text
 
 
 @pytest.mark.parametrize(
-    ("sanitization_result", "expected_result"),
+    "sanitization_result",
     [
         pytest.param(
             {
                 "invocationResult": "FAILURE",
                 "filterMatchState": "NO_MATCH_FOUND",
             },
-            None,
-            id="failure-no-match",
+            id="invocation-failure",
         ),
         pytest.param(
             {
                 "invocationResult": "PARTIAL",
-                "filterMatchState": "MATCH_FOUND",
-                "filterResults": {
-                    "pi_and_jailbreak": {
-                        "piAndJailbreakFilterResult": {
-                            "matchState": "MATCH_FOUND",
-                        }
-                    }
-                },
+                "filterMatchState": "NO_MATCH_FOUND",
             },
-            "pi_and_jailbreak",
-            id="partial-with-match",
+            id="invocation-partial",
         ),
+        pytest.param(
+            {
+                "invocationResult": "INVOCATION_RESULT_UNSPECIFIED",
+                "filterMatchState": "NO_MATCH_FOUND",
+            },
+            id="invocation-unspecified",
+        ),
+        pytest.param(
+            {"filterMatchState": "NO_MATCH_FOUND"},
+            id="invocation-result-missing",
+        ),
+        pytest.param(
+            {"invocationResult": "SUCCESS"},
+            id="match-state-missing",
+        ),
+        pytest.param(
+            {
+                "invocationResult": "SUCCESS",
+                "filterMatchState": "FILTER_MATCH_STATE_UNSPECIFIED",
+            },
+            id="match-state-unspecified",
+        ),
+        pytest.param(
+            {
+                "invocationResult": "SUCCESS",
+                "filterMatchState": "SOMETHING_NEW",
+            },
+            id="match-state-unknown",
+        ),
+        pytest.param({}, id="both-fields-missing"),
     ],
 )
 @pytest.mark.asyncio
-async def test_non_success_invocation_result_logs_warning_and_preserves_verdict(
+async def test_a_response_that_is_not_a_complete_pass_raises_unavailable(
     monkeypatch: pytest.MonkeyPatch,
     install_transport: Callable[
         [Callable[[httpx.Request], httpx.Response]], list[httpx.Request]
     ],
     caplog: pytest.LogCaptureFixture,
-    sanitization_result: dict[str, Any],
-    expected_result: str | None,
+    sanitization_result: dict[str, str],
 ) -> None:
-    # Test: Warning and verdict handling when `invocationResult` is not
-    #   `"SUCCESS"`.
-    # Situation: Model Armor returns HTTP 200 with `invocationResult` set to
-    #   `"FAILURE"` (`NO_MATCH_FOUND`) or `"PARTIAL"` (`MATCH_FOUND`).
-    # Expectation: `screen_user_prompt` logs a warning reporting the
-    #   `invocationResult` value, returns `None` when no filter matched, and
-    #   still enforces `MATCH_FOUND` when a partial invocation matched a filter.
+    # Test: An HTTP 200 Model Armor response that is neither a match nor a
+    #   complete pass.
+    # Situation: Model Armor returns HTTP 200 without a matched filter, and
+    #   `invocationResult` is not `"SUCCESS"`, `filterMatchState` is not
+    #   `"NO_MATCH_FOUND"`, or a field is missing.
+    # Expectation: `screen_user_prompt` raises `ModelArmorUnavailableError`
+    #   and logs one warning that reports both values. Neither the log nor
+    #   the error message contains the user query text.
     monkeypatch.setenv(MODEL_ARMOR_TEMPLATE_ENV, _TEMPLATE)
     monkeypatch.setattr(model_armor, "get_adc_auth_headers", _stub_auth_headers)
     install_transport(
@@ -464,15 +493,64 @@ async def test_non_success_invocation_result_logs_warning_and_preserves_verdict(
             200, json={"sanitizationResult": sanitization_result}
         )
     )
+    invocation_result = sanitization_result.get("invocationResult", "")
+    filter_match_state = sanitization_result.get("filterMatchState", "")
+
+    with (
+        caplog.at_level(logging.WARNING, logger=model_armor.logger.name),
+        pytest.raises(model_armor.ModelArmorUnavailableError) as raised,
+    ):
+        await model_armor.screen_user_prompt(_QUERY)
+
+    (record,) = caplog.records
+    assert f"invocationResult={invocation_result!r}" in record.getMessage()
+    assert f"filterMatchState={filter_match_state!r}" in record.getMessage()
+    assert _QUERY not in caplog.text
+    assert _QUERY not in str(raised.value)
+
+
+@pytest.mark.asyncio
+async def test_partial_invocation_with_a_match_returns_the_match(
+    monkeypatch: pytest.MonkeyPatch,
+    install_transport: Callable[
+        [Callable[[httpx.Request], httpx.Response]], list[httpx.Request]
+    ],
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    # Test: An incomplete Model Armor invocation that matched a filter.
+    # Situation: Model Armor returns HTTP 200 with
+    #   `invocationResult="PARTIAL"` and `filterMatchState="MATCH_FOUND"` on
+    #   the `pi_and_jailbreak` filter.
+    # Expectation: `screen_user_prompt` returns the matched filter name, so
+    #   the match is enforced although some filters did not run, and logs a
+    #   warning that reports the `invocationResult` value without the user
+    #   query text.
+    monkeypatch.setenv(MODEL_ARMOR_TEMPLATE_ENV, _TEMPLATE)
+    monkeypatch.setattr(model_armor, "get_adc_auth_headers", _stub_auth_headers)
+    install_transport(
+        lambda req: httpx.Response(
+            200,
+            json={
+                "sanitizationResult": {
+                    "invocationResult": "PARTIAL",
+                    "filterMatchState": "MATCH_FOUND",
+                    "filterResults": {
+                        "pi_and_jailbreak": {
+                            "piAndJailbreakFilterResult": {
+                                "matchState": "MATCH_FOUND",
+                            }
+                        }
+                    },
+                }
+            },
+        )
+    )
 
     with caplog.at_level(logging.WARNING, logger=model_armor.logger.name):
         result = await model_armor.screen_user_prompt(_QUERY)
 
-    assert result == expected_result
-    assert (
-        f"invocationResult={sanitization_result['invocationResult']!r}"
-        in caplog.text
-    )
+    assert result == "pi_and_jailbreak"
+    assert "invocationResult='PARTIAL'" in caplog.text
     assert _QUERY not in caplog.text
 
 
@@ -492,7 +570,12 @@ async def test_aclose_closes_the_shared_http_client(
     install_transport(
         lambda req: httpx.Response(
             200,
-            json={"sanitizationResult": {"filterMatchState": "NO_MATCH_FOUND"}},
+            json={
+                "sanitizationResult": {
+                    "filterMatchState": "NO_MATCH_FOUND",
+                    "invocationResult": "SUCCESS",
+                }
+            },
         )
     )
 

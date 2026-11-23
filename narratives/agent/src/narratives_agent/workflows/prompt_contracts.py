@@ -90,8 +90,9 @@ def compose_system_instruction(
     Args:
         guidance: The configured prompt body for the phase.
         contract: Which packaged contract to append after `guidance`.
-        classification: The classify phase's verdict, or `None` when the
-            classifier failed.
+        classification: The classify phase's verdict, or `None` for a call
+            that does not have a classification, such as the classify call
+            itself.
         has_cohort_table: Whether a fetched table covers a cohort of child
             places, passed to `append_pattern_guidance`; synthesis sets it.
         addendum: Which packaged addendum, if any, to append right after the

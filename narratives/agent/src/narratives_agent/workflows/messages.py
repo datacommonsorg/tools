@@ -62,7 +62,8 @@ TRUNCATED_MESSAGE = (
 # Error messages carried on `terminal` SSE frames with `state == "error"`.
 # Retryable (`is_retryable == True`) errors each define their own literal so
 # they remain decoupled while sharing the high-traffic notice; non-retryable
-# errors omit any retry prompt. The chat-disabled message is configured as
+# errors omit any retry prompt. The message for disabled chat, and for a
+# query that permanently cannot be screened, is configured as
 # `chat.unavailable_message` (default `DEFAULT_UNAVAILABLE_MESSAGE` in
 # `config_model.py`).
 CONFIG_MISSING = "Backend config not loaded"
@@ -71,6 +72,9 @@ SYNTHESIS_FAILED = (
     "asking a simpler or different question instead."
 )
 SYNTHESIS_TRANSIENT_ERROR = (
+    "Data Commons is experiencing unusually high traffic right now."
+)
+SCREENING_UNAVAILABLE = (
     "Data Commons is experiencing unusually high traffic right now."
 )
 MCP_UNAVAILABLE = (
@@ -119,6 +123,7 @@ __all__ = [
     "PROCESSING_STATUS",
     "REFUSED_MESSAGE",
     "SAFETY_REFUSED_MESSAGE",
+    "SCREENING_UNAVAILABLE",
     "SYNTHESIS_FAILED",
     "SYNTHESIS_STATUS",
     "SYNTHESIS_TRANSIENT_ERROR",
