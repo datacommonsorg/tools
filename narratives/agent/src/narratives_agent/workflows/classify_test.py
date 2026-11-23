@@ -75,6 +75,7 @@ def _transcript(query: str = _QUESTION) -> Transcript:
     return Transcript(
         turns=[],
         compacted_summary=None,
+        conversation_id="0" * 32,
         current_query=query,
         current_idempotency_key="key-1",
     )
@@ -356,6 +357,7 @@ async def test_classifier_receives_conversation_with_capped_answers(
     transcript = Transcript(
         turns=[earlier],
         compacted_summary=None,
+        conversation_id="0" * 32,
         current_query="And for Germany?",
         current_idempotency_key="key-1",
     )
@@ -423,6 +425,7 @@ async def test_the_classifier_request_opens_with_the_pinned_date(
     transcript = Transcript(
         turns=[earlier],
         compacted_summary=None,
+        conversation_id="0" * 32,
         current_query="And for Germany?",
         current_idempotency_key="key-1",
     )

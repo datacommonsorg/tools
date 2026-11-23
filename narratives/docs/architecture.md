@@ -414,7 +414,8 @@ back to the server with each follow-up question:
       "hmac": "<64 hex characters>"
     }
   ],
-  "compacted_summary": null
+  "compacted_summary": null,
+  "conversation_id": "<32 hex characters>"
 }
 ```
 
@@ -424,7 +425,8 @@ Because the conversation history comes from the browser, the server verifies
 that previous answers were not modified before feeding them back to Gemini:
 
 - When a turn finishes, the server computes an HMAC signature (`hmac`) over that
-  turn's question, answer, and position in the conversation using
+  turn's question, answer, and position in the conversation, together with
+  the window's `compacted_summary` and `conversation_id`, using
   `TRANSCRIPT_HMAC_SECRET`.
 - When the browser sends a follow-up question, the server re-checks the
   signatures on every turn before starting the stream:
@@ -433,7 +435,7 @@ that previous answers were not modified before feeding them back to Gemini:
 | :--- | :--- |
 | `403` | Cloud Armor reCAPTCHA policy requires interactive verification |
 | `413` (`request_too_large`) | Request body is larger than 4 MiB |
-| `400` (`transcript_invalid`) | Turn history was modified, reordered, or exceeds size limits (>6 turns, >32,000-character answer, or >8,000-character summary) |
+| `400` (`transcript_invalid`) | Turn history was modified, reordered, or exceeds size limits (>6 turns, >32,000-character answer, or >8,000-character summary), or `conversation_id` does not match the turns |
 | `422` | Request body is invalid JSON, or `message` (>4,000 characters) / `idempotency_key` is invalid |
 
 If the server returns `400`, the UI clears its stored signatures so the user's
@@ -449,6 +451,27 @@ key at startup. In multi-instance deployments (such as GKE or Cloud Run), where
 follow-up requests can land on any container instance, all instances share the
 same key either by injecting `TRANSCRIPT_HMAC_SECRET` directly or by resolving
 `TRANSCRIPT_HMAC_SECRET_NAME` from Secret Manager at startup.
+
+### Conversation ID
+
+Each conversation has a `conversation_id` of 32 lowercase hexadecimal
+characters, which links its turns without server-side state. The server mints
+it from random bytes when a request arrives without `turns`, signs it into
+every turn of the conversation, and returns it in each signed `terminal`
+event. The browser sends it back beside `turns`, and compaction re-signs the
+window under the same ID. The ID is not derived from any user, browser, or
+network identifier, and the browser holds it only in memory with the turns,
+so reloading the page or starting a new chat starts a new conversation. A
+request whose `conversation_id` is changed, malformed, missing beside
+`turns`, or sent without `turns` is rejected with `400`
+(`transcript_invalid`). Two properties follow from keeping no server-side
+state:
+
+- A conversation whose first turn is not signed (it was refused, it failed, or
+  its answer was too large to sign) leaves the browser without a window, so
+  the next request receives a new `conversation_id`.
+- A client that resends an older window it was given keeps that window's
+  `conversation_id` and repeats a `turn_index`.
 
 ### Keeping conversation history compact
 

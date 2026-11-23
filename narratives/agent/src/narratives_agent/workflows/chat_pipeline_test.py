@@ -169,6 +169,7 @@ from narratives_agent.workflows.turn_record import TurnRecord
 
 _QUESTION = "What is the population of France?"
 _IDEMPOTENCY_KEY = "test-idempotency-key"
+_CONVERSATION_ID = "0123456789abcdef0123456789abcdef"
 _ANSWER = "About 68 million."
 # Default chart of the series summary over `t1`: a line chart over France.
 _DEFAULT_CHART: JsonObject = {
@@ -184,6 +185,7 @@ _CLOSED = "Closed for maintenance."
 _TRANSCRIPT = Transcript(
     turns=[],
     compacted_summary=None,
+    conversation_id=_CONVERSATION_ID,
     current_query=_QUESTION,
     current_idempotency_key=_IDEMPOTENCY_KEY,
 )
@@ -290,6 +292,7 @@ class _Request:
     idempotency_key: str
     turns: Sequence[Turn] = ()
     compacted_summary: str | None = None
+    conversation_id: JsonValue = None
 
 
 class _RecordingTelemetry(TurnTelemetry):
@@ -579,6 +582,7 @@ async def test_complete_turn_emits_the_answer_then_the_follow_ups(
         "hmac": signature,
         "state_slots": _SCOPES,
         "compacted_summary": None,
+        "conversation_id": _CONVERSATION_ID,
         "window": [
             {
                 "turn_index": 0,
@@ -1187,7 +1191,12 @@ async def test_the_signed_turn_verifies_on_the_next_request(
         }
     )
 
-    loaded = load_transcript(_Request("And Spain?", "key-2", [stored]))
+    conversation_id = terminal["conversation_id"]
+    loaded = load_transcript(
+        _Request(
+            "And Spain?", "key-2", [stored], conversation_id=conversation_id
+        )
+    )
 
     assert loaded.turns == [stored]
 
@@ -1211,6 +1220,7 @@ async def test_synthesis_receives_the_window_before_the_query(
     follow_up = Transcript(
         turns=[earlier],
         compacted_summary=None,
+        conversation_id=_CONVERSATION_ID,
         current_query=_QUESTION,
         current_idempotency_key=_IDEMPOTENCY_KEY,
     )
@@ -1401,9 +1411,11 @@ async def test_a_chart_block_is_resolved_and_streamed_in_place(
             "hmac": terminal["hmac"],
         }
     )
-    assert load_transcript(_Request("And Spain?", "key-2", [stored])).turns == [
-        stored
-    ]
+    conversation_id = terminal["conversation_id"]
+    next_request = _Request(
+        "And Spain?", "key-2", [stored], conversation_id=conversation_id
+    )
+    assert load_transcript(next_request).turns == [stored]
     assert turn.follow_up_topics == [
         FollowUpTopics(
             reported=("Total Population in France", "Population of France")
@@ -2190,10 +2202,11 @@ async def test_a_clarification_is_streamed_and_signed_with_empty_slots(
     # Test: The clarification outcome of the classify phase.
     # Situation: The classifier asks which Georgia the user means.
     # Expectation: The question is emitted as the one text block, the turn
-    #   ends in a signed `complete` frame with empty state slots and a
-    #   one-turn window, no data, sources, charts, or follow-ups are
-    #   emitted, no discovery loop or synthesis runs, the pattern is
-    #   recorded, and the next request carrying the turn verifies.
+    #   ends in a signed `complete` frame with empty state slots, a
+    #   one-turn window, and the transcript's conversation ID, no data,
+    #   sources, charts, or follow-ups are emitted, no discovery loop or
+    #   synthesis runs, the pattern is recorded, and the next request
+    #   carrying the turn verifies.
     async def clarify_classify(*args: object, **_: object) -> Clarification:
         return Clarification(_CLARIFICATION_QUESTION, _CLASSIFICATION)
 
@@ -2202,6 +2215,7 @@ async def test_a_clarification_is_streamed_and_signed_with_empty_slots(
     transcript = Transcript(
         turns=[],
         compacted_summary=None,
+        conversation_id=_CONVERSATION_ID,
         current_query=question,
         current_idempotency_key=_IDEMPOTENCY_KEY,
     )
@@ -2242,7 +2256,13 @@ async def test_a_clarification_is_streamed_and_signed_with_empty_slots(
             "hmac": terminal["hmac"],
         }
     )
-    loaded = load_transcript(_Request("The country", "key-2", [stored]))
+    conversation_id = terminal["conversation_id"]
+    assert conversation_id == _CONVERSATION_ID
+    loaded = load_transcript(
+        _Request(
+            "The country", "key-2", [stored], conversation_id=conversation_id
+        )
+    )
     assert loaded.turns == [stored]
 
 
@@ -2556,7 +2576,7 @@ async def test_enable_chat_true_overrides_a_disabled_config(
 # The serialized frames of a complete turn whose stubs also report a thought
 # from discovery and from synthesis. The HMAC is deterministic because the
 # `signing_secret` fixture fixes the signing key.
-_WIRE_HMAC = "bab7873e1b550debfd0193a70934a1781d7cae19c5be8eea5e6dfe069f2917dc"
+_WIRE_HMAC = "7c5d9d083f1a8c2f44ba055611be041b5a8cf0525c314fc7d7a6c813e0019eba"
 _WIRE_FRAMES: list[tuple[EventName, str]] = [
     (
         "status",
@@ -2605,7 +2625,8 @@ _WIRE_FRAMES: list[tuple[EventName, str]] = [
         '["2022", "2023"]}, {"places": {"country/FRA": "France"}, '
         '"parent_place": null, "child_place_type": null, "variables": '
         '{"Count_Person": "Total Population"}, "date_range": null}]}, '
-        '"compacted_summary": null, "window": '
+        f'"compacted_summary": null, "conversation_id": "{_CONVERSATION_ID}", '
+        '"window": '
         '[{"turn_index": 0, "idempotency_key": "test-idempotency-key", '
         f'"hmac": "{_WIRE_HMAC}"}}]}}',
     ),
