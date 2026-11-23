@@ -28,8 +28,9 @@
  * Matches `DEFAULT_UNAVAILABLE_MESSAGE` in the agent's `config_model.py`.
  */
 export const DEFAULT_UNAVAILABLE_MESSAGE =
-  'Due to high traffic, this feature is temporarily paused. We are scaling ' +
-  'capacity to restore service as quickly as possible. Please try again later.';
+  'Due to high traffic, this feature is temporarily paused. Capacity is ' +
+  'being scaled to restore service as quickly as possible. Please try again ' +
+  'later, or explore other [tools in Data Commons](https://datacommons.org).';
 
 export interface RuntimeConfig {
   /** Whether the interactive Data Agent chat surface is active. */

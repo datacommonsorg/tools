@@ -59,9 +59,10 @@ DEFAULT_THINKING_LEVEL = types.ThinkingLevel.MEDIUM
 # blank, or not a string. It matches the `"default"` that
 # `schemas/agent-config.schema.json` declares for the key.
 DEFAULT_UNAVAILABLE_MESSAGE = (
-    "Due to high traffic, this feature is temporarily paused. We are scaling "
-    "capacity to restore service as quickly as possible. Please try again "
-    "later."
+    "Due to high traffic, this feature is temporarily paused. Capacity is "
+    "being scaled to restore service as quickly as possible. Please try "
+    "again later, or explore other "
+    "[tools in Data Commons](https://datacommons.org)."
 )
 
 

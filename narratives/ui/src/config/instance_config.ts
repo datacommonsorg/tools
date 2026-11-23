@@ -70,8 +70,6 @@ export interface InstanceConfig {
   tagline: string;
   /** Tagline phrase that opens a dialog. */
   taglineLink: TaglineLink;
-  /** Action of the note shown while chat is disabled. */
-  unavailableLink: NavLink;
   /** Primary navigation links rendered in the header and mobile drawer. */
   navigation: NavLink[];
   /** Starter prompt queries rendered as suggestion chips on the landing view. */
@@ -107,10 +105,6 @@ export const DEFAULT_INSTANCE_CONFIG: Readonly<InstanceConfig> = {
       label: 'See all the data sources',
       href: 'https://datacommons.org/data',
     },
-  },
-  unavailableLink: {
-    label: 'Go to Data Commons',
-    href: 'https://datacommons.org',
   },
   navigation: [],
   suggestions: [
@@ -454,12 +448,6 @@ const mergeOverrides = (raw: Record<string, unknown>): InstanceConfig => {
     headline: pick('headline', raw.headline, isString, defaults.headline),
     tagline,
     taglineLink,
-    unavailableLink: pick(
-      'unavailable_link',
-      raw.unavailable_link,
-      isNavLink,
-      defaults.unavailableLink,
-    ),
     navigation: pick(
       'navigation',
       raw.navigation,

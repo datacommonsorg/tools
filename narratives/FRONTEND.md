@@ -26,7 +26,7 @@ styles.
   `<style id="theme-tokens">` in `index.html`. Never hardcode a theme color.
 - **Instance configuration comes from `#instance-config`** in `index.html`.
   Components read `instanceName`, `logoUrl`, `logoText`, `logoAlt`, `logoHref`,
-  `headline`, `tagline`, `taglineLink`, `unavailableLink`, `suggestions`, `navigation`, `metrics`,
+  `headline`, `tagline`, `taglineLink`, `suggestions`, `navigation`, `metrics`,
   `thinkingIndicatorUrl`, and `doneIndicatorUrl` synchronously via
   `getInstanceConfig()` in `src/config/instance_config.ts`, which parses
   `<script id="instance-config" type="application/json">` and falls back to the

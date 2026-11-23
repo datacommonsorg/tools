@@ -23,14 +23,14 @@ import { useReducedMotion } from 'motion/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { UnavailableView } from '@/src/components/view_unavailable';
 import { UNAVAILABLE_TITLE } from '@/src/config/copy_chat';
-import {
-  DEFAULT_INSTANCE_CONFIG,
-  resetInstanceConfigForTests,
-} from '@/src/config/instance_config';
-import {
-  DEFAULT_UNAVAILABLE_MESSAGE,
-  resetRuntimeConfigForTests,
-} from '@/src/config/runtime_config';
+import { resetInstanceConfigForTests } from '@/src/config/instance_config';
+import { resetRuntimeConfigForTests } from '@/src/config/runtime_config';
+
+/** Visible text of the default unavailable message, Markdown removed. */
+const DEFAULT_MESSAGE_TEXT =
+  'Due to high traffic, this feature is temporarily paused. Capacity is ' +
+  'being scaled to restore service as quickly as possible. Please try again ' +
+  'later, or explore other tools in Data Commons.';
 
 vi.mock('motion/react', async (importOriginal) => ({
   ...(await importOriginal<typeof import('motion/react')>()),
@@ -103,40 +103,20 @@ describe('UnavailableView', () => {
     );
   });
 
-  it('links to the default unavailable link in the same tab', () => {
-    // Test: Action of the unavailable note without a theme override.
-    // Situation: The view renders with the default configuration.
-    // Expectation: One link, labeled and targeted from the default
-    //   `unavailableLink`, opens in the same tab.
-    const { label, href } = DEFAULT_INSTANCE_CONFIG.unavailableLink;
-    render(<UnavailableView />);
-    const link = screen.getByRole('link', { name: label });
-    expect(link.getAttribute('href')).toBe(href);
-    expect(link.getAttribute('target')).toBe('_self');
-  });
-
-  it('links to the themed unavailable link', () => {
-    // Test: Action of the unavailable note with a theme override.
-    // Situation: #instance-config sets `unavailable_link`.
-    // Expectation: The link uses the configured label and href.
-    writeSlot('instance-config', {
-      unavailable_link: { label: 'Visit Acme', href: 'https://acme.example' },
-    });
-    render(<UnavailableView />);
-    expect(
-      screen.getByRole('link', { name: 'Visit Acme' }).getAttribute('href'),
-    ).toBe('https://acme.example');
-  });
-
   it('renders the default message when none is configured', () => {
     // Test: Chat disabled without a message.
     // Situation: #runtime-config holds only `enable_chat: false`.
-    // Expectation: The note holds the default unavailable message.
+    // Expectation: The note holds the default message, whose Markdown link
+    //   renders as a same-tab link to Data Commons.
     writeSlot('runtime-config', { enable_chat: false });
     render(<UnavailableView />);
-    expect(
-      within(screen.getByRole('note')).getByText(DEFAULT_UNAVAILABLE_MESSAGE),
-    ).toBeTruthy();
+    const note = screen.getByRole('note');
+    expect(note.querySelector('p')?.textContent).toBe(DEFAULT_MESSAGE_TEXT);
+    const link = within(note).getByRole('link', {
+      name: 'tools in Data Commons',
+    });
+    expect(link.getAttribute('href')).toBe('https://datacommons.org');
+    expect(link.getAttribute('target')).toBe('_self');
   });
 
   it('omits the tagline paragraph when the tagline is empty', () => {
@@ -147,9 +127,9 @@ describe('UnavailableView', () => {
     writeSlot('instance-config', { tagline: '' });
     const { container } = render(<UnavailableView />);
     expect(container.querySelector('p')).toBeNull();
-    expect(
-      within(screen.getByRole('note')).getByText(DEFAULT_UNAVAILABLE_MESSAGE),
-    ).toBeTruthy();
+    expect(screen.getByRole('note').querySelector('p')?.textContent).toBe(
+      DEFAULT_MESSAGE_TEXT,
+    );
   });
 
   it('renders no prompt box or suggestion chips', () => {
@@ -169,9 +149,9 @@ describe('UnavailableView', () => {
     vi.mocked(useReducedMotion).mockReturnValue(true);
     render(<UnavailableView />);
     expect(screen.getByRole('heading', { level: 1 }).style.opacity).toBe('');
-    expect(
-      within(screen.getByRole('note')).getByText(DEFAULT_UNAVAILABLE_MESSAGE),
-    ).toBeTruthy();
+    expect(screen.getByRole('note').querySelector('p')?.textContent).toBe(
+      DEFAULT_MESSAGE_TEXT,
+    );
   });
 
   it('starts the intro from the hidden state when motion is allowed', () => {
@@ -182,8 +162,8 @@ describe('UnavailableView', () => {
     vi.mocked(useReducedMotion).mockReturnValue(false);
     render(<UnavailableView />);
     expect(screen.getByRole('heading', { level: 1 }).style.opacity).toBe('0');
-    expect(
-      within(screen.getByRole('note')).getByText(DEFAULT_UNAVAILABLE_MESSAGE),
-    ).toBeTruthy();
+    expect(screen.getByRole('note').querySelector('p')?.textContent).toBe(
+      DEFAULT_MESSAGE_TEXT,
+    );
   });
 });

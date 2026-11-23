@@ -75,8 +75,9 @@ _STAMPED_INDEX = (
     _SHELL_HEAD
     + _RUNTIME_OPEN
     + b'{"enable_chat":true,"unavailable_message":"Due to high traffic, '
-    + b"this feature is temporarily paused. We are scaling capacity to "
-    + b'restore service as quickly as possible. Please try again later.",'
+    + b"this feature is temporarily paused. Capacity is being scaled to "
+    + b"restore service as quickly as possible. Please try again later, or "
+    + b'explore other [tools in Data Commons](https://datacommons.org).",'
     + b'"web_component_url":"https://datacommons.org/datacommons.js",'
     + b'"web_component_api_root":"https://datacommons.org"}</script>'
 )

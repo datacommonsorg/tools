@@ -35,7 +35,6 @@ import { DISCLAIMER_TEXT } from '@/src/components/note_disclaimer';
 import { ANSWER_SETTLE_MAX_MS } from '@/src/components/panel_answer';
 import { DEBUG_PANEL_COPY } from '@/src/components/panel_debug/copy_debug';
 import { CLOSE_REASONING_LABEL, RETRY_LABEL } from '@/src/config/copy_chat';
-import { DEFAULT_UNAVAILABLE_MESSAGE } from '@/src/config/runtime_config';
 import {
   ChatSessionContext,
   type ChatSessionContextValue,
@@ -243,20 +242,55 @@ describe('DataAgent error turns', () => {
 
   it.each([
     'The response could not be generated.',
-    DEFAULT_UNAVAILABLE_MESSAGE,
     'Chat is temporarily unavailable. Please try again later.',
     'HTTP 422 Unprocessable Entity',
   ])('shows non-retryable error %j without a retry button', (message) => {
     // Test: Rendering a failed turn that is not retryable.
-    // Situation: The turn carries `isRetryable: false`, including the default
-    //            chat-disabled message and a custom one whose prose mentions
-    //            trying again later.
+    // Situation: The turn carries `isRetryable: false`, including a message
+    //            whose prose mentions trying again later.
     // Expectation: The message is rendered verbatim and no retry button is
     //              shown.
     renderTurns([buildErrorTurn(message, false)]);
 
     screen.getByText(message);
     expect(screen.queryByRole('button', { name: RETRY_LABEL })).toBeNull();
+  });
+
+  it('renders the links of a chat-disabled error', () => {
+    // Test: A turn ended because chat is disabled.
+    // Situation: The error is the configured unavailable message, with a
+    //            Markdown link, and the terminal reason is `chat_disabled`.
+    // Expectation: The notice shows the message text with a link in place of
+    //              the Markdown.
+    renderTurns([
+      {
+        ...buildErrorTurn(
+          'Paused. Explore [other tools](https://datacommons.org).',
+          false,
+        ),
+        terminalReason: 'chat_disabled',
+      },
+    ]);
+
+    expect(screen.getByTestId('turn-error-notice').textContent).toBe(
+      'Paused. Explore other tools.',
+    );
+    expect(
+      screen.getByRole('link', { name: 'other tools' }).getAttribute('href'),
+    ).toBe('https://datacommons.org');
+  });
+
+  it('renders the Markdown of other errors as text', () => {
+    // Test: An error message that is not the chat-disabled message.
+    // Situation: The error echoes Markdown link syntax, as an error quoting
+    //            the user's question can.
+    // Expectation: The message renders verbatim, with no link.
+    const message = 'The topic "[x](https://example.com)" is out of scope.';
+    renderTurns([buildErrorTurn(message, false)]);
+
+    const notice = screen.getByTestId('turn-error-notice');
+    expect(notice.textContent).toBe(message);
+    expect(notice.querySelector('a')).toBeNull();
   });
 
   it('omits the retry button when the turn view has no ask handler', () => {

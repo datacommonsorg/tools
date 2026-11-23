@@ -30,10 +30,6 @@
       "href": "https://datacommons.org/data"
     }
   },
-  "unavailable_link": {
-    "label": "Go to Data Commons",
-    "href": "https://datacommons.org"
-  },
   "colors": {
     "primary": "#0B57D0",
     "text": "#1B1C1D",

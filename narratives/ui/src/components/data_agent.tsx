@@ -35,6 +35,7 @@ import { ErrorNotice } from '@/src/components/notice_error';
 import { AnswerPanel } from '@/src/components/panel_answer';
 import { DebugPanel } from '@/src/components/panel_debug/panel_debug';
 import { isTurnSettled } from '@/src/components/panel_debug/report_debug';
+import { MessageText } from '@/src/components/text_message';
 import { InitialView } from '@/src/components/view_initial';
 import {
   REASONING_COLLAPSE_MS,
@@ -64,6 +65,11 @@ const PIN_HOLD_MS = 600;
 export const HANDOFF_MS = 400;
 /** Centered content column; <main> scrolls at full width. */
 const COLUMN = 'w-full max-w-4xl mx-auto px-3 sm:px-4 lg:px-8';
+/**
+ * `terminal` reason of a turn ended because chat is disabled. Its error is the
+ * operator-configured unavailable message, whose Markdown links render.
+ */
+const CHAT_DISABLED_REASON = 'chat_disabled';
 
 /**
  * The main chat surface: renders the empty-state view or the turn list, the
@@ -322,6 +328,14 @@ export function TurnView({
     .join(' ');
   const retry =
     onAsk && turn.isRetryable ? () => onAsk(turn.userMessage) : undefined;
+  // Only the operator-configured message is parsed: other errors can echo
+  // the user's question, which must not render as links.
+  const errorMessage =
+    turn.terminalReason === CHAT_DISABLED_REASON && turn.error ? (
+      <MessageText message={turn.error} />
+    ) : (
+      turn.error
+    );
   // Closing the reasoning from its end can leave the question above the
   // fold; scroll <main> back up so it shows under the header, in step with
   // the collapse, which shrinks the page and would cancel a native smooth
@@ -476,7 +490,7 @@ export function TurnView({
       )}
 
       {turn.status === 'error' && turn.error && (
-        <ErrorNotice message={turn.error} onRetry={retry} />
+        <ErrorNotice message={errorMessage} onRetry={retry} />
       )}
 
       {!showAnswer &&

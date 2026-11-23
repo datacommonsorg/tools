@@ -371,10 +371,6 @@
         }
       }
     },
-    "unavailable_link": {
-      "$ref": "#/$defs/link",
-      "description": "Action of the note shown on the Data Agent route while chat is disabled, e.g. {\"label\": \"Go to Data Commons\", \"href\": \"https://datacommons.org\"}."
-    },
     "fonts": {
       "type": "object",
       "additionalProperties": false,

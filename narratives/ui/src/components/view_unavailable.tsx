@@ -22,7 +22,7 @@
 import { domAnimation, LazyMotion, m, useReducedMotion } from 'motion/react';
 import { useId } from 'react';
 import { createPortal } from 'react-dom';
-import { Link } from '@/src/components/link';
+import { MessageText } from '@/src/components/text_message';
 import { UNAVAILABLE_TITLE } from '@/src/config/copy_chat';
 import { getInstanceConfig } from '@/src/config/instance_config';
 import {
@@ -34,12 +34,12 @@ import { getRuntimeConfig } from '@/src/config/runtime_config';
 /**
  * Unavailable view: the landing view's heading and tagline under a scrim,
  * with the configured unavailable message centered over it like a modal
- * window. It sends no requests; its only control is the configured
- * `unavailableLink`. The app shell is `inert` while this view shows, so the
- * layer is portaled to `<body>` to stay interactive.
+ * window. It sends no requests; its only controls are links in the
+ * message. The app shell is `inert` while this view shows, so the layer is
+ * portaled to `<body>`.
  */
 export function UnavailableView() {
-  const { headline, tagline, unavailableLink } = getInstanceConfig();
+  const { headline, tagline } = getInstanceConfig();
   const { unavailableMessage } = getRuntimeConfig();
   const shouldReduceMotion = useReducedMotion();
   const titleId = useId();
@@ -66,9 +66,9 @@ export function UnavailableView() {
             {tagline}
           </m.p>
         )}
-        {/* A modal-style backdrop over the inert page: the note's action is
-            the way out. It scrolls when the note is taller than the
-            viewport; `m-auto` centers the note without clipping its top. */}
+        {/* A modal-style backdrop over the inert page. It scrolls when the
+            note is taller than the viewport; `m-auto` centers the note
+            without clipping its top. */}
         {createPortal(
           <div className="fixed inset-0 z-50 flex overflow-y-auto p-4 bg-scrim/30 motion-safe:animate-fade-in">
             <m.div
@@ -79,7 +79,7 @@ export function UnavailableView() {
             >
               {/* Keeps the text below the artwork's figures at any note width. */}
               <div aria-hidden="true" className="aspect-unavailable-art" />
-              <div className="flex flex-col gap-3 px-11">
+              <div className="flex flex-col gap-3 px-11 pb-11">
                 <h2
                   id={titleId}
                   className="text-headline-large-emphasized text-headline"
@@ -87,18 +87,8 @@ export function UnavailableView() {
                   {UNAVAILABLE_TITLE}
                 </h2>
                 <p className="text-headline-small text-on-surface-variant">
-                  {unavailableMessage}
+                  <MessageText message={unavailableMessage} />
                 </p>
-              </div>
-              <div className="flex flex-wrap items-center justify-end gap-4 px-6 pb-6">
-                {/* Same tab: the user is leaving a page with nothing to do. */}
-                <Link
-                  href={unavailableLink.href}
-                  target="_self"
-                  className="flex items-center h-14 px-6 rounded-full text-body-large-emphasized bg-theme-primary text-white hover:opacity-90 transition-opacity"
-                >
-                  {unavailableLink.label}
-                </Link>
               </div>
             </m.div>
           </div>,
