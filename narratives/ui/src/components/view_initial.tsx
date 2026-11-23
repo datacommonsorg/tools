@@ -50,11 +50,11 @@ export function InitialView({ query, setQuery, onSend }: InitialViewProps) {
         variants={INTRO_CASCADE_VARIANTS}
         // Reduced motion: no initial/animate, so everything renders at rest.
         {...(!reduceMotion && { initial: 'hidden', animate: 'show' })}
-        className="flex-1 flex flex-col items-center justify-center relative px-4"
+        className="flex-1 flex flex-col items-center justify-center px-4 pt-8"
       >
         <m.h1
           variants={INTRO_FADE_UP_VARIANTS}
-          className="text-display-medium text-headline mb-1 text-center"
+          className="sm:mt-auto text-display-medium text-headline mb-1 text-center"
         >
           {headline}
         </m.h1>
@@ -65,7 +65,7 @@ export function InitialView({ query, setQuery, onSend }: InitialViewProps) {
           <TaglineText tagline={tagline} link={taglineLink} />
         </m.p>
 
-        <m.div variants={INTRO_FADE_UP_VARIANTS} className="w-full">
+        <m.div variants={INTRO_FADE_UP_VARIANTS} className="w-full sm:mb-auto">
           <PromptInput
             value={query}
             placeholder={PROMPT_PLACEHOLDER}
@@ -75,12 +75,13 @@ export function InitialView({ query, setQuery, onSend }: InitialViewProps) {
         </m.div>
 
         {/* Place suggestion chips inline on narrow screens so they are not
-            clipped by the virtual keyboard, and dock them to the bottom of the
-            hero container on wider screens at least 480px tall, where they
-            do not overlap the prompt. */}
+            clipped by the virtual keyboard. On wider screens, the chips sit at
+            the bottom of the view, and the auto margins on the headline and
+            prompt center the hero in the space above them. The chips stay in
+            the flow, so they cannot overlap the prompt on short screens. */}
         <m.div
           variants={INTRO_CASCADE_VARIANTS}
-          className="static sm:tall:absolute sm:tall:bottom-6 sm:tall:left-0 sm:tall:right-0 mt-8 sm:tall:mt-0 w-full flex flex-wrap justify-center gap-3 sm:gap-4 px-2 sm:px-6"
+          className="mt-8 sm:pb-6 w-full flex flex-wrap justify-center gap-3 sm:gap-4 px-2 sm:px-6"
         >
           {suggestions.map((text, index) => (
             <m.div key={index} variants={INTRO_FADE_UP_VARIANTS}>

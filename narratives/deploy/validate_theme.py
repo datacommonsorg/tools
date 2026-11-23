@@ -101,10 +101,9 @@ def _collect_problems(
 
     Checks the JSON Schema keywords used by `theme.schema.json` (`type`,
     `pattern`, `minLength`, `enum`, `minItems`, `additionalProperties`, and
-    `required`), resolving any
-    local `$ref` targets against `root`. Human-readable error messages
-    prefixed with the dotted/indexed path `where` are appended to `problems`
-    in place.
+    `required`), resolving any local `$ref` targets against `root`.
+    Human-readable error messages prefixed with the dotted/indexed path
+    `where` are appended to `problems` in place.
 
     Args:
         node: The current parsed JSON value being validated.

@@ -1,9 +1,6 @@
 @import url('https://fonts.googleapis.com/css2?family=Google+Sans:wght@400;500;700&family=Google+Sans+Text:wght@400;500;700&family=Roboto:wght@400;500;700&family=Inter:wght@400;500;600;700&display=swap');
 @import 'tailwindcss';
 
-/* Viewports at least 480px tall: room to dock UI to the bottom edge. */
-@custom-variant tall (@media (min-height: 480px));
-
 /*
  * Design tokens for the application.
  *

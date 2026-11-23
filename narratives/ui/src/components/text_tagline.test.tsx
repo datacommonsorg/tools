@@ -48,8 +48,7 @@ describe('TaglineText', () => {
     // Test: Tagline containing the configured link phrase.
     // Situation: The phrase is clicked.
     // Expectation: The dialog opens with the configured sections, named by
-    //   the first title, and light dismiss (`closedby="any"`) lets a backdrop
-    //   click close it.
+    //   the first title, and opts into light dismiss (`closedby="any"`).
     const dialog = renderOpenDialog(LINK);
     expect(dialog.open).toBe(true);
     expect(screen.getByRole('dialog', { name: 'About the graph' })).toBe(
