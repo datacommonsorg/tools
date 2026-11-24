@@ -32,7 +32,7 @@ const MESSAGE_COMPONENTS: Components = {
     <Link
       href={href ?? ''}
       target="_self"
-      className="text-theme-primary underline hover:no-underline"
+      className="py-2.5 text-theme-primary underline hover:no-underline"
     >
       {children}
     </Link>

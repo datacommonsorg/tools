@@ -40,7 +40,7 @@ import {
   type ChatSessionContextValue,
 } from '@/src/hooks/chat_session_context';
 import { resetDebugModeCacheForTests } from '@/src/hooks/use_debug_mode';
-import type { ChatTurn } from '@/src/hooks/use_sse_chat';
+import { CHAT_DISABLED_REASON, type ChatTurn } from '@/src/hooks/use_sse_chat';
 import { parseServerDebugReport } from '@/src/types/debug_report';
 
 class NoopResizeObserver {
@@ -268,7 +268,7 @@ describe('DataAgent error turns', () => {
           'Paused. Explore [other tools](https://datacommons.org).',
           false,
         ),
-        terminalReason: 'chat_disabled',
+        terminalReason: CHAT_DISABLED_REASON,
       },
     ]);
 

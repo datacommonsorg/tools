@@ -46,6 +46,7 @@ import { useChatSession } from '@/src/hooks/chat_session_context';
 import { useDebugMode } from '@/src/hooks/use_debug_mode';
 import {
   assignCitationNumbers,
+  CHAT_DISABLED_REASON,
   type ChatTurn,
   hasAnswer,
 } from '@/src/hooks/use_sse_chat';
@@ -65,11 +66,6 @@ const PIN_HOLD_MS = 600;
 export const HANDOFF_MS = 400;
 /** Centered content column; <main> scrolls at full width. */
 const COLUMN = 'w-full max-w-4xl mx-auto px-3 sm:px-4 lg:px-8';
-/**
- * `terminal` reason of a turn ended because chat is disabled. Its error is the
- * operator-configured unavailable message, whose Markdown links render.
- */
-const CHAT_DISABLED_REASON = 'chat_disabled';
 
 /**
  * The main chat surface: renders the empty-state view or the turn list, the
