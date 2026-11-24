@@ -133,6 +133,7 @@ from narratives_agent.workflows.turn_cache import CachedTable
 from narratives_agent.workflows.turn_record import (
     ChartOrigin,
     SpecificationOrigin,
+    TurnChart,
     TurnRecord,
 )
 from narratives_agent.workflows.usage_record import (
@@ -423,6 +424,13 @@ def _make_line_chart(
     )
 
 
+def _make_turn_charts(
+    *charts: ResolvedChart, origin: ChartOrigin = "model"
+) -> tuple[TurnChart, ...]:
+    """Pairs each chart with `origin`, as the synthesis phase records it."""
+    return tuple(TurnChart(chart=chart, origin=origin) for chart in charts)
+
+
 def _make_logged_chart(
     kind: ChartKind,
     *,
@@ -559,8 +567,7 @@ def test_a_turn_that_ran_every_phase_writes_every_key_with_its_value(
             diagnostic=_make_step_refusal(),
         )
     )
-    record.charts = (_make_line_chart("country/FRA"),)
-    record.chart_origins = ("model",)
+    record.charts = _make_turn_charts(_make_line_chart("country/FRA"))
     record.loop_result.truncated = True
     record.is_signed = True
     record.was_compacted = True
@@ -2484,8 +2491,7 @@ def test_a_chart_of_each_kind_is_logged_by_its_identifiers(
     #   place and the child place type, and its `place_dcids` is empty.
     record = _make_record()
     _store_chart_tables(record)
-    record.charts = (chart,)
-    record.chart_origins = ("model",)
+    record.charts = _make_turn_charts(chart)
 
     assert _build_record(record).charts == (expected,)
 
@@ -2502,8 +2508,7 @@ def test_a_chart_lists_up_to_twenty_five_places_in_its_own_order() -> None:
     record.cache.store_fetched(
         _make_cached_table("t1", places=places, dates=("2023",))
     )
-    record.charts = (_make_line_chart(*reversed(places)),)
-    record.chart_origins = ("model",)
+    record.charts = _make_turn_charts(_make_line_chart(*reversed(places)))
 
     (logged,) = _build_record(record).charts
 
@@ -2531,7 +2536,7 @@ def test_a_chart_lists_up_to_ten_variables_and_their_facet_pins() -> None:
                 facet_id=f"f{index}",
             )
         )
-    record.charts = (
+    record.charts = _make_turn_charts(
         ResolvedBarChart(
             title=_CHART_TITLE,
             variable_dcids=(variables[0], *variables[1:]),
@@ -2542,7 +2547,6 @@ def test_a_chart_lists_up_to_ten_variables_and_their_facet_pins() -> None:
             scope=PlaceList(("country/FRA",)),
         ),
     )
-    record.chart_origins = ("model",)
 
     (logged,) = _build_record(record).charts
 
@@ -2584,7 +2588,7 @@ def test_a_chart_keeps_only_identifiers_that_a_fetched_table_holds() -> None:
             places=("country/DERIVED",),
         )
     )
-    record.charts = (
+    record.charts = _make_turn_charts(
         ResolvedBarChart(
             title=_CHART_TITLE,
             variable_dcids=(
@@ -2612,7 +2616,6 @@ def test_a_chart_keeps_only_identifiers_that_a_fetched_table_holds() -> None:
             place_dcid="country/UNFETCHED",
         ),
     )
-    record.chart_origins = ("model", "model")
 
     assert _build_record(record).charts == (
         LoggedChart(
@@ -2677,14 +2680,13 @@ def test_a_chart_keeps_a_cohort_whose_parent_a_fetched_table_holds(
     #   always empty.
     record = _make_record()
     _store_chart_tables(record)
-    record.charts = (
+    record.charts = _make_turn_charts(
         ResolvedMapChart(
             title=_CHART_TITLE,
             variable_dcids=("Median_Income_Household",),
             cohort=cohort,
         ),
     )
-    record.chart_origins = ("model",)
 
     (logged,) = _build_record(record).charts
 
@@ -2706,10 +2708,9 @@ def test_each_chart_is_logged_with_its_recorded_origin() -> None:
     record = _make_record()
     _store_chart_tables(record)
     record.charts = (
-        _make_line_chart("country/FRA"),
-        _make_line_chart("country/DEU"),
+        TurnChart(chart=_make_line_chart("country/FRA"), origin="model"),
+        TurnChart(chart=_make_line_chart("country/DEU"), origin="default"),
     )
-    record.chart_origins = ("model", "default")
 
     assert [
         (chart.index, chart.origin, chart.place_dcids)
@@ -2727,28 +2728,12 @@ def test_charts_are_capped_at_four() -> None:
     #   the indexes 0 through 3.
     record = _make_record()
     _store_chart_tables(record)
-    record.charts = (_make_line_chart("country/FRA"),) * 5
-    record.chart_origins = ("model",) * 5
+    record.charts = _make_turn_charts(_make_line_chart("country/FRA")) * 5
 
     logged = _build_record(record).charts
 
     assert MAX_LOGGED_CHARTS == 4
     assert [chart.index for chart in logged] == [0, 1, 2, 3]
-
-
-def test_a_chart_without_a_recorded_origin_fails_the_build() -> None:
-    # Test: Building a record whose charts and chart origins differ in
-    #   length.
-    # Situation: The turn's record holds one chart and does not hold an
-    #   origin for it.
-    # Expectation: `build_usage_record` raises `ValueError`, so a chart is
-    #   never logged with an origin that the agent loop did not record.
-    record = _make_record()
-    _store_chart_tables(record)
-    record.charts = (_make_line_chart("country/FRA"),)
-
-    with pytest.raises(ValueError, match="one origin for each chart"):
-        _build_record(record)
 
 
 def test_a_turn_that_has_not_ended_does_not_have_a_record() -> None:
@@ -2866,19 +2851,23 @@ def test_the_largest_record_fits_in_one_line(
         f"Median_Income_Household_{index:02d}" for index in range(1, 6)
     ]
     record.charts = (
-        ResolvedLineChart(
-            title=_CHART_TITLE,
-            variable_dcids=(chart_variables[0], *chart_variables[1:]),
-            facet_ids=tuple(
-                (variable_dcid, f"facet_{index:04d}")
-                for index, variable_dcid in enumerate(chart_variables, start=1)
+        _make_turn_charts(
+            ResolvedLineChart(
+                title=_CHART_TITLE,
+                variable_dcids=(chart_variables[0], *chart_variables[1:]),
+                facet_ids=tuple(
+                    (variable_dcid, f"facet_{index:04d}")
+                    for index, variable_dcid in enumerate(
+                        chart_variables, start=1
+                    )
+                ),
+                scope=PlaceList(places),
+                per_capita=True,
             ),
-            scope=PlaceList(places),
-            per_capita=True,
-        ),
-    ) * MAX_LOGGED_CHARTS
-    default_origin: ChartOrigin = "default"
-    record.chart_origins = (default_origin,) * MAX_LOGGED_CHARTS
+            origin="default",
+        )
+        * MAX_LOGGED_CHARTS
+    )
     first_table = record.cache.get("t1")
     assert first_table is not None
     record.digest = AnalysisDigest.from_results(

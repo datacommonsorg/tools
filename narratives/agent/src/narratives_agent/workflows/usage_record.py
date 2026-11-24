@@ -981,18 +981,11 @@ def _build_logged_chart(
 def _build_logged_charts(
     record: TurnRecord, fetched: _FetchedTables
 ) -> tuple[LoggedChart, ...]:
-    """Builds up to `MAX_LOGGED_CHARTS` charts of the answer, in order.
-
-    Raises:
-        ValueError: If the record does not hold one origin for each chart.
-    """
-    if len(record.charts) != len(record.chart_origins):
-        raise ValueError("The turn does not hold one origin for each chart.")
-    pairs = zip(record.charts, record.chart_origins, strict=True)
+    """Builds up to `MAX_LOGGED_CHARTS` charts of the answer, in order."""
     return tuple(
-        _build_logged_chart(index, chart, origin, fetched)
-        for index, (chart, origin) in enumerate(pairs)
-    )[:MAX_LOGGED_CHARTS]
+        _build_logged_chart(index, entry.chart, entry.origin, fetched)
+        for index, entry in enumerate(record.charts[:MAX_LOGGED_CHARTS])
+    )
 
 
 def _measure_record_bytes(record: UsageRecord) -> int:
@@ -1032,10 +1025,9 @@ def build_usage_record(
         The record, which `telemetry.write_structured_record` writes.
 
     Raises:
-        ValueError: If the turn does not have a terminal state yet, if the
-            record does not hold one origin for each chart, or if its
-            diagnostic names a refused step that its specification does not
-            hold.
+        ValueError: If the turn does not have a terminal state yet, or if
+            its diagnostic names a refused step that its specification does
+            not hold.
     """
     state = record.terminal_state
     if state is None:

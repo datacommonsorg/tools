@@ -34,6 +34,7 @@ __all__ = [
     "ChartOrigin",
     "SpecificationOrigin",
     "ThoughtPhase",
+    "TurnChart",
     "TurnRecord",
     "TurnThought",
 ]
@@ -56,6 +57,20 @@ class TurnThought:
     phase: ThoughtPhase
     text: str
     round_number: int | None = None
+
+
+@dataclass(frozen=True, kw_only=True)
+class TurnChart:
+    """Holds one chart that the server emitted in the answer and its origin.
+
+    Attributes:
+        chart: The resolved chart.
+        origin: Whether the model wrote the chart or the server supplied it
+            as a default chart.
+    """
+
+    chart: ResolvedChart
+    origin: ChartOrigin
 
 
 @dataclass(kw_only=True)
@@ -104,10 +119,8 @@ class TurnRecord:
         synthesis_raw_output: The synthesis output as the model wrote it,
             chart fences included, or `None` when the synthesis stream did
             not open.
-        charts: The resolved charts emitted in the answer (including any
-            default chart), in emission order.
-        chart_origins: Whether the model or the server supplied each chart
-            of `charts`, in the same order.
+        charts: The charts emitted in the answer (including any default
+            chart), each with its origin, in emission order.
         is_clarification: Whether the turn was answered with a clarification
             question.
         is_signed: Whether the server signed the turn into the conversation.
@@ -142,8 +155,7 @@ class TurnRecord:
     thoughts: list[TurnThought] = field(default_factory=list, init=False)
     synthesis_prompt: str | None = field(default=None, init=False)
     synthesis_raw_output: str | None = field(default=None, init=False)
-    charts: tuple[ResolvedChart, ...] = field(default=(), init=False)
-    chart_origins: tuple[ChartOrigin, ...] = field(default=(), init=False)
+    charts: tuple[TurnChart, ...] = field(default=(), init=False)
     is_clarification: bool = field(default=False, init=False)
     is_signed: bool = field(default=False, init=False)
     was_compacted: bool = field(default=False, init=False)

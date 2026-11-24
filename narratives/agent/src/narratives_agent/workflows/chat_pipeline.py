@@ -168,8 +168,8 @@ from narratives_agent.workflows.transcript import (
 )
 from narratives_agent.workflows.turn_cache import CachedTable, TurnCache
 from narratives_agent.workflows.turn_record import (
-    ChartOrigin,
     SpecificationOrigin,
+    TurnChart,
     TurnRecord,
     TurnThought,
 )
@@ -791,11 +791,18 @@ async def run_synthesis_phase(
         ctx.telemetry.title_outcome = _resolve_title_outcome(extractor)
         raw_output = "".join(raw_chunks)
         ctx.record.synthesis_raw_output = raw_output
-        charts = tuple(splitter.charts)
-        ctx.record.charts = charts
-        ctx.record.chart_origins = _list_chart_origins(
-            len(charts),
-            len(charts) if model_chart_count is None else model_chart_count,
+        # The phase appends its default charts after the stream has ended,
+        # so they follow every chart block that the model wrote.
+        ctx.record.charts = tuple(
+            TurnChart(
+                chart=chart,
+                origin=(
+                    "model"
+                    if model_chart_count is None or index < model_chart_count
+                    else "default"
+                ),
+            )
+            for index, chart in enumerate(splitter.charts)
         )
     return SynthesisPhaseResult(
         splitter.text,
@@ -803,28 +810,6 @@ async def run_synthesis_phase(
         rendered_prompt=rendered_prompt,
         raw_output=raw_output,
     )
-
-
-def _list_chart_origins(
-    chart_count: int, model_chart_count: int
-) -> tuple[ChartOrigin, ...]:
-    """Returns the origin of each emitted chart, in emission order.
-
-    The synthesis phase appends its default charts after the stream has
-    ended, so they follow every chart block that the model wrote.
-
-    Args:
-        chart_count: The number of charts that the phase emitted.
-        model_chart_count: The number of charts that the phase had emitted
-            when the stream ended.
-
-    Returns:
-        `model` for each chart block of the model, then `default` for each
-        chart that the server appended.
-    """
-    origins: list[ChartOrigin] = ["model"] * model_chart_count
-    origins += ["default"] * (chart_count - model_chart_count)
-    return tuple(origins)
 
 
 def _resolve_title_outcome(extractor: TitleExtractor) -> TitleOutcome:

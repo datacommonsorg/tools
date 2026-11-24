@@ -209,7 +209,11 @@ from narratives_agent.workflows.transcript import (
     load_transcript,
 )
 from narratives_agent.workflows.turn_cache import CachedTable, TurnCache
-from narratives_agent.workflows.turn_record import TurnRecord
+from narratives_agent.workflows.turn_record import (
+    ChartOrigin,
+    TurnChart,
+    TurnRecord,
+)
 
 _QUESTION = "What is the population of France?"
 _IDEMPOTENCY_KEY = "test-idempotency-key"
@@ -3601,7 +3605,10 @@ def _make_series_discovery(
 )
 @pytest.mark.asyncio
 async def test_run_synthesis_phase_records_each_chart_with_its_origin(
-    monkeypatch: pytest.MonkeyPatch, turn: _Turn, answer: str, origin: str
+    monkeypatch: pytest.MonkeyPatch,
+    turn: _Turn,
+    answer: str,
+    origin: ChartOrigin,
 ) -> None:
     # Test: Recording of the emitted charts and their origins in
     #   `run_synthesis_phase`.
@@ -3618,8 +3625,7 @@ async def test_run_synthesis_phase_records_each_chart_with_its_origin(
 
     (chart,) = result.charts
     assert isinstance(chart, ResolvedLineChart)
-    assert ctx.record.charts == (chart,)
-    assert ctx.record.chart_origins == (origin,)
+    assert ctx.record.charts == (TurnChart(chart=chart, origin=origin),)
 
 
 @pytest.mark.asyncio
@@ -3648,9 +3654,9 @@ async def test_run_synthesis_phase_records_the_charts_of_a_broken_stream(
         await chat_pipeline.run_synthesis_phase(ctx, discovery)
 
     assert exc_info.value.error_type == ErrorType.SYNTHESIS_STREAM_ERROR
-    (chart,) = ctx.record.charts
-    assert chart.viz_type == "line"
-    assert ctx.record.chart_origins == ("model",)
+    (recorded,) = ctx.record.charts
+    assert recorded.chart.viz_type == "line"
+    assert recorded.origin == "model"
 
 
 @pytest.mark.asyncio
@@ -3678,9 +3684,9 @@ async def test_run_synthesis_phase_records_a_default_chart_that_fails_to_emit(
     with pytest.raises(RuntimeError, match="The stream is closed"):
         await chat_pipeline.run_synthesis_phase(ctx, discovery)
 
-    (chart,) = ctx.record.charts
-    assert chart.viz_type == "line"
-    assert ctx.record.chart_origins == ("default",)
+    (recorded,) = ctx.record.charts
+    assert recorded.chart.viz_type == "line"
+    assert recorded.origin == "default"
 
 
 def _get_chat_turn_record(lines: list[str]) -> JsonObject:
