@@ -67,6 +67,7 @@ from narratives_agent.telemetry import (
     TitleOutcome,
     TurnTelemetry,
 )
+from narratives_agent.token_budget import get_daily_token_budget
 from narratives_agent.workflows.blocks import BlockSplitter, TextBlock
 from narratives_agent.workflows.chart_defaults import build_default_charts
 from narratives_agent.workflows.charts import (
@@ -191,6 +192,15 @@ _DIAGNOSTIC_NOTE_PREFIXES = (
 
 # Default pattern recorded in telemetry when the classifier call failed.
 _UNCLASSIFIED_PATTERN: QueryPattern = "exploratory"
+
+# Pre-turn lockout reasons that end the turn before classification and omit
+# debug report emission.
+_PRE_TURN_REASONS = frozenset(
+    {
+        ErrorType.CHAT_DISABLED,
+        ErrorType.DAILY_TOKEN_BUDGET_EXHAUSTED,
+    }
+)
 
 type Emit = Callable[[SseFrame], None]
 
@@ -1001,13 +1011,15 @@ async def run_turn(
     """Runs one chat turn and emits its typed SSE frames through `emit`.
 
     Ends the turn at once with reason `chat_disabled` and the configured
-    unavailable message when chat is disabled. Otherwise runs classification
-    first: refuses adversarial or off-domain queries, streams and signs a
-    clarification question when disambiguation is required, or admits the
-    query into the discovery loop, synthesis, and turn signing. A model call
-    that Gemini blocks in any of those phases ends the turn as `refused`
-    with reason `safety_blocked`; the phases let `GeminiBlockedError`
-    propagate here rather than each translating it.
+    unavailable message when chat is disabled, or with reason
+    `daily_token_budget_exhausted` and the same unavailable message when this
+    instance's daily Gemini token budget has been exhausted. Otherwise runs
+    classification first: refuses adversarial or off-domain queries, streams
+    and signs a clarification question when disambiguation is required, or
+    admits the query into the discovery loop, synthesis, and turn signing. A
+    model call that Gemini blocks in any of those phases ends the turn as
+    `refused` with reason `safety_blocked`; the phases let
+    `GeminiBlockedError` propagate here rather than each translating it.
     Every non-canceled turn ends in one `terminal` frame (`complete`,
     `refused`, or `error`) and records its outcome and classified pattern
     in telemetry. Only `asyncio.CancelledError` is re-raised to the caller;
@@ -1023,6 +1035,7 @@ async def run_turn(
         request_debug: Whether the client requested turn debug reporting.
     """
     settings = get_settings()
+    budget = get_daily_token_budget()
     idempotency_key = transcript.current_idempotency_key
     record = TurnRecord(telemetry=TurnTelemetry())
     telemetry = record.telemetry
@@ -1043,16 +1056,22 @@ async def run_turn(
     config: AgentConfig | None = None
     canceled = False
     try:
-        # Chat availability is checked before the configuration is required,
-        # so `ENABLE_CHAT=false` ends the turn even when none is loaded.
+        # Chat availability and daily token budget are checked before the
+        # configuration is required, so `ENABLE_CHAT=false` or an exhausted
+        # budget ends the turn even when no configuration is loaded.
         chat = get_chat_config()
+        pre_turn_reason: ErrorType | None = None
         if not chat.enabled:
-            state, error_type = TerminalState.REFUSED, ErrorType.CHAT_DISABLED
+            pre_turn_reason = ErrorType.CHAT_DISABLED
+        elif budget is not None and budget.is_exhausted():
+            pre_turn_reason = ErrorType.DAILY_TOKEN_BUDGET_EXHAUSTED
+        if pre_turn_reason is not None:
+            state, error_type = TerminalState.REFUSED, pre_turn_reason
             emit(
                 TerminalErrorFrame(
                     idempotency_key=idempotency_key,
                     error=chat.unavailable_message,
-                    reason=ErrorType.CHAT_DISABLED,
+                    reason=pre_turn_reason,
                     is_retryable=False,
                 )
             )
@@ -1159,9 +1178,14 @@ async def run_turn(
         record.terminal_state = final_state
         record.terminal_reason = error_type
         telemetry.finish(final_state, error_type)
+        if budget is not None:
+            # Counts only Gemini calls that returned `usage_metadata`; streams
+            # canceled before their final chunk and timed-out calls are omitted
+            # by the SDK even though Gemini may bill them.
+            budget.record(telemetry.tokens.total_token_count)
         if (
             not canceled
-            and error_type != ErrorType.CHAT_DISABLED
+            and error_type not in _PRE_TURN_REASONS
             and should_emit_debug_report(
                 get_debug_report_mode(), request_debug=request_debug
             )

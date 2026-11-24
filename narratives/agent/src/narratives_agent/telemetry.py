@@ -25,8 +25,10 @@ The first stream consists of OpenTelemetry spans from the FastAPI, httpx, and
 google-genai instrumentations and from `TurnTelemetry`. Spans are serialized by
 `format_span`, which keeps only allowlisted attribute keys so that an
 instrumentation that records a URL, a client address, or message text cannot
-leak it regardless of its own configuration. The second stream consists of one
-summary record per chat turn, written by `TurnTelemetry.finish`.
+leak it regardless of its own configuration. The second stream consists of
+structured JSON records written to stdout: one summary record per chat turn
+(`TurnTelemetry.finish`) and daily token budget threshold transitions
+(`record_budget_event`).
 
 Content capture on the google-genai instrumentation is also switched off at
 its source by `configure_telemetry`, so message text is never collected in
@@ -103,6 +105,7 @@ class ErrorType(StrEnum):
 
     CHAT_DISABLED = "chat_disabled"
     CONFIG_MISSING = "config_missing"
+    DAILY_TOKEN_BUDGET_EXHAUSTED = "daily_token_budget_exhausted"
     INTERNAL_ERROR = "internal_error"
     MCP_EMPTY_RESPONSE = "mcp_empty_response"
     MCP_MODEL_ERROR = "mcp_model_error"
@@ -112,6 +115,13 @@ class ErrorType(StrEnum):
     SYNTHESIS_EMPTY = "synthesis_empty"
     SYNTHESIS_ERROR = "synthesis_error"
     SYNTHESIS_STREAM_ERROR = "synthesis_stream_error"
+
+
+class BudgetEventState(StrEnum):
+    """Threshold states reported by `daily_token_budget` telemetry records."""
+
+    WARNING = "warning"
+    EXHAUSTED = "exhausted"
 
 
 # `_ALLOWED_SPAN_ATTRIBUTES` lists the span attributes permitted to leave the
@@ -629,8 +639,38 @@ class TurnTelemetry:
         _turn_logger.info(json.dumps(record))
 
 
+def record_budget_event(
+    state: BudgetEventState,
+    *,
+    used_tokens: int,
+    limit_tokens: int,
+    utc_day: str,
+) -> None:
+    """Emits a content-free JSON record for a daily token budget threshold.
+
+    Args:
+        state: Threshold state reached (`warning` or `exhausted`).
+        used_tokens: Cumulative Gemini tokens recorded by this instance for
+            `utc_day`.
+        limit_tokens: Configured per-instance daily token cap.
+        utc_day: ISO 8601 UTC calendar date (`YYYY-MM-DD`) of the counters.
+    """
+    severity = "ERROR" if state == BudgetEventState.EXHAUSTED else "WARNING"
+    record: JsonObject = {
+        "severity": severity,
+        "message": f"daily token budget {state}",
+        "event": "daily_token_budget",
+        "state": state,
+        "used_tokens": used_tokens,
+        "limit_tokens": limit_tokens,
+        "utc_day": utc_day,
+    }
+    _turn_logger.info(json.dumps(record))
+
+
 __all__ = [
     "SERVICE_NAME",
+    "BudgetEventState",
     "ErrorType",
     "TerminalState",
     "TitleOutcome",
@@ -643,4 +683,5 @@ __all__ = [
     "flush_telemetry",
     "format_span",
     "instrument_app",
+    "record_budget_event",
 ]

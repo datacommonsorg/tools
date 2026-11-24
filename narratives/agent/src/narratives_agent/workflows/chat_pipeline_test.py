@@ -59,6 +59,12 @@ Verifies that:
 11. Every phase of a turn reads one pinned date. The synthesis request opens
     its final user message with the date line, while the signed turn and
     the follow-up request carry no date.
+12. When `DAILY_TOKEN_BUDGET_PER_INSTANCE` is exhausted, `run_turn` ends the
+    turn in one non-retryable `daily_token_budget_exhausted` terminal frame
+    carrying the effective unavailable message without calling Gemini or MCP
+    and without emitting a debug report, while `chat_disabled` still takes
+    precedence and spent tokens from completed, failed, and canceled turns are
+    recorded into the budget.
 """
 
 import asyncio
@@ -98,6 +104,7 @@ from narratives_agent.json_value import JsonObject, JsonValue
 from narratives_agent.mcp import capabilities
 from narratives_agent.mcp import client as mcp_client
 from narratives_agent.settings import (
+    DAILY_TOKEN_BUDGET_PER_INSTANCE_ENV,
     DEBUG_REPORT_ENV,
     ENABLE_CHAT_ENV,
     UNAVAILABLE_MESSAGE_ENV,
@@ -110,6 +117,7 @@ from narratives_agent.telemetry import (
     TokenUsage,
     TurnTelemetry,
 )
+from narratives_agent.token_budget import get_daily_token_budget
 from narratives_agent.workflows import chat_pipeline
 from narratives_agent.workflows import follow_up as follow_up_module
 from narratives_agent.workflows import transcript as transcript_module
@@ -2571,6 +2579,225 @@ async def test_enable_chat_true_overrides_a_disabled_config(
     ]
     assert turn.synthesis_calls == 1
     assert turn.finished == [(TerminalState.COMPLETE, None)]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("unavailable_message", "expected_message"),
+    [
+        pytest.param(None, DEFAULT_UNAVAILABLE_MESSAGE, id="default message"),
+        pytest.param(
+            " Back at noon. ", "Back at noon.", id="environment message"
+        ),
+    ],
+)
+async def test_run_turn_aborts_immediately_when_token_budget_is_exhausted(
+    monkeypatch: pytest.MonkeyPatch,
+    turn: _Turn,
+    unavailable_message: str | None,
+    expected_message: str,
+) -> None:
+    # Test: Pre-turn daily token budget lockout in `run_turn`.
+    # Situation: `DAILY_TOKEN_BUDGET_PER_INSTANCE` is configured and exhausted,
+    #   `DEBUG_REPORT` is `"on"`, and `UNAVAILABLE_MESSAGE` is unset or padded.
+    # Expectation: `run_turn` emits only a single non-retryable `error`
+    #   terminal frame with `reason="daily_token_budget_exhausted"` and the
+    #   effective unavailable message, omits `debug_report`, makes no
+    #   classifier, MCP, or synthesis calls, and records
+    #   `("refused", "daily_token_budget_exhausted")` in telemetry.
+    monkeypatch.setenv(DAILY_TOKEN_BUDGET_PER_INSTANCE_ENV, "100")
+    monkeypatch.setenv(DEBUG_REPORT_ENV, "on")
+    if unavailable_message is not None:
+        monkeypatch.setenv(UNAVAILABLE_MESSAGE_ENV, unavailable_message)
+    budget = get_daily_token_budget()
+    assert budget is not None
+    budget.record(100)
+
+    async def fail_classify(*args: object, **_: object) -> Admitted:
+        pytest.fail("classify_query should not run when budget is exhausted")
+
+    async def fail_tools() -> list[mcp_client.McpTool]:
+        pytest.fail("async_get_tools should not run when budget is exhausted")
+
+    monkeypatch.setattr(chat_pipeline, "classify_query", fail_classify)
+    monkeypatch.setattr(mcp_client, "async_get_tools", fail_tools)
+
+    await chat_pipeline.run_turn(_TRANSCRIPT, turn.emit, request_debug=True)
+
+    assert turn.events == [
+        (
+            "terminal",
+            {
+                "state": TerminalState.ERROR,
+                "idempotency_key": _IDEMPOTENCY_KEY,
+                "error": expected_message,
+                "reason": ErrorType.DAILY_TOKEN_BUDGET_EXHAUSTED,
+                "is_retryable": False,
+            },
+        )
+    ]
+    assert turn.synthesis_calls == 0
+    assert turn.finished == [
+        (TerminalState.REFUSED, ErrorType.DAILY_TOKEN_BUDGET_EXHAUSTED)
+    ]
+
+
+@pytest.mark.asyncio
+async def test_chat_disabled_takes_precedence_over_exhausted_token_budget(
+    monkeypatch: pytest.MonkeyPatch, turn: _Turn
+) -> None:
+    # Test: Precedence between `ENABLE_CHAT=false` and an exhausted budget.
+    # Situation: Both `ENABLE_CHAT` is `"false"` and the instance's daily token
+    #   budget is already exhausted.
+    # Expectation: The turn ends with reason `chat_disabled` rather than
+    #   `daily_token_budget_exhausted`.
+    monkeypatch.setenv(ENABLE_CHAT_ENV, "false")
+    monkeypatch.setenv(DAILY_TOKEN_BUDGET_PER_INSTANCE_ENV, "100")
+    budget = get_daily_token_budget()
+    assert budget is not None
+    budget.record(100)
+
+    await chat_pipeline.run_turn(_TRANSCRIPT, turn.emit)
+
+    terminal = _get_only_terminal(turn)
+    assert terminal["reason"] == ErrorType.CHAT_DISABLED
+    assert turn.finished == [(TerminalState.REFUSED, ErrorType.CHAT_DISABLED)]
+
+
+@pytest.mark.asyncio
+async def test_completed_turn_records_tokens_and_refuses_next_turn_at_cap(
+    monkeypatch: pytest.MonkeyPatch, turn: _Turn
+) -> None:
+    # Test: End-to-end token accumulation and cap enforcement across turns.
+    # Situation: `DAILY_TOKEN_BUDGET_PER_INSTANCE` is 100, and the first turn
+    #   spends 100 total tokens during classification before completing.
+    # Expectation: The first turn completes and records its 100 tokens; the
+    #   next turn short-circuits with `daily_token_budget_exhausted` before
+    #   calling `classify_query` or synthesis, even if config is missing.
+    monkeypatch.setenv(DAILY_TOKEN_BUDGET_PER_INSTANCE_ENV, "100")
+    classify_calls = 0
+
+    async def classify_with_tokens(
+        transcript: Transcript,
+        loaded_config: AgentConfig,
+        telemetry: TurnTelemetry,
+    ) -> Admitted:
+        nonlocal classify_calls
+        classify_calls += 1
+        _ = (transcript, loaded_config)
+        telemetry.tokens.add(
+            TokenCounts(prompt=60, candidates=30, thoughts=10, total=100),
+            phase="classify",
+            model="gemini-3.5-flash-lite",
+        )
+        return Admitted(_CLASSIFICATION)
+
+    monkeypatch.setattr(chat_pipeline, "classify_query", classify_with_tokens)
+
+    await chat_pipeline.run_turn(_TRANSCRIPT, turn.emit)
+    assert turn.finished == [(TerminalState.COMPLETE, None)]
+    assert classify_calls == 1
+    assert turn.synthesis_calls == 1
+
+    turn.events.clear()
+    turn.finished.clear()
+    _use_config(monkeypatch, None)
+
+    await chat_pipeline.run_turn(_TRANSCRIPT, turn.emit)
+    terminal = _get_only_terminal(turn)
+    assert terminal["reason"] == ErrorType.DAILY_TOKEN_BUDGET_EXHAUSTED
+    assert terminal["error"] == DEFAULT_UNAVAILABLE_MESSAGE
+    assert terminal["is_retryable"] is False
+    assert classify_calls == 1
+    assert turn.synthesis_calls == 1
+    assert turn.finished == [
+        (TerminalState.REFUSED, ErrorType.DAILY_TOKEN_BUDGET_EXHAUSTED)
+    ]
+
+
+@pytest.mark.asyncio
+async def test_failed_turn_still_records_spent_tokens_in_budget(
+    monkeypatch: pytest.MonkeyPatch, turn: _Turn
+) -> None:
+    # Test: Token accounting when a turn fails mid-flight.
+    # Situation: `DAILY_TOKEN_BUDGET_PER_INSTANCE` is 50; classification spends
+    #   50 tokens and the discovery phase then fails with `McpLoopError`.
+    # Expectation: The turn ends in `error`, and the 50 spent tokens are still
+    #   recorded so the daily budget is exhausted.
+    monkeypatch.setenv(DAILY_TOKEN_BUDGET_PER_INSTANCE_ENV, "50")
+
+    async def classify_with_tokens(
+        transcript: Transcript,
+        loaded_config: AgentConfig,
+        telemetry: TurnTelemetry,
+    ) -> Admitted:
+        _ = (transcript, loaded_config)
+        telemetry.tokens.add(
+            TokenCounts(prompt=30, candidates=20, thoughts=0, total=50)
+        )
+        return Admitted(_CLASSIFICATION)
+
+    monkeypatch.setattr(chat_pipeline, "classify_query", classify_with_tokens)
+    _install_loop(
+        monkeypatch,
+        McpLoopError(
+            ErrorType.MCP_UNAVAILABLE, MCP_UNAVAILABLE, is_retryable=True
+        ),
+    )
+
+    await chat_pipeline.run_turn(_TRANSCRIPT, turn.emit)
+
+    budget = get_daily_token_budget()
+    assert budget is not None
+    assert budget.is_exhausted()
+    assert turn.finished == [(TerminalState.ERROR, ErrorType.MCP_UNAVAILABLE)]
+
+
+@pytest.mark.asyncio
+async def test_canceled_turn_still_records_spent_tokens_in_budget(
+    monkeypatch: pytest.MonkeyPatch, turn: _Turn
+) -> None:
+    # Test: Token accounting when a turn is canceled mid-flight.
+    # Situation: `DAILY_TOKEN_BUDGET_PER_INSTANCE` is 50; classification spends
+    #   50 tokens and the turn is canceled while awaiting synthesis.
+    # Expectation: `asyncio.CancelledError` propagates, and the 50 spent tokens
+    #   are still recorded so the daily budget is exhausted.
+    monkeypatch.setenv(DAILY_TOKEN_BUDGET_PER_INSTANCE_ENV, "50")
+    synthesis_started = asyncio.Event()
+
+    async def classify_with_tokens(
+        transcript: Transcript,
+        loaded_config: AgentConfig,
+        telemetry: TurnTelemetry,
+    ) -> Admitted:
+        _ = (transcript, loaded_config)
+        telemetry.tokens.add(
+            TokenCounts(prompt=30, candidates=20, thoughts=0, total=50)
+        )
+        return Admitted(_CLASSIFICATION)
+
+    async def stalled_stream() -> AsyncGenerator[StreamChunk]:
+        synthesis_started.set()
+        await asyncio.Event().wait()
+        yield StreamChunk("text", "")
+
+    async def wait_synthesis(**_: object) -> AsyncGenerator[StreamChunk]:
+        return stalled_stream()
+
+    monkeypatch.setattr(chat_pipeline, "classify_query", classify_with_tokens)
+    monkeypatch.setattr(chat_pipeline, "async_gemini_stream", wait_synthesis)
+
+    task = asyncio.create_task(chat_pipeline.run_turn(_TRANSCRIPT, turn.emit))
+    async with asyncio.timeout(1):
+        await synthesis_started.wait()
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+
+    budget = get_daily_token_budget()
+    assert budget is not None
+    assert budget.is_exhausted()
+    assert turn.finished == [(TerminalState.CANCELED, None)]
 
 
 # The serialized frames of a complete turn whose stubs also report a thought

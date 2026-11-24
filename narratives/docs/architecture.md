@@ -167,7 +167,11 @@ Each `POST /agent/chat/stream` request first checks whether chat is enabled
 `ENABLE_CHAT` when set); when chat is disabled, the turn aborts immediately
 with a single `terminal` error frame (`reason: "chat_disabled"`,
 `is_retryable: false`) carrying `chat.unavailable_message` (overridden by
-`UNAVAILABLE_MESSAGE` when set) before making any Gemini or MCP calls.
+`UNAVAILABLE_MESSAGE` when set) before making any Gemini or MCP calls. When
+`DAILY_TOKEN_BUDGET_PER_INSTANCE` is set and the instance has reached its UTC
+daily Gemini token cap (`token_budget.py`), the turn likewise aborts before any
+model or MCP call with `reason: "daily_token_budget_exhausted"`,
+`is_retryable: false`, and the same unavailable message.
 Otherwise, the request runs through the agent loop in five steps:
 
 1. **Query classification (`classify`):** Before any tool is called, a
@@ -379,10 +383,10 @@ How the stream ends:
   `state: "error"`. A `refused` frame carries `{reason, message}` and no `error`
   key, and is left unsigned. An `error` frame carries `{error, reason,
   is_retryable}`, where `is_retryable` is `false` only when the failure is
-  identified as permanent (for example, disabled chat or a request Gemini
-  rejects); every other failure is retryable, and the UI shows a "Try again"
-  button for it. If the connection drops before a `terminal` event arrives, the
-  UI shows that the response was interrupted.
+  identified as permanent (for example, disabled chat, an exhausted daily token
+  budget, or a request Gemini rejects); every other failure is retryable, and
+  the UI shows a "Try again" button for it. If the connection drops before a
+  `terminal` event arrives, the UI shows that the response was interrupted.
 - **Client disconnect:** If the user closes the tab or stops the request, the
   server cancels any in-progress model calls and logs the turn as `canceled`.
 - **Duplicate protection (`idempotency_key`):** Each request includes a unique
@@ -390,9 +394,10 @@ How the stream ends:
   `terminal` event.
 - **Debug reporting (`debug_report`):** When debug reporting is enabled for the
   request, `debug_report` follows `terminal` (and `follow_ups`, when present)
-  as the last frame of the stream. It is omitted when chat is disabled or the
-  client disconnects. The mode is `DEBUG_REPORT` when that variable is set,
-  and otherwise `debug.report` in `agent-config.json`.
+  as the last frame of the stream. It is omitted when chat is disabled, an
+  instance's daily token budget is exhausted, or the client disconnects. The
+  mode is `DEBUG_REPORT` when that variable is set, and otherwise
+  `debug.report` in `agent-config.json`.
 
 ## Stateless multi-turn conversations
 

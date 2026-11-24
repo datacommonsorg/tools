@@ -534,6 +534,88 @@ copies the element from the agent at `AGENT_URL`, so set `ENABLE_CHAT` and
   An `ENABLE_CHAT` value that the deployment always sets, such as `true`, takes
   precedence over `chat.enabled` in `agent-config.json`.
 
+### Daily Gemini token budget (optional)
+
+Set `DAILY_TOKEN_BUDGET_PER_INSTANCE` to a positive integer to cap the total
+Gemini tokens (`total_token_count`, including prompt, output, and thinking
+tokens) that each agent instance may spend per UTC calendar day. When the
+variable is unset or blank, budget enforcement is disabled. A zero, negative,
+or non-integer value fails startup validation so a misconfigured deployment
+does not start unguarded.
+
+Once an instance reaches or exceeds its daily limit, `POST /agent/chat/stream`
+immediately ends new turns with a non-retryable terminal error frame
+(`reason: "daily_token_budget_exhausted"`, `is_retryable: false`) carrying the
+effective `chat.unavailable_message` (or `UNAVAILABLE_MESSAGE`), before calling
+Model Armor, Gemini, or MCP. `/healthz` and `/agent/health` keep answering
+`200`. In a multi-replica environment, an exhausted instance still receives
+routed requests and returns this error even while sibling replicas still have
+tokens remaining for the day; uneven errors are expected under per-instance
+tracking until global token tracking is introduced.
+
+Turns already in flight finish and record tokens from their completed Gemini
+calls in `finally`. Because the SDK reports `usage_metadata` only on the final
+chunk of a streamed call or after a non-streaming call returns, tokens from
+streams canceled by client disconnect before the final chunk or from timed-out
+model calls are not added to the instance's counter even though Gemini or
+Vertex AI may bill them. Counters reset automatically when the UTC date
+advances.
+
+- **Cloud Run:**
+
+  ```sh
+  # Set a per-instance daily token cap
+  gcloud run services update <instance>-app --region=<region> \
+    --update-env-vars=DAILY_TOKEN_BUDGET_PER_INSTANCE=<tokens>
+
+  # Disable token-budget enforcement
+  gcloud run services update <instance>-app --region=<region> \
+    --remove-env-vars=DAILY_TOKEN_BUDGET_PER_INSTANCE
+  ```
+
+  `deploy/terraform-custom-datacommons/modules/main.tf` manages container `env`
+  without `ignore_changes` and does not yet include
+  `DAILY_TOKEN_BUDGET_PER_INSTANCE`. Until it is wired through
+  `config/instance.env` and Terraform, the next `./deploy.sh` run (including
+  `--agent-only` or `--infra-only`) drops an out-of-band value and leaves the
+  service uncapped.
+
+- **GKE (`datacommons-website`):**
+
+  ```sh
+  # Set or adjust the per-instance cap immediately (restarts pods)
+  kubectl set env deployment/website-agentic-apps -n website \
+    -c discover DAILY_TOKEN_BUDGET_PER_INSTANCE=<tokens>
+
+  # Disable token-budget enforcement
+  kubectl set env deployment/website-agentic-apps -n website \
+    -c discover DAILY_TOKEN_BUDGET_PER_INSTANCE-
+  ```
+
+  Out-of-band `kubectl set env` changes are overwritten on subsequent Cloud
+  Deploy releases unless the budget is configured in the environment's
+  `datacommons-website` Helm values.
+
+- **Sizing across replicas and Cloud Run scale-to-zero:** Counters live in
+  process memory (one Uvicorn worker per container). For fixed-replica GKE
+  deployments, set the per-instance cap to `global daily cap / replicas`; pod
+  restarts, rollouts, or changing the variable via `kubectl set env` reset each
+  restarted instance's counter to zero for the current UTC day. On Cloud Run,
+  where `app_min_instances` defaults to `0` and the service scales down and
+  starts fresh containers at zero repeatedly over a day, the cap bounds tokens
+  per container instance lifetime (at most one UTC day) rather than total daily
+  service spend. Pair this cap with a project-level Vertex AI token alert or
+  quota to bound total daily spend, and use `ENABLE_CHAT=false` for an
+  immediate stop across all instances.
+- **Model and thinking-level changes:** Because the budget counts tokens rather
+  than dollars, re-size `DAILY_TOKEN_BUDGET_PER_INSTANCE` (and any project-level
+  Vertex AI alert threshold) whenever changing Gemini models or raising thinking
+  levels in `agent-config.json`.
+- **Threshold telemetry:** Each instance emits at most one structured
+  `daily_token_budget` JSON record to stdout at 80% usage (`state: "warning"`,
+  severity `WARNING`) and one at 100% (`state: "exhausted"`, severity `ERROR`)
+  per UTC day, suitable for Cloud Logging alerts.
+
 ### Screening prompts with Google Cloud Model Armor (optional)
 
 By default, Narratives screens incoming queries with its built-in regex
@@ -736,6 +818,9 @@ The turn span carries the same fields as `narratives.scripts`,
 `narratives.processing_retries`, `narratives.charts_emitted`,
 `narratives.charts_rejected`, and `narratives.title_outcome`. On a `refused`
 turn, `error_type` holds the refusal reason (`adversarial`, `off_domain`,
-`safety_blocked`, or `chat_disabled`) and `pattern` is omitted; if the
-classifier call itself fails, the turn falls through with `pattern` set to
-`exploratory`.
+`safety_blocked`, `chat_disabled`, or `daily_token_budget_exhausted`) and
+`pattern` is omitted; if the classifier call itself fails, the turn falls
+through with `pattern` set to `exploratory`. When
+`DAILY_TOKEN_BUDGET_PER_INSTANCE` is configured, each instance also writes
+content-free `daily_token_budget` JSON records (`state: "warning"` at 80% and
+`state: "exhausted"` at 100%, once each per UTC day).

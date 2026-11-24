@@ -55,9 +55,10 @@ DEFAULT_GEMINI_CLASSIFY_MODEL = "gemini-3.5-flash-lite"
 # `"default"` that `schemas/agent-config.schema.json` declares for both keys.
 DEFAULT_THINKING_LEVEL = types.ThinkingLevel.MEDIUM
 
-# Message of a disabled chat turn when `chat.unavailable_message` is absent,
-# blank, or not a string. It matches the `"default"` that
-# `schemas/agent-config.schema.json` declares for the key.
+# Message returned when chat is disabled or an instance's daily Gemini token
+# budget is exhausted and `chat.unavailable_message` is absent, blank, or not a
+# string. It matches the `"default"` that `schemas/agent-config.schema.json`
+# declares for the key.
 DEFAULT_UNAVAILABLE_MESSAGE = (
     "This Data Commons tool is temporarily unavailable due to high traffic."
 )
@@ -214,8 +215,9 @@ class ChatConfig:
     """Holds the `chat` section: chat availability settings.
 
     `enabled` set to `False` ends every chat turn with a `chat_disabled`
-    error carrying `unavailable_message`. `get_chat_config` in `config.py`
-    applies the environment overrides to these values.
+    error carrying `unavailable_message`; the same message is returned when
+    an instance's daily Gemini token budget is exhausted. `get_chat_config`
+    in `config.py` applies the environment overrides to these values.
     """
 
     enabled: bool = True
