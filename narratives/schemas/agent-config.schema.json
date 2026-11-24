@@ -111,6 +111,25 @@
         }
       }
     },
+    "telemetry": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "content": {
+          "description": "Controls whether the server writes user-visible conversation text to the chat_turn log record. When set to excluded, content is null and the server does not write conversation text to the record. When set to included, the server writes the user query, the emitted answer text or clarification question, the emitted answer title, the emitted chart titles, and the emitted follow-up questions under content. When the value is not one of these, the parser logs an error and falls back to excluded. The server does not read any environment variable to override this setting.",
+          "type": "string",
+          "enum": [
+            "excluded",
+            "included"
+          ],
+          "default": "excluded"
+        },
+        "_comment": {
+          "type": "string",
+          "description": "Free-text annotation for maintainers. Ignored by the agent."
+        }
+      }
+    },
     "thinking": {
       "type": "object",
       "additionalProperties": false,

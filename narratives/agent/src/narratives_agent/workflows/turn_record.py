@@ -23,6 +23,7 @@ from typing import Literal
 
 from narratives_agent.analytics.digest import AnalysisDigest
 from narratives_agent.telemetry import ErrorType, TerminalState, TurnTelemetry
+from narratives_agent.workflows.charts import ResolvedChart
 from narratives_agent.workflows.classify import RefusedReason
 from narratives_agent.workflows.mcp_loop import DiscoveryResult
 from narratives_agent.workflows.processing import ProcessingDiagnostic
@@ -65,14 +66,17 @@ class TurnRecord:
     discarded with it, so nothing is shared across turns or requests.
 
     Some fields hold text from the conversation or the model. `thoughts`,
-    `synthesis_prompt`, and `synthesis_raw_output` hold only text and are
-    only used by the debug report. `loop_result`, `default_diagnostics`,
-    `specification`, `digest`, and `cache` hold text alongside identifiers,
-    codes, and counts. For example, a tool's name and its arguments and
-    result are next to each other in a tool call record. The `chat_turn`
-    log line must not contain any text from the conversation, so anything
-    written to it from these fields has to be an identifier, a code, or a
-    count.
+    `synthesis_prompt`, and `synthesis_raw_output` hold debug-only text: the
+    debug report reads them, and the `chat_turn` log record never includes
+    them. `answer_text`, `title`, `charts`, and `follow_up_questions` hold
+    outputs shown to the user, and their text enters `chat_turn.content` only
+    when `telemetry.content` is `"included"`. `loop_result`,
+    `default_diagnostics`, `specification`, `digest`, and `cache` hold text
+    alongside identifiers, codes, and counts. For example, a tool's name and
+    its arguments and result are next to each other in a tool call record.
+    Anything written to `chat_turn` from those mixed fields must be an
+    identifier, a code, or a count, and must not include text from the
+    conversation.
 
     Attributes:
         telemetry: The turn's timings, token counts, and counters.
@@ -95,6 +99,15 @@ class TurnRecord:
         synthesis_raw_output: The synthesis output as the model wrote it,
             chart fences included, or `None` when the synthesis stream did
             not open.
+        answer_text: The clean Markdown answer (without the title line or
+            chart fences) or the clarification question, or `None` when the
+            turn did not emit any answer text.
+        title: The answer title emitted before the first block, or `None`
+            when the turn did not emit a title.
+        charts: The resolved charts emitted in the answer (including any
+            default chart), in emission order.
+        follow_up_questions: The follow-up questions emitted after the
+            terminal event, in emission order.
         is_clarification: Whether the turn was answered with a clarification
             question.
         is_signed: Whether the server signed the turn into the conversation.
@@ -126,6 +139,10 @@ class TurnRecord:
     thoughts: list[TurnThought] = field(default_factory=list, init=False)
     synthesis_prompt: str | None = field(default=None, init=False)
     synthesis_raw_output: str | None = field(default=None, init=False)
+    answer_text: str | None = field(default=None, init=False)
+    title: str | None = field(default=None, init=False)
+    charts: tuple[ResolvedChart, ...] = field(default=(), init=False)
+    follow_up_questions: tuple[str, ...] = field(default=(), init=False)
     is_clarification: bool = field(default=False, init=False)
     is_signed: bool = field(default=False, init=False)
     was_compacted: bool = field(default=False, init=False)

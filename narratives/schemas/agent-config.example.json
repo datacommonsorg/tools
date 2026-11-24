@@ -26,6 +26,10 @@
     "report": "off"
   },
 
+  "telemetry": {
+    "content": "excluded"
+  },
+
   "thinking": {
     "discovery_level": "medium",
     "synthesis_level": "low"

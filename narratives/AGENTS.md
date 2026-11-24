@@ -120,9 +120,9 @@ process and PR expectations: [`CONTRIBUTING.md`](../CONTRIBUTING.md).
       and resolves the turn debug report mode with the `DEBUG_REPORT`
       override (`get_debug_report_mode`).
     - `config_model.py`: the frozen `AgentConfig` dataclasses, the parser
-      that applies the defaults (failing closed on a malformed `chat` or
-      `debug` section), and the per-role Gemini model, temperature, and
-      thinking-level settings (`GeminiRole`,
+      that applies the defaults (failing closed on a malformed `chat`,
+      `debug`, or `telemetry` section), and the per-role Gemini model,
+      temperature, and thinking-level settings (`GeminiRole`,
       `AgentConfig.resolve_role_config`); the workflows read configuration
       from it.
     - `dev.py` — local development server (`uv run narratives-agent-dev`).

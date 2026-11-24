@@ -14,17 +14,25 @@
 """Builds the `chat_turn` record that the server logs for each chat turn.
 
 Each record describes one turn in identifiers, codes, and counts, so that
-operators can measure usage from the logs. It does not contain any text from
-the conversation. `build_usage_record` reads the turn's `TurnRecord`, and the
-agent loop writes the result with `telemetry.write_structured_record`.
+operators can measure usage from the logs. By default (`include_content=False`),
+`content` is `None` and the record does not contain any text from the
+conversation. When `include_content=True` (`telemetry.content` set to
+`"included"`), `content` holds the turn's user-visible conversation text,
+shortened when needed to stay within `MAX_RECORD_LINE_BYTES`.
+`build_usage_record` reads the turn's `TurnRecord`, and the agent loop writes
+the result with `telemetry.write_structured_record`.
 """
 
-from dataclasses import dataclass, field
+import json
+from collections.abc import Callable
+from dataclasses import dataclass, field, replace
 from enum import StrEnum
 
 from narratives_agent.analytics.metrics import ScriptName
 from narratives_agent.gemini.schemas import QueryPattern
+from narratives_agent.json_value import json_safe
 from narratives_agent.telemetry import (
+    MAX_RECORD_LINE_BYTES,
     NESTED_PHASES,
     TURN_PHASES,
     ErrorType,
@@ -48,6 +56,7 @@ __all__ = [
     "TokenCall",
     "TokenTotals",
     "ToolCallCount",
+    "TurnContent",
     "TurnOutcome",
     "UsageRecord",
     "build_usage_record",
@@ -164,12 +173,43 @@ class ToolCallCount:
 
 
 @dataclass(frozen=True, kw_only=True)
+class TurnContent:
+    """Holds the opt-in conversation text of one turn.
+
+    The server attaches this object to `UsageRecord` only when
+    `telemetry.content` is `"included"`. When the serialized `chat_turn` line
+    would exceed `MAX_RECORD_LINE_BYTES`, the builder shortens the fields in
+    priority order and sets `is_truncated` to `True`.
+
+    Attributes:
+        query: The user's query for the current turn.
+        answer_text: The clean Markdown answer or clarification question, or
+            `None` when the turn did not emit any answer text.
+        title: The answer title emitted before the first block, or `None`
+            when the turn did not emit a title.
+        chart_titles: The titles of the emitted charts, in emission order.
+        follow_up_questions: The emitted follow-up questions, in emission
+            order.
+        is_truncated: Whether any field of `TurnContent` was shortened so the
+            serialized `chat_turn` line stays within `MAX_RECORD_LINE_BYTES`.
+    """
+
+    query: str
+    answer_text: str | None
+    title: str | None
+    chart_titles: tuple[str, ...]
+    follow_up_questions: tuple[str, ...]
+    is_truncated: bool
+
+
+@dataclass(frozen=True, kw_only=True)
 class UsageRecord(StructuredRecord):
     """Holds the `chat_turn` record of one turn.
 
-    Every string in the record is a code that the server defines, an
-    identifier that the server creates, a model name from the configuration,
-    or the build SHA. The record does not have a field for free text. The
+    Outside `content`, every string in the record is a code that the server
+    defines, an identifier that the server creates, a model name from the
+    configuration, or the build SHA. `content` is `None` by default, and
+    holds a `TurnContent` only when `telemetry.content` is `"included"`. The
     server writes every field on every record, and a value that does not
     apply is `None`. A caller cannot pass `severity` or `message`, because
     the record derives both from `terminal_state`.
@@ -217,6 +257,8 @@ class UsageRecord(StructuredRecord):
             returned to the model for another attempt.
         charts_emitted: The number of charts in the answer.
         charts_rejected: The number of charts that the server dropped.
+        content: The user-visible conversation text of the turn when
+            `telemetry.content` is `"included"`, or `None` when excluded.
     """
 
     severity: Severity = field(init=False)
@@ -261,6 +303,7 @@ class UsageRecord(StructuredRecord):
     processing_retries: int
     charts_emitted: int
     charts_rejected: int
+    content: TurnContent | None
 
     def __post_init__(self) -> None:
         """Sets `severity` and `message` from the terminal state."""
@@ -361,8 +404,146 @@ def _build_tool_call_counts(
     )
 
 
+# UTF-8 byte length of the `"null"` placeholder that `content=None` writes.
+_NULL_JSON_BYTES = len(b"null")
+
+
+def _measure_json_bytes(value: object) -> int:
+    """Returns the UTF-8 byte length of `value` serialized as compact JSON."""
+    return len(
+        json.dumps(
+            json_safe(value), separators=(",", ":"), allow_nan=False
+        ).encode("utf-8")
+    )
+
+
+def _truncate_text_value(
+    value: str,
+    apply: Callable[[str], TurnContent],
+    *,
+    max_bytes: int,
+) -> TurnContent:
+    """Shortens `value` to the longest prefix whose content fits `max_bytes`."""
+    empty = apply("")
+    if _measure_json_bytes(empty) > max_bytes:
+        return empty
+    low = 0
+    high = len(value) - 1
+    while low < high:
+        mid = (low + high + 1) // 2
+        if _measure_json_bytes(apply(value[:mid])) <= max_bytes:
+            low = mid
+        else:
+            high = mid - 1
+    return apply(value[:low])
+
+
+def _truncate_tuple_values(
+    values: tuple[str, ...],
+    apply: Callable[[tuple[str, ...]], TurnContent],
+    *,
+    max_bytes: int,
+) -> TurnContent:
+    """Drops or shortens trailing items of `values` to fit in `max_bytes`."""
+    empty = apply(())
+    if _measure_json_bytes(empty) > max_bytes:
+        return empty
+    low = 0
+    high = len(values) - 1
+    while low < high:
+        mid = (low + high + 1) // 2
+        if _measure_json_bytes(apply(values[:mid])) <= max_bytes:
+            low = mid
+        else:
+            high = mid - 1
+    kept = values[:low]
+    trailing = values[low]
+    if (
+        len(trailing) >= 2
+        and _measure_json_bytes(apply((*kept, trailing[:1]))) <= max_bytes
+    ):
+        return _truncate_text_value(
+            trailing,
+            lambda prefix: apply((*kept, prefix)),
+            max_bytes=max_bytes,
+        )
+    return apply(kept)
+
+
+def _build_turn_content(
+    record: TurnRecord, transcript: Transcript, *, max_bytes: int
+) -> TurnContent:
+    """Builds `TurnContent` and shortens its fields to stay in `max_bytes`."""
+    content = TurnContent(
+        query=transcript.current_query,
+        answer_text=record.answer_text,
+        title=record.title,
+        chart_titles=tuple(chart.title for chart in record.charts),
+        follow_up_questions=record.follow_up_questions,
+        is_truncated=False,
+    )
+    if _measure_json_bytes(content) <= max_bytes:
+        return content
+
+    current = replace(content, is_truncated=True)
+    has_shortened = False
+    if answer_text := current.answer_text:
+        base = current
+        current = _truncate_text_value(
+            answer_text,
+            lambda text: replace(base, answer_text=text),
+            max_bytes=max_bytes,
+        )
+        has_shortened = True
+    if (not has_shortened or _measure_json_bytes(current) > max_bytes) and (
+        current.follow_up_questions
+    ):
+        base = current
+        current = _truncate_tuple_values(
+            base.follow_up_questions,
+            lambda items: replace(base, follow_up_questions=items),
+            max_bytes=max_bytes,
+        )
+        has_shortened = True
+    if (not has_shortened or _measure_json_bytes(current) > max_bytes) and (
+        current.chart_titles
+    ):
+        base = current
+        current = _truncate_tuple_values(
+            base.chart_titles,
+            lambda items: replace(base, chart_titles=items),
+            max_bytes=max_bytes,
+        )
+        has_shortened = True
+    if (not has_shortened or _measure_json_bytes(current) > max_bytes) and (
+        title := current.title
+    ):
+        base = current
+        current = _truncate_text_value(
+            title,
+            lambda text: replace(base, title=text),
+            max_bytes=max_bytes,
+        )
+        has_shortened = True
+    if (not has_shortened or _measure_json_bytes(current) > max_bytes) and (
+        current.query
+    ):
+        base = current
+        current = _truncate_text_value(
+            base.query,
+            lambda text: replace(base, query=text),
+            max_bytes=max_bytes,
+        )
+        has_shortened = True
+    return current if has_shortened else content
+
+
 def build_usage_record(
-    record: TurnRecord, transcript: Transcript, *, build_sha: str | None
+    record: TurnRecord,
+    transcript: Transcript,
+    *,
+    build_sha: str | None,
+    include_content: bool = False,
 ) -> UsageRecord:
     """Builds the `chat_turn` record of a turn that has ended.
 
@@ -370,8 +551,12 @@ def build_usage_record(
         record: The turn's record, after the agent loop set its terminal
             state and finished its telemetry.
         transcript: The verified transcript that the turn ran with. The
-            record takes the conversation ID and the turn's index from it.
+            record takes the conversation ID and the turn's index from it,
+            and reads `current_query` only when `include_content` is `True`.
         build_sha: The build or commit SHA of the running image, or `None`.
+        include_content: Whether to populate `content` with the turn's
+            user-visible conversation text, shortened when needed so the
+            serialized line stays within `MAX_RECORD_LINE_BYTES`.
 
     Returns:
         The record, which `telemetry.write_structured_record` writes.
@@ -384,7 +569,7 @@ def build_usage_record(
         raise ValueError("The turn has not ended.")
     telemetry = record.telemetry
     has_data = record.digest is not None and record.digest.has_data
-    return UsageRecord(
+    usage = UsageRecord(
         build_sha=build_sha,
         turn_id=telemetry.turn_id,
         conversation_id=transcript.conversation_id,
@@ -419,4 +604,12 @@ def build_usage_record(
         processing_retries=telemetry.processing_retries,
         charts_emitted=telemetry.charts_emitted,
         charts_rejected=telemetry.charts_rejected,
+        content=None,
     )
+    if not include_content:
+        return usage
+    envelope_bytes = _measure_json_bytes(usage) - _NULL_JSON_BYTES
+    content = _build_turn_content(
+        record, transcript, max_bytes=MAX_RECORD_LINE_BYTES - envelope_bytes
+    )
+    return replace(usage, content=content)

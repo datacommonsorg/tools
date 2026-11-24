@@ -37,7 +37,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass, field, fields
 from enum import Enum
 from types import MappingProxyType
-from typing import Any
+from typing import Any, Literal
 
 from google.genai import types
 
@@ -127,6 +127,16 @@ _DEBUG_REPORT_MODES: Mapping[str, DebugReportMode] = {
     "off": "off",
     "on": "on",
     "flag": "flag",
+}
+
+type TelemetryContentMode = Literal["excluded", "included"]
+
+# The modes that `telemetry.content` accepts, keyed by their configuration
+# string. They match the `enum` that `schemas/agent-config.schema.json`
+# declares for the key.
+_TELEMETRY_CONTENT_MODES: Mapping[str, TelemetryContentMode] = {
+    "excluded": "excluded",
+    "included": "included",
 }
 
 # Name prefixes of the models that the Gemini model documentation lists as
@@ -238,6 +248,18 @@ class DebugConfig:
 
 
 @dataclass(frozen=True)
+class TelemetryConfig:
+    """Holds the `telemetry` section: conversation content in `chat_turn`.
+
+    `content` selects whether the server omits conversation text from the
+    `chat_turn` log record (`"excluded"`) or includes it (`"included"`). The
+    server does not read any environment variable to override this value.
+    """
+
+    content: TelemetryContentMode = "excluded"
+
+
+@dataclass(frozen=True)
 class ThinkingLevels:
     """Holds the `thinking` section: the configurable thinking levels.
 
@@ -286,6 +308,7 @@ class AgentConfig:
     mcp: McpConfig = field(default_factory=McpConfig)
     chat: ChatConfig = field(default_factory=ChatConfig)
     debug: DebugConfig = field(default_factory=DebugConfig)
+    telemetry: TelemetryConfig = field(default_factory=TelemetryConfig)
     thinking: ThinkingLevels = field(default_factory=ThinkingLevels)
     prompts: Prompts = field(default_factory=Prompts)
     template_vars: Mapping[str, str] = field(default_factory=dict)
@@ -496,6 +519,40 @@ def _read_debug_config(document: Mapping[str, Any]) -> DebugConfig:
     return DebugConfig()
 
 
+def _read_telemetry_config(document: Mapping[str, Any]) -> TelemetryConfig:
+    """Returns the `telemetry` section, failing closed on a malformed value.
+
+    When the section or `content` is absent, this returns `TelemetryConfig()`.
+    When `telemetry` is not an object, or when `content` is not one of
+    `_TELEMETRY_CONTENT_MODES` after stripping and lowercasing, the parser logs
+    an error and returns `TelemetryConfig()`, because `"included"` tells the
+    server to write the user's query and the answer text to the logs.
+    """
+    if "telemetry" not in document:
+        return TelemetryConfig()
+    telemetry = document["telemetry"]
+    if not isinstance(telemetry, Mapping):
+        logger.error(
+            "Agent configuration key 'telemetry' is not an object; excluding "
+            "conversation content from telemetry"
+        )
+        return TelemetryConfig()
+    if "content" not in telemetry:
+        return TelemetryConfig()
+    value = telemetry["content"]
+    if isinstance(value, str):
+        mode = _TELEMETRY_CONTENT_MODES.get(value.strip().lower())
+        if mode is not None:
+            return TelemetryConfig(content=mode)
+    logger.error(
+        "Agent configuration key %r is not one of %s; excluding conversation "
+        "content from telemetry",
+        "telemetry.content",
+        list(_TELEMETRY_CONTENT_MODES),
+    )
+    return TelemetryConfig()
+
+
 def _read_thinking_level(
     section: Mapping[str, Any], key: str, default: types.ThinkingLevel
 ) -> types.ThinkingLevel:
@@ -553,11 +610,14 @@ def parse_agent_config(document: Mapping[str, Any]) -> AgentConfig:
     Each field is parsed on its own: a section that is not a JSON object, or
     a value that is absent or not of the expected type, takes the field's
     default, and a value that is present but unusable is logged once at
-    warning with its key. The exceptions are `chat` and `debug`, which fail
-    closed: a `chat` section that is not an object, or a `chat.enabled` that
-    is not a boolean, is logged at error and disables chat, and a `debug`
-    section that is not an object, or a `debug.report` that is not a known
-    mode, is logged at error and turns the debug report off. The document as
+    warning with its key. The exceptions are `chat`, `debug`, and
+    `telemetry`, which fail closed. When `chat` is not an object or
+    `chat.enabled` is not a boolean, the parser logs an error and disables
+    chat. When `debug` is not an object or `debug.report` is not a known
+    mode, the parser logs an error and turns the debug report off. When
+    `telemetry` is not an object or `telemetry.content` is not a known mode,
+    the parser logs an error and excludes conversation content from the
+    `chat_turn` log record. The document as
     a whole is never rejected, so one bad value cannot stop every turn with
     `config_missing`. Keys that the agent does not read are ignored.
 
@@ -601,6 +661,7 @@ def parse_agent_config(document: Mapping[str, Any]) -> AgentConfig:
         ),
         chat=_read_chat_config(document),
         debug=_read_debug_config(document),
+        telemetry=_read_telemetry_config(document),
         thinking=ThinkingLevels(
             discovery_level=_read_thinking_level(
                 thinking, "discovery_level", ThinkingLevels.discovery_level
