@@ -31,6 +31,11 @@ Covers the per-field rules the parser applies to a configuration document:
 8. The `debug` section fails closed: a section that is not an object, or a
    `debug.report` that is not `off`, `on`, or `flag` after stripping and
    lowercasing, turns the debug report off with one error.
+9. The `telemetry` section fails closed: a section that is not an object, or
+   a `telemetry.content` value that is not `excluded` or `included` after
+   stripping and lowercasing, excludes conversation content with one error.
+   The default and example configuration files also satisfy
+   `schemas/agent-config.schema.json`.
 
 And the resolution of each `GeminiRole` to its model, temperature, and
 thinking level, with and without configured values, including the clamp that
@@ -39,9 +44,14 @@ produce the document, and the environment overrides of the `chat` and
 `debug` sections, are tested in `config_test.py`.
 """
 
+import json
 import logging
+from pathlib import Path
 from typing import Any
 
+# `jsonschema` is installed transitively via `mcp` without `types-jsonschema`
+# stubs.
+import jsonschema  # type: ignore[import-untyped]
 import pytest
 from google.genai import types
 
@@ -58,6 +68,8 @@ from narratives_agent.config_model import (
     McpConfig,
     Prompts,
     RoleConfig,
+    TelemetryConfig,
+    TelemetryContentMode,
     ThinkingLevels,
     parse_agent_config,
 )
@@ -92,6 +104,7 @@ def test_an_empty_document_gives_every_default() -> None:
         compaction_model=DEFAULT_GEMINI_MODEL,
     )
     assert parsed.mcp == McpConfig(server_url="", enabled=True)
+    assert parsed.telemetry == TelemetryConfig(content="excluded")
     assert parsed.thinking == ThinkingLevels(
         discovery_level=types.ThinkingLevel.MEDIUM,
         synthesis_level=types.ThinkingLevel.MEDIUM,
@@ -118,6 +131,7 @@ def test_configured_values_are_carried_through() -> None:
                 "api_key": " test-key ",
             },
             "mcp": {"server_url": " https://mcp.example ", "enabled": False},
+            "telemetry": {"content": "included"},
             "thinking": {
                 "discovery_level": "high",
                 "synthesis_level": "medium",
@@ -142,6 +156,7 @@ def test_configured_values_are_carried_through() -> None:
             api_key="test-key",
         ),
         mcp=McpConfig(server_url="https://mcp.example", enabled=False),
+        telemetry=TelemetryConfig(content="included"),
         thinking=ThinkingLevels(
             discovery_level=types.ThinkingLevel.HIGH,
             synthesis_level=types.ThinkingLevel.MEDIUM,
@@ -836,3 +851,178 @@ def test_an_unusable_debug_report_turns_the_report_off(
     assert [
         "'debug.report'" in message for message in _list_errors(caplog)
     ] == [True]
+
+
+@pytest.mark.parametrize(
+    ("document", "expected"),
+    [
+        pytest.param({}, "excluded", id="section absent"),
+        pytest.param({"telemetry": {}}, "excluded", id="content absent"),
+        pytest.param(
+            {"telemetry": {"content": "excluded"}}, "excluded", id="excluded"
+        ),
+        pytest.param(
+            {"telemetry": {"content": "included"}}, "included", id="included"
+        ),
+        pytest.param(
+            {"telemetry": {"content": " Included\n"}},
+            "included",
+            id="padded mixed-case included",
+        ),
+        pytest.param(
+            {"telemetry": {"content": " EXCLUDED "}},
+            "excluded",
+            id="padded uppercase excluded",
+        ),
+    ],
+)
+def test_a_valid_telemetry_content_mode_is_carried_through(
+    caplog: pytest.LogCaptureFixture,
+    document: dict[str, Any],
+    expected: TelemetryContentMode,
+) -> None:
+    # Test: Parsing of a valid or absent `telemetry.content`.
+    # Situation: The `telemetry` section or its `content` key is absent, or
+    #   `content` is `"excluded"` or `"included"` with optional whitespace or
+    #   mixed letter case.
+    # Expectation: The mode is carried through after stripping and
+    #   lowercasing, an absent value resolves to `"excluded"`, and the parser
+    #   does not log a warning or an error.
+    with caplog.at_level(logging.WARNING):
+        parsed = parse_agent_config(document)
+
+    assert parsed.telemetry == TelemetryConfig(content=expected)
+    assert _warnings(caplog) == []
+    assert _list_errors(caplog) == []
+
+
+@pytest.mark.parametrize(
+    "value",
+    [True, "included", [], None],
+    ids=["bool", "str", "list", "null"],
+)
+def test_a_telemetry_section_of_the_wrong_type_excludes_content(
+    caplog: pytest.LogCaptureFixture, value: object
+) -> None:
+    # Test: Fail-closed handling when `telemetry` is not a JSON object.
+    # Situation: `telemetry` is `true`, `"included"`, an empty list, or null.
+    # Expectation: `telemetry.content` resolves to `"excluded"`, the parser
+    #   does not log a warning, and the parser logs one error naming
+    #   `'telemetry'`.
+    with caplog.at_level(logging.WARNING):
+        parsed = parse_agent_config({"telemetry": value})
+
+    assert parsed.telemetry == TelemetryConfig(content="excluded")
+    assert _warnings(caplog) == []
+    assert ["'telemetry'" in message for message in _list_errors(caplog)] == [
+        True
+    ]
+
+
+@pytest.mark.parametrize(
+    "value",
+    [True, 1, "", "   ", "on", "yes", "true", None],
+    ids=[
+        "bool",
+        "int",
+        "empty",
+        "whitespace",
+        "on",
+        "yes",
+        "str true",
+        "null",
+    ],
+)
+def test_an_unusable_telemetry_content_excludes_content(
+    caplog: pytest.LogCaptureFixture, value: object
+) -> None:
+    # Test: Fail-closed handling of an invalid `telemetry.content` value.
+    # Situation: `telemetry.content` is a boolean, an integer, blank, `"on"`,
+    #   `"yes"`, `"true"`, or null.
+    # Expectation: `telemetry.content` resolves to `"excluded"`, the parser
+    #   does not log a warning, and the parser logs one error naming
+    #   `'telemetry.content'` and the accepted modes.
+    with caplog.at_level(logging.WARNING):
+        parsed = parse_agent_config({"telemetry": {"content": value}})
+
+    assert parsed.telemetry == TelemetryConfig(content="excluded")
+    assert _warnings(caplog) == []
+    errors = _list_errors(caplog)
+    assert len(errors) == 1
+    assert "'telemetry.content'" in errors[0]
+    assert "['excluded', 'included']" in errors[0]
+
+
+_NARRATIVES_DIR = Path(__file__).resolve().parents[3]
+
+
+def _validate_agent_config_document(document: object) -> None:
+    """Validates `document` against `schemas/agent-config.schema.json`."""
+    schema_path = _NARRATIVES_DIR / "schemas" / "agent-config.schema.json"
+    schema = json.loads(schema_path.read_text(encoding="utf-8"))
+    jsonschema.Draft202012Validator.check_schema(schema)
+    validator = jsonschema.Draft202012Validator(
+        schema, format_checker=jsonschema.Draft202012Validator.FORMAT_CHECKER
+    )
+    validator.validate(document)
+
+
+@pytest.mark.parametrize(
+    "relative_path",
+    [
+        "defaults/agent-config.json",
+        "schemas/agent-config.example.json",
+    ],
+)
+def test_shipped_agent_config_files_satisfy_the_json_schema(
+    relative_path: str,
+) -> None:
+    # Test: Validation of shipped configuration files against the JSON Schema.
+    # Situation: `defaults/agent-config.json` and
+    #   `schemas/agent-config.example.json` are validated with Draft 2020-12.
+    # Expectation: Both files pass schema validation, and an explicit
+    #   `"included"` override with `_comment` also passes.
+    document = json.loads(
+        (_NARRATIVES_DIR / relative_path).read_text(encoding="utf-8")
+    )
+
+    _validate_agent_config_document(document)
+    _validate_agent_config_document(
+        {
+            **document,
+            "telemetry": {"content": "included", "_comment": "opt-in"},
+        }
+    )
+
+
+@pytest.mark.parametrize(
+    "telemetry_value",
+    [
+        True,
+        "included",
+        [],
+        {"content": "on"},
+        {"content": True},
+        {"content": None},
+        {"content": "excluded", "extra": "unexpected"},
+    ],
+    ids=[
+        "bool section",
+        "str section",
+        "list section",
+        "unknown mode",
+        "bool content",
+        "null content",
+        "unknown property",
+    ],
+)
+def test_the_json_schema_rejects_invalid_telemetry_shapes(
+    telemetry_value: object,
+) -> None:
+    # Test: JSON Schema rejection of malformed `telemetry` sections.
+    # Situation: A configuration document sets `telemetry` to a non-object,
+    #   sets `telemetry.content` outside `["excluded", "included"]`, or adds
+    #   an unrecognized property under `telemetry`.
+    # Expectation: Draft 2020-12 validation raises `ValidationError`.
+    with pytest.raises(jsonschema.ValidationError):
+        _validate_agent_config_document({"telemetry": telemetry_value})

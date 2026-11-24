@@ -33,14 +33,20 @@ Verifies that:
 6. `build_usage_record` raises `ValueError` for a turn that has not ended.
    A record with every list at its bound stays under the size limit of one
    line.
+7. `content` is `None` by default (`include_content=False`) even when the
+   turn recorded user-visible outputs, and holds a `TurnContent` when
+   `include_content=True`, shortening fields in priority order so the
+   serialized line never exceeds `MAX_RECORD_LINE_BYTES`.
 """
 
 import dataclasses
 import json
+import logging
 import time
 
 import pytest
 
+from narratives_agent import telemetry as telemetry_module
 from narratives_agent.analytics.digest import AnalysisDigest
 from narratives_agent.analytics.metrics import ScriptName
 from narratives_agent.analytics.provenance import Provenance
@@ -58,13 +64,21 @@ from narratives_agent.telemetry import (
     TurnTelemetry,
     write_structured_record,
 )
+from narratives_agent.workflows.charts import (
+    MAX_CHARTS_PER_TURN,
+    PlaceList,
+    ResolvedLineChart,
+)
 from narratives_agent.workflows.classify import RefusedReason
 from narratives_agent.workflows.mcp_loop import (
     DISCOVERY_TOOL_NAMES,
     MAX_ITERATIONS,
     SERVER_FUNCTION_NAMES,
 )
+from narratives_agent.workflows.title import MAX_TITLE_CHARS
 from narratives_agent.workflows.transcript import (
+    MAX_QUERY_CHARS,
+    MAX_RESPONSE_CHARS,
     MAX_TURN_INDEX,
     ConversationStateSlots,
     Transcript,
@@ -75,6 +89,7 @@ from narratives_agent.workflows.usage_record import (
     RefusalStage,
     TokenCall,
     TokenTotals,
+    TurnContent,
     TurnOutcome,
     UsageRecord,
     build_usage_record,
@@ -118,6 +133,7 @@ _KEYS = [
     "processing_retries",
     "charts_emitted",
     "charts_rejected",
+    "content",
 ]
 # `_TOOL_LABELS` holds the two labels that the discovery loop records in
 # place of a tool name.
@@ -348,6 +364,7 @@ def test_a_turn_that_ran_every_phase_writes_every_key_with_its_value(
         "processing_retries": 1,
         "charts_emitted": 4,
         "charts_rejected": 5,
+        "content": None,
     }
 
 
@@ -415,6 +432,7 @@ def test_a_turn_that_ran_no_phase_writes_every_key_with_its_empty_value(
         "processing_retries": 0,
         "charts_emitted": 0,
         "charts_rejected": 0,
+        "content": None,
     }
 
 
@@ -763,22 +781,28 @@ def test_a_turn_that_has_not_ended_does_not_have_a_record() -> None:
         _build_record(record)
 
 
+@pytest.mark.parametrize("include_content", [False, True])
 def test_the_largest_record_fits_in_one_line(
-    monkeypatch: pytest.MonkeyPatch, structured_lines: list[str]
+    monkeypatch: pytest.MonkeyPatch,
+    structured_lines: list[str],
+    caplog: pytest.LogCaptureFixture,
+    include_content: bool,
 ) -> None:
-    # Test: The size of the largest `chat_turn` line.
+    # Test: The size of the largest `chat_turn` line, with and without content.
     # Situation: A failed turn has every list of the record at its bound: a
     #   duration for every phase, a count for every tool name and label
     #   that the discovery loop can record, a token call for every
     #   discovery round and for each of the other four roles, and six
-    #   scripts. Every count and the duration have nine digits. The script,
-    #   the reason, and the pattern are the longest of their literals. The
-    #   code does not bound the model name or the build SHA, so the test
-    #   assumes a model name of 64 characters and a SHA of 40 characters.
-    # Expectation: The record holds one token call for each of the
-    #   `MAX_ITERATIONS` discovery rounds and four more, one count for each
-    #   tool name, and the duration of 999,999,999.25 ms. The written line
-    #   is smaller than `MAX_RECORD_LINE_BYTES`.
+    #   scripts, alongside maximal query, answer, title, chart-title, and
+    #   follow-up strings. Every count and the duration have nine digits. The
+    #   script, the reason, and the pattern are the longest of their literals,
+    #   and the test assumes a model name of 64 characters and a SHA of 40
+    #   characters.
+    # Expectation: When `include_content` is `False`, `content` is `None` and
+    #   the written line is smaller than `MAX_RECORD_LINE_BYTES`. When
+    #   `include_content` is `True`, `content` is truncated so the written line
+    #   stays within `MAX_RECORD_LINE_BYTES` without logging an oversized-line
+    #   warning.
     large = 999_999_999
     counts = TokenCounts(
         prompt=large, candidates=large, thoughts=large, total=large
@@ -811,6 +835,19 @@ def test_the_largest_record_fits_in_one_line(
     record.loop_result.truncated = True
     record.is_signed = True
     record.was_compacted = True
+    record.answer_text = "a" * MAX_RESPONSE_CHARS
+    record.title = "t" * MAX_TITLE_CHARS
+    record.charts = tuple(
+        ResolvedLineChart(
+            title=f"Chart {index} " + ("c" * 80),
+            variable_dcids=("Count_Person",),
+            scope=PlaceList(("country/FRA",)),
+        )
+        for index in range(MAX_CHARTS_PER_TURN)
+    )
+    record.follow_up_questions = tuple(
+        f"Question {index}? " + ("q" * 120) for index in range(3)
+    )
     _finish_turn(
         monkeypatch,
         record,
@@ -818,14 +855,379 @@ def test_the_largest_record_fits_in_one_line(
         ErrorType.DAILY_TOKEN_BUDGET_EXHAUSTED,
         seconds=999_999.99925,
     )
+    transcript = dataclasses.replace(
+        _make_transcript(MAX_TURN_INDEX),
+        current_query="u" * MAX_QUERY_CHARS,
+    )
     usage = build_usage_record(
-        record, _make_transcript(MAX_TURN_INDEX), build_sha="f" * 40
+        record,
+        transcript,
+        build_sha="f" * 40,
+        include_content=include_content,
     )
 
-    write_structured_record(usage)
+    with caplog.at_level(logging.WARNING, logger=telemetry_module.__name__):
+        write_structured_record(usage)
 
     (line,) = structured_lines
     assert len(usage.token_calls) == MAX_ITERATIONS + 4
     assert usage.duration_ms == 999_999_999.25
     assert len(usage.tool_call_counts) == len(tools)
-    assert len(line.encode("utf-8")) < MAX_RECORD_LINE_BYTES
+    assert caplog.records == []
+    if include_content:
+        assert usage.content is not None
+        assert usage.content.is_truncated is True
+        assert len(line.encode("utf-8")) <= MAX_RECORD_LINE_BYTES
+    else:
+        assert usage.content is None
+        assert len(line.encode("utf-8")) < MAX_RECORD_LINE_BYTES
+
+
+def _make_resolved_chart(title: str) -> ResolvedLineChart:
+    """Builds a resolved line chart with `title`."""
+    return ResolvedLineChart(
+        title=title,
+        variable_dcids=("Count_Person",),
+        scope=PlaceList(("country/FRA",)),
+    )
+
+
+def test_excluded_content_is_null_even_when_turn_outputs_are_recorded(
+    structured_lines: list[str],
+) -> None:
+    # Test: `build_usage_record` with the default `include_content=False`.
+    # Situation: The turn's record holds an answer, a title, two resolved
+    #   charts, and follow-up questions.
+    # Expectation: `usage.content` is `None`, the written JSON sets `"content"`
+    #   to `null`, and the serialized line omits all of those strings.
+    record = _make_record()
+    record.answer_text = "About 68 million."
+    record.title = "Population of France"
+    record.charts = (
+        _make_resolved_chart("Population Trend"),
+        _make_resolved_chart("Annual Growth"),
+    )
+    record.follow_up_questions = ("And Spain?", "And Germany?")
+
+    usage = build_usage_record(record, _make_transcript(), build_sha=_BUILD_SHA)
+    written = _write_record(usage, structured_lines)
+
+    assert usage.content is None
+    assert written["content"] is None
+    (line,) = structured_lines
+    for text in (
+        "Current question",
+        "About 68 million.",
+        "Population of France",
+        "Population Trend",
+        "And Spain?",
+    ):
+        assert text not in line
+
+
+def test_included_content_populates_every_field_of_a_completed_data_turn(
+    structured_lines: list[str],
+) -> None:
+    # Test: `TurnContent` on a completed turn with data when opted in.
+    # Situation: A turn completes with data, an answer, an emitted title, two
+    #   resolved charts, and two follow-up questions, and `include_content` is
+    #   `True`.
+    # Expectation: `usage.content` holds all six fields in schema order with
+    #   `is_truncated` set to `False`.
+    record = _make_record()
+    record.digest = _make_digest(has_data=True)
+    record.answer_text = "France had 68.2 million people in 2023."
+    record.title = "Population of France"
+    record.charts = (
+        _make_resolved_chart("Population Trend"),
+        _make_resolved_chart("Recent Census"),
+    )
+    record.follow_up_questions = ("How about Spain?", "How about Italy?")
+
+    usage = build_usage_record(
+        record,
+        _make_transcript(),
+        build_sha=_BUILD_SHA,
+        include_content=True,
+    )
+    written = _write_record(usage, structured_lines)
+
+    assert usage.content == TurnContent(
+        query="Current question",
+        answer_text="France had 68.2 million people in 2023.",
+        title="Population of France",
+        chart_titles=("Population Trend", "Recent Census"),
+        follow_up_questions=("How about Spain?", "How about Italy?"),
+        is_truncated=False,
+    )
+    content = written["content"]
+    assert isinstance(content, dict)
+    assert list(content) == [
+        "query",
+        "answer_text",
+        "title",
+        "chart_titles",
+        "follow_up_questions",
+        "is_truncated",
+    ]
+    assert content == {
+        "query": "Current question",
+        "answer_text": "France had 68.2 million people in 2023.",
+        "title": "Population of France",
+        "chart_titles": ["Population Trend", "Recent Census"],
+        "follow_up_questions": ["How about Spain?", "How about Italy?"],
+        "is_truncated": False,
+    }
+
+
+@pytest.mark.parametrize(
+    (
+        "state",
+        "reason",
+        "is_clarification",
+        "answer_text",
+        "title",
+    ),
+    [
+        pytest.param(
+            TerminalState.COMPLETE,
+            None,
+            True,
+            "Do you mean Georgia the country or the U.S. state?",
+            None,
+            id="clarification",
+        ),
+        pytest.param(
+            TerminalState.REFUSED,
+            RefusedReason.OFF_DOMAIN,
+            False,
+            None,
+            None,
+            id="refused",
+        ),
+        pytest.param(
+            TerminalState.ERROR,
+            ErrorType.MCP_TIMEOUT,
+            False,
+            None,
+            None,
+            id="pre-synthesis error",
+        ),
+        pytest.param(
+            TerminalState.CANCELED,
+            None,
+            False,
+            "First paragraph emitted before disconnect.",
+            "Population of France",
+            id="mid-synthesis canceled with partial block",
+        ),
+        pytest.param(
+            TerminalState.ERROR,
+            ErrorType.SYNTHESIS_STREAM_ERROR,
+            False,
+            "First paragraph emitted before stream error.",
+            None,
+            id="mid-synthesis stream error with partial block",
+        ),
+    ],
+)
+def test_included_content_reflects_partial_or_absent_outputs_across_turn_paths(
+    state: TerminalState,
+    reason: ErrorType | RefusedReason | None,
+    is_clarification: bool,
+    answer_text: str | None,
+    title: str | None,
+) -> None:
+    # Test: `TurnContent` across clarification, refused, failed, and canceled
+    #   turns when `include_content` is `True`.
+    # Situation: A turn ends as a clarification, a refusal, a pre-synthesis
+    #   error, or a mid-synthesis abort or cancellation that already emitted
+    #   one text block.
+    # Expectation: `query` is always populated, `answer_text` holds the
+    #   clarification question or partial text when emitted and `None`
+    #   otherwise, `title` matches the emitted title, and `chart_titles` and
+    #   `follow_up_questions` are empty.
+    record = _make_record(state, reason)
+    record.is_clarification = is_clarification
+    record.answer_text = answer_text
+    record.title = title
+
+    usage = build_usage_record(
+        record,
+        _make_transcript(),
+        build_sha=_BUILD_SHA,
+        include_content=True,
+    )
+
+    assert usage.content == TurnContent(
+        query="Current question",
+        answer_text=answer_text,
+        title=title,
+        chart_titles=(),
+        follow_up_questions=(),
+        is_truncated=False,
+    )
+
+
+def test_included_content_truncates_oversized_answer_within_the_line_budget(
+    structured_lines: list[str], caplog: pytest.LogCaptureFixture
+) -> None:
+    # Test: Byte-budget truncation of a 30,000-character `answer_text`.
+    # Situation: `answer_text` has 30,000 characters mixing multi-byte UTF-8
+    #   characters (`é`, `🌍`) and characters that expand in JSON (`\n`, `"`,
+    #   `\\`), alongside a title, chart title, follow-up question, and query.
+    # Expectation: `answer_text` is shortened on a whole-character boundary so
+    #   the serialized UTF-8 line stays within `MAX_RECORD_LINE_BYTES`, parses
+    #   as valid JSON, sets `content.is_truncated` to `True`, keeps the other
+    #   content fields intact, and does not trigger an oversized-line warning.
+    unit = 'Café 🌍 "quote"\nline\\slash '
+    answer = (unit * (30_000 // len(unit) + 1))[:30_000]
+    assert len(answer) == 30_000
+    record = _make_record()
+    record.answer_text = answer
+    record.title = "Population of France"
+    record.charts = (_make_resolved_chart("Population Trend"),)
+    record.follow_up_questions = ("How about Spain?",)
+
+    usage = build_usage_record(
+        record,
+        _make_transcript(),
+        build_sha=_BUILD_SHA,
+        include_content=True,
+    )
+    with caplog.at_level(logging.WARNING, logger=telemetry_module.__name__):
+        write_structured_record(usage)
+
+    (line,) = structured_lines
+    assert len(line.encode("utf-8")) <= MAX_RECORD_LINE_BYTES
+    assert caplog.records == []
+    parsed = json.loads(line)
+    assert isinstance(parsed, dict)
+    assert usage.content is not None
+    assert usage.content.is_truncated is True
+    assert usage.content.answer_text is not None
+    assert 0 < len(usage.content.answer_text) < len(answer)
+    assert answer.startswith(usage.content.answer_text)
+    assert usage.content.title == "Population of France"
+    assert usage.content.chart_titles == ("Population Trend",)
+    assert usage.content.follow_up_questions == ("How about Spain?",)
+    assert usage.content.query == "Current question"
+    assert parsed["content"]["is_truncated"] is True
+
+
+def test_included_content_truncates_secondary_fields_when_answer_is_absent(
+    structured_lines: list[str], caplog: pytest.LogCaptureFixture
+) -> None:
+    # Test: Byte-budget truncation when `answer_text` is `None`.
+    # Situation: `answer_text` is `None`, while `query`, `chart_titles`, and
+    #   `follow_up_questions` together push the serialized line past
+    #   `MAX_RECORD_LINE_BYTES`.
+    # Expectation: `answer_text` stays `None`, `follow_up_questions` and
+    #   `chart_titles` are shortened from the end until the line fits within
+    #   `MAX_RECORD_LINE_BYTES`, `is_truncated` is `True`, and
+    #   `write_structured_record` does not log a warning.
+    record = _make_record(TerminalState.ERROR, ErrorType.SYNTHESIS_EMPTY)
+    record.answer_text = None
+    record.title = "Population of France"
+    record.charts = tuple(
+        _make_resolved_chart(f"Chart {index}: " + ("é" * 500))
+        for index in range(4)
+    )
+    record.follow_up_questions = tuple(
+        f"Follow-up {index}: " + ("🌍" * 200) for index in range(3)
+    )
+    transcript = dataclasses.replace(
+        _make_transcript(), current_query="q" * MAX_QUERY_CHARS
+    )
+
+    usage = build_usage_record(
+        record,
+        transcript,
+        build_sha=_BUILD_SHA,
+        include_content=True,
+    )
+    with caplog.at_level(logging.WARNING, logger=telemetry_module.__name__):
+        write_structured_record(usage)
+
+    (line,) = structured_lines
+    assert len(line.encode("utf-8")) <= MAX_RECORD_LINE_BYTES
+    assert caplog.records == []
+    parsed = json.loads(line)
+    assert parsed["content"]["answer_text"] is None
+    assert parsed["content"]["is_truncated"] is True
+    assert usage.content is not None
+    assert usage.content.answer_text is None
+    assert usage.content.is_truncated is True
+    assert usage.content.follow_up_questions == ()
+    assert len(usage.content.chart_titles) < 4
+    assert usage.content.query == "q" * MAX_QUERY_CHARS
+
+
+def test_included_content_shortens_fields_in_priority_order(
+    monkeypatch: pytest.MonkeyPatch, structured_lines: list[str]
+) -> None:
+    # Test: Deterministic truncation priority across all five text fields and
+    #   at the exact 1-byte overflow boundary.
+    # Situation:
+    #   1. With `answer_text`, `follow_up_questions`, and `chart_titles` empty,
+    #      `title` and `query` exceed `MAX_RECORD_LINE_BYTES`, then `query`
+    #      alone (4,000 multi-byte characters) exceeds `MAX_RECORD_LINE_BYTES`.
+    #   2. A record whose untruncated line is `MAX_RECORD_LINE_BYTES + 1` bytes
+    #      runs through `build_usage_record(..., include_content=True)`.
+    # Expectation:
+    #   1. `title` is shortened before `query`, and `query` is shortened when
+    #      shortening the earlier fields does not fit within
+    #      `MAX_RECORD_LINE_BYTES`.
+    #   2. At the `MAX_RECORD_LINE_BYTES + 1` boundary, `answer_text` is
+    #      shortened by one character and `is_truncated` is `True`.
+    record = _make_record()
+    record.answer_text = None
+    record.title = "T" * 100
+    long_query = "🌍" * 1_000  # 12,000 JSON bytes via \ud83c\udf0d escapes
+    transcript = dataclasses.replace(
+        _make_transcript(), current_query=long_query
+    )
+
+    usage = build_usage_record(
+        record, transcript, build_sha=_BUILD_SHA, include_content=True
+    )
+    write_structured_record(usage)
+
+    (line,) = structured_lines
+    assert len(line.encode("utf-8")) <= MAX_RECORD_LINE_BYTES
+    assert usage.content is not None
+    assert usage.content.is_truncated is True
+    assert usage.content.title == ""
+    assert 0 < len(usage.content.query) < len(long_query)
+
+    # Exact +1 byte boundary: untruncated line is MAX_RECORD_LINE_BYTES + 1.
+    structured_lines.clear()
+    boundary_record = _make_record()
+    boundary_record.answer_text = "x" * 200
+    probe = build_usage_record(
+        boundary_record,
+        _make_transcript(),
+        build_sha=_BUILD_SHA,
+        include_content=True,
+    )
+    write_structured_record(probe)
+    (probe_line,) = structured_lines
+    probe_bytes = len(probe_line.encode("utf-8"))
+    structured_lines.clear()
+    monkeypatch.setattr(
+        "narratives_agent.workflows.usage_record.MAX_RECORD_LINE_BYTES",
+        probe_bytes - 1,
+    )
+
+    clipped = build_usage_record(
+        boundary_record,
+        _make_transcript(),
+        build_sha=_BUILD_SHA,
+        include_content=True,
+    )
+    write_structured_record(clipped)
+    (clipped_line,) = structured_lines
+    assert len(clipped_line.encode("utf-8")) <= probe_bytes - 1
+    assert clipped.content is not None
+    assert clipped.content.is_truncated is True
+    assert clipped.content.answer_text == "x" * 199

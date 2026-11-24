@@ -731,6 +731,37 @@ remove the variable to return control to `agent-config.json`.
   `--build-arg BUILD_SHA=...` or as a runtime environment variable) surfaced in
   debug reports to identify the deployed revision.
 
+### Conversation content in turn logs (`telemetry.content`)
+
+By default (`telemetry.content` set to `"excluded"`), the server omits
+conversation text from the `chat_turn` log record and sets `content` to `null`.
+To record user-visible conversation text on each `chat_turn` entry, set
+`telemetry.content` to `"included"` in `config/agent-config.json`:
+
+```json
+{
+  "telemetry": {
+    "content": "included"
+  }
+}
+```
+
+- `excluded`: `content` is `null`, and the `chat_turn` entry does not contain
+  conversation text.
+- `included`: `content` is an object holding the user's `query`, the emitted
+  `answer_text` (or clarification question), the emitted answer `title`, the
+  emitted `chart_titles`, the emitted `follow_up_questions`, and `is_truncated`
+  (see [The `chat_turn` record](#the-chat_turn-record)). Model thoughts,
+  rendered prompts, raw model output, earlier conversation turns, and tool
+  arguments or results are still omitted. `transcript_rejected` records and
+  OpenTelemetry spans do not include conversation text under either mode.
+
+The agent reads this setting once at startup, so apply a change with
+`./deploy.sh --config-only --restart`. When `telemetry` is not an object, or
+when `telemetry.content` is not `"excluded"` or `"included"`, the agent logs an
+error and falls back to `"excluded"`. The server does not read any environment
+variable to override `telemetry.content`.
+
 ### Tearing down a deployment
 
 To destroy all Terraform-managed resources for the instance:
@@ -855,11 +886,19 @@ writes `daily_token_budget` JSON entries (`state: "warning"` at 80% and
 `state: "exhausted"` at 100%, once each per UTC day, described in
 [Daily Gemini token budget](#daily-gemini-token-budget-optional)).
 
-The entries do not contain text from the conversation. The server never logs
-the user's query, the answer, the model's thoughts, tool arguments, tool
-results, or chart titles. Every string in an entry is a code that the server
-defines, an identifier that the server creates, a configured model name, or
-the build SHA.
+By default (`telemetry.content` set to `"excluded"`), the entries do not
+contain text from the conversation. The server does not log the user's query,
+the answer, the model's thoughts, tool arguments, tool results, or chart
+titles, and `chat_turn.content` is `null`. Every string in an entry is a code
+that the server defines, an identifier that the server creates, a configured
+model name, or the build SHA. When `telemetry.content` is set to `"included"`
+(see [Conversation content in turn
+logs](#conversation-content-in-turn-logs-telemetrycontent)), the server sets
+`content` on `chat_turn` to an object with the user's query, the emitted answer
+text or clarification question, the emitted answer title, the emitted chart
+titles, and the emitted follow-up questions. Model thoughts, prompts, earlier
+turns, and tool payloads are still omitted, and `transcript_rejected` entries
+and trace spans do not include conversation text.
 
 #### The `chat_turn` record
 
@@ -903,6 +942,7 @@ Every record has every key, and a value that does not apply is `null`.
 | `processing_retries` | integer | Specifications returned to the model |
 | `charts_emitted` | integer | Charts in the answer |
 | `charts_rejected` | integer | Charts that the server dropped |
+| `content` | object or null | Opt-in conversation text of the turn |
 
 More detail on some keys:
 
@@ -952,6 +992,16 @@ More detail on some keys:
   round, or `null` outside discovery), and the same four token counts.
 - **`tool_call_counts`:** The list has one item for each tool name, with
   `tool` and `count`, and it is sorted by tool name.
+- **`content`:** The value is `null` when `telemetry.content` is `"excluded"`
+  (the default) or when the configuration is missing or malformed. When
+  `telemetry.content` is `"included"`, `content` has six keys: `query`
+  (string), `answer_text` (the clean Markdown answer or clarification question,
+  or `null` when the turn did not emit any answer text), `title` (the emitted
+  answer title, or `null`), `chart_titles` (list of titles of the emitted
+  charts, in emission order), `follow_up_questions` (list of emitted follow-up
+  questions, in emission order), and `is_truncated` (boolean). `is_truncated`
+  is `true` when the server shortened one or more fields of `content` so that
+  the serialized `chat_turn` line stays within the single-line byte limit.
 
 #### The `transcript_rejected` record
 

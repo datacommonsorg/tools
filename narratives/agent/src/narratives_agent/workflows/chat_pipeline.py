@@ -311,14 +311,10 @@ class SynthesisPhaseResult:
         text: The signed prose text with chart blocks and the title line
             excluded.
         charts: Resolved charts in emission order.
-        rendered_prompt: The rendered synthesis user prompt.
-        raw_output: The raw Gemini output including chart fences.
     """
 
     text: str
     charts: tuple[ResolvedChart, ...] = ()
-    rendered_prompt: str = ""
-    raw_output: str = ""
 
 
 def _emit_status(ctx: TurnContext, status: tuple[StatusPhase, str]) -> None:
@@ -795,12 +791,10 @@ async def run_synthesis_phase(
         ctx.telemetry.title_outcome = _resolve_title_outcome(extractor)
         raw_output = "".join(raw_chunks)
         ctx.record.synthesis_raw_output = raw_output
-    return SynthesisPhaseResult(
-        splitter.text,
-        tuple(splitter.charts),
-        rendered_prompt=rendered_prompt,
-        raw_output=raw_output,
-    )
+        ctx.record.answer_text = splitter.text or None
+        ctx.record.title = extractor.title if extractor.accept else None
+        ctx.record.charts = tuple(splitter.charts)
+    return SynthesisPhaseResult(splitter.text, tuple(splitter.charts))
 
 
 def _resolve_title_outcome(extractor: TitleExtractor) -> TitleOutcome:
@@ -985,6 +979,7 @@ async def run_followups(
             ctx.telemetry.tokens,
         )
         if follow_ups:
+            ctx.record.follow_up_questions = tuple(follow_ups)
             ctx.emit(FollowUpsFrame(follow_up_questions=follow_ups))
     except Exception as error:
         logger.warning("Follow-up generation failed: %s", type(error).__name__)
@@ -1102,13 +1097,13 @@ async def run_turn(
         emit(frame)
 
     config: AgentConfig | None = None
+    pre_turn_reason: ErrorType | None = None
     canceled = False
     try:
         # Chat availability and daily token budget are checked before the
         # configuration is required, so `ENABLE_CHAT=false` or an exhausted
         # budget ends the turn even when no configuration is loaded.
         chat = get_chat_config()
-        pre_turn_reason: ErrorType | None = None
         if not chat.enabled:
             pre_turn_reason = ErrorType.CHAT_DISABLED
         elif budget is not None and budget.is_exhausted():
@@ -1224,7 +1219,13 @@ async def run_turn(
         record.terminal_state = final_state
         record.terminal_reason = error_type
         telemetry.finish(final_state, error_type)
-        _write_usage_record(record, transcript, settings.build_sha)
+        include_content = _should_include_content(config, pre_turn_reason)
+        _write_usage_record(
+            record,
+            transcript,
+            settings.build_sha,
+            include_content=include_content,
+        )
         if budget is not None:
             # Counts only Gemini calls that returned `usage_metadata`; streams
             # canceled before their final chunk and timed-out calls are omitted
@@ -1260,6 +1261,7 @@ async def run_clarification(
     Returns:
         The signed window, or `None` when the turn could not be signed.
     """
+    ctx.record.answer_text = question
     ctx.emit(BlockContentFrame(block=TextBlock(index=0, markdown=question)))
     with ctx.telemetry.phase("finalize"):
         return await _sign_turn(ctx, question, ConversationStateSlots)
@@ -1306,8 +1308,38 @@ async def _sign_turn(
     return window
 
 
+def _should_include_content(
+    config: AgentConfig | None, pre_turn_reason: ErrorType | None
+) -> bool:
+    """Returns whether the turn's `chat_turn` record should include content.
+
+    When a pre-turn lockout returned before `run_turn` assigned `config`,
+    this loads the active configuration so `telemetry.content` still governs
+    that record. When `load_config` returns `None` or raises, this fails
+    closed and returns `False`.
+    """
+    if config is not None:
+        return config.telemetry.content == "included"
+    if pre_turn_reason is None:
+        return False
+    try:
+        resolved = load_config()
+    except Exception as error:
+        logger.error(
+            "Reading configuration for chat_turn failed with %s; excluding "
+            "conversation content",
+            type(error).__name__,
+        )
+        return False
+    return resolved is not None and resolved.telemetry.content == "included"
+
+
 def _write_usage_record(
-    record: TurnRecord, transcript: Transcript, build_sha: str | None
+    record: TurnRecord,
+    transcript: Transcript,
+    build_sha: str | None,
+    *,
+    include_content: bool = False,
 ) -> None:
     """Writes the `chat_turn` record of a turn that has ended.
 
@@ -1320,10 +1352,16 @@ def _write_usage_record(
         record: The turn's record, with its terminal state set.
         transcript: The verified transcript that the turn ran with.
         build_sha: The build or commit SHA of the running image, or `None`.
+        include_content: Whether to populate `content` on the record.
     """
     try:
         write_structured_record(
-            build_usage_record(record, transcript, build_sha=build_sha)
+            build_usage_record(
+                record,
+                transcript,
+                build_sha=build_sha,
+                include_content=include_content,
+            )
         )
     except Exception as error:
         logger.error(

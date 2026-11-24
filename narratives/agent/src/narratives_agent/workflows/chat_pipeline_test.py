@@ -72,7 +72,13 @@ Verifies that:
     outcome, the stage of a refusal, and the index and signing of the turn.
     A failure to build or write the record does not change what the browser
     receives.
-14. The `chat_turn` record does not contain any text from the conversation.
+14. When `telemetry.content` is `"excluded"` (the default) or malformed, the
+    `chat_turn` record sets `content` to `None` and does not contain any text
+    from the conversation. When `telemetry.content` is `"included"`, `content`
+    holds only the current query, emitted answer text, emitted title, emitted
+    chart titles, and emitted follow-up questions, while debug text, prior
+    turns, OpenTelemetry spans, and `transcript_rejected` records remain free
+    of conversation text.
 """
 
 import asyncio
@@ -84,8 +90,14 @@ from dataclasses import dataclass, field, replace
 from typing import Any
 
 import pytest
+from opentelemetry.sdk.trace import TracerProvider
+from opentelemetry.sdk.trace.export import SimpleSpanProcessor
+from opentelemetry.sdk.trace.export.in_memory_span_exporter import (
+    InMemorySpanExporter,
+)
 
 from narratives_agent import config
+from narratives_agent import telemetry as telemetry_module
 from narratives_agent.analytics.digest import (
     AnalysisDigest,
     RefusedScriptResult,
@@ -100,6 +112,8 @@ from narratives_agent.config_model import (
     ChatConfig,
     DebugConfig,
     Prompts,
+    TelemetryConfig,
+    parse_agent_config,
 )
 from narratives_agent.gemini.client import (
     GeminiBlockedError,
@@ -182,6 +196,7 @@ from narratives_agent.workflows.transcript import (
     QueryScope,
     SignedWindow,
     Transcript,
+    TranscriptError,
     Turn,
     load_transcript,
 )
@@ -313,7 +328,7 @@ class _Request:
 
     message: str
     idempotency_key: str
-    turns: Sequence[Turn] = ()
+    turns: Sequence[Turn | JsonObject] = ()
     compacted_summary: str | None = None
     conversation_id: JsonValue = None
 
@@ -3187,13 +3202,13 @@ def _make_table_context(
 async def test_run_synthesis_phase_records_prompt_and_raw_output(
     monkeypatch: pytest.MonkeyPatch, turn: _Turn
 ) -> None:
-    # Test: Recording of rendered prompt and raw output in
+    # Test: Recording of rendered prompt, raw output, and emitted outputs in
     #   `run_synthesis_phase`.
     # Situation: Synthesis streams text followed by a chart block and a second
     #   text block.
-    # Expectation: `rendered_prompt` and `raw_output` are populated on both
-    #   SynthesisPhaseResult and the turn's record, and `raw_output` preserves
-    #   the fenced chart block that is stripped from `result.text`.
+    # Expectation: `ctx.record` stores `synthesis_prompt`,
+    #   `synthesis_raw_output`, `answer_text`, and `charts`, while
+    #   `SynthesisPhaseResult` carries only `text` and `charts`.
     table = _make_table("t1")
     ctx = _make_table_context(turn, table)
     discovery = chat_pipeline.DiscoveryPhaseResult(
@@ -3225,14 +3240,17 @@ async def test_run_synthesis_phase_records_prompt_and_raw_output(
         "Here is the introduction.\n\nHere is the conclusion."
     )
     assert result.text == expected_signed_text
-    assert result.raw_output == raw_synthesis_text
-    assert "```chart" in result.raw_output
     assert "```chart" not in result.text
-    assert result.rendered_prompt != ""
-    assert "What is the population of France?" in result.rendered_prompt
+    assert not hasattr(result, "raw_output")
+    assert not hasattr(result, "rendered_prompt")
 
-    assert ctx.record.synthesis_raw_output == result.raw_output
-    assert ctx.record.synthesis_prompt == result.rendered_prompt
+    assert ctx.record.synthesis_raw_output == raw_synthesis_text
+    assert "```chart" in ctx.record.synthesis_raw_output
+    assert ctx.record.synthesis_prompt is not None
+    assert ctx.record.synthesis_prompt != ""
+    assert "What is the population of France?" in ctx.record.synthesis_prompt
+    assert ctx.record.answer_text == expected_signed_text
+    assert ctx.record.charts == result.charts
 
 
 def _make_synthesis_context(
@@ -3273,9 +3291,10 @@ async def test_a_data_answer_streams_its_title_before_the_first_block(
     # Situation: The digest has data and synthesis opens with a `# ` title
     #   line followed by two paragraphs.
     # Expectation: The system instruction carries the `synthesis_title`
-    #   addendum; one `title` content frame is emitted before the first
-    #   block; the title is left out of the signed text but kept in the raw
-    #   output; and telemetry records the title as emitted.
+    #   addendum. One `title` content frame is emitted before the first
+    #   block, the title is left out of the signed text and kept in
+    #   `ctx.record.synthesis_raw_output` and `ctx.record.title`, and
+    #   telemetry records the title as emitted.
     raw = (
         "# Population of France\n\n"
         "France has about 68 million people.\n\n"
@@ -3295,7 +3314,9 @@ async def test_a_data_answer_streams_its_title_before_the_first_block(
     assert result.text == (
         "France has about 68 million people.\n\nIt grew last year."
     )
-    assert result.raw_output == raw
+    assert ctx.record.synthesis_raw_output == raw
+    assert ctx.record.title == "Population of France"
+    assert ctx.record.answer_text == result.text
     assert ctx.telemetry.title_outcome is TitleOutcome.EMITTED
 
 
@@ -3501,6 +3522,7 @@ async def test_a_complete_turn_writes_one_chat_turn_record(
     assert record["tables_fetched"] == 1
     assert record["total_rows_fetched"] == 2
     assert record["charts_emitted"] == 1
+    assert record["content"] is None
     phase_durations = record["phase_durations"]
     assert isinstance(phase_durations, list)
     assert [
@@ -3854,8 +3876,10 @@ async def test_a_failure_to_write_the_record_does_not_fail_the_turn(
 
 
 # Each piece of free text of a marked turn starts with this prefix, so one
-# search of the `chat_turn` line finds any of them.
-_MARKER_PREFIX = "zzmarker_"
+# search of the `chat_turn` line finds any of them. A hyphen separates the
+# prefix from the name so `TitleExtractor` does not strip a Markdown emphasis
+# underscore from the marked title.
+_MARKER_PREFIX = "zzmarker-"
 # `_TABLE_MARKERS` and `_SOURCE_MARKERS` name the pieces of free text that the
 # marked table and its source hold.
 _TABLE_MARKERS = (
@@ -3882,6 +3906,7 @@ _SYNTHESIS_MARKERS = (
     "title",
     "answer",
     "chart_title",
+    "rejected_chart_title",
     "follow_up",
 )
 
@@ -3978,13 +4003,22 @@ def _plant_synthesis_markers(monkeypatch: pytest.MonkeyPatch) -> None:
             "title": _mark("chart_title"),
         }
     )
+    rejected_chart = json.dumps(
+        {
+            "kind": "line",
+            "tables": ["t99"],
+            "places": ["country/FRA"],
+            "title": _mark("rejected_chart_title"),
+        }
+    )
 
     async def stream_marked_answer() -> AsyncGenerator[StreamChunk]:
         yield StreamChunk("thought", _mark("synthesis_thought"))
         yield StreamChunk(
             "text",
             f"# {_mark('title')}\n\n{_mark('answer')}\n\n"
-            f"```chart\n{chart}\n```",
+            f"```chart\n{chart}\n```\n\n"
+            f"```chart\n{rejected_chart}\n```",
         )
 
     async def start_synthesis(**_: object) -> AsyncGenerator[StreamChunk]:
@@ -4257,19 +4291,20 @@ async def test_the_chat_turn_record_does_not_contain_conversation_text(
     plant_markers: Callable[[pytest.MonkeyPatch], tuple[str, ...]],
 ) -> None:
     # Test: The `chat_turn` line does not contain any text from the
-    #   conversation.
+    #   conversation under the default `telemetry.content` setting.
     # Situation: Every piece of free text of a turn is a marker string. The
     #   transcript marks the query, the idempotency keys, the summary, and
     #   the query, the answer, and the data scope names of an earlier turn.
-    #   Synthesis marks a thought, the title, the text, a chart title, and
-    #   a follow-up question. Each case then marks the text of one kind of
-    #   turn: a specification from the model, the default specification
-    #   after a refusal, a report that data is unavailable, a
-    #   clarification, a refused turn, or a failed turn. The debug report
-    #   is on.
+    #   Synthesis marks a thought, the title, the text, an accepted chart
+    #   title, a rejected chart title, and a follow-up question. Each case
+    #   then marks the text of one kind of turn: a specification from the
+    #   model, the default specification after a refusal, a report that data
+    #   is unavailable, a clarification, a refused turn, or a failed turn.
+    #   The debug report is on.
     # Expectation: Each marker that the case plants appears in a frame of
     #   the turn, which shows that the turn held it. The server writes
-    #   exactly one line, and the raw line does not contain any marker.
+    #   exactly one line, sets `content` to `None`, and does not write any
+    #   marker in the raw line.
     monkeypatch.setenv(DEBUG_REPORT_ENV, "on")
     _plant_synthesis_markers(monkeypatch)
     planted = plant_markers(monkeypatch)
@@ -4280,8 +4315,522 @@ async def test_the_chat_turn_record_does_not_contain_conversation_text(
     for name in planted:
         assert _mark(name) in turn_text, name
     (line,) = structured_lines
-    assert json.loads(line)["event"] == "chat_turn"
+    parsed = json.loads(line)
+    assert parsed["event"] == "chat_turn"
+    assert parsed["content"] is None
     assert _MARKER_PREFIX not in line
+
+
+@pytest.mark.parametrize(
+    "raw_telemetry",
+    [
+        pytest.param(True, id="non-object telemetry"),
+        pytest.param({"content": "on"}, id="invalid telemetry.content"),
+    ],
+)
+@pytest.mark.asyncio
+async def test_malformed_telemetry_config_excludes_conversation_text(
+    monkeypatch: pytest.MonkeyPatch,
+    turn: _Turn,
+    structured_lines: list[str],
+    raw_telemetry: JsonValue,
+) -> None:
+    # Test: Fail-closed `chat_turn` output when `telemetry` configuration is
+    #   malformed.
+    # Situation: `parse_agent_config` receives a non-object `telemetry` value
+    #   or an unrecognized `telemetry.content` value, and a marked turn runs
+    #   with `DEBUG_REPORT` set to `"on"`.
+    # Expectation: `run_turn` writes one `chat_turn` line whose `content` is
+    #   `None` and whose raw JSON does not contain any marker.
+    monkeypatch.setenv(DEBUG_REPORT_ENV, "on")
+    parsed_config = parse_agent_config(
+        {
+            "prompts": {
+                "discovery": "Gather data.",
+                "synthesis": "Write prose.",
+            },
+            "telemetry": raw_telemetry,
+        }
+    )
+    _use_config(monkeypatch, parsed_config)
+    _plant_synthesis_markers(monkeypatch)
+    planted = _plant_model_specification_markers(monkeypatch)
+
+    await chat_pipeline.run_turn(_MARKED_TRANSCRIPT, turn.emit)
+
+    turn_text = json.dumps([data for _, data in turn.events])
+    for name in planted:
+        assert _mark(name) in turn_text, name
+    (line,) = structured_lines
+    parsed = json.loads(line)
+    assert parsed["event"] == "chat_turn"
+    assert parsed["content"] is None
+    assert _MARKER_PREFIX not in line
+
+
+@pytest.mark.parametrize(
+    ("plant_markers", "expected_content", "expected_markers"),
+    [
+        pytest.param(
+            _plant_model_specification_markers,
+            {
+                "query": _mark("query"),
+                "answer_text": _mark("answer"),
+                "title": _mark("title"),
+                "chart_titles": [_mark("chart_title")],
+                "follow_up_questions": [_mark("follow_up")],
+                "is_truncated": False,
+            },
+            {
+                _mark("query"),
+                _mark("answer"),
+                _mark("title"),
+                _mark("chart_title"),
+                _mark("follow_up"),
+            },
+            id="model specification",
+        ),
+        pytest.param(
+            _plant_default_specification_markers,
+            {
+                "query": _mark("query"),
+                "answer_text": _mark("answer"),
+                "title": _mark("title"),
+                "chart_titles": [_mark("chart_title")],
+                "follow_up_questions": [_mark("follow_up")],
+                "is_truncated": False,
+            },
+            {
+                _mark("query"),
+                _mark("answer"),
+                _mark("title"),
+                _mark("chart_title"),
+                _mark("follow_up"),
+            },
+            id="default specification",
+        ),
+        pytest.param(
+            _plant_unavailable_report_markers,
+            {
+                "query": _mark("query"),
+                "answer_text": _mark("answer"),
+                "title": None,
+                "chart_titles": [],
+                "follow_up_questions": [_mark("follow_up")],
+                "is_truncated": False,
+            },
+            {
+                _mark("query"),
+                _mark("answer"),
+                _mark("follow_up"),
+            },
+            id="unavailable",
+        ),
+        pytest.param(
+            _plant_clarification_markers,
+            {
+                "query": _mark("query"),
+                "answer_text": _mark("clarification"),
+                "title": None,
+                "chart_titles": [],
+                "follow_up_questions": [],
+                "is_truncated": False,
+            },
+            {
+                _mark("query"),
+                _mark("clarification"),
+            },
+            id="clarification",
+        ),
+        pytest.param(
+            _plant_refusal_markers,
+            {
+                "query": _mark("query"),
+                "answer_text": None,
+                "title": None,
+                "chart_titles": [],
+                "follow_up_questions": [],
+                "is_truncated": False,
+            },
+            {_mark("query")},
+            id="refused",
+        ),
+        pytest.param(
+            _plant_failure_markers,
+            {
+                "query": _mark("query"),
+                "answer_text": None,
+                "title": None,
+                "chart_titles": [],
+                "follow_up_questions": [],
+                "is_truncated": False,
+            },
+            {_mark("query")},
+            id="failed",
+        ),
+    ],
+)
+@pytest.mark.asyncio
+async def test_included_telemetry_content_records_only_emitted_text(
+    monkeypatch: pytest.MonkeyPatch,
+    turn: _Turn,
+    structured_lines: list[str],
+    plant_markers: Callable[[pytest.MonkeyPatch], tuple[str, ...]],
+    expected_content: JsonObject,
+    expected_markers: set[str],
+) -> None:
+    # Test: Inverse marker check when `telemetry.content` is `"included"`.
+    # Situation: `telemetry.content` is `"included"`, `DEBUG_REPORT` is
+    #   `"on"`, an OpenTelemetry span exporter records the turn span, and
+    #   each marked turn path runs with markers on debug text, prior turns,
+    #   compacted summary, scope names, tool calls, diagnostics, and
+    #   user-visible outputs.
+    # Expectation: `parsed["content"]` equals `expected_content`, the fields
+    #   outside `content` do not contain any marker, the set of markers in
+    #   the raw `chat_turn` line equals `expected_markers` (leaving out
+    #   thoughts, prompt context, rejected chart fences, prior turns,
+    #   summaries, scope names, tool payloads, diagnostics, and table or
+    #   source names), and exported OpenTelemetry spans do not contain any
+    #   marker.
+    monkeypatch.setenv(DEBUG_REPORT_ENV, "on")
+    exporter = InMemorySpanExporter()
+    provider = TracerProvider()
+    provider.add_span_processor(SimpleSpanProcessor(exporter))
+    monkeypatch.setattr(
+        telemetry_module, "_tracer", provider.get_tracer(__name__)
+    )
+    _use_config(
+        monkeypatch,
+        AgentConfig(
+            prompts=Prompts(
+                discovery=f"Gather data ({_mark('system_prompt')}).",
+                synthesis=f"Write prose ({_mark('synthesis_instruction')}).",
+            ),
+            telemetry=TelemetryConfig(content="included"),
+        ),
+    )
+    _plant_synthesis_markers(monkeypatch)
+    planted = plant_markers(monkeypatch)
+
+    await chat_pipeline.run_turn(_MARKED_TRANSCRIPT, turn.emit)
+
+    turn_text = json.dumps([data for _, data in turn.events])
+    for name in planted:
+        assert _mark(name) in turn_text, name
+
+    (line,) = structured_lines
+    parsed = json.loads(line)
+    assert parsed["event"] == "chat_turn"
+    assert parsed["content"] == expected_content
+    without_content = json.dumps(
+        {key: value for key, value in parsed.items() if key != "content"}
+    )
+    assert _MARKER_PREFIX not in without_content
+    found_markers = set(
+        re.findall(rf"{re.escape(_MARKER_PREFIX)}[a-z_]+", line)
+    )
+    assert found_markers == expected_markers
+    assert line.count(_MARKER_PREFIX) == len(expected_markers)
+
+    spans = exporter.get_finished_spans()
+    assert len(spans) >= 1
+    for span in spans:
+        assert _MARKER_PREFIX not in telemetry_module.format_span(span)
+
+
+def test_included_telemetry_content_keeps_transcript_rejected_free_of_markers(
+    monkeypatch: pytest.MonkeyPatch,
+    structured_lines: list[str],
+) -> None:
+    # Test: `transcript_rejected` records remain free of markers when
+    #   `telemetry.content` is `"included"`.
+    # Situation: `telemetry.content` is `"included"` and `load_transcript`
+    #   rejects both a forged signed turn and a malformed window whose fields
+    #   all hold marker strings.
+    # Expectation: Each rejection writes a `transcript_rejected` line that
+    #   does not contain any marker.
+    _use_config(
+        monkeypatch,
+        AgentConfig(telemetry=TelemetryConfig(content="included")),
+    )
+    forged_request = _Request(
+        message=_mark("query"),
+        idempotency_key=_mark("key"),
+        turns=[
+            Turn(
+                turn_index=0,
+                idempotency_key=_mark("earlier_key"),
+                user_query=_mark("earlier_query"),
+                model_response=_mark("earlier_answer"),
+                state_slots=ConversationStateSlots(),
+                hmac="0" * 64,
+            )
+        ],
+        compacted_summary=_mark("summary"),
+        conversation_id=_CONVERSATION_ID,
+    )
+    malformed_request = _Request(
+        message=_mark("query"),
+        idempotency_key=_mark("key"),
+        turns=[{"turn_index": 0, "user_query": _mark("earlier_query")}],
+        compacted_summary=_mark("summary"),
+        conversation_id=_mark("conversation_id"),
+    )
+
+    for request in (forged_request, malformed_request):
+        with pytest.raises(TranscriptError):
+            load_transcript(request)
+
+    assert len(structured_lines) == 2
+    for line in structured_lines:
+        assert json.loads(line)["event"] == "transcript_rejected"
+        assert _MARKER_PREFIX not in line
+
+
+@pytest.mark.asyncio
+async def test_included_telemetry_content_populates_chat_turn_content(
+    monkeypatch: pytest.MonkeyPatch, turn: _Turn, structured_lines: list[str]
+) -> None:
+    # Test: End-to-end `chat_turn.content` on a completed data turn when
+    #   `telemetry.content` is `"included"`.
+    # Situation: `telemetry.content` is `"included"` and a data turn emits an
+    #   answer, a default chart, and one follow-up question.
+    # Expectation: `record["content"]` holds the query, answer text, default
+    #   chart title, and follow-up question, with `title` set to `None` and
+    #   `is_truncated` set to `False`.
+    _use_config(
+        monkeypatch,
+        AgentConfig(
+            prompts=Prompts(discovery="Gather data.", synthesis="Write prose."),
+            telemetry=TelemetryConfig(content="included"),
+        ),
+    )
+
+    await chat_pipeline.run_turn(_TRANSCRIPT, turn.emit)
+
+    record = _get_chat_turn_record(structured_lines)
+    assert record["content"] == {
+        "query": _QUESTION,
+        "answer_text": _ANSWER,
+        "title": None,
+        "chart_titles": ["Total Population"],
+        "follow_up_questions": ["And Spain?"],
+        "is_truncated": False,
+    }
+
+
+@pytest.mark.parametrize(
+    ("mode", "expected_reason"),
+    [
+        pytest.param("config_disabled", ErrorType.CHAT_DISABLED, id="config"),
+        pytest.param("env_disabled", ErrorType.CHAT_DISABLED, id="env"),
+        pytest.param(
+            "budget_exhausted",
+            ErrorType.DAILY_TOKEN_BUDGET_EXHAUSTED,
+            id="budget",
+        ),
+    ],
+)
+@pytest.mark.asyncio
+async def test_included_telemetry_content_records_query_on_pre_turn_exits(
+    monkeypatch: pytest.MonkeyPatch,
+    turn: _Turn,
+    structured_lines: list[str],
+    mode: str,
+    expected_reason: str,
+) -> None:
+    # Test: `chat_turn.content` on early pre-turn exits when
+    #   `telemetry.content` is `"included"`.
+    # Situation: `telemetry.content` is `"included"` and the turn exits
+    #   before loading `config` in `run_turn` because chat is disabled in
+    #   configuration, disabled via `ENABLE_CHAT`, or blocked by an exhausted
+    #   daily token budget.
+    # Expectation: `run_turn` loads the configuration in its `finally` block
+    #   and records `query` in `content` with `answer_text` and `title` set
+    #   to `None`.
+    chat_enabled = mode != "config_disabled"
+    _use_config(
+        monkeypatch,
+        AgentConfig(
+            chat=ChatConfig(enabled=chat_enabled, unavailable_message=_CLOSED),
+            telemetry=TelemetryConfig(content="included"),
+        ),
+    )
+    if mode == "env_disabled":
+        monkeypatch.setenv(ENABLE_CHAT_ENV, "false")
+    elif mode == "budget_exhausted":
+        monkeypatch.setenv(DAILY_TOKEN_BUDGET_PER_INSTANCE_ENV, "10")
+        budget = get_daily_token_budget()
+        assert budget is not None
+        budget.record(10)
+        structured_lines.clear()
+
+    await chat_pipeline.run_turn(_TRANSCRIPT, turn.emit)
+
+    (line,) = structured_lines
+    assert _CLOSED not in line
+    record = _get_chat_turn_record(structured_lines)
+    assert record["outcome_reason"] == expected_reason
+    assert record["content"] == {
+        "query": _QUESTION,
+        "answer_text": None,
+        "title": None,
+        "chart_titles": [],
+        "follow_up_questions": [],
+        "is_truncated": False,
+    }
+
+
+@pytest.mark.asyncio
+async def test_config_missing_excludes_telemetry_content(
+    monkeypatch: pytest.MonkeyPatch, turn: _Turn, structured_lines: list[str]
+) -> None:
+    # Test: Fail-closed `chat_turn.content` when `load_config` returns `None`.
+    # Situation: `load_config` returns `None`, so the turn ends with
+    #   `config_missing`.
+    # Expectation: `record["content"]` is `None` and the serialized line does
+    #   not contain the user's query.
+    _use_config(monkeypatch, None)
+
+    await chat_pipeline.run_turn(_TRANSCRIPT, turn.emit)
+
+    (line,) = structured_lines
+    record = json.loads(line)
+    assert record["outcome_reason"] == ErrorType.CONFIG_MISSING
+    assert record["content"] is None
+    assert _QUESTION not in line
+
+
+@pytest.mark.asyncio
+async def test_config_read_failure_on_pre_turn_exit_excludes_content(
+    monkeypatch: pytest.MonkeyPatch,
+    turn: _Turn,
+    structured_lines: list[str],
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    # Test: Fail-closed `chat_turn.content` when `chat_pipeline.load_config`
+    #   raises during pre-turn exit cleanup.
+    # Situation: `ENABLE_CHAT` is `"false"`, and `chat_pipeline.load_config`
+    #   raises `RuntimeError` when `run_turn`'s `finally` block checks
+    #   `telemetry.content`.
+    # Expectation: `run_turn` completes cleanly without propagating the
+    #   exception, logs one `ERROR` naming `RuntimeError`, and writes one
+    #   `chat_turn` line with `content` set to `None`.
+    monkeypatch.setenv(ENABLE_CHAT_ENV, "false")
+
+    def raise_runtime_error() -> AgentConfig | None:
+        raise RuntimeError("sensitive failure detail")
+
+    monkeypatch.setattr(chat_pipeline, "load_config", raise_runtime_error)
+
+    with caplog.at_level(logging.ERROR, logger=chat_pipeline.__name__):
+        await chat_pipeline.run_turn(_TRANSCRIPT, turn.emit)
+
+    (line,) = structured_lines
+    record = json.loads(line)
+    assert record["outcome_reason"] == ErrorType.CHAT_DISABLED
+    assert record["content"] is None
+    assert _QUESTION not in line
+    assert len(caplog.records) == 1
+    assert "RuntimeError" in caplog.records[0].getMessage()
+    assert "sensitive failure detail" not in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_mid_synthesis_stream_error_records_emitted_blocks_when_included(
+    monkeypatch: pytest.MonkeyPatch, turn: _Turn, structured_lines: list[str]
+) -> None:
+    # Test: Partial `answer_text` in `chat_turn.content` when synthesis fails
+    #   after streaming one paragraph.
+    # Situation: `telemetry.content` is `"included"`, and synthesis streams a
+    #   complete first paragraph plus an unfinished second paragraph before
+    #   raising `GeminiStreamError`.
+    # Expectation: `record["content"]` captures the emitted first paragraph
+    #   in `answer_text`.
+    _use_config(
+        monkeypatch,
+        AgentConfig(
+            prompts=Prompts(discovery="Gather data.", synthesis="Write prose."),
+            telemetry=TelemetryConfig(content="included"),
+        ),
+    )
+
+    async def broken_stream() -> AsyncGenerator[StreamChunk]:
+        yield StreamChunk("text", "First paragraph.\n\nUnfinished tail")
+        raise GeminiStreamError("stream interrupted", is_retryable=True)
+
+    async def start_broken_synthesis(
+        **_: object,
+    ) -> AsyncGenerator[StreamChunk]:
+        return broken_stream()
+
+    monkeypatch.setattr(
+        chat_pipeline, "async_gemini_stream", start_broken_synthesis
+    )
+
+    await chat_pipeline.run_turn(_TRANSCRIPT, turn.emit)
+
+    record = _get_chat_turn_record(structured_lines)
+    assert record["terminal_state"] == "error"
+    assert record["outcome_reason"] == ErrorType.SYNTHESIS_STREAM_ERROR
+    assert record["content"] == {
+        "query": _QUESTION,
+        "answer_text": "First paragraph.",
+        "title": None,
+        "chart_titles": [],
+        "follow_up_questions": [],
+        "is_truncated": False,
+    }
+
+
+@pytest.mark.asyncio
+async def test_mid_synthesis_cancellation_records_emitted_blocks_when_included(
+    monkeypatch: pytest.MonkeyPatch, turn: _Turn, structured_lines: list[str]
+) -> None:
+    # Test: Partial `answer_text` in `chat_turn.content` when a turn is
+    #   canceled mid-synthesis.
+    # Situation: `telemetry.content` is `"included"`, and the turn is
+    #   canceled after synthesis emits a title and one text block.
+    # Expectation: `record["content"]` captures the emitted title and first
+    #   paragraph.
+    _use_config(
+        monkeypatch,
+        AgentConfig(
+            prompts=Prompts(discovery="Gather data.", synthesis="Write prose."),
+            telemetry=TelemetryConfig(content="included"),
+        ),
+    )
+    block_emitted = asyncio.Event()
+
+    async def pausable_stream() -> AsyncGenerator[StreamChunk]:
+        yield StreamChunk(
+            "text", "# Population of France\n\nFirst paragraph.\n\nTail"
+        )
+        block_emitted.set()
+        await asyncio.Event().wait()
+
+    async def start_pausable(**_: object) -> AsyncGenerator[StreamChunk]:
+        return pausable_stream()
+
+    monkeypatch.setattr(chat_pipeline, "async_gemini_stream", start_pausable)
+    task = asyncio.create_task(chat_pipeline.run_turn(_TRANSCRIPT, turn.emit))
+    async with asyncio.timeout(1):
+        await block_emitted.wait()
+
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+
+    record = _get_chat_turn_record(structured_lines)
+    assert record["terminal_state"] == "canceled"
+    assert record["content"] == {
+        "query": _QUESTION,
+        "answer_text": "First paragraph.",
+        "title": "Population of France",
+        "chart_titles": [],
+        "follow_up_questions": [],
+        "is_truncated": False,
+    }
 
 
 @pytest.mark.parametrize(
