@@ -78,12 +78,19 @@
           "type": "boolean",
           "default": true
         },
-        "unavailable_message": {
-          "description": "Message returned on chat turns when chat is disabled, when an instance's daily Gemini token budget is exhausted, or when a turn's query permanently cannot be screened. It is also stamped into the #runtime-config element of the HTML shell. The UNAVAILABLE_MESSAGE environment variable overrides this value when set.",
+        "unavailable_title": {
+          "description": "Heading of the unavailable note on the Data Agent route while chat is disabled, stamped into the #runtime-config element of the HTML shell. The UNAVAILABLE_TITLE environment variable overrides this value when set.",
           "type": "string",
           "minLength": 1,
           "pattern": "\\S",
-          "default": "This Data Commons tool is temporarily unavailable due to high traffic."
+          "default": "High demand right now"
+        },
+        "unavailable_message": {
+          "description": "Message returned on chat turns when chat is disabled, when an instance's daily Gemini token budget is exhausted, or when a turn's query permanently cannot be screened. It is also stamped into the #runtime-config element of the HTML shell. Markdown links render as links and other Markdown as plain text; include at least one link, since it is the only way off the Data Agent route while chat is disabled. The UNAVAILABLE_MESSAGE environment variable overrides this value when set.",
+          "type": "string",
+          "minLength": 1,
+          "pattern": "\\S",
+          "default": "Due to high traffic, this feature is temporarily paused. Capacity is being scaled to restore service as quickly as possible. Please try again later, or explore other [tools in Data Commons](https://datacommons.org)."
         },
         "_comment": {
           "type": "string",

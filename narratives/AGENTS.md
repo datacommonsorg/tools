@@ -42,6 +42,7 @@ process and PR expectations: [`CONTRIBUTING.md`](../CONTRIBUTING.md).
   - `src/config/`, `src/types/`, `src/utils/` — instance, runtime, and
     navigation config, user-facing chat copy (`copy_chat.ts`), shared types,
     and helpers.
+  - `src/assets/` — images bundled through `url()` in `src/index.css`.
   - `src/index.css` — Tailwind v4 theme and `--color-*` design tokens.
 - `agent/` — Python 3.14 server managed with [uv](https://docs.astral.sh/uv/):
   - `pyproject.toml`, `uv.lock` — dependencies and tool configuration (`ruff`,
@@ -116,7 +117,8 @@ process and PR expectations: [`CONTRIBUTING.md`](../CONTRIBUTING.md).
       the `{{instance.*}}` placeholders of a prompt (`render_prompt`);
       provides the turn's pinned current date in the `TIMEZONE` zone
       (`pin_current_date`); resolves chat availability with the
-      `ENABLE_CHAT` and `UNAVAILABLE_MESSAGE` overrides (`get_chat_config`);
+      `ENABLE_CHAT`, `UNAVAILABLE_TITLE`, and `UNAVAILABLE_MESSAGE` overrides
+      (`get_chat_config`);
       and resolves the turn debug report mode with the `DEBUG_REPORT`
       override (`get_debug_report_mode`).
     - `config_model.py`: the frozen `AgentConfig` dataclasses, the parser
@@ -258,8 +260,8 @@ backend, public Data Commons or a local MCP server as preferred.
   compiled SPA (`server/routes/spa.py`). Restart Vite after editing
   `.env.local`. The Vite page copies `#runtime-config` from the agent at
   `AGENT_URL` on every load, so chat availability (`ENABLE_CHAT`,
-  `UNAVAILABLE_MESSAGE`) is set on the agent; a local agent needs one
-  `pnpm build` before it serves `index.html`.
+  `UNAVAILABLE_TITLE`, `UNAVAILABLE_MESSAGE`) is set on the agent; a local
+  agent needs one `pnpm build` before it serves `index.html`.
 - **Agent (`narratives/agent/`)** — run `uv sync`, configure `.env.local` (from
   `.env.local.example`) with `GEMINI_API_KEY`, `DC_API_KEY` (which is optional
   for some MCP servers), and optional `MCP_SERVER_URL`, and run `pnpm dev:agent`

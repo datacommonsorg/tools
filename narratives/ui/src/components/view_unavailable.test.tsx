@@ -18,15 +18,21 @@
  * @fileoverview Tests for UnavailableView.
  */
 
-import { cleanup, render, screen } from '@testing-library/react';
+import { cleanup, render, screen, within } from '@testing-library/react';
 import { useReducedMotion } from 'motion/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { UnavailableView } from '@/src/components/view_unavailable';
 import { resetInstanceConfigForTests } from '@/src/config/instance_config';
 import {
-  DEFAULT_UNAVAILABLE_MESSAGE,
+  DEFAULT_UNAVAILABLE_TITLE,
   resetRuntimeConfigForTests,
 } from '@/src/config/runtime_config';
+
+/** Visible text of the default unavailable message, Markdown removed. */
+const DEFAULT_MESSAGE_TEXT =
+  'Due to high traffic, this feature is temporarily paused. Capacity is ' +
+  'being scaled to restore service as quickly as possible. Please try again ' +
+  'later, or explore other tools in Data Commons.';
 
 vi.mock('motion/react', async (importOriginal) => ({
   ...(await importOriginal<typeof import('motion/react')>()),
@@ -81,31 +87,71 @@ describe('UnavailableView', () => {
       'Acme explorer',
     );
     expect(screen.getByText('powered by Acme')).toBeTruthy();
-    expect(screen.getByRole('note').textContent).toBe(
-      'Chat is paused for maintenance.',
+    expect(
+      within(screen.getByRole('note')).getByText(
+        'Chat is paused for maintenance.',
+      ),
+    ).toBeTruthy();
+  });
+
+  it('names the note with its default title heading when none is configured', () => {
+    // Test: Default title of the unavailable note.
+    // Situation: The view renders with the default configuration.
+    // Expectation: The note is named by a level-2 heading holding the default
+    //   title.
+    render(<UnavailableView />);
+    expect(
+      screen.getByRole('note', { name: DEFAULT_UNAVAILABLE_TITLE }),
+    ).toBeTruthy();
+    expect(screen.getByRole('heading', { level: 2 }).textContent).toBe(
+      DEFAULT_UNAVAILABLE_TITLE,
+    );
+  });
+
+  it('names the note with a configured title heading', () => {
+    // Test: Custom title of the unavailable note.
+    // Situation: #runtime-config disables chat with a custom unavailable title.
+    // Expectation: The note is named by a level-2 heading holding the
+    //   configured title.
+    writeSlot('runtime-config', {
+      enable_chat: false,
+      unavailable_title: 'Scheduled maintenance',
+    });
+    render(<UnavailableView />);
+    expect(
+      screen.getByRole('note', { name: 'Scheduled maintenance' }),
+    ).toBeTruthy();
+    expect(screen.getByRole('heading', { level: 2 }).textContent).toBe(
+      'Scheduled maintenance',
     );
   });
 
   it('renders the default message when none is configured', () => {
     // Test: Chat disabled without a message.
     // Situation: #runtime-config holds only `enable_chat: false`.
-    // Expectation: The note holds the default unavailable message.
+    // Expectation: The note holds the default message, whose Markdown link
+    //   renders as a same-tab link to Data Commons.
     writeSlot('runtime-config', { enable_chat: false });
     render(<UnavailableView />);
-    expect(screen.getByRole('note').textContent).toBe(
-      DEFAULT_UNAVAILABLE_MESSAGE,
-    );
+    const note = screen.getByRole('note');
+    expect(note.querySelector('p')?.textContent).toBe(DEFAULT_MESSAGE_TEXT);
+    const link = within(note).getByRole('link', {
+      name: 'tools in Data Commons',
+    });
+    expect(link.getAttribute('href')).toBe('https://datacommons.org');
+    expect(link.getAttribute('target')).toBe('_self');
   });
 
   it('omits the tagline paragraph when the tagline is empty', () => {
     // Test: Instance configured without a tagline.
     // Situation: #instance-config sets `tagline` to an empty string.
-    // Expectation: Only the message paragraph renders below the heading.
+    // Expectation: No paragraph renders with the heading; the message
+    //   paragraph renders only inside the note, which is portaled to <body>.
     writeSlot('instance-config', { tagline: '' });
     const { container } = render(<UnavailableView />);
-    expect(container.querySelectorAll('p')).toHaveLength(1);
-    expect(container.querySelector('p')?.textContent).toBe(
-      DEFAULT_UNAVAILABLE_MESSAGE,
+    expect(container.querySelector('p')).toBeNull();
+    expect(screen.getByRole('note').querySelector('p')?.textContent).toBe(
+      DEFAULT_MESSAGE_TEXT,
     );
   });
 
@@ -126,8 +172,8 @@ describe('UnavailableView', () => {
     vi.mocked(useReducedMotion).mockReturnValue(true);
     render(<UnavailableView />);
     expect(screen.getByRole('heading', { level: 1 }).style.opacity).toBe('');
-    expect(screen.getByRole('note').textContent).toBe(
-      DEFAULT_UNAVAILABLE_MESSAGE,
+    expect(screen.getByRole('note').querySelector('p')?.textContent).toBe(
+      DEFAULT_MESSAGE_TEXT,
     );
   });
 
@@ -139,8 +185,8 @@ describe('UnavailableView', () => {
     vi.mocked(useReducedMotion).mockReturnValue(false);
     render(<UnavailableView />);
     expect(screen.getByRole('heading', { level: 1 }).style.opacity).toBe('0');
-    expect(screen.getByRole('note').textContent).toBe(
-      DEFAULT_UNAVAILABLE_MESSAGE,
+    expect(screen.getByRole('note').querySelector('p')?.textContent).toBe(
+      DEFAULT_MESSAGE_TEXT,
     );
   });
 });

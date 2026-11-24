@@ -468,15 +468,29 @@ Key Metrics dashboard, and shared stories online — for example, during:
 - **Safety or quality incidents:** Investigating a prompt-injection vector or a
   regression in generated answers without taking down the entire site.
 
-Chat availability is set by `chat.enabled` (default `true`) and
-`chat.unavailable_message` (default `"This Data Commons tool is temporarily
-unavailable due to high traffic."`) in `config/agent-config.json`:
+Chat availability is set by `chat.enabled` (default `true`),
+`chat.unavailable_title` (default `"High demand right now"`), and
+`chat.unavailable_message` in `config/agent-config.json`. The default message
+is:
+
+```text
+Due to high traffic, this feature is temporarily paused. Capacity is being scaled to restore service as quickly as possible. Please try again later, or explore other [tools in Data Commons](https://datacommons.org).
+```
+
+The Data Agent route shows the message under the plain-text heading
+`chat.unavailable_title`, over a page whose header and navigation are disabled,
+and the message is also the error of any chat turn sent while chat is disabled.
+In both places where the message appears, Markdown links (`[label](https://…)`)
+render as links and other Markdown renders as plain text. Include at least one
+link in `chat.unavailable_message`, because it is the only way off the Data
+Agent route:
 
 ```json
 {
   "chat": {
     "enabled": false,
-    "unavailable_message": "Chat is paused for maintenance until 14:00 UTC."
+    "unavailable_title": "Scheduled maintenance",
+    "unavailable_message": "Chat is paused for maintenance until 14:00 UTC. See [Data Commons](https://datacommons.org)."
   }
 }
 ```
@@ -495,23 +509,25 @@ exhausted or when a turn's query permanently cannot be screened
 or clear it when re-enabling chat so later non-retryable turns do not display
 stale maintenance text.
 
-The `ENABLE_CHAT` and `UNAVAILABLE_MESSAGE` environment variables override
-these values when set, in either direction, and take effect without a
-configuration sync. Setting `ENABLE_CHAT=true` forces chat on regardless of
-`chat.enabled`, so remove the variable to return control to
+The `ENABLE_CHAT`, `UNAVAILABLE_TITLE`, and `UNAVAILABLE_MESSAGE` environment
+variables override these values when set, in either direction, and take effect
+without a configuration sync. Setting `ENABLE_CHAT=true` forces chat on
+regardless of `chat.enabled`, so remove the variable to return control to
 `agent-config.json`. While chat is disabled, `POST /agent/chat/stream`
 immediately returns a terminal error event (`reason: "chat_disabled"`,
 `is_retryable: false`) carrying the unavailable message, before invoking the
 classifier, MCP tool loop, or synthesis models, so the UI shows the message
-without a retry button. The server stamps the effective
-`{"enable_chat": ..., "unavailable_message": "..."}` into the
+without a retry button. The server stamps the effective `enable_chat`,
+`unavailable_title`, and `unavailable_message` values into the
 `#runtime-config` element of the HTML shell on every request. On page load,
 the UI reads that element through `getRuntimeConfig()` and replaces the chat
-prompt with an unavailable view showing `unavailable_message`, while the
-header and the Key Metrics dashboard stay available. A local `pnpm dev:ui`
-copies the element from the agent at `AGENT_URL`, so set `ENABLE_CHAT` and
-`UNAVAILABLE_MESSAGE` on the agent; Vite does not read them. `/healthz` and
-`/agent/health` keep answering `200`.
+prompt with an unavailable view showing `unavailable_title` and
+`unavailable_message` over a disabled header and navigation bar, while other
+routes such as Key Metrics (`#/metrics`) remain reachable by URL. A local
+`pnpm dev:ui` copies the element from the agent at `AGENT_URL`, so set
+`ENABLE_CHAT`, `UNAVAILABLE_TITLE`, and `UNAVAILABLE_MESSAGE` on the agent,
+since Vite does not read them. `/healthz` and `/agent/health` keep answering
+`200`.
 
 - **Cloud Run:**
 
@@ -680,7 +696,8 @@ optional container environment variables:
 When serving `index.html`, the backend includes any non-empty
 `RECAPTCHA_SESSION_SITE_KEY` and `RECAPTCHA_CHECKBOX_SITE_KEY` values inside
 `<script id="runtime-config" type="application/json">` alongside `enable_chat`,
-`unavailable_message`, and the chart hosts, recomputing the response `ETag`.
+`unavailable_title`, `unavailable_message`, and the chart hosts, recomputing
+the response `ETag`.
 When both variables are unset or blank, those keys are omitted from
 `#runtime-config`.
 

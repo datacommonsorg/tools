@@ -108,13 +108,14 @@ export const extractRuntimeConfigText = (html: string): string | undefined => {
 
 /**
  * Serializes `config` to the wire JSON that the agent injects into
- * `#runtime-config` (`enable_chat`, `unavailable_message`, and any non-empty
- * chart hosts and reCAPTCHA site keys in the agent's order), escaped for a
- * `<script>` element.
+ * `#runtime-config` (`enable_chat`, `unavailable_title`,
+ * `unavailable_message`, and any non-empty chart hosts and reCAPTCHA site keys
+ * in the agent's order), escaped for a `<script>` element.
  */
 const serializeRuntimeConfig = (config: Readonly<RuntimeConfig>): string => {
   const payload: Record<string, boolean | string> = {
     enable_chat: config.isChatEnabled,
+    unavailable_title: config.unavailableTitle,
     unavailable_message: config.unavailableMessage,
   };
   if (config.webComponentUrl !== '') {

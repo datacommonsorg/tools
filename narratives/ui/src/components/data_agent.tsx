@@ -35,6 +35,7 @@ import { ErrorNotice } from '@/src/components/notice_error';
 import { AnswerPanel } from '@/src/components/panel_answer';
 import { DebugPanel } from '@/src/components/panel_debug/panel_debug';
 import { isTurnSettled } from '@/src/components/panel_debug/report_debug';
+import { MessageText } from '@/src/components/text_message';
 import { InitialView } from '@/src/components/view_initial';
 import {
   REASONING_COLLAPSE_MS,
@@ -45,6 +46,7 @@ import { useChatSession } from '@/src/hooks/chat_session_context';
 import { useDebugMode } from '@/src/hooks/use_debug_mode';
 import {
   assignCitationNumbers,
+  CHAT_DISABLED_REASON,
   type ChatTurn,
   hasAnswer,
 } from '@/src/hooks/use_sse_chat';
@@ -322,6 +324,14 @@ export function TurnView({
     .join(' ');
   const retry =
     onAsk && turn.isRetryable ? () => onAsk(turn.userMessage) : undefined;
+  // Only the operator-configured message is parsed: other errors can echo
+  // the user's question, which must not render as links.
+  const errorMessage =
+    turn.terminalReason === CHAT_DISABLED_REASON && turn.error ? (
+      <MessageText message={turn.error} />
+    ) : (
+      turn.error
+    );
   // Closing the reasoning from its end can leave the question above the
   // fold; scroll <main> back up so it shows under the header, in step with
   // the collapse, which shrinks the page and would cancel a native smooth
@@ -476,7 +486,7 @@ export function TurnView({
       )}
 
       {turn.status === 'error' && turn.error && (
-        <ErrorNotice message={turn.error} onRetry={retry} />
+        <ErrorNotice message={errorMessage} onRetry={retry} />
       )}
 
       {!showAnswer &&

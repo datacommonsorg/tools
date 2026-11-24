@@ -23,8 +23,9 @@ Verifies that `Settings`:
    the copy staged under `agent_root` or to the repository copy beside it.
 6. Defaults `google_genai_use_vertexai` to `False`, and parses an explicit
    value after stripping and lowercasing it.
-7. Leaves `enable_chat` `None` and `unavailable_message` empty when their
-   variables are unset, and parses an explicit value.
+7. Leaves `enable_chat` `None` and `unavailable_title` and
+   `unavailable_message` empty when their variables are unset, and parses an
+   explicit value.
 8. Rejects a port that is not a number.
 9. Reads `transcript_hmac_secret` without revealing it in `repr()` output, and
    rejects a value shorter than `MIN_SECRET_BYTES`.
@@ -65,6 +66,7 @@ from narratives_agent.settings import (
     TRANSCRIPT_HMAC_SECRET_ENV,
     TRANSCRIPT_HMAC_SECRET_NAME_ENV,
     UNAVAILABLE_MESSAGE_ENV,
+    UNAVAILABLE_TITLE_ENV,
     Settings,
     get_url_origin,
     validate_hmac_secret,
@@ -338,6 +340,30 @@ def test_enable_chat_is_none_when_unset_and_parses_env_values(
     env = {} if raw is None else {ENABLE_CHAT_ENV: raw}
     settings = _read_settings(monkeypatch, env)
     assert settings.enable_chat is expected
+
+
+@pytest.mark.parametrize(
+    ("raw", "expected"),
+    [
+        pytest.param(None, "", id="unset"),
+        pytest.param(" \t ", "", id="blank"),
+        pytest.param(
+            " Scheduled maintenance \n", "Scheduled maintenance", id="padded"
+        ),
+    ],
+)
+def test_unavailable_title_is_read_and_stripped(
+    monkeypatch: pytest.MonkeyPatch, raw: str | None, expected: str
+) -> None:
+    # Test: Default and parsing of `UNAVAILABLE_TITLE`.
+    # Situation: `UNAVAILABLE_TITLE` is unset, blank, or a title padded with
+    #   whitespace.
+    # Expectation: Unset and blank give `""`, which leaves
+    #   `chat.unavailable_title` in effect; a title is stripped of its
+    #   surrounding whitespace.
+    env = {} if raw is None else {UNAVAILABLE_TITLE_ENV: raw}
+    settings = _read_settings(monkeypatch, env)
+    assert settings.unavailable_title == expected
 
 
 @pytest.mark.parametrize(

@@ -27,6 +27,7 @@ import {
   render,
   screen,
   waitFor,
+  within,
 } from '@testing-library/react';
 import { useReducedMotion } from 'motion/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -208,24 +209,30 @@ describe('App with chat disabled', () => {
     // Test: The Data Agent route while chat is disabled.
     // Situation: #runtime-config disables chat with a custom message, and the
     //   route is the root or `#/agent`.
-    // Expectation: The message renders, and neither the landing prompt nor a
-    //   suggestion chip mounts.
+    // Expectation: The message renders, the app shell behind it is `inert`,
+    //   and neither the landing prompt nor a suggestion chip mounts.
     writeChatDisabledSlot();
     window.location.hash = hash;
     render(<App />);
-    expect(screen.getByRole('note').textContent).toBe(UNAVAILABLE_MESSAGE);
+    expect(
+      within(screen.getByRole('note')).getByText(UNAVAILABLE_MESSAGE),
+    ).toBeTruthy();
+    expect(screen.getByRole('main').parentElement?.hasAttribute('inert')).toBe(
+      true,
+    );
     expect(screen.queryByRole('textbox', { name: LANDING_PROMPT })).toBeNull();
     expect(
       screen.queryByText(DEFAULT_INSTANCE_CONFIG.suggestions[0]),
     ).toBeNull();
   });
 
-  it('keeps Key Metrics reachable and returns to the unavailable view', () => {
-    // Test: Moving between tabs while chat is disabled.
-    // Situation: #runtime-config disables chat; the user opens Key Metrics and
-    //   then returns to the Data Agent tab.
-    // Expectation: Key Metrics renders its heading, and the Data Agent tab
-    //   renders the unavailable message again with <main> scrolled to its top.
+  it('opens Key Metrics by URL and returns to the unavailable view', () => {
+    // Test: Moving between routes while chat is disabled.
+    // Situation: #runtime-config disables chat; the hash changes to Key
+    //   Metrics and then back to the Data Agent.
+    // Expectation: Key Metrics renders its heading with the app shell
+    //   interactive, and the Data Agent route renders the unavailable message
+    //   again, with the shell `inert` and <main> scrolled to its top.
     writeChatDisabledSlot();
     render(<App />);
     const mainScrollTo = vi.fn();
@@ -234,10 +241,18 @@ describe('App with chat disabled', () => {
     goTo('#/metrics');
     expect(screen.getByRole('heading', { name: 'Key Metrics' })).toBeTruthy();
     expect(screen.queryByRole('note')).toBeNull();
+    expect(screen.getByRole('main').parentElement?.hasAttribute('inert')).toBe(
+      false,
+    );
 
     mainScrollTo.mockClear();
     goTo('#/agent');
-    expect(screen.getByRole('note').textContent).toBe(UNAVAILABLE_MESSAGE);
+    expect(
+      within(screen.getByRole('note')).getByText(UNAVAILABLE_MESSAGE),
+    ).toBeTruthy();
+    expect(screen.getByRole('main').parentElement?.hasAttribute('inert')).toBe(
+      true,
+    );
     expect(mainScrollTo).toHaveBeenCalledWith(0, 0);
   });
 });

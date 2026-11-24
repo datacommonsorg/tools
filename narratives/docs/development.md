@@ -96,8 +96,8 @@ against an already-deployed Cloud Run backend.
    `AGENT_PORT` to override port `5001`.
 
    To preview the unavailable view, start the agent with chat disabled
-   (`ENABLE_CHAT=false pnpm dev:agent`, optionally with
-   `UNAVAILABLE_MESSAGE`) and reload the page.
+   (`ENABLE_CHAT=false pnpm dev:agent`, optionally with `UNAVAILABLE_TITLE`
+   and `UNAVAILABLE_MESSAGE`) and reload the page.
 
 4. Open `http://localhost:3000` in your browser. Opening
    `http://localhost:3000/?debug` enables the per-turn debug drawer and JSON
@@ -158,10 +158,10 @@ chat availability, so the page shows chat as enabled and Vite logs a
 Under `pnpm dev:ui`, the page shows the chat availability of the agent at
 `AGENT_URL`: on every page load, the Vite dev server fetches the agent's
 `index.html` and copies its `#runtime-config` into the page it serves.
-`ENABLE_CHAT` and `UNAVAILABLE_MESSAGE` are therefore set on the agent, not on
-Vite. The page is fetched from the `AGENT_URL` path, so an `AGENT_URL` with a
-subpath (for example `https://<host>/narratives`) reads the agent mounted
-there. The fetch does not follow redirects.
+`ENABLE_CHAT`, `UNAVAILABLE_TITLE`, and `UNAVAILABLE_MESSAGE` are therefore
+set on the agent, not on Vite. The page is fetched from the `AGENT_URL` path,
+so an `AGENT_URL` with a subpath (for example `https://<host>/narratives`)
+reads the agent mounted there. The fetch does not follow redirects.
 
 When the agent cannot be read (it is stopped, has no build, or answers with a
 redirect such as an IAP sign-in), Vite logs a `[runtime-config]` warning with

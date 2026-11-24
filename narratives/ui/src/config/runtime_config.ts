@@ -24,15 +24,26 @@
  */
 
 /**
+ * Heading of the unavailable note while chat is disabled when no other title is
+ * configured. Matches `DEFAULT_UNAVAILABLE_TITLE` in the agent's
+ * `config_model.py`.
+ */
+export const DEFAULT_UNAVAILABLE_TITLE = 'High demand right now';
+
+/**
  * Message shown while chat is disabled when no other message is configured.
  * Matches `DEFAULT_UNAVAILABLE_MESSAGE` in the agent's `config_model.py`.
  */
 export const DEFAULT_UNAVAILABLE_MESSAGE =
-  'This Data Commons tool is temporarily unavailable due to high traffic.';
+  'Due to high traffic, this feature is temporarily paused. Capacity is ' +
+  'being scaled to restore service as quickly as possible. Please try again ' +
+  'later, or explore other [tools in Data Commons](https://datacommons.org).';
 
 export interface RuntimeConfig {
   /** Whether the interactive Data Agent chat surface is active. */
   isChatEnabled: boolean;
+  /** Heading displayed on the unavailable note when chat is disabled. */
+  unavailableTitle: string;
   /** Message displayed when chat is disabled. */
   unavailableMessage: string;
   /**
@@ -59,6 +70,7 @@ export interface RuntimeConfig {
  */
 export const DEFAULT_RUNTIME_CONFIG: Readonly<RuntimeConfig> = Object.freeze({
   isChatEnabled: true,
+  unavailableTitle: DEFAULT_UNAVAILABLE_TITLE,
   unavailableMessage: DEFAULT_UNAVAILABLE_MESSAGE,
   webComponentUrl: '',
   webComponentApiRoot: '',
@@ -102,20 +114,25 @@ const readEnabled = (value: unknown): boolean => {
 };
 
 /**
- * Returns the trimmed `unavailable_message`, or the default message when it
- * is absent, or with a warning when it is blank or not a string.
+ * Returns the trimmed string for `key`, or `fallback` when absent, or with a
+ * warning when blank or not a string.
  */
-const readUnavailableMessage = (value: unknown): string => {
+const readNonBlankString = (
+  key: string,
+  value: unknown,
+  fallback: string,
+  label: string,
+): string => {
   if (value === undefined) {
-    return DEFAULT_UNAVAILABLE_MESSAGE;
+    return fallback;
   }
   if (typeof value === 'string' && value.trim() !== '') {
     return value.trim();
   }
   console.warn(
-    `${RUNTIME_CONFIG_LOG_PREFIX} "unavailable_message" is blank or not a string; using the default message.`,
+    `${RUNTIME_CONFIG_LOG_PREFIX} "${key}" is blank or not a string; using the default ${label}.`,
   );
-  return DEFAULT_UNAVAILABLE_MESSAGE;
+  return fallback;
 };
 
 const HTTP_SCHEME_PREFIX = /^https?:\/\//i;
@@ -251,7 +268,18 @@ export const parseRuntimeConfigText = (
   }
   return Object.freeze({
     isChatEnabled: readEnabled(parsed.enable_chat),
-    unavailableMessage: readUnavailableMessage(parsed.unavailable_message),
+    unavailableTitle: readNonBlankString(
+      'unavailable_title',
+      parsed.unavailable_title,
+      DEFAULT_UNAVAILABLE_TITLE,
+      'title',
+    ),
+    unavailableMessage: readNonBlankString(
+      'unavailable_message',
+      parsed.unavailable_message,
+      DEFAULT_UNAVAILABLE_MESSAGE,
+      'message',
+    ),
     webComponentUrl: readWebComponentUrl(parsed.web_component_url),
     webComponentApiRoot: readWebComponentApiRoot(parsed.web_component_api_root),
     recaptchaSessionSiteKey: readOptionalSiteKey(

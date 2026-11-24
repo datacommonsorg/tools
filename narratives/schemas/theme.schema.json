@@ -223,6 +223,10 @@
           "$ref": "#/$defs/hexColor",
           "description": "Secondary/muted text (--theme-text-muted → --color-on-surface-variant)."
         },
+        "headline": {
+          "$ref": "#/$defs/hexColor",
+          "description": "Landing-view heading and the unavailable note's title (--theme-headline → --color-headline)."
+        },
         "background": {
           "$ref": "#/$defs/hexColor",
           "description": "Page background, and the surface of the composer, cards and drawers (--theme-background → --color-surface)."
@@ -233,11 +237,11 @@
         },
         "gradient_start": {
           "$ref": "#/$defs/hexColor",
-          "description": "Unused since the landing heading became a solid color; accepted so existing themes still validate."
+          "description": "Ignored; the landing heading color is `headline`. Accepted so existing themes still validate."
         },
         "gradient_end": {
           "$ref": "#/$defs/hexColor",
-          "description": "Unused since the landing heading became a solid color; accepted so existing themes still validate."
+          "description": "Ignored; the landing heading color is `headline`. Accepted so existing themes still validate."
         },
         "gradient_border_stop_1": {
           "$ref": "#/$defs/hexColor",

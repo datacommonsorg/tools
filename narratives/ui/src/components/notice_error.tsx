@@ -18,10 +18,11 @@
  * @fileoverview Renders a failed turn's error notice with an optional inline retry button.
  */
 
+import type { ReactNode } from 'react';
 import { RETRY_LABEL } from '@/src/config/copy_chat';
 
 interface ErrorNoticeProps {
-  message: string;
+  message: ReactNode;
   /** Sends the turn's question again; the retry button is omitted when unset. */
   onRetry?: () => void;
 }

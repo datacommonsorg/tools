@@ -354,6 +354,12 @@ const SETTLED_STATUSES: ReadonlySet<TurnStatus> = new Set([
   'error',
 ]);
 
+/**
+ * `terminal` reason of a turn ended because chat is disabled. Its error is the
+ * operator-configured unavailable message, whose Markdown links render.
+ */
+export const CHAT_DISABLED_REASON = 'chat_disabled';
+
 /** Identifies the HTTP 400 body the agent returns for an unverifiable transcript. */
 const TRANSCRIPT_INVALID_REASON = 'transcript_invalid';
 

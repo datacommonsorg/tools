@@ -51,7 +51,10 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 
-from narratives_agent.config_model import DEFAULT_UNAVAILABLE_MESSAGE
+from narratives_agent.config_model import (
+    DEFAULT_UNAVAILABLE_MESSAGE,
+    DEFAULT_UNAVAILABLE_TITLE,
+)
 from narratives_agent.mcp.capabilities import Capabilities
 from narratives_agent.server.app import create_app
 from narratives_agent.server.routes import system
@@ -63,19 +66,24 @@ from narratives_agent.settings import (
     RECAPTCHA_CHECKBOX_SITE_KEY_ENV,
     RECAPTCHA_SESSION_SITE_KEY_ENV,
     UNAVAILABLE_MESSAGE_ENV,
+    UNAVAILABLE_TITLE_ENV,
     get_settings,
 )
 
 _SHELL_HEAD = b"<!doctype html><title>Narratives</title>"
 _RUNTIME_OPEN = b'<script id="runtime-config" type="application/json">'
 _INDEX = _SHELL_HEAD + _RUNTIME_OPEN + b"</script>"
-# `_INDEX` as served when chat is enabled with the default message and the
-# chart hosts are the defaults.
+# `_INDEX` as served when chat is enabled with the default title and message
+# and the chart hosts are the defaults.
 _STAMPED_INDEX = (
     _SHELL_HEAD
     + _RUNTIME_OPEN
-    + b'{"enable_chat":true,"unavailable_message":"This Data Commons tool '
-    + b'is temporarily unavailable due to high traffic.",'
+    + b'{"enable_chat":true,'
+    + b'"unavailable_title":"High demand right now",'
+    + b'"unavailable_message":"Due to high traffic, '
+    + b"this feature is temporarily paused. Capacity is being scaled to "
+    + b"restore service as quickly as possible. Please try again later, or "
+    + b'explore other [tools in Data Commons](https://datacommons.org).",'
     + b'"web_component_url":"https://datacommons.org/datacommons.js",'
     + b'"web_component_api_root":"https://datacommons.org"}</script>'
 )
@@ -407,19 +415,29 @@ def test_the_shell_carries_a_hash_of_the_stamped_bytes(
             "false",
             {
                 "enable_chat": False,
-                "unavailable_message": (
-                    "This Data Commons tool is temporarily unavailable due "
-                    "to high traffic."
-                ),
+                "unavailable_title": DEFAULT_UNAVAILABLE_TITLE,
+                "unavailable_message": DEFAULT_UNAVAILABLE_MESSAGE,
                 **_DEFAULT_CHART_HOSTS,
             },
             id="ENABLE_CHAT",
+        ),
+        pytest.param(
+            UNAVAILABLE_TITLE_ENV,
+            "Scheduled maintenance",
+            {
+                "enable_chat": True,
+                "unavailable_title": "Scheduled maintenance",
+                "unavailable_message": DEFAULT_UNAVAILABLE_MESSAGE,
+                **_DEFAULT_CHART_HOSTS,
+            },
+            id="UNAVAILABLE_TITLE",
         ),
         pytest.param(
             UNAVAILABLE_MESSAGE_ENV,
             "Back at noon.",
             {
                 "enable_chat": True,
+                "unavailable_title": DEFAULT_UNAVAILABLE_TITLE,
                 "unavailable_message": "Back at noon.",
                 **_DEFAULT_CHART_HOSTS,
             },
@@ -436,7 +454,8 @@ def test_a_chat_setting_change_invalidates_the_shell_etag(
 ) -> None:
     # Test: Revalidation of the shell after a chat setting changes.
     # Situation: A client holds the `ETag` of the shell served with the
-    #   default settings; `ENABLE_CHAT` or `UNAVAILABLE_MESSAGE` then changes.
+    #   default settings; `ENABLE_CHAT`, `UNAVAILABLE_TITLE`, or
+    #   `UNAVAILABLE_MESSAGE` then changes.
     # Expectation: Revalidating with the old `ETag` returns 200 with the new
     #   settings stamped in and a different `ETag`, and revalidating with the
     #   new `ETag` returns 304 with the cache and security headers.
@@ -512,27 +531,31 @@ def test_head_of_the_shell_reports_the_stamped_length(
     assert response.headers["x-content-type-options"] == "nosniff"
 
 
-def test_the_unavailable_message_cannot_break_out_of_the_script(
+def test_unavailable_strings_cannot_break_out_of_the_script(
     monkeypatch: pytest.MonkeyPatch, client: TestClient
 ) -> None:
     # Test: Escaping of the stamped JSON.
-    # Situation: `UNAVAILABLE_MESSAGE` holds `</script><script>`, `&`,
-    #   U+2028, and U+2029.
+    # Situation: `UNAVAILABLE_TITLE` and `UNAVAILABLE_MESSAGE` hold
+    #   `</script><script>`, `&`, U+2028, and U+2029.
     # Expectation: `<`, `>`, `&`, U+2028, and U+2029 are written as JSON
     #   escapes, so the page holds one `</script>` (the element's own close
-    #   tag), and the decoded JSON carries the message unchanged.
+    #   tag), and the decoded JSON carries both values unchanged.
+    title = "</script><b>&title"
     message = "</script><script>alert(1)&\u2028\u2029end"
+    _set_chat_env(monkeypatch, UNAVAILABLE_TITLE_ENV, title)
     _set_chat_env(monkeypatch, UNAVAILABLE_MESSAGE_ENV, message)
 
     body = client.get("/").content
 
     assert body.count(b"</script>") == 1
+    assert b"\\u003c/script\\u003e\\u003cb\\u003e\\u0026title" in body
     assert (
         b"\\u003c/script\\u003e\\u003cscript\\u003ealert(1)\\u0026"
         b"\\u2028\\u2029end" in body
     )
     assert _read_runtime_config(body) == {
         "enable_chat": True,
+        "unavailable_title": title,
         "unavailable_message": message,
         **_DEFAULT_CHART_HOSTS,
     }
@@ -607,12 +630,13 @@ def test_recaptcha_keys_inject_into_runtime_config_and_policy(
     # Situation: `index.html` is first served with no reCAPTCHA keys set, and
     #   a restarted app then starts with one or both reCAPTCHA site keys set.
     # Expectation: Only the non-empty site keys are added alongside
-    #   `enable_chat`, `unavailable_message`, and the chart hosts; the `ETag`
-    #   changes; and `script-src`, `connect-src`, and `frame-src` add Google's
-    #   reCAPTCHA endpoints.
+    #   `enable_chat`, `unavailable_title`, `unavailable_message`, and the
+    #   chart hosts; the `ETag` changes; and `script-src`, `connect-src`, and
+    #   `frame-src` add Google's reCAPTCHA endpoints.
     initial = _create_shell_client(tmp_path, monkeypatch).get("/")
     assert _read_runtime_config(initial.content) == {
         "enable_chat": True,
+        "unavailable_title": DEFAULT_UNAVAILABLE_TITLE,
         "unavailable_message": DEFAULT_UNAVAILABLE_MESSAGE,
         **_DEFAULT_CHART_HOSTS,
     }
@@ -629,6 +653,7 @@ def test_recaptcha_keys_inject_into_runtime_config_and_policy(
     assert updated.status_code == 200
     assert _read_runtime_config(updated.content) == {
         "enable_chat": True,
+        "unavailable_title": DEFAULT_UNAVAILABLE_TITLE,
         "unavailable_message": DEFAULT_UNAVAILABLE_MESSAGE,
         **_DEFAULT_CHART_HOSTS,
         **expected_recaptcha,
@@ -701,6 +726,7 @@ def test_the_shell_carries_the_configured_chart_hosts(
 
     assert _read_runtime_config(body) == {
         "enable_chat": True,
+        "unavailable_title": DEFAULT_UNAVAILABLE_TITLE,
         "unavailable_message": DEFAULT_UNAVAILABLE_MESSAGE,
         "web_component_url": "https://autopush.datacommons.org/datacommons.js",
         "web_component_api_root": "https://autopush.datacommons.org",
@@ -728,6 +754,7 @@ def test_chart_hosts_and_recaptcha_keys_are_fixed_when_the_app_starts(
 
     assert _read_runtime_config(response.content) == {
         "enable_chat": True,
+        "unavailable_title": DEFAULT_UNAVAILABLE_TITLE,
         "unavailable_message": DEFAULT_UNAVAILABLE_MESSAGE,
         **_DEFAULT_CHART_HOSTS,
     }
