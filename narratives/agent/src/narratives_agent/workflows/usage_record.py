@@ -914,6 +914,8 @@ def _read_chart_scope(
             | ResolvedScatterChart(cohort=cohort)
         ):
             return (), cohort
+        case _ as unreachable:
+            assert_never(unreachable)
 
 
 def _build_logged_chart(
