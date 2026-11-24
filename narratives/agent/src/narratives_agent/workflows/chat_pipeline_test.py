@@ -2290,6 +2290,13 @@ async def test_a_clarification_is_streamed_and_signed_with_empty_slots(
             id="model-armor-retryable",
         ),
         pytest.param(
+            ErrorType.MODEL_ARMOR_UNAVAILABLE,
+            False,
+            None,
+            _CLOSED,
+            id="model-armor-permanent-with-configured-message",
+        ),
+        pytest.param(
             ErrorType.CLASSIFIER_UNAVAILABLE,
             True,
             _CLOSED_OVERRIDE,

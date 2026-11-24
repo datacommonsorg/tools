@@ -271,33 +271,68 @@ async def test_match_found_returns_matched_filter_names(
 
 
 @pytest.mark.parametrize(
-    ("response_factory", "expected_log"),
+    ("response_factory", "expected_log", "expected_retryable"),
     [
+        pytest.param(
+            lambda req: httpx.Response(403, text="Permission Denied"),
+            "HTTP 403",
+            False,
+            id="http-403-permanent",
+        ),
+        pytest.param(
+            lambda req: httpx.Response(404, text="Not Found"),
+            "HTTP 404",
+            False,
+            id="http-404-permanent",
+        ),
+        pytest.param(
+            lambda req: httpx.Response(408, text="Request Timeout"),
+            "HTTP 408",
+            True,
+            id="http-408-retryable",
+        ),
+        pytest.param(
+            lambda req: httpx.Response(429, text="Too Many Requests"),
+            "HTTP 429",
+            True,
+            id="http-429-retryable",
+        ),
+        pytest.param(
+            lambda req: httpx.Response(499, text="Client Closed Request"),
+            "HTTP 499",
+            True,
+            id="http-499-retryable",
+        ),
         pytest.param(
             lambda req: httpx.Response(503, text="Service Unavailable"),
             "HTTP 503",
-            id="http-503",
+            True,
+            id="http-503-retryable",
         ),
         pytest.param(
             lambda req: (_ for _ in ()).throw(
                 httpx.ConnectTimeout("timed out")
             ),
             "ConnectTimeout",
+            True,
             id="connect-timeout",
         ),
         pytest.param(
             lambda req: httpx.Response(200, text="{not valid json"),
             "JSONDecodeError",
+            True,
             id="invalid-json",
         ),
         pytest.param(
             lambda req: httpx.Response(200, json=["not-a-dict"]),
             "ValidationError",
+            True,
             id="non-object-json",
         ),
         pytest.param(
             lambda req: httpx.Response(200, json={}),
             "ValidationError",
+            True,
             id="missing-sanitization-result",
         ),
     ],
@@ -311,14 +346,17 @@ async def test_upstream_errors_raise_unavailable_without_logging_query(
     caplog: pytest.LogCaptureFixture,
     response_factory: Callable[[httpx.Request], httpx.Response],
     expected_log: str,
+    expected_retryable: bool,
 ) -> None:
-    # Test: Error handling on upstream Model Armor failures.
-    # Situation: The Model Armor call encounters an HTTP 503 error, a network
+    # Test: Error handling and retryability on upstream Model Armor failures.
+    # Situation: The Model Armor call encounters a permanent HTTP 4xx error
+    #   (403, 404), a retryable HTTP status (408, 429, 499, 503), a network
     #   timeout, malformed JSON, a non-object JSON payload, or a response
     #   missing `sanitizationResult`.
     # Expectation: `screen_user_prompt` raises `ModelArmorUnavailableError`
-    #   and logs a warning containing the failure summary. Neither the log
-    #   nor the error message contains the user query text.
+    #   with `is_retryable` matching whether a retry can succeed, and logs a
+    #   warning containing the failure summary. Neither the log nor the error
+    #   message contains the user query text.
     monkeypatch.setenv(MODEL_ARMOR_TEMPLATE_ENV, _TEMPLATE)
     monkeypatch.setattr(model_armor, "get_adc_auth_headers", _stub_auth_headers)
     install_transport(response_factory)
@@ -329,24 +367,33 @@ async def test_upstream_errors_raise_unavailable_without_logging_query(
     ):
         await model_armor.screen_user_prompt(_QUERY)
 
+    assert raised.value.is_retryable is expected_retryable
     assert expected_log in caplog.text
     assert _QUERY not in caplog.text
     assert _QUERY not in str(raised.value)
 
 
 @pytest.mark.parametrize(
-    ("error", "expected_log"),
+    ("error", "expected_log", "expected_retryable"),
     [
         pytest.param(
             google.auth.exceptions.DefaultCredentialsError("no ADC"),  # type: ignore[no-untyped-call]
             "DefaultCredentialsError",
+            False,
             id="default-credentials-error",
+        ),
+        pytest.param(
+            google.auth.exceptions.RefreshError("metadata 503"),  # type: ignore[no-untyped-call]
+            "RefreshError",
+            True,
+            id="refresh-error",
         ),
         pytest.param(
             RuntimeError(
                 "Application Default Credentials returned no access token"
             ),
             "RuntimeError",
+            True,
             id="missing-access-token",
         ),
     ],
@@ -360,13 +407,15 @@ async def test_auth_errors_raise_unavailable_without_http_or_logging_query(
     caplog: pytest.LogCaptureFixture,
     error: Exception,
     expected_log: str,
+    expected_retryable: bool,
 ) -> None:
-    # Test: Error handling on ADC credential failures.
-    # Situation: Resolving ADC headers raises `GoogleAuthError` or
-    #   `RuntimeError`.
-    # Expectation: `screen_user_prompt` raises `ModelArmorUnavailableError`,
-    #   logs a warning with the exception type (without leaking the user
-    #   query text), and does not send an HTTP request.
+    # Test: Error handling and retryability on ADC credential failures.
+    # Situation: Resolving ADC headers raises `DefaultCredentialsError`,
+    #   `RefreshError`, or `RuntimeError`.
+    # Expectation: `screen_user_prompt` raises `ModelArmorUnavailableError`
+    #   (`is_retryable=False` only for `DefaultCredentialsError`), logs a
+    #   warning with the exception type, does not send an HTTP request, and
+    #   omits the user query text from both the log and the error message.
     async def _failing_headers() -> dict[str, str]:
         raise error
 
@@ -376,13 +425,15 @@ async def test_auth_errors_raise_unavailable_without_http_or_logging_query(
 
     with (
         caplog.at_level(logging.WARNING, logger=model_armor.logger.name),
-        pytest.raises(model_armor.ModelArmorUnavailableError),
+        pytest.raises(model_armor.ModelArmorUnavailableError) as raised,
     ):
         await model_armor.screen_user_prompt(_QUERY)
 
+    assert raised.value.is_retryable is expected_retryable
     assert requests == []
     assert expected_log in caplog.text
     assert _QUERY not in caplog.text
+    assert _QUERY not in str(raised.value)
 
 
 @pytest.mark.asyncio
@@ -397,9 +448,10 @@ async def test_auth_header_timeout_raises_unavailable_without_http(
     #   `screen_user_prompt`.
     # Situation: `get_adc_auth_headers` stalls longer than
     #   `_REQUEST_TIMEOUT_SECONDS`.
-    # Expectation: `screen_user_prompt` times out, raises
-    #   `ModelArmorUnavailableError`, logs a `TimeoutError` warning (without
-    #   the query text), and does not send an HTTP request.
+    # Expectation: `screen_user_prompt` times out, raises retryable
+    #   `ModelArmorUnavailableError`, logs a `TimeoutError` warning, does not
+    #   send an HTTP request, and omits the user query text from both the log
+    #   and the error message.
     async def _slow_headers() -> dict[str, str]:
         await asyncio.sleep(1.0)
         return {"Authorization": "Bearer late"}
@@ -411,13 +463,15 @@ async def test_auth_header_timeout_raises_unavailable_without_http(
 
     with (
         caplog.at_level(logging.WARNING, logger=model_armor.logger.name),
-        pytest.raises(model_armor.ModelArmorUnavailableError),
+        pytest.raises(model_armor.ModelArmorUnavailableError) as raised,
     ):
         await model_armor.screen_user_prompt(_QUERY)
 
+    assert raised.value.is_retryable is True
     assert requests == []
     assert "TimeoutError" in caplog.text
     assert _QUERY not in caplog.text
+    assert _QUERY not in str(raised.value)
 
 
 @pytest.mark.parametrize(
@@ -502,6 +556,7 @@ async def test_a_response_that_is_not_a_complete_pass_raises_unavailable(
     ):
         await model_armor.screen_user_prompt(_QUERY)
 
+    assert raised.value.is_retryable is True
     (record,) = caplog.records
     assert f"invocationResult={invocation_result!r}" in record.getMessage()
     assert f"filterMatchState={filter_match_state!r}" in record.getMessage()

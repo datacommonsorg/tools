@@ -383,7 +383,7 @@ class Settings(BaseSettings):
     # user queries before classification
     # (`projects/<project>/locations/<location>/templates/<template>`). When
     # unset, Model Armor screening is skipped. When set, a turn that Model
-    # Armor cannot screen ends with a retryable error.
+    # Armor cannot screen ends with an error.
     model_armor_template: str = ""
 
     # When set, overrides `chat.enabled` in agent-config.json in either

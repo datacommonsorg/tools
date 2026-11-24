@@ -178,6 +178,8 @@ async def _attempt_classification(
     prompt: str,
     config: AgentConfig,
     telemetry: TurnTelemetry,
+    *,
+    attempt: int,
 ) -> QueryClassification:
     """Sends one classifier request and validates its reply.
 
@@ -187,6 +189,7 @@ async def _attempt_classification(
         prompt: The configured classify prompt, which is not empty.
         config: The agent configuration that selects the classifier model.
         telemetry: Turn telemetry accumulator receiving token counts.
+        attempt: 1-based attempt number logged when this request fails.
 
     Returns:
         The validated classification.
@@ -221,8 +224,10 @@ async def _attempt_classification(
             )
     except TimeoutError as error:
         logger.warning(
-            "Classifier request timed out after %d seconds",
+            "Classifier request timed out after %d seconds (attempt %d/%d)",
             CLASSIFY_TIMEOUT_SECONDS,
+            attempt,
+            _MAX_CLASSIFY_ATTEMPTS,
         )
         raise _ClassifierAttemptError(
             "The classifier request timed out", is_retryable=True
@@ -233,14 +238,19 @@ async def _attempt_classification(
     except GeminiError as error:
         # The Gemini client has already logged the redacted upstream error.
         logger.warning(
-            "Classifier request failed (retryable: %s)", error.is_retryable
+            "Classifier request failed (attempt %d/%d, retryable: %s)",
+            attempt,
+            _MAX_CLASSIFY_ATTEMPTS,
+            error.is_retryable,
         )
         raise _ClassifierAttemptError(
             "The classifier request failed", is_retryable=error.is_retryable
         ) from error
     if not response.text.strip():
         logger.warning(
-            "Classifier returned no text (finish reason: %s)",
+            "Classifier returned no text (attempt %d/%d, finish reason: %s)",
+            attempt,
+            _MAX_CLASSIFY_ATTEMPTS,
             response.finish_reason,
         )
         raise _ClassifierAttemptError(
@@ -251,7 +261,9 @@ async def _attempt_classification(
     except ValidationError as error:
         # Raw output is omitted from logs because it may contain query text.
         logger.warning(
-            "Classifier output failed validation (%d errors)",
+            "Classifier output failed validation (attempt %d/%d, %d errors)",
+            attempt,
+            _MAX_CLASSIFY_ATTEMPTS,
             error.error_count(),
         )
         raise _ClassifierAttemptError(
@@ -300,7 +312,7 @@ async def _request_classification(
     while True:
         try:
             return await _attempt_classification(
-                transcript, prompt, config, telemetry
+                transcript, prompt, config, telemetry, attempt=attempt
             )
         except _ClassifierAttemptError as error:
             if not error.is_retryable or attempt >= _MAX_CLASSIFY_ATTEMPTS:
@@ -321,9 +333,9 @@ async def _screen_with_model_armor(query: str) -> None:
 
     Raises:
         TurnRefusedError: If a Model Armor filter matches.
-        ScreeningUnavailableError: With `model_armor_unavailable`
-            (retryable), if a template is configured and Model Armor did
-            not return a complete result.
+        ScreeningUnavailableError: With `model_armor_unavailable` if a
+            template is configured and Model Armor did not return a complete
+            result, preserving `ModelArmorUnavailableError.is_retryable`.
     """
     try:
         model_armor_match = await screen_user_prompt(query)
@@ -332,7 +344,7 @@ async def _screen_with_model_armor(query: str) -> None:
         raise ScreeningUnavailableError(
             ErrorType.MODEL_ARMOR_UNAVAILABLE,
             "Model Armor did not return a complete result",
-            is_retryable=True,
+            is_retryable=error.is_retryable,
         ) from error
     if model_armor_match is not None:
         logger.warning(

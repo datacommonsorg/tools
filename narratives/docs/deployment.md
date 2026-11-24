@@ -487,9 +487,13 @@ or a `chat.enabled` that is not a JSON boolean (for example `"false"` or `0`),
 is logged as an error and disables chat.
 
 While chat is enabled, the server also sends `chat.unavailable_message`,
-without a retry button, on a turn that ends because the query classifier
-permanently cannot run (`reason: "classifier_unavailable"`, see
-[Monitoring](#monitoring)).
+without a retry button, when an instance's daily Gemini token budget is
+exhausted or when a turn's query permanently cannot be screened
+(`reason: "model_armor_unavailable"` or `"classifier_unavailable"`, see
+[Monitoring](#monitoring)). If you set a time-specific maintenance notice in
+`chat.unavailable_message` or `UNAVAILABLE_MESSAGE` while disabling chat, reset
+or clear it when re-enabling chat so later non-retryable turns do not display
+stale maintenance text.
 
 The `ENABLE_CHAT` and `UNAVAILABLE_MESSAGE` environment variables override
 these values when set, in either direction, and take effect without a
@@ -642,13 +646,16 @@ set, it works with both `GEMINI_API_KEY` and Vertex AI deployments.
 
 Once `MODEL_ARMOR_TEMPLATE` is set, chat depends on Model Armor being
 available in the template's region. A turn that Model Armor cannot screen
-ends with a retryable error (`reason: "model_armor_unavailable"`) rather than
-continuing unscreened. This applies when the request fails or times out, and
-when the response is neither a match nor a complete pass. A complete pass
-reports `filterMatchState` `NO_MATCH_FOUND` and `invocationResult` `SUCCESS`,
-so a response in which some filters did not run, or that omits either field,
-ends the turn. See [Monitoring](#monitoring) for the log filter that finds
-these turns.
+ends with an error (`reason: "model_armor_unavailable"`) rather than
+continuing unscreened. Transient failures (timeouts, network or token-refresh
+errors, HTTP 408/429/499/5xx, and responses that are neither a match nor a
+complete pass) are retryable. Permanent rejections (other HTTP 4xx statuses
+such as 403 or 404, and missing Application Default Credentials) return
+`chat.unavailable_message` without a retry button. A complete pass reports
+`filterMatchState` `NO_MATCH_FOUND` and `invocationResult` `SUCCESS`, so a
+response in which some filters did not run, or that omits either field, ends
+the turn. See [Monitoring](#monitoring) for the log filter that finds these
+turns.
 
 ### Protecting traffic with reCAPTCHA Enterprise (optional)
 

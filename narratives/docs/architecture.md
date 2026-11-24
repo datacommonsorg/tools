@@ -205,8 +205,10 @@ Otherwise, the request runs through the agent loop in five steps:
    - **Model Armor unavailable:** When `MODEL_ARMOR_TEMPLATE` is configured
      and the Model Armor request fails, times out, or returns a response that
      is neither a match nor a `NO_MATCH_FOUND` result with `invocationResult`
-     `SUCCESS`, the turn ends with `reason: "model_armor_unavailable"` and
-     `is_retryable: true`. A response that omits either field does not pass.
+     `SUCCESS` (a response that omits either field does not pass), the turn
+     ends with `reason: "model_armor_unavailable"`. `is_retryable` is `false`
+     for an HTTP 4xx rejection other than `408`, `429`, and `499` or missing
+     Application Default Credentials, and `true` for every other failure.
    - **Classifier unavailable:** A classifier call that does not finish within
      10 seconds, fails with a temporary Gemini error, returns an empty reply,
      or returns output that does not validate is repeated once, without a

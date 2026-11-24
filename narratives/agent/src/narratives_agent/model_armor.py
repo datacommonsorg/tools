@@ -33,6 +33,7 @@ import asyncio
 import logging
 import re
 from dataclasses import dataclass
+from http import HTTPStatus
 
 import google.auth.exceptions
 import httpx
@@ -55,6 +56,15 @@ _NO_MATCH_FOUND = "NO_MATCH_FOUND"
 _INVOCATION_SUCCESS = "SUCCESS"
 _DEFAULT_MATCH_LABEL = "model_armor"
 
+_HTTP_CLIENT_ERROR_MIN = HTTPStatus.BAD_REQUEST
+_HTTP_SERVER_ERROR_MIN = HTTPStatus.INTERNAL_SERVER_ERROR
+# Client-error statuses that can succeed when sent again: a server-side
+# request timeout, a rate-limited request, and a canceled request (`499`,
+# which Google APIs report for `CANCELLED`).
+_RETRYABLE_CLIENT_ERRORS = frozenset(
+    {HTTPStatus.REQUEST_TIMEOUT, HTTPStatus.TOO_MANY_REQUESTS, 499}
+)
+
 # Matches a Google Cloud Model Armor template resource name
 # (`projects/<project>/locations/<location>/templates/<template>`) and captures
 # `<location>` so requests target the regional Model Armor endpoint.
@@ -71,7 +81,25 @@ class ModelArmorUnavailableError(Exception):
     response did not report a match and was not a `NO_MATCH_FOUND` result with
     `invocationResult` `SUCCESS`. The message never contains the user query
     text.
+
+    Attributes:
+        is_retryable: False only when the failure is known to be permanent:
+            Model Armor rejected the request with an HTTP 4xx status other
+            than 408, 429, and 499, or Application Default Credentials are
+            not configured (`DefaultCredentialsError`). Every other failure
+            is retryable.
     """
+
+    def __init__(self, message: str, *, is_retryable: bool) -> None:
+        super().__init__(message)
+        self.is_retryable = is_retryable
+
+
+def _is_retryable_http_status(status_code: int) -> bool:
+    """Reports whether a failed Model Armor HTTP status can succeed on retry."""
+    if status_code in _RETRYABLE_CLIENT_ERRORS:
+        return True
+    return not (_HTTP_CLIENT_ERROR_MIN <= status_code < _HTTP_SERVER_ERROR_MIN)
 
 
 @dataclass
@@ -251,12 +279,14 @@ async def screen_user_prompt(query: str) -> str | None:
         response.raise_for_status()
         parsed = _SanitizePromptResponse.model_validate(response.json())
     except httpx.HTTPStatusError as error:
+        status_code = error.response.status_code
         logger.warning(
             "Model Armor request failed (HTTP %d); the query was not screened",
-            error.response.status_code,
+            status_code,
         )
         raise ModelArmorUnavailableError(
-            f"Model Armor request failed (HTTP {error.response.status_code})"
+            f"Model Armor request failed (HTTP {status_code})",
+            is_retryable=_is_retryable_http_status(status_code),
         ) from error
     except (
         TimeoutError,
@@ -269,8 +299,12 @@ async def screen_user_prompt(query: str) -> str | None:
             "Model Armor request failed (%s); the query was not screened",
             type(error).__name__,
         )
+        is_retryable = not isinstance(
+            error, google.auth.exceptions.DefaultCredentialsError
+        )
         raise ModelArmorUnavailableError(
-            f"Model Armor request failed ({type(error).__name__})"
+            f"Model Armor request failed ({type(error).__name__})",
+            is_retryable=is_retryable,
         ) from error
 
     sanitization_result = parsed.sanitization_result
@@ -299,5 +333,6 @@ async def screen_user_prompt(query: str) -> str | None:
     raise ModelArmorUnavailableError(
         "Model Armor returned invocationResult="
         f"{sanitization_result.invocation_result!r} and filterMatchState="
-        f"{sanitization_result.filter_match_state!r}"
+        f"{sanitization_result.filter_match_state!r}",
+        is_retryable=True,
     )
