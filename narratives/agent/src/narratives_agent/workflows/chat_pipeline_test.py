@@ -92,7 +92,11 @@ from narratives_agent.analytics.digest import (
     AnalysisDigest,
     RefusedScriptResult,
 )
-from narratives_agent.analytics.provenance import Provenance, Source
+from narratives_agent.analytics.provenance import (
+    AlternativeSource,
+    Provenance,
+    Source,
+)
 from narratives_agent.analytics.ranking import rank_cohort
 from narratives_agent.analytics.tables import ObservationRow, ObservationTable
 from narratives_agent.analytics.timeseries import analyze_timeseries
@@ -3865,14 +3869,25 @@ async def test_a_failure_to_write_the_record_does_not_fail_the_turn(
 # Each piece of free text of a marked turn starts with this prefix, so one
 # search of the `chat_turn` line finds any of them.
 _MARKER_PREFIX = "zzmarker_"
-# `_TABLE_MARKERS` and `_SOURCE_MARKERS` name the pieces of free text that the
-# marked table and its source hold.
+# `_TABLE_MARKERS`, `_SOURCE_MARKERS`, `_ALT_SOURCE_MARKERS`, and
+# `_UNUSED_AND_DERIVED_MARKERS` name the pieces of free text that the marked
+# tables, their sources and alternative sources, and the digest hold and that
+# the debug report surfaces in `turn.events`. Three additional markers
+# (`alt_url`, `unused_row_place`, and `empty_place`) do not appear in the
+# debug report and are still checked against `line` via `_MARKER_PREFIX`.
 _TABLE_MARKERS = (
     "variable",
     "place",
+    "row_place",
     "unit",
     "measurement_method",
     "observation_period",
+    "cohort_variable",
+    "cohort_place",
+    "cohort_row_place",
+    "cohort_unit",
+    "empty_variable",
+    "empty_unit",
 )
 _SOURCE_MARKERS = (
     "source",
@@ -3881,6 +3896,22 @@ _SOURCE_MARKERS = (
     "source_license",
     "source_provider",
     "source_date_range",
+    "source_variable",
+)
+_ALT_SOURCE_MARKERS = (
+    "alt_method",
+    "alt_period",
+    "alt_unit",
+)
+_UNUSED_AND_DERIVED_MARKERS = (
+    "unused_variable",
+    "unused_place",
+    "unused_unit",
+    "derived_variable",
+    "derived_place",
+    "derived_row_place",
+    "derived_unit",
+    "caveat",
 )
 # `_SYNTHESIS_MARKERS` names the pieces of free text that a marked turn
 # produces once it reaches synthesis. The debug report holds the title and
@@ -3932,7 +3963,7 @@ _MARKED_TOOL_CALL: JsonObject = {
 
 
 def _make_marked_table() -> CachedTable:
-    """Builds table `t1` with a marked variable, place, unit, and source."""
+    """Builds table `t1` with marked descriptive fields and valid DCIDs."""
     source = Source(
         name=_mark("source"),
         url=f"https://example.org/{_mark('source_url')}",
@@ -3940,6 +3971,16 @@ def _make_marked_table() -> CachedTable:
         license=_mark("source_license"),
         provider=_mark("source_provider"),
         date_range=_mark("source_date_range"),
+        variable_dcid="Count_Person",
+        variable_name=_mark("source_variable"),
+    )
+    alt_source = AlternativeSource(
+        facet_id="f_alt",
+        provenance_url=f"https://example.org/{_mark('alt_url')}",
+        measurement_method=_mark("alt_method"),
+        observation_period=_mark("alt_period"),
+        unit=_mark("alt_unit"),
+        places_found_count=1,
     )
     return CachedTable(
         table_id="t1",
@@ -3951,20 +3992,116 @@ def _make_marked_table() -> CachedTable:
             measurement_method=_mark("measurement_method"),
             observation_period=_mark("observation_period"),
             provenance=Provenance(sources=(source,)),
+            # A zero starting value makes `analyze_timeseries` emit a caveat
+            # naming `_mark("row_place")` on both data-bearing paths.
             rows=(
-                ObservationRow("country/FRA", _mark("place"), "2022", 67.8e6),
-                ObservationRow("country/FRA", _mark("place"), "2023", 68.2e6),
+                ObservationRow("country/FRA", _mark("row_place"), "2022", 0.0),
+                ObservationRow(
+                    "country/FRA", _mark("row_place"), "2023", 68.2e6
+                ),
             ),
             requested_places=("country/FRA",),
             place_names={"country/FRA": _mark("place")},
             facet_id="f1",
             source=source,
+            alternative_sources=(alt_source,),
+        ),
+    )
+
+
+def _make_marked_cohort_table(table_id: str = "t2") -> CachedTable:
+    """Builds a marked child-place cohort table for California counties."""
+    return CachedTable(
+        table_id=table_id,
+        table=ObservationTable(
+            variable_dcid="Median_Income_Household",
+            variable_name=_mark("cohort_variable"),
+            unit=_mark("cohort_unit"),
+            scaling_factor=None,
+            provenance=Provenance(),
+            rows=(
+                ObservationRow(
+                    "geoId/06085", _mark("cohort_row_place"), "2023", 150000.0
+                ),
+                ObservationRow(
+                    "geoId/06001", _mark("cohort_row_place"), "2023", 120000.0
+                ),
+            ),
+            requested_places=("geoId/06085", "geoId/06001"),
+            place_names={
+                "geoId/06085": _mark("cohort_place"),
+                "geoId/06001": _mark("cohort_place"),
+            },
+            facet_id="f2",
+            parent_place_dcid="geoId/06",
+            child_place_type="County",
+        ),
+    )
+
+
+def _make_marked_unused_table(table_id: str = "t3") -> CachedTable:
+    """Builds a marked non-empty fetched table that the answer does not use."""
+    return CachedTable(
+        table_id=table_id,
+        table=ObservationTable(
+            variable_dcid="Count_Household",
+            variable_name=_mark("unused_variable"),
+            unit=_mark("unused_unit"),
+            scaling_factor=None,
+            provenance=Provenance(),
+            rows=(
+                ObservationRow(
+                    "country/DEU", _mark("unused_row_place"), "2023", 41.0e6
+                ),
+            ),
+            requested_places=("country/DEU",),
+            place_names={"country/DEU": _mark("unused_place")},
+            facet_id="f3",
+        ),
+    )
+
+
+def _make_marked_empty_table(table_id: str = "t4") -> CachedTable:
+    """Builds an empty 0-row fetched table with distinct valid test DCIDs."""
+    return CachedTable(
+        table_id=table_id,
+        table=ObservationTable(
+            variable_dcid="Count_Empty_Indicator",
+            variable_name=_mark("empty_variable"),
+            unit=_mark("empty_unit"),
+            scaling_factor=None,
+            provenance=Provenance(),
+            rows=(),
+            requested_places=("country/EMPTY",),
+            place_names={"country/EMPTY": _mark("empty_place")},
+            facet_id="f_empty",
+        ),
+    )
+
+
+def _make_marked_derived_table(table_id: str = "s9") -> CachedTable:
+    """Builds a derived table with distinct valid test DCIDs."""
+    return CachedTable(
+        table_id=table_id,
+        table=ObservationTable(
+            variable_dcid="Derived_Extra_Metric",
+            variable_name=_mark("derived_variable"),
+            unit=_mark("derived_unit"),
+            scaling_factor=None,
+            provenance=Provenance(),
+            rows=(
+                ObservationRow(
+                    "country/DERIVED", _mark("derived_row_place"), "2023", 1.5
+                ),
+            ),
+            requested_places=("country/DERIVED",),
+            place_names={"country/DERIVED": _mark("derived_place")},
         ),
     )
 
 
 def _make_marked_diagnostic() -> StepRefusalDiagnostic:
-    """Builds a step refusal whose message is a marker."""
+    """Builds a step refusal with a marked message and alternative sources."""
     return StepRefusalDiagnostic(
         refusal_reason="insufficient_coverage",
         message=_mark("diagnostic"),
@@ -3972,7 +4109,7 @@ def _make_marked_diagnostic() -> StepRefusalDiagnostic:
         script="rank_cohort",
         input_table_ids=("t1",),
         coverage=None,
-        alternative_sources=(),
+        alternative_sources=_make_marked_table().table.alternative_sources,
         completed_results=(),
     )
 
@@ -4023,13 +4160,20 @@ def _plant_model_specification_markers(
                     "step_id": "s1",
                     "script": "analyze_timeseries",
                     "table": "t1",
-                }
+                },
+                {
+                    "step_id": "s2",
+                    "script": "rank_cohort",
+                    "table": "t2",
+                    "n": 1,
+                },
             ],
             "findings": [_mark("finding")],
             "missing": [_mark("missing")],
             "related": [_mark("related")],
         }
     )
+    diagnostic = _make_marked_diagnostic()
 
     async def run_loop(
         transcript: Transcript,
@@ -4043,8 +4187,22 @@ def _plant_model_specification_markers(
     ) -> DiscoveryResult:
         thought_callback(_mark("discovery_thought"), 1)
         cache.store_fetched(_make_marked_table())
-        digest = await execute_specification(specification, cache)
-        assert isinstance(digest, AnalysisDigest)
+        cache.store_fetched(_make_marked_cohort_table("t2"))
+        cache.store_fetched(_make_marked_unused_table("t3"))
+        cache.store_fetched(_make_marked_empty_table("t4"))
+        executed = await execute_specification(specification, cache)
+        assert isinstance(executed, AnalysisDigest)
+        derived_entry = _make_marked_derived_table("s9")
+        cache.store_derived(derived_entry)
+        first_result = replace(
+            executed.results[0],
+            caveats=(*executed.results[0].caveats, _mark("caveat")),
+        )
+        derived_result = analyze_timeseries(derived_entry.table, step_id="s9")
+        digest = AnalysisDigest.from_results(
+            (first_result, *executed.results[1:], derived_result),
+            missing_notes=executed.missing_notes,
+        )
         return DiscoveryResult(
             tool_calls=[dict(_MARKED_TOOL_CALL)],
             specification=specification,
@@ -4053,10 +4211,13 @@ def _plant_model_specification_markers(
                 RejectedSubmission(
                     round_number=1,
                     reason="processing_failed",
-                    errors=(_mark("rejection_error"),),
+                    errors=(
+                        _mark("rejection_error"),
+                        diagnostic.format_for_retry(),
+                    ),
                 )
             ],
-            diagnostics=[(1, _make_marked_diagnostic())],
+            diagnostics=[(1, diagnostic)],
         )
 
     monkeypatch.setattr(chat_pipeline, "execute_discovery_loop", run_loop)
@@ -4071,6 +4232,8 @@ def _plant_model_specification_markers(
         "related",
         *_TABLE_MARKERS,
         *_SOURCE_MARKERS,
+        *_ALT_SOURCE_MARKERS,
+        *_UNUSED_AND_DERIVED_MARKERS,
         *_SYNTHESIS_MARKERS,
     )
 
@@ -4137,6 +4300,8 @@ def _plant_default_specification_markers(
             diagnostics=[(2, diagnostic)],
         ),
         _make_marked_table(),
+        _make_marked_cohort_table("t2"),
+        _make_marked_empty_table("t3"),
     )
     return (
         "tool_argument",
@@ -4266,19 +4431,24 @@ async def test_the_chat_turn_record_does_not_contain_conversation_text(
     plant_markers: Callable[[pytest.MonkeyPatch], tuple[str, ...]],
 ) -> None:
     # Test: The `chat_turn` line does not contain any text from the
-    #   conversation.
+    #   conversation, and records verified table and place DCIDs on data
+    #   turns without leaking empty fetches or derived tables.
     # Situation: Every piece of free text of a turn is a marker string. The
     #   transcript marks the query, the idempotency keys, the summary, and
     #   the query, the answer, and the data scope names of an earlier turn.
     #   Synthesis marks a thought, the title, the text, a chart title, and
     #   a follow-up question. Each case then marks the text of one kind of
-    #   turn: a specification from the model, the default specification
-    #   after a refusal, a report that data is unavailable, a
-    #   clarification, a refused turn, or a failed turn. The debug report
-    #   is on.
+    #   turn: a specification from the model (with named-place, cohort,
+    #   unused, empty 0-row, and derived tables, plus marked caveats and
+    #   missing notes), the default specification after a refusal, a report
+    #   that data is unavailable, a clarification, a refused turn, or a
+    #   failed turn. The debug report is on.
     # Expectation: Each marker that the case plants appears in a frame of
     #   the turn, which shows that the turn held it. The server writes
-    #   exactly one line, and the raw line does not contain any marker.
+    #   exactly one line, and the raw line does not contain any marker or
+    #   any DCID from an empty fetch or a derived table. On the two
+    #   `answered_with_data` paths, `tables` and `highlighted_places` hold
+    #   the expected verified DCIDs.
     monkeypatch.setenv(DEBUG_REPORT_ENV, "on")
     _plant_synthesis_markers(monkeypatch)
     planted = plant_markers(monkeypatch)
@@ -4289,8 +4459,150 @@ async def test_the_chat_turn_record_does_not_contain_conversation_text(
     for name in planted:
         assert _mark(name) in turn_text, name
     (line,) = structured_lines
-    assert json.loads(line)["event"] == "chat_turn"
     assert _MARKER_PREFIX not in line
+    for excluded in (
+        "Count_Empty_Indicator",
+        "country/EMPTY",
+        "f_empty",
+        "Derived_Extra_Metric",
+        "country/DERIVED",
+        "s9",
+    ):
+        assert excluded not in line
+    parsed = json.loads(line)
+    assert isinstance(parsed, dict)
+    assert parsed["event"] == "chat_turn"
+    assert parsed["tables_truncated"] is False
+    if parsed["outcome"] == "answered_with_data":
+        expected_tables: list[JsonObject] = [
+            {
+                "table_id": "t1",
+                "used_in_answer": True,
+                "variable_dcid": "Count_Person",
+                "facet_id": "f1",
+                "row_count": 2,
+                "parent_place_dcid": None,
+                "child_place_type": None,
+                "places_with_data_count": 1,
+                "place_dcids": ["country/FRA"],
+                "earliest_date": "2022",
+                "latest_date": "2023",
+            },
+            {
+                "table_id": "t2",
+                "used_in_answer": True,
+                "variable_dcid": "Median_Income_Household",
+                "facet_id": "f2",
+                "row_count": 2,
+                "parent_place_dcid": "geoId/06",
+                "child_place_type": "County",
+                "places_with_data_count": 2,
+                "place_dcids": [],
+                "earliest_date": "2023",
+                "latest_date": "2023",
+            },
+        ]
+        if plant_markers is _plant_model_specification_markers:
+            expected_tables.append(
+                {
+                    "table_id": "t3",
+                    "used_in_answer": False,
+                    "variable_dcid": "Count_Household",
+                    "facet_id": "f3",
+                    "row_count": 1,
+                    "parent_place_dcid": None,
+                    "child_place_type": None,
+                    "places_with_data_count": 1,
+                    "place_dcids": ["country/DEU"],
+                    "earliest_date": "2023",
+                    "latest_date": "2023",
+                }
+            )
+            expected_second_source = "ranked_bottom"
+        else:
+            expected_second_source = "ranked_top"
+        assert parsed["tables"] == expected_tables
+        assert parsed["highlighted_places"] == [
+            {"place_dcid": "country/FRA", "source": "timeseries"},
+            {"place_dcid": "geoId/06085", "source": "ranked_top"},
+            {"place_dcid": "geoId/06001", "source": expected_second_source},
+        ]
+    else:
+        assert parsed["tables"] == []
+        assert parsed["highlighted_places"] == []
+
+
+@pytest.mark.asyncio
+async def test_the_chat_turn_record_tracks_tables_used_across_derived_steps(
+    monkeypatch: pytest.MonkeyPatch,
+    turn: _Turn,
+    structured_lines: list[str],
+) -> None:
+    # Test: `used_in_answer` on `chat_turn.tables` across a multi-step derived
+    #   specification.
+    # Situation: Discovery fetches child-place cohort tables `t1` and `t2` plus
+    #   an unused named-place table `t3`. Step `s1` derives a ratio table from
+    #   `t1` and `t2`, and step `s2` ranks `s1` with focal place `geoId/03`.
+    # Expectation: `chat_turn.tables` lists `t1`, `t2`, and `t3` (excluding
+    #   derived `s1`), marks `t1` and `t2` as `used_in_answer: true` and `t3`
+    #   as `used_in_answer: false`, and starts `highlighted_places` with
+    #   `geoId/03` (`ranked_focal`).
+    spec = AnalysisSpecification.model_validate(
+        {
+            "focal_places": ["geoId/03"],
+            "steps": [
+                {
+                    "step_id": "s1",
+                    "script": "compute_derived_metric",
+                    "left": "t1",
+                    "right": "t2",
+                    "operation": "ratio",
+                },
+                {
+                    "step_id": "s2",
+                    "script": "rank_cohort",
+                    "table": "s1",
+                },
+            ],
+        }
+    )
+
+    async def run_loop(
+        transcript: Transcript,
+        config: AgentConfig,
+        tools: Sequence[mcp_client.McpTool],
+        telemetry: TurnTelemetry,
+        cache: TurnCache,
+        **_: object,
+    ) -> DiscoveryResult:
+        cache.store_fetched(
+            _make_state_cohort("t1", "Count_Person", "01 02 03 04")
+        )
+        cache.store_fetched(
+            _make_state_cohort("t2", "Area_Land", "01 02 03 04")
+        )
+        cache.store_fetched(_make_table("t3", places=("country/ESP",)))
+        digest = await execute_specification(spec, cache)
+        assert isinstance(digest, AnalysisDigest)
+        return DiscoveryResult(specification=spec, digest=digest)
+
+    monkeypatch.setattr(chat_pipeline, "execute_discovery_loop", run_loop)
+    await chat_pipeline.run_turn(_TRANSCRIPT, turn.emit)
+
+    (line,) = structured_lines
+    parsed = json.loads(line)
+    assert [
+        (entry["table_id"], entry["used_in_answer"])
+        for entry in parsed["tables"]
+    ] == [
+        ("t1", True),
+        ("t2", True),
+        ("t3", False),
+    ]
+    assert parsed["highlighted_places"][0] == {
+        "place_dcid": "geoId/03",
+        "source": "ranked_focal",
+    }
 
 
 @pytest.mark.parametrize(

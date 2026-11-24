@@ -30,21 +30,43 @@ Verifies that:
    `processing` as nested. It lists the token counts of each model call
    that reported its role and model, and it sorts the tool counts by tool
    name.
-6. `build_usage_record` raises `ValueError` for a turn that has not ended.
+6. `tables` and `tables_truncated` record up to 20 non-empty fetched tables
+   with validated identifiers, cohort or capped named-place scopes, and
+   date spans. Empty fetches and derived tables are excluded, and trailing
+   entries are dropped when a record would exceed `MAX_RECORD_LINE_BYTES`.
+7. `highlighted_places` records up to 25 deduplicated places grounded in
+   non-empty fetched tables across all 10 metric sources, with focal entries
+   taking precedence on ranking and distribution steps.
+8. `build_usage_record` raises `ValueError` for a turn that has not ended.
    A record with every list at its bound stays under the size limit of one
    line.
 """
 
 import dataclasses
 import json
+import logging
 import time
+from collections.abc import Sequence
 
 import pytest
 
-from narratives_agent.analytics.digest import AnalysisDigest
-from narratives_agent.analytics.metrics import ScriptName
+from narratives_agent import telemetry as telemetry_module
+from narratives_agent.analytics.composition import compute_composition
+from narratives_agent.analytics.derived import derive_observation_table
+from narratives_agent.analytics.digest import (
+    AnalysisDigest,
+    RefusedScriptResult,
+)
+from narratives_agent.analytics.distribution import summarize_distribution
+from narratives_agent.analytics.metrics import CompositionMode, ScriptName
 from narratives_agent.analytics.provenance import Provenance
-from narratives_agent.analytics.tables import ObservationRow, ObservationTable
+from narratives_agent.analytics.ranking import rank_cohort
+from narratives_agent.analytics.relations import relate_cohorts
+from narratives_agent.analytics.tables import (
+    MAX_DCID_CHARS,
+    ObservationRow,
+    ObservationTable,
+)
 from narratives_agent.analytics.timeseries import analyze_timeseries
 from narratives_agent.json_value import JsonObject
 from narratives_agent.telemetry import (
@@ -65,13 +87,21 @@ from narratives_agent.workflows.mcp_loop import (
     SERVER_FUNCTION_NAMES,
 )
 from narratives_agent.workflows.transcript import (
+    MAX_PLACE_TYPE_CHARS,
     MAX_TURN_INDEX,
     ConversationStateSlots,
     Transcript,
     Turn,
 )
+from narratives_agent.workflows.turn_cache import CachedTable
 from narratives_agent.workflows.turn_record import TurnRecord
 from narratives_agent.workflows.usage_record import (
+    MAX_HIGHLIGHTED_PLACES,
+    MAX_LOGGED_TABLES,
+    MAX_TABLE_PLACE_DCIDS,
+    HighlightedPlace,
+    LoggedTable,
+    PlaceHighlightSource,
     RefusalStage,
     TokenCall,
     TokenTotals,
@@ -114,6 +144,9 @@ _KEYS = [
     "tool_call_counts",
     "tables_fetched",
     "total_rows_fetched",
+    "tables_truncated",
+    "tables",
+    "highlighted_places",
     "scripts",
     "processing_retries",
     "charts_emitted",
@@ -177,6 +210,45 @@ def _finish_turn(
     telemetry.finish(state, reason)
 
 
+def _make_cached_table(
+    table_id: str = "t1",
+    *,
+    variable_dcid: str = "Count_Person",
+    places: Sequence[str] = ("country/FRA",),
+    dates: Sequence[str] = ("2022", "2023"),
+    facet_id: str | None = "f1",
+    parent_place_dcid: str | None = None,
+    child_place_type: str | None = None,
+) -> CachedTable:
+    """Builds a cached observation table for `places` over `dates`."""
+    rows = tuple(
+        ObservationRow(
+            place_dcid=place,
+            place_name=place,
+            date=date,
+            value=float((place_index + 1) * 10 + date_index),
+        )
+        for place_index, place in enumerate(places)
+        for date_index, date in enumerate(dates)
+    )
+    return CachedTable(
+        table_id=table_id,
+        table=ObservationTable(
+            variable_dcid=variable_dcid,
+            variable_name=variable_dcid,
+            unit="Person",
+            scaling_factor=None,
+            provenance=Provenance(),
+            rows=rows,
+            requested_places=tuple(places),
+            place_names={place: place for place in places},
+            facet_id=facet_id,
+            parent_place_dcid=parent_place_dcid,
+            child_place_type=child_place_type,
+        ),
+    )
+
+
 def _make_digest(*, has_data: bool) -> AnalysisDigest:
     """Builds a digest with one computed result, or without a result."""
     if not has_data:
@@ -223,9 +295,10 @@ def test_a_turn_that_ran_every_phase_writes_every_key_with_its_value(
     # Test: The written `chat_turn` record of a turn where every key applies.
     # Situation: A follow-up turn after the turn with index 4 completes with
     #   data after 604.75 ms. The telemetry holds a duration for all six
-    #   phases, in the order in which the phases end. The turn called three
-    #   tools, made two model calls, ran two scripts, was truncated, and was
-    #   signed with compaction.
+    #   phases, in the order in which the phases end. The turn fetched two
+    #   tables, used the first in the answer, called three tools, made two
+    #   model calls, ran two scripts, was truncated, and was signed with
+    #   compaction.
     # Expectation: The line holds the schema's keys in order, each with the
     #   value that the turn recorded. The phases are in the fixed order with
     #   only `processing` nested, and the tools are sorted by name.
@@ -268,6 +341,19 @@ def test_a_turn_that_ran_every_phase_writes_every_key_with_its_value(
         model="model-flash",
         round_number=1,
     )
+    record.cache.store_fetched(_make_cached_table("t1"))
+    record.cache.store_fetched(
+        _make_cached_table(
+            "t2",
+            variable_dcid="Median_Income_Household",
+            places=("geoId/06", "geoId/36"),
+            dates=("2023",),
+            facet_id=None,
+            parent_place_dcid="country/USA",
+            child_place_type="State",
+        )
+    )
+    record.used_table_ids = frozenset({"t1"})
     record.digest = _make_digest(has_data=True)
     record.loop_result.truncated = True
     record.is_signed = True
@@ -344,6 +430,38 @@ def test_a_turn_that_ran_every_phase_writes_every_key_with_its_value(
         ],
         "tables_fetched": 2,
         "total_rows_fetched": 1_200,
+        "tables_truncated": False,
+        "tables": [
+            {
+                "table_id": "t1",
+                "used_in_answer": True,
+                "variable_dcid": "Count_Person",
+                "facet_id": "f1",
+                "row_count": 2,
+                "parent_place_dcid": None,
+                "child_place_type": None,
+                "places_with_data_count": 1,
+                "place_dcids": ["country/FRA"],
+                "earliest_date": "2022",
+                "latest_date": "2023",
+            },
+            {
+                "table_id": "t2",
+                "used_in_answer": False,
+                "variable_dcid": "Median_Income_Household",
+                "facet_id": None,
+                "row_count": 2,
+                "parent_place_dcid": "country/USA",
+                "child_place_type": "State",
+                "places_with_data_count": 2,
+                "place_dcids": [],
+                "earliest_date": "2023",
+                "latest_date": "2023",
+            },
+        ],
+        "highlighted_places": [
+            {"place_dcid": "country/FRA", "source": "timeseries"}
+        ],
         "scripts": ["align_cohort", "rank_cohort"],
         "processing_retries": 1,
         "charts_emitted": 4,
@@ -370,11 +488,12 @@ def test_a_turn_that_ran_no_phase_writes_every_key_with_its_empty_value(
         seconds=0.0125,
     )
 
-    written = _write_record(
-        build_usage_record(record, _make_transcript(), build_sha=None),
-        structured_lines,
-    )
+    usage = build_usage_record(record, _make_transcript(), build_sha=None)
+    written = _write_record(usage, structured_lines)
 
+    assert usage.tables_truncated is False
+    assert usage.tables == ()
+    assert usage.highlighted_places == ()
     assert list(written) == _KEYS
     assert written == {
         "severity": "INFO",
@@ -411,6 +530,9 @@ def test_a_turn_that_ran_no_phase_writes_every_key_with_its_empty_value(
         "tool_call_counts": [],
         "tables_fetched": 0,
         "total_rows_fetched": 0,
+        "tables_truncated": False,
+        "tables": [],
+        "highlighted_places": [],
         "scripts": [],
         "processing_retries": 0,
         "charts_emitted": 0,
@@ -753,6 +875,828 @@ def test_the_token_calls_list_each_model_call_that_was_attributed() -> None:
     )
 
 
+def test_a_turn_without_a_digest_has_empty_highlighted_places() -> None:
+    # Test: `highlighted_places` when `record.digest` is `None`.
+    # Situation: A turn fetched one table and ended in an error before a
+    #   digest was resolved.
+    # Expectation: `tables` holds the fetched table as unused,
+    #   `tables_truncated` is `False`, and `highlighted_places` is empty.
+    record = _make_record(TerminalState.ERROR, ErrorType.MCP_TIMEOUT)
+    record.cache.store_fetched(_make_cached_table("t1"))
+
+    usage = _build_record(record)
+
+    assert len(usage.tables) == 1
+    assert usage.tables[0].used_in_answer is False
+    assert usage.tables_truncated is False
+    assert usage.highlighted_places == ()
+
+
+def test_a_named_place_table_records_its_identifiers_places_and_date_span(
+    structured_lines: list[str],
+) -> None:
+    # Test: `LoggedTable` fields and key order for named-place tables.
+    # Situation: A turn fetched two named-place tables and used the first in
+    #   its answer. The first table has a facet ID, three places given out of
+    #   alphabetical order, and three dates given out of chronological order.
+    #   The second table does not have a facet ID and has one observation.
+    # Expectation: Both tables appear in fetch order with `used_in_answer`
+    #   reflecting `used_table_ids`, `parent_place_dcid` and
+    #   `child_place_type` set to `None`, sorted `place_dcids`, and the
+    #   minimum and maximum dates. Each serialized table object keeps the
+    #   declared field order.
+    record = _make_record()
+    first = CachedTable(
+        table_id="t1",
+        table=ObservationTable(
+            variable_dcid="Count_Person",
+            variable_name="Total Population",
+            unit="Person",
+            scaling_factor=None,
+            provenance=Provenance(),
+            rows=(
+                ObservationRow("country/ITA", "Italy", "2023-05", 58.9e6),
+                ObservationRow("country/DEU", "Germany", "2021-01", 83.2e6),
+                ObservationRow("country/FRA", "France", "2022-11", 67.8e6),
+            ),
+            requested_places=("country/ITA", "country/DEU", "country/FRA"),
+            place_names={
+                "country/ITA": "Italy",
+                "country/DEU": "Germany",
+                "country/FRA": "France",
+            },
+            facet_id="2176550201",
+        ),
+    )
+    second = _make_cached_table(
+        "t2",
+        variable_dcid="UnemploymentRate_Person",
+        places=("country/ESP",),
+        dates=("2020",),
+        facet_id=None,
+    )
+    record.cache.store_fetched(first)
+    record.cache.store_fetched(second)
+    record.used_table_ids = frozenset({"t1"})
+
+    usage = _build_record(record)
+    written = _write_record(usage, structured_lines)
+
+    assert usage.tables_truncated is False
+    assert usage.tables == (
+        LoggedTable(
+            table_id="t1",
+            used_in_answer=True,
+            variable_dcid="Count_Person",
+            facet_id="2176550201",
+            row_count=3,
+            parent_place_dcid=None,
+            child_place_type=None,
+            places_with_data_count=3,
+            place_dcids=("country/DEU", "country/FRA", "country/ITA"),
+            earliest_date="2021-01",
+            latest_date="2023-05",
+        ),
+        LoggedTable(
+            table_id="t2",
+            used_in_answer=False,
+            variable_dcid="UnemploymentRate_Person",
+            facet_id=None,
+            row_count=1,
+            parent_place_dcid=None,
+            child_place_type=None,
+            places_with_data_count=1,
+            place_dcids=("country/ESP",),
+            earliest_date="2020",
+            latest_date="2020",
+        ),
+    )
+    written_tables = written["tables"]
+    assert isinstance(written_tables, list)
+    first_written = written_tables[0]
+    assert isinstance(first_written, dict)
+    assert list(first_written) == [
+        "table_id",
+        "used_in_answer",
+        "variable_dcid",
+        "facet_id",
+        "row_count",
+        "parent_place_dcid",
+        "child_place_type",
+        "places_with_data_count",
+        "place_dcids",
+        "earliest_date",
+        "latest_date",
+    ]
+
+
+def test_a_named_place_table_caps_its_place_list_at_twenty_five() -> None:
+    # Test: Per-table cap on `place_dcids`.
+    # Situation: A non-cohort table has observations for 30 distinct places,
+    #   passed in reverse order.
+    # Expectation: `places_with_data_count` is 30, `place_dcids` holds the
+    #   first 25 sorted DCIDs, and `tables_truncated` stays `False`.
+    places = [f"geoId/{index:02d}" for index in range(30, 0, -1)]
+    record = _make_record()
+    record.cache.store_fetched(
+        _make_cached_table("t1", places=places, dates=("2023",))
+    )
+
+    usage = _build_record(record)
+
+    (logged,) = usage.tables
+    assert logged.places_with_data_count == 30
+    assert len(logged.place_dcids) == MAX_TABLE_PLACE_DCIDS
+    assert logged.place_dcids == tuple(
+        f"geoId/{index:02d}" for index in range(1, 26)
+    )
+    assert usage.tables_truncated is False
+
+
+def test_a_complete_child_place_cohort_table_omits_individual_place_dcids(
+    structured_lines: list[str],
+) -> None:
+    # Test: `LoggedTable` for a complete child-place cohort.
+    # Situation: A fetched table has a valid `parent_place_dcid` and a
+    #   `child_place_type` of `MAX_PLACE_TYPE_CHARS` characters, with rows
+    #   for three child places.
+    # Expectation: `parent_place_dcid` and `child_place_type` are preserved,
+    #   `places_with_data_count` is 3, and `place_dcids` is empty (`[]` in
+    #   JSON).
+    max_length_type = "A" * MAX_PLACE_TYPE_CHARS
+    record = _make_record()
+    record.cache.store_fetched(
+        _make_cached_table(
+            "t1",
+            places=("geoId/06001", "geoId/06075", "geoId/06085"),
+            dates=("2023",),
+            parent_place_dcid="geoId/06",
+            child_place_type=max_length_type,
+        )
+    )
+
+    usage = _build_record(record)
+    written = _write_record(usage, structured_lines)
+
+    (logged,) = usage.tables
+    assert logged.parent_place_dcid == "geoId/06"
+    assert logged.child_place_type == max_length_type
+    assert logged.places_with_data_count == 3
+    assert logged.place_dcids == ()
+    written_tables = written["tables"]
+    assert isinstance(written_tables, list)
+    first_written = written_tables[0]
+    assert isinstance(first_written, dict)
+    assert first_written["place_dcids"] == []
+
+
+@pytest.mark.parametrize(
+    ("parent_place_dcid", "child_place_type"),
+    [
+        pytest.param("geoId/06", None, id="missing child_place_type"),
+        pytest.param(None, "County", id="missing parent_place_dcid"),
+        pytest.param("bad parent", "County", id="invalid parent_place_dcid"),
+        pytest.param(
+            "geoId/06", "County_Name", id="invalid child_place_type pattern"
+        ),
+        pytest.param(
+            "geoId/06",
+            "A" * (MAX_PLACE_TYPE_CHARS + 1),
+            id="child_place_type over length cap",
+        ),
+    ],
+)
+def test_an_incomplete_or_invalid_cohort_falls_back_to_named_places(
+    parent_place_dcid: str | None, child_place_type: str | None
+) -> None:
+    # Test: Incomplete or invalid cohort metadata on a fetched table.
+    # Situation: Only one of `parent_place_dcid` and `child_place_type` is
+    #   set, or one of the two fails its pattern or length check.
+    # Expectation: Both `parent_place_dcid` and `child_place_type` are `None`
+    #   on `LoggedTable`, and `place_dcids` lists the table's valid places.
+    record = _make_record()
+    record.cache.store_fetched(
+        _make_cached_table(
+            "t1",
+            places=("geoId/06075", "geoId/06001"),
+            dates=("2023",),
+            parent_place_dcid=parent_place_dcid,
+            child_place_type=child_place_type,
+        )
+    )
+
+    usage = _build_record(record)
+
+    (logged,) = usage.tables
+    assert logged.parent_place_dcid is None
+    assert logged.child_place_type is None
+    assert logged.places_with_data_count == 2
+    assert logged.place_dcids == ("geoId/06001", "geoId/06075")
+
+
+def test_empty_fetches_and_derived_tables_are_excluded_from_tables() -> None:
+    # Test: Exclusion of 0-row fetched tables and derived tables.
+    # Situation: The turn cache holds an empty fetched table `t1`, a
+    #   non-empty fetched table `t2`, and a derived table `s1`, while
+    #   `TurnTelemetry` counts both fetched tables.
+    # Expectation: `tables_fetched` stays 2, `tables` holds only `t2`, and
+    #   `tables_truncated` is `False`.
+    record = _make_record()
+    empty = CachedTable(
+        table_id="t1",
+        table=ObservationTable(
+            variable_dcid="Count_Person",
+            variable_name="Total Population",
+            unit="Person",
+            scaling_factor=None,
+            provenance=Provenance(),
+            rows=(),
+            requested_places=("country/FRA",),
+            place_names={"country/FRA": "France"},
+        ),
+    )
+    populated = _make_cached_table(
+        "t2", places=("country/DEU",), dates=("2023",)
+    )
+    derived = _make_cached_table(
+        "s1", variable_dcid="Derived_PerCapita", places=("country/ESP",)
+    )
+    record.cache.store_fetched(empty)
+    record.cache.store_fetched(populated)
+    record.cache.store_derived(derived)
+    record.telemetry.tables_fetched = record.cache.tables_fetched
+    record.telemetry.total_rows_fetched = record.cache.total_rows_fetched
+
+    usage = _build_record(record)
+
+    assert usage.tables_fetched == 2
+    assert usage.total_rows_fetched == 1
+    assert [table.table_id for table in usage.tables] == ["t2"]
+    assert usage.tables_truncated is False
+
+
+def test_invalid_identifiers_and_dates_are_filtered_out() -> None:
+    # Test: Pattern validation on table IDs, DCIDs, facet IDs, and row dates.
+    # Situation: `t1` has an invalid `variable_dcid`, `t2` has only invalid
+    #   place DCIDs, `t3` has an invalid `facet_id` alongside one valid and
+    #   one invalid place DCID and one valid and one invalid date, `t4` has
+    #   only invalid dates, and an entry under a malformed `t0` ID sits in
+    #   the cache.
+    # Expectation: `t1`, `t2`, and `t0` are excluded. `t3` is kept with
+    #   `facet_id=None`, only the valid place DCID, and the valid date. `t4`
+    #   is kept with `earliest_date=None` and `latest_date=None`.
+    record = _make_record()
+    record.cache.store_fetched(
+        _make_cached_table("t1", variable_dcid="bad variable")
+    )
+    record.cache.store_fetched(
+        _make_cached_table("t2", places=("bad place",), dates=("2023",))
+    )
+    record.cache.store_fetched(
+        CachedTable(
+            table_id="t3",
+            table=ObservationTable(
+                variable_dcid="Count_Person",
+                variable_name="Total Population",
+                unit="Person",
+                scaling_factor=None,
+                provenance=Provenance(),
+                rows=(
+                    ObservationRow("country/FRA", "France", "2021-13", 1.0),
+                    ObservationRow("country/FRA", "France", "2022-06", 2.0),
+                    ObservationRow("bad place", "Bad", "2020-01", 3.0),
+                ),
+                requested_places=("country/FRA",),
+                place_names={"country/FRA": "France"},
+                facet_id="bad facet",
+            ),
+        )
+    )
+    record.cache.store_fetched(
+        _make_cached_table(
+            "t4",
+            places=("country/DEU",),
+            dates=("0000", "2021-02-29", "not-a-date"),
+        )
+    )
+    record.cache._tables["t0"] = _make_cached_table(
+        "t0", places=("country/ITA",), dates=("2023",)
+    )
+
+    usage = _build_record(record)
+
+    assert usage.tables == (
+        LoggedTable(
+            table_id="t3",
+            used_in_answer=False,
+            variable_dcid="Count_Person",
+            facet_id=None,
+            row_count=3,
+            parent_place_dcid=None,
+            child_place_type=None,
+            places_with_data_count=1,
+            place_dcids=("country/FRA",),
+            earliest_date="2020-01",
+            latest_date="2022-06",
+        ),
+        LoggedTable(
+            table_id="t4",
+            used_in_answer=False,
+            variable_dcid="Count_Person",
+            facet_id="f1",
+            row_count=3,
+            parent_place_dcid=None,
+            child_place_type=None,
+            places_with_data_count=1,
+            place_dcids=("country/DEU",),
+            earliest_date=None,
+            latest_date=None,
+        ),
+    )
+
+
+def test_twenty_qualifying_tables_are_kept_without_truncation() -> None:
+    # Test: Count boundary at `MAX_LOGGED_TABLES` (`20`).
+    # Situation: A turn fetched 20 non-empty tables and 2 empty 0-row tables.
+    # Expectation: `tables` holds all 20 non-empty tables in fetch order, and
+    #   `tables_truncated` is `False`.
+    record = _make_record()
+    for index in range(1, MAX_LOGGED_TABLES + 1):
+        record.cache.store_fetched(
+            _make_cached_table(f"t{index}", dates=("2023",))
+        )
+    for index in range(MAX_LOGGED_TABLES + 1, MAX_LOGGED_TABLES + 3):
+        record.cache.store_fetched(
+            _make_cached_table(f"t{index}", places=(), dates=())
+        )
+
+    usage = _build_record(record)
+
+    assert len(usage.tables) == MAX_LOGGED_TABLES
+    assert [table.table_id for table in usage.tables] == [
+        f"t{index}" for index in range(1, MAX_LOGGED_TABLES + 1)
+    ]
+    assert usage.tables_truncated is False
+
+
+def test_more_than_twenty_qualifying_tables_truncate_at_twenty() -> None:
+    # Test: Count truncation above `MAX_LOGGED_TABLES` (`20`).
+    # Situation: A turn fetched 22 qualifying non-empty tables.
+    # Expectation: `tables` holds `t1` through `t20`, and `tables_truncated`
+    #   is `True`.
+    record = _make_record()
+    for index in range(1, 23):
+        record.cache.store_fetched(
+            _make_cached_table(f"t{index}", dates=("2023",))
+        )
+
+    usage = _build_record(record)
+
+    assert len(usage.tables) == MAX_LOGGED_TABLES
+    assert [table.table_id for table in usage.tables] == [
+        f"t{index}" for index in range(1, MAX_LOGGED_TABLES + 1)
+    ]
+    assert usage.tables_truncated is True
+
+
+def test_tables_are_trimmed_from_the_end_to_stay_within_the_line_byte_limit(
+    caplog: pytest.LogCaptureFixture, structured_lines: list[str]
+) -> None:
+    # Test: Byte-budget truncation of `tables` at `MAX_RECORD_LINE_BYTES`.
+    # Situation: A turn fetched 20 named-place tables, and each table holds
+    #   25 valid 256-character place DCIDs so the full 20-table list would
+    #   serialize well above `MAX_RECORD_LINE_BYTES` (14 KiB).
+    # Expectation: Trailing tables are dropped until the serialized JSON line
+    #   is at most `MAX_RECORD_LINE_BYTES` bytes, `tables_truncated` is
+    #   `True`, and `write_structured_record` does not log an oversized-line
+    #   warning.
+    assert MAX_RECORD_LINE_BYTES == 14 * 1024
+    record = _make_record()
+    for table_index in range(1, MAX_LOGGED_TABLES + 1):
+        places = [
+            f"p{table_index:02d}_{place_index:02d}_"
+            + ("x" * (MAX_DCID_CHARS - 7))
+            for place_index in range(MAX_TABLE_PLACE_DCIDS)
+        ]
+        record.cache.store_fetched(
+            _make_cached_table(
+                f"t{table_index}", places=places, dates=("2023",)
+            )
+        )
+
+    usage = _build_record(record)
+    with caplog.at_level(logging.WARNING, logger=telemetry_module.__name__):
+        write_structured_record(usage)
+
+    (line,) = structured_lines
+    assert 0 < len(usage.tables) < MAX_LOGGED_TABLES
+    assert [table.table_id for table in usage.tables] == [
+        f"t{index}" for index in range(1, len(usage.tables) + 1)
+    ]
+    assert usage.tables_truncated is True
+    assert len(line.encode("utf-8")) <= MAX_RECORD_LINE_BYTES
+    assert caplog.records == []
+
+
+def test_ranking_metrics_highlight_focal_then_top_then_bottom() -> None:
+    # Test: `ranked_focal`, `ranked_top`, and `ranked_bottom` ordering.
+    # Situation: A six-place cohort is ranked with `max_entries_per_end=2`.
+    #   On the first turn, `geoId/06` (which is also first in `top_n`) and
+    #   `geoId/03` are focal places. On the second turn, focal places are
+    #   not requested.
+    # Expectation: When focal places are present, `geoId/06` keeps
+    #   `ranked_focal` instead of `ranked_top`, followed by `geoId/03`, the
+    #   remaining `top_n` place, and `bottom_n`. Without focal places,
+    #   `top_n` comes first and `bottom_n` follows.
+    places = tuple(f"geoId/{index:02d}" for index in range(1, 7))
+    cached = _make_cached_table(
+        "t1",
+        places=places,
+        dates=("2023",),
+        parent_place_dcid="country/USA",
+        child_place_type="State",
+    )
+
+    with_focal = _make_record()
+    with_focal.cache.store_fetched(cached)
+    with_focal.digest = AnalysisDigest.from_results(
+        (
+            rank_cohort(
+                cached.table,
+                max_entries_per_end=2,
+                focal_places=["geoId/06", "geoId/03"],
+                step_id="s1",
+            ),
+        )
+    )
+
+    without_focal = _make_record()
+    without_focal.cache.store_fetched(cached)
+    without_focal.digest = AnalysisDigest.from_results(
+        (rank_cohort(cached.table, max_entries_per_end=2, step_id="s1"),)
+    )
+
+    assert _build_record(with_focal).highlighted_places == (
+        HighlightedPlace(
+            place_dcid="geoId/06", source=PlaceHighlightSource.RANKED_FOCAL
+        ),
+        HighlightedPlace(
+            place_dcid="geoId/03", source=PlaceHighlightSource.RANKED_FOCAL
+        ),
+        HighlightedPlace(
+            place_dcid="geoId/05", source=PlaceHighlightSource.RANKED_TOP
+        ),
+        HighlightedPlace(
+            place_dcid="geoId/01", source=PlaceHighlightSource.RANKED_BOTTOM
+        ),
+        HighlightedPlace(
+            place_dcid="geoId/02", source=PlaceHighlightSource.RANKED_BOTTOM
+        ),
+    )
+    assert _build_record(without_focal).highlighted_places == (
+        HighlightedPlace(
+            place_dcid="geoId/06", source=PlaceHighlightSource.RANKED_TOP
+        ),
+        HighlightedPlace(
+            place_dcid="geoId/05", source=PlaceHighlightSource.RANKED_TOP
+        ),
+        HighlightedPlace(
+            place_dcid="geoId/01", source=PlaceHighlightSource.RANKED_BOTTOM
+        ),
+        HighlightedPlace(
+            place_dcid="geoId/02", source=PlaceHighlightSource.RANKED_BOTTOM
+        ),
+    )
+
+
+def test_distribution_metrics_highlight_focal_then_max_then_min() -> None:
+    # Test: `distribution_focal`, `distribution_max`, and `distribution_min`.
+    # Situation: First, a four-place cohort is summarized with focal places
+    #   `geoId/04` (equal to `max`) and `geoId/02`. Second, the same cohort
+    #   is summarized without focal places. Third, a single-place cohort is
+    #   summarized so `max` and `min` name the same place.
+    # Expectation: Focal places come before `max` and `min` so `geoId/04`
+    #   keeps `distribution_focal`. Without focal places, `max` precedes
+    #   `min`. On the single-place cohort, the place is emitted once as
+    #   `distribution_max`.
+    four_places = _make_cached_table(
+        "t1",
+        places=("geoId/01", "geoId/02", "geoId/03", "geoId/04"),
+        dates=("2023",),
+    )
+    single_place = _make_cached_table(
+        "t1", places=("geoId/01",), dates=("2023",)
+    )
+
+    with_focal = _make_record()
+    with_focal.cache.store_fetched(four_places)
+    with_focal.digest = AnalysisDigest.from_results(
+        (
+            summarize_distribution(
+                four_places.table,
+                focal_places=["geoId/04", "geoId/02"],
+                step_id="s1",
+            ),
+        )
+    )
+
+    without_focal = _make_record()
+    without_focal.cache.store_fetched(four_places)
+    without_focal.digest = AnalysisDigest.from_results(
+        (summarize_distribution(four_places.table, step_id="s1"),)
+    )
+
+    singleton = _make_record()
+    singleton.cache.store_fetched(single_place)
+    singleton.digest = AnalysisDigest.from_results(
+        (summarize_distribution(single_place.table, step_id="s1"),)
+    )
+
+    assert _build_record(with_focal).highlighted_places == (
+        HighlightedPlace(
+            place_dcid="geoId/04",
+            source=PlaceHighlightSource.DISTRIBUTION_FOCAL,
+        ),
+        HighlightedPlace(
+            place_dcid="geoId/02",
+            source=PlaceHighlightSource.DISTRIBUTION_FOCAL,
+        ),
+        HighlightedPlace(
+            place_dcid="geoId/01",
+            source=PlaceHighlightSource.DISTRIBUTION_MIN,
+        ),
+    )
+    assert _build_record(without_focal).highlighted_places == (
+        HighlightedPlace(
+            place_dcid="geoId/04",
+            source=PlaceHighlightSource.DISTRIBUTION_MAX,
+        ),
+        HighlightedPlace(
+            place_dcid="geoId/01",
+            source=PlaceHighlightSource.DISTRIBUTION_MIN,
+        ),
+    )
+    assert _build_record(singleton).highlighted_places == (
+        HighlightedPlace(
+            place_dcid="geoId/01",
+            source=PlaceHighlightSource.DISTRIBUTION_MAX,
+        ),
+    )
+
+
+@pytest.mark.parametrize("mode", ["composition", "stages"])
+def test_relation_timeseries_and_composition_metrics_highlight_their_places(
+    mode: CompositionMode,
+) -> None:
+    # Test: `related_highest`, `related_lowest`, `timeseries`, and
+    #   `composition` (in both `composition` and `stages` modes).
+    # Situation: One turn relates two four-place tables with `n=2`, a second
+    #   turn analyzes two series, and a third turn computes composition or
+    #   stages over two component tables for two places.
+    # Expectation: Relation emits `highest_by` as `related_highest` and
+    #   `lowest_by` as `related_lowest`, timeseries emits `series` as
+    #   `timeseries`, and composition emits `places` as `composition` in
+    #   both modes.
+    places = ("geoId/01", "geoId/02", "geoId/03", "geoId/04")
+    by_table = _make_cached_table(
+        "t1", variable_dcid="Median_Income", places=places, dates=("2023",)
+    )
+    target_table = _make_cached_table(
+        "t2", variable_dcid="Percent_Diabetes", places=places, dates=("2023",)
+    )
+    relation_record = _make_record()
+    relation_record.cache.store_fetched(by_table)
+    relation_record.cache.store_fetched(target_table)
+    relation_record.digest = AnalysisDigest.from_results(
+        (relate_cohorts(target_table.table, by_table.table, n=2, step_id="s1"),)
+    )
+
+    series_table = _make_cached_table(
+        "t1", places=("country/FRA", "country/DEU"), dates=("2022", "2023")
+    )
+    series_record = _make_record()
+    series_record.cache.store_fetched(series_table)
+    series_record.digest = AnalysisDigest.from_results(
+        (analyze_timeseries(series_table.table, step_id="s1"),)
+    )
+
+    comp_a = _make_cached_table(
+        "t1",
+        variable_dcid="Stage_One",
+        places=("country/FRA", "country/DEU"),
+        dates=("2023",),
+    )
+    comp_b = CachedTable(
+        table_id="t2",
+        table=ObservationTable(
+            variable_dcid="Stage_Two",
+            variable_name="Stage_Two",
+            unit="Person",
+            scaling_factor=None,
+            provenance=Provenance(),
+            rows=(
+                ObservationRow("country/FRA", "France", "2023", 5.0),
+                ObservationRow("country/DEU", "Germany", "2023", 10.0),
+            ),
+            requested_places=("country/FRA", "country/DEU"),
+            place_names={"country/FRA": "France", "country/DEU": "Germany"},
+            facet_id="f1",
+        ),
+    )
+    comp_record = _make_record()
+    comp_record.cache.store_fetched(comp_a)
+    comp_record.cache.store_fetched(comp_b)
+    comp_record.digest = AnalysisDigest.from_results(
+        (
+            compute_composition(
+                [comp_a.table, comp_b.table], mode=mode, step_id="s1"
+            ),
+        )
+    )
+
+    assert _build_record(relation_record).highlighted_places == (
+        HighlightedPlace(
+            place_dcid="geoId/04",
+            source=PlaceHighlightSource.RELATED_HIGHEST,
+        ),
+        HighlightedPlace(
+            place_dcid="geoId/03",
+            source=PlaceHighlightSource.RELATED_HIGHEST,
+        ),
+        HighlightedPlace(
+            place_dcid="geoId/01",
+            source=PlaceHighlightSource.RELATED_LOWEST,
+        ),
+        HighlightedPlace(
+            place_dcid="geoId/02",
+            source=PlaceHighlightSource.RELATED_LOWEST,
+        ),
+    )
+    assert _build_record(series_record).highlighted_places == (
+        HighlightedPlace(
+            place_dcid="country/FRA", source=PlaceHighlightSource.TIMESERIES
+        ),
+        HighlightedPlace(
+            place_dcid="country/DEU", source=PlaceHighlightSource.TIMESERIES
+        ),
+    )
+    assert _build_record(comp_record).highlighted_places == (
+        HighlightedPlace(
+            place_dcid="country/FRA", source=PlaceHighlightSource.COMPOSITION
+        ),
+        HighlightedPlace(
+            place_dcid="country/DEU", source=PlaceHighlightSource.COMPOSITION
+        ),
+    )
+
+
+def test_derived_metrics_and_refused_steps_do_not_highlight_places() -> None:
+    # Test: `DerivedMetrics` and `RefusedScriptResult` in `highlighted_places`.
+    # Situation: A turn's digest contains an `ok` `DerivedMetrics` step over
+    #   two non-empty fetched tables and a `RefusedScriptResult`.
+    # Expectation: `highlighted_places` is empty.
+    left = _make_cached_table(
+        "t1", variable_dcid="Count_Employed", places=("country/FRA",)
+    )
+    right = _make_cached_table(
+        "t2", variable_dcid="Count_Person", places=("country/FRA",)
+    )
+    derived_outcome = derive_observation_table(
+        left.table, right.table, operation="per_capita", step_id="s1"
+    )
+    refused = RefusedScriptResult(
+        step_id="s2",
+        script="rank_cohort",
+        variables=("Count_Person",),
+        variable_names={"Count_Person": "Total Population"},
+        provenance=Provenance(),
+        variable_provenance={"Count_Person": Provenance()},
+        refusal_reason="insufficient_coverage",
+    )
+    record = _make_record()
+    record.cache.store_fetched(left)
+    record.cache.store_fetched(right)
+    record.digest = AnalysisDigest.from_results(
+        (derived_outcome.result, refused)
+    )
+
+    assert _build_record(record).highlighted_places == ()
+
+
+def test_highlighted_places_deduplicate_and_cap_at_twenty_five() -> None:
+    # Test: Cross-step deduplication and 25-place cap on `highlighted_places`.
+    # Situation: Step 1 (`analyze_timeseries`) highlights `geoId/30` and
+    #   `geoId/29`. Step 2 (`rank_cohort` with `max_entries_per_end=15` over
+    #   30 places) highlights all 30 places, including `geoId/30` and
+    #   `geoId/29`.
+    # Expectation: `geoId/30` and `geoId/29` appear once at the front with
+    #   step 1's `timeseries` source, and the list stops at 25 distinct
+    #   places in step and field order.
+    places = tuple(f"geoId/{index:02d}" for index in range(1, 31))
+    cached = _make_cached_table("t1", places=places, dates=("2022", "2023"))
+    record = _make_record()
+    record.cache.store_fetched(cached)
+    record.digest = AnalysisDigest.from_results(
+        (
+            analyze_timeseries(
+                cached.table, places=["geoId/30", "geoId/29"], step_id="s1"
+            ),
+            rank_cohort(cached.table, max_entries_per_end=15, step_id="s2"),
+        )
+    )
+
+    highlighted = _build_record(record).highlighted_places
+
+    assert len(highlighted) == MAX_HIGHLIGHTED_PLACES
+    assert len({entry.place_dcid for entry in highlighted}) == (
+        MAX_HIGHLIGHTED_PLACES
+    )
+    assert highlighted[:3] == (
+        HighlightedPlace(
+            place_dcid="geoId/30", source=PlaceHighlightSource.TIMESERIES
+        ),
+        HighlightedPlace(
+            place_dcid="geoId/29", source=PlaceHighlightSource.TIMESERIES
+        ),
+        HighlightedPlace(
+            place_dcid="geoId/28", source=PlaceHighlightSource.RANKED_TOP
+        ),
+    )
+
+
+def test_highlighted_places_require_grounding_in_a_fetched_table() -> None:
+    # Test: Grounding check on `highlighted_places`, including places from
+    #   fetched tables truncated out of `tables`.
+    # Situation: The cache holds 21 non-empty fetched tables (`t1`..`t21`,
+    #   covering `geoId/01` through `geoId/21` respectively), an empty 0-row
+    #   fetched table `t22` requesting `geoId/empty`, and a derived table `s1`
+    #   covering `geoId/derived`. The digest highlights `geoId/01`, `geoId/21`,
+    #   `geoId/empty`, `geoId/derived`, and an ungrounded `geoId/synthetic`.
+    # Expectation: `t21` is omitted from `tables` by the 20-table cap, yet
+    #   `geoId/21` is still accepted as grounded alongside `geoId/01`, while
+    #   `geoId/empty`, `geoId/derived`, and `geoId/synthetic` are dropped.
+    record = _make_record()
+    for index in range(1, 22):
+        record.cache.store_fetched(
+            _make_cached_table(
+                f"t{index}",
+                places=(f"geoId/{index:02d}",),
+                dates=("2023",),
+            )
+        )
+    record.cache.store_fetched(
+        CachedTable(
+            table_id="t22",
+            table=ObservationTable(
+                variable_dcid="Count_Person",
+                variable_name="Total Population",
+                unit="Person",
+                scaling_factor=None,
+                provenance=Provenance(),
+                rows=(),
+                requested_places=("geoId/empty",),
+                place_names={"geoId/empty": "Empty"},
+            ),
+        )
+    )
+    record.cache.store_derived(
+        _make_cached_table(
+            "s1",
+            variable_dcid="Derived_Var",
+            places=("geoId/derived",),
+            dates=("2023",),
+        )
+    )
+    synthetic_table = _make_cached_table(
+        "t99",
+        places=(
+            "geoId/01",
+            "geoId/21",
+            "geoId/empty",
+            "geoId/derived",
+            "geoId/synthetic",
+        ),
+        dates=("2023",),
+    )
+    record.digest = AnalysisDigest.from_results(
+        (analyze_timeseries(synthetic_table.table, step_id="s2"),)
+    )
+
+    usage = _build_record(record)
+
+    assert len(usage.tables) == MAX_LOGGED_TABLES
+    assert usage.tables_truncated is True
+    assert "t21" not in {table.table_id for table in usage.tables}
+    assert usage.highlighted_places == (
+        HighlightedPlace(
+            place_dcid="geoId/01", source=PlaceHighlightSource.TIMESERIES
+        ),
+        HighlightedPlace(
+            place_dcid="geoId/21", source=PlaceHighlightSource.TIMESERIES
+        ),
+    )
+
+
 def test_a_turn_that_has_not_ended_does_not_have_a_record() -> None:
     # Test: Building a record before the turn has a terminal state.
     # Situation: The turn's record does not have a terminal state yet.
@@ -764,21 +1708,27 @@ def test_a_turn_that_has_not_ended_does_not_have_a_record() -> None:
 
 
 def test_the_largest_record_fits_in_one_line(
-    monkeypatch: pytest.MonkeyPatch, structured_lines: list[str]
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+    structured_lines: list[str],
 ) -> None:
     # Test: The size of the largest `chat_turn` line.
     # Situation: A failed turn has every list of the record at its bound: a
     #   duration for every phase, a count for every tool name and label
     #   that the discovery loop can record, a token call for every
-    #   discovery round and for each of the other four roles, and six
-    #   scripts. Every count and the duration have nine digits. The script,
-    #   the reason, and the pattern are the longest of their literals. The
-    #   code does not bound the model name or the build SHA, so the test
-    #   assumes a model name of 64 characters and a SHA of 40 characters.
-    # Expectation: The record holds one token call for each of the
+    #   discovery round and for each of the other four roles, 20 cohort
+    #   tables, 25 highlighted places carrying the longest source literal,
+    #   and six scripts. Every count and the duration have nine digits. The
+    #   script, the reason, and the pattern are the longest of their
+    #   literals. The code does not bound the model name or the build SHA, so
+    #   the test assumes a model name of 64 characters and a SHA of 40
+    #   characters.
+    # Expectation: The record holds all 20 cohort tables without truncation,
+    #   all 25 highlighted places, one token call for each of the
     #   `MAX_ITERATIONS` discovery rounds and four more, one count for each
     #   tool name, and the duration of 999,999,999.25 ms. The written line
-    #   is smaller than `MAX_RECORD_LINE_BYTES`.
+    #   is at most `MAX_RECORD_LINE_BYTES` and does not log an oversized-line
+    #   warning.
     large = 999_999_999
     counts = TokenCounts(
         prompt=large, candidates=large, thoughts=large, total=large
@@ -807,7 +1757,33 @@ def test_the_largest_record_fits_in_one_line(
         )
     for role in ("synthesis", "compaction", "follow_up"):
         telemetry.tokens.add(counts, phase=role, model=model)
-    record.digest = _make_digest(has_data=True)
+    places = tuple(
+        f"geoId/06{index:03d}" for index in range(1, MAX_HIGHLIGHTED_PLACES + 1)
+    )
+    for table_index in range(1, MAX_LOGGED_TABLES + 1):
+        record.cache.store_fetched(
+            _make_cached_table(
+                f"t{table_index}",
+                variable_dcid=f"Median_Income_Household_{table_index:02d}",
+                places=places,
+                dates=("2022-01-01", "2023-12-31"),
+                facet_id=f"facet_{table_index:04d}",
+                parent_place_dcid="country/USA",
+                child_place_type="AdministrativeArea2",
+            )
+        )
+    record.used_table_ids = frozenset(f"t{index}" for index in range(1, 7))
+    first_table = record.cache.get("t1")
+    assert first_table is not None
+    record.digest = AnalysisDigest.from_results(
+        (
+            summarize_distribution(
+                first_table.table,
+                focal_places=list(places),
+                step_id="s1",
+            ),
+        )
+    )
     record.loop_result.truncated = True
     record.is_signed = True
     record.was_compacted = True
@@ -822,10 +1798,15 @@ def test_the_largest_record_fits_in_one_line(
         record, _make_transcript(MAX_TURN_INDEX), build_sha="f" * 40
     )
 
-    write_structured_record(usage)
+    with caplog.at_level(logging.WARNING, logger=telemetry_module.__name__):
+        write_structured_record(usage)
 
     (line,) = structured_lines
+    assert len(usage.tables) == MAX_LOGGED_TABLES
+    assert usage.tables_truncated is False
+    assert len(usage.highlighted_places) == MAX_HIGHLIGHTED_PLACES
     assert len(usage.token_calls) == MAX_ITERATIONS + 4
     assert usage.duration_ms == 999_999_999.25
     assert len(usage.tool_call_counts) == len(tools)
-    assert len(line.encode("utf-8")) < MAX_RECORD_LINE_BYTES
+    assert len(line.encode("utf-8")) <= MAX_RECORD_LINE_BYTES
+    assert caplog.records == []

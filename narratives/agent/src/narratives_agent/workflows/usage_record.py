@@ -13,18 +13,38 @@
 # limitations under the License.
 """Builds the `chat_turn` record that the server logs for each chat turn.
 
-Each record describes one turn in identifiers, codes, and counts, so that
-operators can measure usage from the logs. It does not contain any text from
-the conversation. `build_usage_record` reads the turn's `TurnRecord`, and the
-agent loop writes the result with `telemetry.write_structured_record`.
+Each record describes one turn in identifiers, codes, dates, and counts, so
+that operators can measure usage from the logs. It does not contain any text
+from the conversation. `build_usage_record` reads the turn's `TurnRecord`, and
+the agent loop writes the result with `telemetry.write_structured_record`.
 """
 
-from dataclasses import dataclass, field
+import json
+import re
+from collections.abc import Iterator
+from dataclasses import dataclass, field, replace
 from enum import StrEnum
+from typing import assert_never
 
-from narratives_agent.analytics.metrics import ScriptName
+from narratives_agent.analytics.digest import AnalysisDigest
+from narratives_agent.analytics.metrics import (
+    CompositionMetrics,
+    DerivedMetrics,
+    DistributionMetrics,
+    RankingMetrics,
+    RelationMetrics,
+    ScriptMetrics,
+    ScriptName,
+    TimeseriesMetrics,
+)
+from narratives_agent.analytics.tables import (
+    is_valid_dcid,
+    is_valid_observation_date,
+)
 from narratives_agent.gemini.schemas import QueryPattern
+from narratives_agent.json_value import json_safe
 from narratives_agent.telemetry import (
+    MAX_RECORD_LINE_BYTES,
     NESTED_PHASES,
     TURN_PHASES,
     ErrorType,
@@ -37,13 +57,28 @@ from narratives_agent.telemetry import (
     TurnTelemetry,
 )
 from narratives_agent.workflows.classify import RefusedReason
-from narratives_agent.workflows.transcript import Transcript
+from narratives_agent.workflows.transcript import (
+    MAX_PLACE_TYPE_CHARS,
+    PLACE_TYPE_PATTERN,
+    Transcript,
+)
+from narratives_agent.workflows.turn_cache import (
+    FETCHED_TABLE_PREFIX,
+    TABLE_ID_NUMBER_PATTERN,
+    CachedTable,
+)
 from narratives_agent.workflows.turn_record import TurnRecord
 
 __all__ = [
     "CHAT_TURN_EVENT",
     "CHAT_TURN_SCHEMA_VERSION",
+    "MAX_HIGHLIGHTED_PLACES",
+    "MAX_LOGGED_TABLES",
+    "MAX_TABLE_PLACE_DCIDS",
+    "HighlightedPlace",
+    "LoggedTable",
     "PhaseDuration",
+    "PlaceHighlightSource",
     "RefusalStage",
     "TokenCall",
     "TokenTotals",
@@ -58,6 +93,16 @@ CHAT_TURN_EVENT = "chat_turn"
 # changes when a key is renamed or removed, or when the type or the meaning
 # of a key changes. Adding a key does not change it.
 CHAT_TURN_SCHEMA_VERSION = 2
+
+MAX_LOGGED_TABLES = 20
+# `MAX_TABLE_PLACE_DCIDS` matches `MAX_ENTRIES_PER_SCOPE` in `transcript.py`.
+MAX_TABLE_PLACE_DCIDS = 25
+MAX_HIGHLIGHTED_PLACES = 25
+
+_FETCHED_TABLE_ID_PATTERN = re.compile(
+    rf"{FETCHED_TABLE_PREFIX}{TABLE_ID_NUMBER_PATTERN}"
+)
+_PLACE_TYPE_PATTERN = re.compile(PLACE_TYPE_PATTERN)
 
 
 class TurnOutcome(StrEnum):
@@ -163,16 +208,87 @@ class ToolCallCount:
     count: int
 
 
+class PlaceHighlightSource(StrEnum):
+    """Lists the metric fields that can add a place to `highlighted_places`."""
+
+    RANKED_TOP = "ranked_top"
+    RANKED_BOTTOM = "ranked_bottom"
+    RANKED_FOCAL = "ranked_focal"
+    DISTRIBUTION_MAX = "distribution_max"
+    DISTRIBUTION_MIN = "distribution_min"
+    DISTRIBUTION_FOCAL = "distribution_focal"
+    RELATED_HIGHEST = "related_highest"
+    RELATED_LOWEST = "related_lowest"
+    TIMESERIES = "timeseries"
+    COMPOSITION = "composition"
+
+
+@dataclass(frozen=True, kw_only=True)
+class LoggedTable:
+    """Holds the identifiers, scope, and row counts of one fetched table.
+
+    Attributes:
+        table_id: The `t<n>` identifier of the fetched table.
+        used_in_answer: Whether the turn's answering specification read this
+            table.
+        variable_dcid: The Data Commons variable identifier of the table.
+        facet_id: The facet identifier of the table, or `None` when the table
+            does not report a valid facet identifier.
+        row_count: The number of observation rows in the table.
+        parent_place_dcid: The parent place identifier when the table covers
+            a complete child-place cohort, or `None` otherwise.
+        child_place_type: The child place type when the table covers a
+            complete child-place cohort, or `None` otherwise.
+        places_with_data_count: The number of valid place identifiers that
+            have rows in the table.
+        place_dcids: Up to `MAX_TABLE_PLACE_DCIDS` sorted place identifiers
+            when the table does not cover a complete child-place cohort, or
+            an empty tuple when it does.
+        earliest_date: The earliest valid observation date in the table's
+            rows, or `None` when the rows do not have a valid date.
+        latest_date: The latest valid observation date in the table's rows,
+            or `None` when the rows do not have a valid date.
+    """
+
+    table_id: str
+    used_in_answer: bool
+    variable_dcid: str
+    facet_id: str | None
+    row_count: int
+    parent_place_dcid: str | None
+    child_place_type: str | None
+    places_with_data_count: int
+    place_dcids: tuple[str, ...]
+    earliest_date: str | None
+    latest_date: str | None
+
+
+@dataclass(frozen=True, kw_only=True)
+class HighlightedPlace:
+    """Holds one place that the turn's analysis highlighted and its source.
+
+    Attributes:
+        place_dcid: The Data Commons identifier of the place.
+        source: The first metric field in the digest that highlighted the
+            place.
+    """
+
+    place_dcid: str
+    source: PlaceHighlightSource
+
+
 @dataclass(frozen=True, kw_only=True)
 class UsageRecord(StructuredRecord):
     """Holds the `chat_turn` record of one turn.
 
     Every string in the record is a code that the server defines, an
     identifier that the server creates, a model name from the configuration,
-    or the build SHA. The record does not have a field for free text. The
-    server writes every field on every record, and a value that does not
-    apply is `None`. A caller cannot pass `severity` or `message`, because
-    the record derives both from `terminal_state`.
+    the build SHA, or a verified Data Commons identifier, facet ID, place
+    type, or observation date from a fetched table that has rows. The record
+    does not have a field for free text. The server writes every field on
+    every record, and a value that does not apply is `None`. A caller cannot
+    pass `severity` or `message`, because the record derives both from
+    `terminal_state`.
 
     Attributes:
         build_sha: The build or commit SHA of the running image, or `None`
@@ -212,6 +328,12 @@ class UsageRecord(StructuredRecord):
         tables_fetched: The number of observation tables that the turn
             fetched.
         total_rows_fetched: The number of observation rows in those tables.
+        tables_truncated: Whether qualifying fetched tables were omitted from
+            `tables` by the 20-table cap or the line-size limit.
+        tables: Up to `MAX_LOGGED_TABLES` fetched tables that returned rows,
+            in fetch order.
+        highlighted_places: Up to `MAX_HIGHLIGHTED_PLACES` distinct places
+            from the steps of the digest that succeeded.
         scripts: The analytical scripts that the turn ran, in step order.
         processing_retries: The number of specifications that the server
             returned to the model for another attempt.
@@ -255,6 +377,9 @@ class UsageRecord(StructuredRecord):
     tool_call_counts: tuple[ToolCallCount, ...]
     tables_fetched: int
     total_rows_fetched: int
+    tables_truncated: bool
+    tables: tuple[LoggedTable, ...]
+    highlighted_places: tuple[HighlightedPlace, ...]
     # The list has one item for each step of the specification, which holds
     # at most six steps.
     scripts: tuple[ScriptName, ...]
@@ -361,6 +486,174 @@ def _build_tool_call_counts(
     )
 
 
+def _is_valid_place_type(value: str) -> bool:
+    """Returns whether `value` is a place type within the length bound."""
+    return (
+        len(value) <= MAX_PLACE_TYPE_CHARS
+        and _PLACE_TYPE_PATTERN.fullmatch(value) is not None
+    )
+
+
+def _build_logged_table(
+    entry: CachedTable, used_table_ids: frozenset[str]
+) -> tuple[LoggedTable, tuple[str, ...]] | None:
+    """Builds one `LoggedTable` and its valid places, or `None` if excluded.
+
+    Empty fetches, table IDs outside `t<n>`, invalid variable DCIDs, and
+    tables whose rows do not contain any valid place DCID are excluded.
+    """
+    table = entry.table
+    if (
+        not table.rows
+        or _FETCHED_TABLE_ID_PATTERN.fullmatch(entry.table_id) is None
+        or not is_valid_dcid(table.variable_dcid)
+    ):
+        return None
+    # `table.places_with_data` is already sorted and deduplicated.
+    valid_places = tuple(
+        place for place in table.places_with_data if is_valid_dcid(place)
+    )
+    if not valid_places:
+        return None
+    facet_id = (
+        table.facet_id
+        if table.facet_id is not None and is_valid_dcid(table.facet_id)
+        else None
+    )
+    parent = table.parent_place_dcid
+    child_type = table.child_place_type
+    is_cohort = (
+        parent is not None
+        and is_valid_dcid(parent)
+        and child_type is not None
+        and _is_valid_place_type(child_type)
+    )
+    dates = [
+        row.date for row in table.rows if is_valid_observation_date(row.date)
+    ]
+    logged = LoggedTable(
+        table_id=entry.table_id,
+        used_in_answer=entry.table_id in used_table_ids,
+        variable_dcid=table.variable_dcid,
+        facet_id=facet_id,
+        row_count=len(table.rows),
+        parent_place_dcid=parent if is_cohort else None,
+        child_place_type=child_type if is_cohort else None,
+        places_with_data_count=len(valid_places),
+        place_dcids=() if is_cohort else valid_places[:MAX_TABLE_PLACE_DCIDS],
+        earliest_date=min(dates) if dates else None,
+        latest_date=max(dates) if dates else None,
+    )
+    return logged, valid_places
+
+
+def _collect_fetched_tables(
+    record: TurnRecord,
+) -> tuple[tuple[LoggedTable, ...], bool, set[str]]:
+    """Collects up to `MAX_LOGGED_TABLES` tables and all grounded place DCIDs.
+
+    Every qualifying fetched table contributes its valid place DCIDs to the
+    grounding set before the `MAX_LOGGED_TABLES` cap is applied, so a place
+    from `t21` still counts as grounded in a fetched table.
+    """
+    qualifying: list[LoggedTable] = []
+    grounded_places: set[str] = set()
+    for entry in record.cache.list_fetched_tables():
+        built = _build_logged_table(entry, record.used_table_ids)
+        if built is None:
+            continue
+        logged, valid_places = built
+        qualifying.append(logged)
+        grounded_places.update(valid_places)
+    is_truncated = len(qualifying) > MAX_LOGGED_TABLES
+    return tuple(qualifying[:MAX_LOGGED_TABLES]), is_truncated, grounded_places
+
+
+def _iter_metric_places(
+    metrics: ScriptMetrics,
+) -> Iterator[tuple[str, PlaceHighlightSource]]:
+    """Yields candidate `(place_dcid, source)` pairs from one step's metrics.
+
+    On ranking and distribution metrics, focal entries come first so that a
+    focal place keeps its focal source when it also sits at an extreme.
+    """
+    match metrics:
+        case RankingMetrics():
+            for ranked in metrics.focal_entries:
+                yield ranked.place_dcid, PlaceHighlightSource.RANKED_FOCAL
+            for ranked in metrics.top_n:
+                yield ranked.place_dcid, PlaceHighlightSource.RANKED_TOP
+            for ranked in metrics.bottom_n:
+                yield ranked.place_dcid, PlaceHighlightSource.RANKED_BOTTOM
+        case DistributionMetrics():
+            for focal in metrics.focal_entries:
+                yield (
+                    focal.place_dcid,
+                    PlaceHighlightSource.DISTRIBUTION_FOCAL,
+                )
+            yield metrics.max.place_dcid, PlaceHighlightSource.DISTRIBUTION_MAX
+            yield metrics.min.place_dcid, PlaceHighlightSource.DISTRIBUTION_MIN
+        case RelationMetrics():
+            for related in metrics.highest_by:
+                yield related.place_dcid, PlaceHighlightSource.RELATED_HIGHEST
+            for related in metrics.lowest_by:
+                yield related.place_dcid, PlaceHighlightSource.RELATED_LOWEST
+        case TimeseriesMetrics():
+            for series in metrics.series:
+                yield series.place_dcid, PlaceHighlightSource.TIMESERIES
+        case CompositionMetrics():
+            for place in metrics.places:
+                yield place.place_dcid, PlaceHighlightSource.COMPOSITION
+        case DerivedMetrics():
+            return
+        case _ as unreachable:
+            assert_never(unreachable)
+
+
+def _build_highlighted_places(
+    digest: AnalysisDigest | None, grounded_places: set[str]
+) -> tuple[HighlightedPlace, ...]:
+    """Builds up to `MAX_HIGHLIGHTED_PLACES` deduplicated grounded places."""
+    if digest is None or not grounded_places:
+        return ()
+    highlighted: list[HighlightedPlace] = []
+    seen: set[str] = set()
+    for result in digest.results:
+        if result.status != "ok":
+            continue
+        for place_dcid, source in _iter_metric_places(result.metrics):
+            if place_dcid not in grounded_places or place_dcid in seen:
+                continue
+            seen.add(place_dcid)
+            highlighted.append(
+                HighlightedPlace(place_dcid=place_dcid, source=source)
+            )
+            if len(highlighted) == MAX_HIGHLIGHTED_PLACES:
+                return tuple(highlighted)
+    return tuple(highlighted)
+
+
+def _measure_record_bytes(record: UsageRecord) -> int:
+    """Returns the UTF-8 byte length of `record` serialized as compact JSON."""
+    serialized = json.dumps(
+        json_safe(record), separators=(",", ":"), allow_nan=False
+    )
+    return len(serialized.encode("utf-8"))
+
+
+def _fit_tables_to_line_budget(record: UsageRecord) -> UsageRecord:
+    """Drops trailing `tables` entries when `record` exceeds the line limit."""
+    while (
+        record.tables and _measure_record_bytes(record) > MAX_RECORD_LINE_BYTES
+    ):
+        record = replace(
+            record,
+            tables=record.tables[:-1],
+            tables_truncated=True,
+        )
+    return record
+
+
 def build_usage_record(
     record: TurnRecord, transcript: Transcript, *, build_sha: str | None
 ) -> UsageRecord:
@@ -384,7 +677,13 @@ def build_usage_record(
         raise ValueError("The turn has not ended.")
     telemetry = record.telemetry
     has_data = record.digest is not None and record.digest.has_data
-    return UsageRecord(
+    tables, is_tables_truncated, grounded_places = _collect_fetched_tables(
+        record
+    )
+    highlighted_places = _build_highlighted_places(
+        record.digest, grounded_places
+    )
+    usage = UsageRecord(
         build_sha=build_sha,
         turn_id=telemetry.turn_id,
         conversation_id=transcript.conversation_id,
@@ -415,8 +714,12 @@ def build_usage_record(
         tool_call_counts=_build_tool_call_counts(telemetry),
         tables_fetched=telemetry.tables_fetched,
         total_rows_fetched=telemetry.total_rows_fetched,
+        tables_truncated=is_tables_truncated,
+        tables=tables,
+        highlighted_places=highlighted_places,
         scripts=tuple(telemetry.scripts),
         processing_retries=telemetry.processing_retries,
         charts_emitted=telemetry.charts_emitted,
         charts_rejected=telemetry.charts_rejected,
     )
+    return _fit_tables_to_line_budget(usage)
