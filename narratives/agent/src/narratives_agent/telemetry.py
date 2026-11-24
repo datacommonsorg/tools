@@ -97,7 +97,7 @@ NESTED_PHASES: Mapping[TurnPhase, TurnPhase] = MappingProxyType(
 # `MAX_RECORD_LINE_BYTES` is the size that one structured line must stay
 # under. Container runtimes split a stdout line at 16 KiB, and Cloud Logging
 # cannot parse a split line as one JSON entry.
-MAX_RECORD_LINE_BYTES = 8 * 1024
+MAX_RECORD_LINE_BYTES = 14 * 1024
 
 type Severity = Literal["INFO", "WARNING", "ERROR"]
 

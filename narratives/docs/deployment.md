@@ -874,9 +874,13 @@ writes `daily_token_budget` JSON entries (`state: "warning"` at 80% and
 
 The entries do not contain text from the conversation. The server never logs
 the user's query, the answer, the model's thoughts, tool arguments, tool
-results, or chart titles. Every string in an entry is a code that the server
-defines, an identifier that the server creates, a configured model name, or
-the build SHA.
+results, chart titles, or the display names of variables, places, or sources.
+Every string in an entry is a code that the server defines, an identifier that
+the server creates, a configured model name, the build SHA, or a verified Data
+Commons identifier (DCID), facet ID, place type, or observation date from a
+fetched table that returned rows. Each structured record is kept within 14 KiB
+so that container runtimes do not split the JSON line across multiple log
+entries.
 
 #### The `chat_turn` record
 
@@ -916,6 +920,9 @@ Every record has every key, and a value that does not apply is `null`.
 | `tool_call_counts` | list | Number of calls of each tool |
 | `tables_fetched` | integer | Number of observation tables fetched |
 | `total_rows_fetched` | integer | Number of observation rows fetched |
+| `tables_truncated` | boolean | Whether fetched tables were left out of `tables` |
+| `tables` | list | Fetched observation tables that returned rows |
+| `highlighted_places` | list | Places that the turn's analysis highlighted |
 | `scripts` | list of strings | Analytical scripts that ran, in step order |
 | `processing_retries` | integer | Specifications returned to the model |
 | `charts_emitted` | integer | Charts in the answer |
@@ -969,6 +976,34 @@ More detail on some keys:
   round, or `null` outside discovery), and the same four token counts.
 - **`tool_call_counts`:** The list has one item for each tool name, with
   `tool` and `count`, and it is sorted by tool name.
+- **`tables` and `tables_truncated`:** `tables` lists up to 20 fetched
+  observation tables that returned at least one row, in fetch order. Derived
+  tables and empty fetches are left out, while `tables_fetched` still counts
+  every fetch. Each item has `table_id`, `used_in_answer`, `variable_dcid`,
+  `facet_id`, `row_count`, `parent_place_dcid`, `child_place_type`,
+  `places_with_data_count`, `place_dcids`, `earliest_date`, and `latest_date`.
+  `used_in_answer` is `true` when the specification that answered the turn read
+  the table. When a table covers a child-place cohort (both `parent_place_dcid`
+  and `child_place_type` are valid), `place_dcids` is empty because the parent
+  and child type identify the cohort. Otherwise `parent_place_dcid` and
+  `child_place_type` are `null`, and `place_dcids` lists up to 25 sorted place
+  DCIDs that have rows in the table. When a turn has more than 20 qualifying
+  tables, or when keeping all of them would push the record past 14 KiB, the
+  server drops tables from the end of `tables` and sets `tables_truncated` to
+  `true`. Capping `place_dcids` at 25 inside one table does not set
+  `tables_truncated`.
+- **`highlighted_places`:** The list has up to 25 distinct places from the
+  steps of the turn's analysis that succeeded, in step order. The server
+  includes only places that have rows in a non-empty fetched table of the
+  turn, including fetched tables left out of `tables` by truncation. Each item
+  has `place_dcid` and `source`, and a place that appears more than once keeps
+  the `source` of its first appearance. `source` is `ranked_focal`,
+  `ranked_top`, or `ranked_bottom` from `rank_cohort`, `distribution_focal`,
+  `distribution_max`, or `distribution_min` from `summarize_distribution`,
+  `related_highest` or `related_lowest` from `relate_cohorts`, `timeseries`
+  from `analyze_timeseries`, or `composition` from `compute_composition`. On
+  ranking and distribution steps, focal places come before the top, bottom,
+  maximum, and minimum places.
 
 #### The `transcript_rejected` record
 
