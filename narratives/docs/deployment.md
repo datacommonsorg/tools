@@ -486,6 +486,15 @@ The agent reads these values at startup, so apply a change with
 or a `chat.enabled` that is not a JSON boolean (for example `"false"` or `0`),
 is logged as an error and disables chat.
 
+While chat is enabled, the server also sends `chat.unavailable_message`,
+without a retry button, when an instance's daily Gemini token budget is
+exhausted or when a turn's query permanently cannot be screened
+(`reason: "model_armor_unavailable"` or `"classifier_unavailable"`, see
+[Monitoring](#monitoring)). If you set a time-specific maintenance notice in
+`chat.unavailable_message` or `UNAVAILABLE_MESSAGE` while disabling chat, reset
+or clear it when re-enabling chat so later non-retryable turns do not display
+stale maintenance text.
+
 The `ENABLE_CHAT` and `UNAVAILABLE_MESSAGE` environment variables override
 these values when set, in either direction, and take effect without a
 configuration sync. Setting `ENABLE_CHAT=true` forces chat on regardless of
@@ -634,6 +643,19 @@ screening before the `classify` Gemini call:
 
 When `MODEL_ARMOR_TEMPLATE` is unset, Model Armor screening is skipped. When
 set, it works with both `GEMINI_API_KEY` and Vertex AI deployments.
+
+Once `MODEL_ARMOR_TEMPLATE` is set, chat depends on Model Armor being
+available in the template's region. A turn that Model Armor cannot screen
+ends with an error (`reason: "model_armor_unavailable"`) rather than
+continuing unscreened. Transient failures (timeouts, network or token-refresh
+errors, HTTP 408/429/499/5xx, and responses that are neither a match nor a
+complete pass) are retryable. Permanent rejections (other HTTP 4xx statuses
+such as 403 or 404, and missing Application Default Credentials) return
+`chat.unavailable_message` without a retry button. A complete pass reports
+`filterMatchState` `NO_MATCH_FOUND` and `invocationResult` `SUCCESS`, so a
+response in which some filters did not run, or that omits either field, ends
+the turn. See [Monitoring](#monitoring) for the log filter that finds these
+turns.
 
 ### Protecting traffic with reCAPTCHA Enterprise (optional)
 
@@ -799,6 +821,27 @@ Cloud Run intercepts `/healthz` at the frontend layer and does not forward it to
 the container. Configure external uptime checks to query `/agent/health`
 instead.
 
+**Chat turns end with an error because a question could not be screened**
+
+A turn ends with an error, before any data is fetched, when Model Armor or the
+query classifier cannot screen the question. The `chat_turn` log entry of such
+a turn has severity `ERROR` and one of two `error_type` values:
+
+- `model_armor_unavailable`: `MODEL_ARMOR_TEMPLATE` is set and Model Armor
+  did not return a complete result. Check that the template exists in its
+  region, that the runtime service account holds `roles/modelarmor.user`, and
+  that Model Armor is available in that region.
+- `classifier_unavailable`: the `classify` Gemini call failed twice, Gemini
+  rejected the request permanently (for example, an invalid API key or model
+  name), or the `classify` prompt is empty. The Gemini client logs the
+  upstream error in a separate entry.
+
+Use this Cloud Logging filter to find these turns or to alert on them:
+
+```text
+jsonPayload.event="chat_turn" AND jsonPayload.error_type=("model_armor_unavailable" OR "classifier_unavailable")
+```
+
 ### Inspecting Cloud Run logs
 
 For further diagnostics, inspect the Cloud Run service logs. Each completed chat
@@ -819,8 +862,10 @@ The turn span carries the same fields as `narratives.scripts`,
 `narratives.charts_rejected`, and `narratives.title_outcome`. On a `refused`
 turn, `error_type` holds the refusal reason (`adversarial`, `off_domain`,
 `safety_blocked`, `chat_disabled`, or `daily_token_budget_exhausted`) and
-`pattern` is omitted; if the classifier call itself fails, the turn falls
-through with `pattern` set to `exploratory`. When
-`DAILY_TOKEN_BUDGET_PER_INSTANCE` is configured, each instance also writes
-content-free `daily_token_budget` JSON records (`state: "warning"` at 80% and
-`state: "exhausted"` at 100%, once each per UTC day).
+`pattern` is omitted. On a turn that ends because the question could not be
+screened, `error_type` is `model_armor_unavailable` or
+`classifier_unavailable` and `pattern` is also omitted (see
+[Monitoring](#monitoring)). When `DAILY_TOKEN_BUDGET_PER_INSTANCE` is
+configured, each instance also writes content-free `daily_token_budget` JSON
+records (`state: "warning"` at 80% and `state: "exhausted"` at 100%, once each
+per UTC day).

@@ -46,10 +46,11 @@ Verifies that:
    key and without any model call, a clarification is emitted as the one
    text block and signed with empty state slots, a classification carries
    its pattern directive into the discovery loop and synthesis and its
-   pattern into telemetry, and a classifier failure proceeds as
-   `exploratory` without a directive. A model call that Gemini blocks in the
-   classify phase, the discovery loop, or synthesis ends the turn as
-   `refused` with reason `safety_blocked`.
+   pattern into telemetry, and a query that Model Armor or the classifier
+   could not screen ends the turn in one `error` terminal frame before the
+   discovery loop runs. A model call that Gemini blocks in the classify
+   phase, the discovery loop, or synthesis ends the turn as `refused` with
+   reason `safety_blocked`.
 9. The serialized frames of a complete turn match the recorded wire
    sequence, byte for byte.
 10. Chat disabled by `ENABLE_CHAT=false` or by `chat.enabled` ends the turn
@@ -126,6 +127,7 @@ from narratives_agent.workflows.classify import (
     Admitted,
     Clarification,
     RefusedReason,
+    ScreeningUnavailableError,
     TurnRefusedError,
 )
 from narratives_agent.workflows.follow_up import FollowUpTopics
@@ -143,6 +145,7 @@ from narratives_agent.workflows.messages import (
     NO_DATA_MESSAGE,
     REFUSED_MESSAGE,
     SAFETY_REFUSED_MESSAGE,
+    SCREENING_UNAVAILABLE,
     SYNTHESIS_FAILED,
     SYNTHESIS_TRANSIENT_ERROR,
     TRUNCATED_MESSAGE,
@@ -190,6 +193,8 @@ _DEFAULT_CHART: JsonObject = {
 _FOLLOW_UPS = ["And Spain?"]
 # Unavailable message of a configuration that disables chat.
 _CLOSED = "Closed for maintenance."
+# Unavailable message that `UNAVAILABLE_MESSAGE` sets in place of `_CLOSED`.
+_CLOSED_OVERRIDE = "Chat is paused. Try again later."
 _TRANSCRIPT = Transcript(
     turns=[],
     compacted_summary=None,
@@ -2274,31 +2279,100 @@ async def test_a_clarification_is_streamed_and_signed_with_empty_slots(
     assert loaded.turns == [stored]
 
 
+@pytest.mark.parametrize(
+    ("error_type", "is_retryable", "environment_message", "expected_message"),
+    [
+        pytest.param(
+            ErrorType.MODEL_ARMOR_UNAVAILABLE,
+            True,
+            None,
+            SCREENING_UNAVAILABLE,
+            id="model-armor-retryable",
+        ),
+        pytest.param(
+            ErrorType.MODEL_ARMOR_UNAVAILABLE,
+            False,
+            None,
+            _CLOSED,
+            id="model-armor-permanent-with-configured-message",
+        ),
+        pytest.param(
+            ErrorType.CLASSIFIER_UNAVAILABLE,
+            True,
+            _CLOSED_OVERRIDE,
+            SCREENING_UNAVAILABLE,
+            id="classifier-retryable-with-environment-override",
+        ),
+        pytest.param(
+            ErrorType.CLASSIFIER_UNAVAILABLE,
+            False,
+            None,
+            _CLOSED,
+            id="classifier-permanent-with-configured-message",
+        ),
+        pytest.param(
+            ErrorType.CLASSIFIER_UNAVAILABLE,
+            False,
+            _CLOSED_OVERRIDE,
+            _CLOSED_OVERRIDE,
+            id="classifier-permanent-with-environment-override",
+        ),
+    ],
+)
 @pytest.mark.asyncio
-async def test_a_classifier_failure_proceeds_as_exploratory(
-    monkeypatch: pytest.MonkeyPatch, turn: _Turn
+async def test_a_query_that_cannot_be_screened_ends_the_turn_in_an_error(
+    monkeypatch: pytest.MonkeyPatch,
+    turn: _Turn,
+    error_type: ErrorType,
+    is_retryable: bool,
+    environment_message: str | None,
+    expected_message: str,
 ) -> None:
-    # Test: Fall-through when the classifier failed.
-    # Situation: The classify phase admits the query without a verdict.
-    # Expectation: The turn completes as usual, the discovery loop receives
-    #   no classification, the synthesis system instruction is the prompt,
-    #   the synthesis contract, and the title addendum with no pattern
-    #   directive, and telemetry records the pattern as `exploratory`.
-    async def return_unclassified(*args: object, **_: object) -> Admitted:
-        return Admitted(None)
+    # Test: The error outcome of the classify phase.
+    # Situation: The configuration sets `chat.unavailable_message`, with or
+    #   without an `UNAVAILABLE_MESSAGE` override, and the classify phase
+    #   raises `ScreeningUnavailableError` with `model_armor_unavailable` or
+    #   `classifier_unavailable`, marked retryable or permanent.
+    # Expectation: The stream is the `classify` status frame and one `error`
+    #   terminal frame carrying the idempotency key, the error type as
+    #   `reason`, and the retry flag. A retryable failure carries
+    #   `SCREENING_UNAVAILABLE`, and a permanent failure carries the
+    #   effective unavailable message. The MCP tool list, the discovery
+    #   loop, synthesis, and the follow-up call do not run, and the turn is
+    #   recorded as `error` with the error type and without a pattern.
+    async def fail_screening(*args: object, **_: object) -> Admitted:
+        raise ScreeningUnavailableError(
+            error_type, "The query was not screened", is_retryable=is_retryable
+        )
 
-    monkeypatch.setattr(chat_pipeline, "classify_query", return_unclassified)
+    async def fail_tools() -> list[mcp_client.McpTool]:
+        pytest.fail("async_get_tools should not run after a failed screening")
+
+    _use_config(
+        monkeypatch,
+        AgentConfig(chat=ChatConfig(unavailable_message=_CLOSED)),
+    )
+    if environment_message is not None:
+        monkeypatch.setenv(UNAVAILABLE_MESSAGE_ENV, environment_message)
+    monkeypatch.setattr(chat_pipeline, "classify_query", fail_screening)
+    monkeypatch.setattr(mcp_client, "async_get_tools", fail_tools)
 
     await chat_pipeline.run_turn(_TRANSCRIPT, turn.emit)
 
-    assert turn.loop_classifications == [None]
-    assert turn.synthesis_instructions == [
-        f"Write prose.\n\n{load_prompt_contract('synthesis')}"
-        f"\n\n{load_prompt_contract('synthesis_title')}"
-    ]
+    assert turn.list_event_names() == ["status", "terminal"]
+    assert turn.events[1][1] == {
+        "state": TerminalState.ERROR,
+        "idempotency_key": _IDEMPOTENCY_KEY,
+        "error": expected_message,
+        "reason": error_type,
+        "is_retryable": is_retryable,
+    }
+    assert turn.loop_classifications == []
+    assert turn.synthesis_calls == 0
+    assert turn.follow_up_topics == []
+    assert turn.finished == [(TerminalState.ERROR, error_type)]
     assert turn.telemetry is not None
-    assert turn.telemetry.pattern == "exploratory"
-    assert turn.finished == [(TerminalState.COMPLETE, None)]
+    assert turn.telemetry.pattern is None
 
 
 @pytest.mark.parametrize(

@@ -120,8 +120,7 @@ def test_only_the_comparison_shape_adds_the_comparison_sentence(
 def test_the_directive_is_appended_as_a_final_section() -> None:
     # Test: Composition of the system instruction.
     # Situation: A prompt body is combined with a ranking classification for
-    #   each phase, and then with no classification, as when the classifier
-    #   failed.
+    #   each phase, and then with no classification.
     # Expectation: The classification appends the phase's half of the
     #   directive after the prompt body under its heading, and no
     #   classification leaves the body as it was.

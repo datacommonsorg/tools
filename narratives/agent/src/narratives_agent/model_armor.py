@@ -23,14 +23,17 @@ and `screen_user_prompt` returns `None` without making any network or credential
 calls. If `MODEL_ARMOR_TEMPLATE` is set to a malformed resource path,
 `init_model_armor` raises `RuntimeError` so startup fails fast instead of
 silently running unscreened. If a runtime Model Armor API request fails or times
-out, a warning is logged (without the user query text) and the turn proceeds
-rather than failing closed on a transient infrastructure error.
+out, or its response is neither a match nor a `NO_MATCH_FOUND` result with
+`invocationResult` `SUCCESS`, a warning is logged (without the user query text)
+and `screen_user_prompt` raises `ModelArmorUnavailableError`, so the caller ends
+the turn rather than admitting a query that was not screened.
 """
 
 import asyncio
 import logging
 import re
 from dataclasses import dataclass
+from http import HTTPStatus
 
 import google.auth.exceptions
 import httpx
@@ -49,8 +52,18 @@ _CONNECT_TIMEOUT_SECONDS = 2.0
 _MAX_IDLE_CONNECTIONS = 16
 
 _MATCH_FOUND = "MATCH_FOUND"
+_NO_MATCH_FOUND = "NO_MATCH_FOUND"
 _INVOCATION_SUCCESS = "SUCCESS"
 _DEFAULT_MATCH_LABEL = "model_armor"
+
+_HTTP_CLIENT_ERROR_MIN = HTTPStatus.BAD_REQUEST
+_HTTP_SERVER_ERROR_MIN = HTTPStatus.INTERNAL_SERVER_ERROR
+# Client-error statuses that can succeed when sent again: a server-side
+# request timeout, a rate-limited request, and a canceled request (`499`,
+# which Google APIs report for `CANCELLED`).
+_RETRYABLE_CLIENT_ERRORS = frozenset(
+    {HTTPStatus.REQUEST_TIMEOUT, HTTPStatus.TOO_MANY_REQUESTS, 499}
+)
 
 # Matches a Google Cloud Model Armor template resource name
 # (`projects/<project>/locations/<location>/templates/<template>`) and captures
@@ -59,6 +72,34 @@ _MODEL_ARMOR_TEMPLATE_PATTERN = re.compile(
     r"^projects/[A-Za-z0-9._:-]+/locations/(?P<location>[a-z0-9-]+)"
     r"/templates/[A-Za-z0-9._-]+$"
 )
+
+
+class ModelArmorUnavailableError(Exception):
+    """Raised when a configured template did not produce a complete result.
+
+    The request failed, timed out, or returned a malformed response, or the
+    response did not report a match and was not a `NO_MATCH_FOUND` result with
+    `invocationResult` `SUCCESS`. The message never contains the user query
+    text.
+
+    Attributes:
+        is_retryable: False only when the failure is known to be permanent:
+            Model Armor rejected the request with an HTTP 4xx status other
+            than 408, 429, and 499, or Application Default Credentials are
+            not configured (`DefaultCredentialsError`). Every other failure
+            is retryable.
+    """
+
+    def __init__(self, message: str, *, is_retryable: bool) -> None:
+        super().__init__(message)
+        self.is_retryable = is_retryable
+
+
+def _is_retryable_http_status(status_code: int) -> bool:
+    """Reports whether a failed Model Armor HTTP status can succeed on retry."""
+    if status_code in _RETRYABLE_CLIENT_ERRORS:
+        return True
+    return not (_HTTP_CLIENT_ERROR_MIN <= status_code < _HTTP_SERVER_ERROR_MIN)
 
 
 @dataclass
@@ -209,10 +250,16 @@ async def screen_user_prompt(query: str) -> str | None:
     Returns:
         A comma-separated string of matched Model Armor filter names (or
         `"model_armor"`) when `filterMatchState` is `"MATCH_FOUND"`, or `None`
-        when `MODEL_ARMOR_TEMPLATE` is unset, no filter matched, or the
-        Model Armor request failed open.
+        when `MODEL_ARMOR_TEMPLATE` is unset or the response reports
+        `filterMatchState` `"NO_MATCH_FOUND"` with `invocationResult`
+        `"SUCCESS"`.
 
     Raises:
+        ModelArmorUnavailableError: `MODEL_ARMOR_TEMPLATE` is set and the
+            request failed, timed out, or returned a malformed response, or
+            the response does not report a match and is not a
+            `"NO_MATCH_FOUND"` result with `invocationResult` `"SUCCESS"`.
+            A response that omits either field is such a response.
         RuntimeError: `MODEL_ARMOR_TEMPLATE` is set but does not match the
             expected resource path format.
     """
@@ -232,12 +279,15 @@ async def screen_user_prompt(query: str) -> str | None:
         response.raise_for_status()
         parsed = _SanitizePromptResponse.model_validate(response.json())
     except httpx.HTTPStatusError as error:
+        status_code = error.response.status_code
         logger.warning(
-            "Model Armor request failed (HTTP %d); proceeding without "
-            "screening",
-            error.response.status_code,
+            "Model Armor request failed (HTTP %d); the query was not screened",
+            status_code,
         )
-        return None
+        raise ModelArmorUnavailableError(
+            f"Model Armor request failed (HTTP {status_code})",
+            is_retryable=_is_retryable_http_status(status_code),
+        ) from error
     except (
         TimeoutError,
         httpx.RequestError,
@@ -246,17 +296,43 @@ async def screen_user_prompt(query: str) -> str | None:
         RuntimeError,
     ) as error:
         logger.warning(
-            "Model Armor request failed (%s); proceeding without screening",
+            "Model Armor request failed (%s); the query was not screened",
             type(error).__name__,
         )
-        return None
+        is_retryable = not isinstance(
+            error, google.auth.exceptions.DefaultCredentialsError
+        )
+        raise ModelArmorUnavailableError(
+            f"Model Armor request failed ({type(error).__name__})",
+            is_retryable=is_retryable,
+        ) from error
 
     sanitization_result = parsed.sanitization_result
-    if sanitization_result.invocation_result not in ("", _INVOCATION_SUCCESS):
-        logger.warning(
-            "Model Armor sanitization returned invocationResult=%r",
-            sanitization_result.invocation_result,
-        )
+    is_complete = sanitization_result.invocation_result == _INVOCATION_SUCCESS
     if sanitization_result.filter_match_state == _MATCH_FOUND:
+        if not is_complete:
+            logger.warning(
+                "Model Armor sanitization returned invocationResult=%r",
+                sanitization_result.invocation_result,
+            )
         return _extract_matched_filters(sanitization_result)
-    return None
+    if (
+        is_complete
+        and sanitization_result.filter_match_state == _NO_MATCH_FOUND
+    ):
+        return None
+    # Only `NO_MATCH_FOUND` from an invocation in which every filter ran shows
+    # that the query passes the template. A response that omits either field,
+    # or carries any other value, does not show that.
+    logger.warning(
+        "Model Armor sanitization returned invocationResult=%r and "
+        "filterMatchState=%r; the query was not screened",
+        sanitization_result.invocation_result,
+        sanitization_result.filter_match_state,
+    )
+    raise ModelArmorUnavailableError(
+        "Model Armor returned invocationResult="
+        f"{sanitization_result.invocation_result!r} and filterMatchState="
+        f"{sanitization_result.filter_match_state!r}",
+        is_retryable=True,
+    )

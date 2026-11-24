@@ -79,7 +79,7 @@
           "default": true
         },
         "unavailable_message": {
-          "description": "Message returned on chat turns when chat is disabled or an instance's daily Gemini token budget is exhausted, and stamped into the #runtime-config element of the HTML shell. The UNAVAILABLE_MESSAGE environment variable overrides this value when set.",
+          "description": "Message returned on chat turns when chat is disabled, when an instance's daily Gemini token budget is exhausted, or when a turn's query permanently cannot be screened. It is also stamped into the #runtime-config element of the HTML shell. The UNAVAILABLE_MESSAGE environment variable overrides this value when set.",
           "type": "string",
           "minLength": 1,
           "pattern": "\\S",
