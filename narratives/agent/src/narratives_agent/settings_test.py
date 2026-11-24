@@ -41,6 +41,9 @@ Verifies that `Settings`:
 13. Defaults `recaptcha_session_site_key` and `recaptcha_checkbox_site_key` to
     empty strings, treating blank values as unset and stripping surrounding
     whitespace.
+14. Defaults `daily_token_budget_per_instance` to `None`, parses positive
+    integers with surrounding whitespace stripped, and rejects zero, negative,
+    or non-integer values.
 """
 
 from pathlib import Path
@@ -49,6 +52,7 @@ import pytest
 from pydantic import ValidationError
 
 from narratives_agent.settings import (
+    DAILY_TOKEN_BUDGET_PER_INSTANCE_ENV,
     DC_API_KEY_SECRET_ENV,
     DC_WEB_COMPONENT_API_ROOT_ENV,
     DC_WEB_COMPONENT_URL_ENV,
@@ -757,3 +761,52 @@ def test_web_component_api_root_rejects_more_than_an_origin(
     #   policy source with a path matches only that path.
     with pytest.raises(ValidationError, match=DC_WEB_COMPONENT_API_ROOT_ENV):
         _read_settings(monkeypatch, {DC_WEB_COMPONENT_API_ROOT_ENV: raw})
+
+
+@pytest.mark.parametrize(
+    ("raw", "expected"),
+    [
+        pytest.param(None, None, id="unset"),
+        pytest.param("", None, id="empty"),
+        pytest.param(" \t ", None, id="blank"),
+        pytest.param("1", 1, id="one"),
+        pytest.param(" 50000 \n", 50000, id="padded-int"),
+    ],
+)
+def test_daily_token_budget_is_none_when_unset_and_parses_positive_int(
+    monkeypatch: pytest.MonkeyPatch, raw: str | None, expected: int | None
+) -> None:
+    # Test: Default and parsing of `DAILY_TOKEN_BUDGET_PER_INSTANCE`.
+    # Situation: `DAILY_TOKEN_BUDGET_PER_INSTANCE` is unset, blank, or set to a
+    #   positive integer with optional surrounding whitespace.
+    # Expectation: Unset and blank yield `None` (enforcement disabled); valid
+    #   positive integers are stripped and parsed as `int`.
+    env = {} if raw is None else {DAILY_TOKEN_BUDGET_PER_INSTANCE_ENV: raw}
+    settings = _read_settings(monkeypatch, env)
+    assert settings.daily_token_budget_per_instance == expected
+
+
+@pytest.mark.parametrize(
+    "raw",
+    [
+        pytest.param("0", id="zero"),
+        pytest.param("-5", id="negative"),
+        pytest.param("abc", id="non-numeric"),
+        pytest.param("10.5", id="decimal"),
+        pytest.param("1e6", id="scientific"),
+        pytest.param("true", id="boolean"),
+    ],
+)
+def test_invalid_daily_token_budget_is_rejected(
+    monkeypatch: pytest.MonkeyPatch, raw: str
+) -> None:
+    # Test: Validation of invalid `DAILY_TOKEN_BUDGET_PER_INSTANCE` values.
+    # Situation: `DAILY_TOKEN_BUDGET_PER_INSTANCE` is set to zero, a negative
+    #   integer, or a non-integer string.
+    # Expectation: Reading settings raises `ValidationError` naming the field
+    #   so a misconfigured pod fails fast at startup.
+    monkeypatch.setenv(DAILY_TOKEN_BUDGET_PER_INSTANCE_ENV, raw)
+    with pytest.raises(
+        ValidationError, match="daily_token_budget_per_instance"
+    ):
+        Settings()

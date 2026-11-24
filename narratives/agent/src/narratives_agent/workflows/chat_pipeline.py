@@ -20,7 +20,8 @@ phase reports progress by calling the turn's `emit` callback with one typed
 SSE frame at a time (an `SseFrame` from `sse_frames`, which declares each
 frame's event name and payload) and hands its results to the next phase as
 typed values rather than shared mutable state. Each phase also records what
-it did on the turn's `TurnRecord`, which the debug report is built from.
+it did on the turn's `TurnRecord`. The `chat_turn` record that the server
+logs for the turn and the debug report are both built from it.
 
 Every turn that is not canceled ends in one `terminal` frame
 (`TerminalCompleteFrame`, `TerminalRefusedFrame`, or `TerminalErrorFrame`).
@@ -52,7 +53,7 @@ from narratives_agent.gemini.client import (
     async_gemini_stream,
 )
 from narratives_agent.gemini.response import StreamChunk
-from narratives_agent.gemini.schemas import QueryClassification, QueryPattern
+from narratives_agent.gemini.schemas import QueryClassification
 from narratives_agent.json_value import JsonObject
 from narratives_agent.mcp import client as mcp_client
 from narratives_agent.mcp.capabilities import (
@@ -66,7 +67,9 @@ from narratives_agent.telemetry import (
     TerminalState,
     TitleOutcome,
     TurnTelemetry,
+    write_structured_record,
 )
+from narratives_agent.token_budget import get_daily_token_budget
 from narratives_agent.workflows.blocks import BlockSplitter, TextBlock
 from narratives_agent.workflows.chart_defaults import build_default_charts
 from narratives_agent.workflows.charts import (
@@ -76,8 +79,10 @@ from narratives_agent.workflows.charts import (
     resolve_chart_specification,
 )
 from narratives_agent.workflows.classify import (
+    Admitted,
     Clarification,
     RefusedReason,
+    ScreeningUnavailableError,
     TurnRefusedError,
     classify_query,
 )
@@ -104,6 +109,7 @@ from narratives_agent.workflows.messages import (
     MCP_UNAVAILABLE,
     NO_DATA_MESSAGE,
     SAFETY_REFUSED_MESSAGE,
+    SCREENING_UNAVAILABLE,
     SYNTHESIS_FAILED,
     SYNTHESIS_STATUS,
     SYNTHESIS_TRANSIENT_ERROR,
@@ -164,6 +170,7 @@ from narratives_agent.workflows.turn_record import (
     TurnRecord,
     TurnThought,
 )
+from narratives_agent.workflows.usage_record import build_usage_record
 
 logger = logging.getLogger(__name__)
 
@@ -189,8 +196,14 @@ _DIAGNOSTIC_NOTE_PREFIXES = (
     _DEFAULT_FAILED_NOTE_PREFIX,
 )
 
-# Default pattern recorded in telemetry when the classifier call failed.
-_UNCLASSIFIED_PATTERN: QueryPattern = "exploratory"
+# Pre-turn lockout reasons that end the turn before classification and omit
+# debug report emission.
+_PRE_TURN_REASONS = frozenset(
+    {
+        ErrorType.CHAT_DISABLED,
+        ErrorType.DAILY_TOKEN_BUDGET_EXHAUSTED,
+    }
+)
 
 type Emit = Callable[[SseFrame], None]
 
@@ -220,8 +233,8 @@ class TurnAbortedError(Exception):
 class TurnContext:
     """Holds the inputs and callbacks shared across every phase of a turn.
 
-    `classification` is the classify phase's verdict, or `None` when the
-    classifier failed and the turn proceeds without a pattern directive.
+    `classification` is the classify phase's verdict. `run_turn` always
+    sets it. Only tests build a context without one.
     `record` is the only holder of the turn's telemetry and of the cache of
     observation tables the turn fetches; `telemetry` and `cache` return the
     record's own objects.
@@ -231,7 +244,8 @@ class TurnContext:
         config: The loaded agent configuration.
         record: The turn's record, on which the phases record what they did.
         emit: Callback invoked with each SSE frame of the turn.
-        classification: The classify phase's verdict, or `None` on fallback.
+        classification: The classify phase's verdict, or `None` in a context
+            that a test builds without one.
     """
 
     transcript: Transcript
@@ -562,6 +576,7 @@ async def run_discovery_phase(ctx: TurnContext) -> DiscoveryPhaseResult:
     warn_on_missing_tools(tools)
 
     _emit_status(ctx, DISCOVERY_STATUS)
+    loop = ctx.record.loop_result
     try:
         # The loop fills the record's result in place, so the record holds
         # the calls that completed before a loop that fails.
@@ -580,14 +595,20 @@ async def run_discovery_phase(ctx: TurnContext) -> DiscoveryPhaseResult:
                 StatusFrame(phase=phase, message=message)
             ),
             classification=ctx.classification,
-            result=ctx.record.loop_result,
+            result=loop,
         )
     except McpLoopError as error:
+        if error.result is not loop and error.result != DiscoveryResult():
+            loop = error.result
         raise TurnAbortedError(
             error.error_type, str(error), is_retryable=error.is_retryable
         ) from error
+    finally:
+        ctx.record.loop_result = loop
+        ctx.telemetry.tables_fetched = ctx.cache.tables_fetched
+        ctx.telemetry.total_rows_fetched = ctx.cache.total_rows_fetched
+        ctx.telemetry.processing_retries = loop.processing_retries
 
-    ctx.record.loop_result = loop
     result.tool_calls = loop.tool_calls
     for call in result.tool_calls:
         ctx.emit(ToolCallFrame(tool_call=call))
@@ -601,9 +622,6 @@ async def run_discovery_phase(ctx: TurnContext) -> DiscoveryPhaseResult:
     ctx.telemetry.scripts = (
         specification.list_script_names() if specification is not None else []
     )
-    ctx.telemetry.tables_fetched = ctx.cache.tables_fetched
-    ctx.telemetry.total_rows_fetched = ctx.cache.total_rows_fetched
-    ctx.telemetry.processing_retries = loop.processing_retries
 
     # Include `truncated` on `data_status` so the UI knows when data was cut.
     message: str | None = None
@@ -992,6 +1010,42 @@ def _require_turn_config(config: AgentConfig | None) -> AgentConfig:
     return config
 
 
+async def _run_classify_phase(
+    transcript: Transcript,
+    config: AgentConfig,
+    telemetry: TurnTelemetry,
+    unavailable_message: str,
+) -> Clarification | Admitted:
+    """Runs the classify phase and converts its screening failure.
+
+    Args:
+        transcript: The verified transcript holding the current query.
+        config: The loaded agent configuration.
+        telemetry: The turn's telemetry collector.
+        unavailable_message: The effective `chat.unavailable_message`, sent
+            to the user when the failure is permanent.
+
+    Returns:
+        The classify phase's outcome: a clarification or an admitted query.
+
+    Raises:
+        TurnAbortedError: If Model Armor or the classifier could not screen
+            the query. A retryable failure carries `SCREENING_UNAVAILABLE`
+            and a permanent failure carries `unavailable_message`.
+        TurnRefusedError: If the classify phase refuses the query.
+        GeminiBlockedError: If Gemini blocks the classification call.
+    """
+    try:
+        return await classify_query(transcript, config, telemetry)
+    except ScreeningUnavailableError as error:
+        message = (
+            SCREENING_UNAVAILABLE if error.is_retryable else unavailable_message
+        )
+        raise TurnAbortedError(
+            error.error_type, message, is_retryable=error.is_retryable
+        ) from error
+
+
 async def run_turn(
     transcript: Transcript,
     emit: Emit,
@@ -1001,20 +1055,26 @@ async def run_turn(
     """Runs one chat turn and emits its typed SSE frames through `emit`.
 
     Ends the turn at once with reason `chat_disabled` and the configured
-    unavailable message when chat is disabled. Otherwise runs classification
-    first: refuses adversarial or off-domain queries, streams and signs a
-    clarification question when disambiguation is required, or admits the
-    query into the discovery loop, synthesis, and turn signing. A model call
-    that Gemini blocks in any of those phases ends the turn as `refused`
-    with reason `safety_blocked`; the phases let `GeminiBlockedError`
-    propagate here rather than each translating it.
+    unavailable message when chat is disabled, or with reason
+    `daily_token_budget_exhausted` and the same unavailable message when this
+    instance's daily Gemini token budget has been exhausted. Otherwise runs
+    classification first: refuses adversarial or off-domain queries, streams
+    and signs a clarification question when disambiguation is required, or
+    admits the query into the discovery loop, synthesis, and turn signing. A
+    model call that Gemini blocks in any of those phases ends the turn as
+    `refused` with reason `safety_blocked`; the phases let
+    `GeminiBlockedError` propagate here rather than each translating it.
+    A query that Model Armor or the classifier cannot screen ends the turn
+    as `error` with reason `model_armor_unavailable` or
+    `classifier_unavailable` before the discovery loop runs.
     Every non-canceled turn ends in one `terminal` frame (`complete`,
     `refused`, or `error`) and records its outcome and classified pattern
     in telemetry. Only `asyncio.CancelledError` is re-raised to the caller;
     cancellation emits no terminal frame because the client has already
     disconnected, and it is recorded as `canceled` unless the turn has
     already completed. Follow-up questions are emitted after the terminal
-    frame.
+    frame. The agent loop writes one `chat_turn` record when a turn ends,
+    including a turn that the client cancels.
 
     Args:
         transcript: The verified transcript holding the current query,
@@ -1023,6 +1083,7 @@ async def run_turn(
         request_debug: Whether the client requested turn debug reporting.
     """
     settings = get_settings()
+    budget = get_daily_token_budget()
     idempotency_key = transcript.current_idempotency_key
     record = TurnRecord(telemetry=TurnTelemetry())
     telemetry = record.telemetry
@@ -1043,16 +1104,22 @@ async def run_turn(
     config: AgentConfig | None = None
     canceled = False
     try:
-        # Chat availability is checked before the configuration is required,
-        # so `ENABLE_CHAT=false` ends the turn even when none is loaded.
+        # Chat availability and daily token budget are checked before the
+        # configuration is required, so `ENABLE_CHAT=false` or an exhausted
+        # budget ends the turn even when no configuration is loaded.
         chat = get_chat_config()
+        pre_turn_reason: ErrorType | None = None
         if not chat.enabled:
-            state, error_type = TerminalState.REFUSED, ErrorType.CHAT_DISABLED
+            pre_turn_reason = ErrorType.CHAT_DISABLED
+        elif budget is not None and budget.is_exhausted():
+            pre_turn_reason = ErrorType.DAILY_TOKEN_BUDGET_EXHAUSTED
+        if pre_turn_reason is not None:
+            state, error_type = TerminalState.REFUSED, pre_turn_reason
             emit(
                 TerminalErrorFrame(
                     idempotency_key=idempotency_key,
                     error=chat.unavailable_message,
-                    reason=ErrorType.CHAT_DISABLED,
+                    reason=pre_turn_reason,
                     is_retryable=False,
                 )
             )
@@ -1065,12 +1132,10 @@ async def run_turn(
                 StatusFrame(phase="classify", message=CLASSIFY_STATUS)
             )
             with telemetry.phase("classify"):
-                admission = await classify_query(transcript, config, telemetry)
-            telemetry.pattern = (
-                admission.classification.pattern
-                if admission.classification is not None
-                else _UNCLASSIFIED_PATTERN
-            )
+                admission = await _run_classify_phase(
+                    transcript, config, telemetry, chat.unavailable_message
+                )
+            telemetry.pattern = admission.classification.pattern
             ctx = TurnContext(
                 transcript,
                 config,
@@ -1159,9 +1224,15 @@ async def run_turn(
         record.terminal_state = final_state
         record.terminal_reason = error_type
         telemetry.finish(final_state, error_type)
+        _write_usage_record(record, transcript, settings.build_sha)
+        if budget is not None:
+            # Counts only Gemini calls that returned `usage_metadata`; streams
+            # canceled before their final chunk and timed-out calls are omitted
+            # by the SDK even though Gemini may bill them.
+            budget.record(telemetry.tokens.total_token_count)
         if (
             not canceled
-            and error_type != ErrorType.CHAT_DISABLED
+            and error_type not in _PRE_TURN_REASONS
             and should_emit_debug_report(
                 get_debug_report_mode(), request_debug=request_debug
             )
@@ -1204,6 +1275,8 @@ async def _sign_turn(
     Because the answer has already been delivered, a failure here is logged
     and the turn completes unsigned, as an answer too long to sign does: the
     browser leaves it out of later context and keeps the window it holds.
+    The turn's record stores whether the server signed the turn and whether
+    signing compacted older turns into a summary.
 
     Args:
         ctx: The turn context holding the transcript, config, and telemetry.
@@ -1215,7 +1288,7 @@ async def _sign_turn(
         response exceeded the signing length limit.
     """
     try:
-        return await finalize_turn(
+        window = await finalize_turn(
             ctx.transcript,
             full_text,
             state_slots(),
@@ -1228,6 +1301,35 @@ async def _sign_turn(
             type(error).__name__,
         )
         return None
+    ctx.record.is_signed = window is not None
+    ctx.record.was_compacted = window is not None and window.was_compacted
+    return window
+
+
+def _write_usage_record(
+    record: TurnRecord, transcript: Transcript, build_sha: str | None
+) -> None:
+    """Writes the `chat_turn` record of a turn that has ended.
+
+    The agent loop calls this function after it has decided the turn's
+    result, so a failure to build or write the record does not fail the
+    turn. The function logs only the type of the exception, because the
+    turn's record holds text from the conversation.
+
+    Args:
+        record: The turn's record, with its terminal state set.
+        transcript: The verified transcript that the turn ran with.
+        build_sha: The build or commit SHA of the running image, or `None`.
+    """
+    try:
+        write_structured_record(
+            build_usage_record(record, transcript, build_sha=build_sha)
+        )
+    except Exception as error:
+        logger.error(
+            "Writing the chat_turn record failed with %s",
+            type(error).__name__,
+        )
 
 
 __all__ = [

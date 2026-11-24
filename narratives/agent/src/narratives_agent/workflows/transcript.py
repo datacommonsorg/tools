@@ -66,7 +66,8 @@ import logging
 import re
 import secrets
 from collections.abc import Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from enum import StrEnum
 from typing import Annotated, Any, Protocol, Self
 
 from pydantic import (
@@ -91,7 +92,12 @@ from narratives_agent.settings import (
     get_settings,
     validate_hmac_secret,
 )
-from narratives_agent.telemetry import TokenUsage
+from narratives_agent.telemetry import (
+    Severity,
+    StructuredRecord,
+    TokenUsage,
+    write_structured_record,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -146,6 +152,10 @@ _FALLBACK_RESPONSE_CHARS = 600
 # with a clear reason rather than by accident.
 _HMAC_DOMAIN = "narratives.transcript.turn.v2"
 _GENERATED_KEY_BYTES = 32
+
+TRANSCRIPT_REJECTED_EVENT = "transcript_rejected"
+TRANSCRIPT_REJECTED_SCHEMA_VERSION = 1
+_TRANSCRIPT_REJECTED_MESSAGE = "transcript rejected"
 
 _COMPACTION_INSTRUCTION = (
     "You condense the earlier turns of a conversation about statistical "
@@ -318,6 +328,15 @@ class Transcript:
     current_query: str
     current_idempotency_key: str
 
+    @property
+    def next_turn_index(self) -> int:
+        """Returns the index that the current turn has when it is signed.
+
+        `turn_index` counts the signed turns of the whole conversation, so
+        the current turn follows the last signed turn of the window.
+        """
+        return self.turns[-1].turn_index + 1 if self.turns else 0
+
 
 @dataclass(frozen=True)
 class SignedWindow:
@@ -328,12 +347,14 @@ class SignedWindow:
     `hmac` in it may differ from the one the browser holds, because
     compaction re-signs the whole window. `compacted_summary` and
     `conversation_id` are the values the window is signed under, which the
-    browser must send with it.
+    browser must send with it. `was_compacted` is `True` when signing this
+    turn compacted older turns into `compacted_summary`.
     """
 
     turns: list[Turn]
     compacted_summary: str | None
     conversation_id: str
+    was_compacted: bool
 
     @property
     def turn(self) -> Turn:
@@ -375,6 +396,42 @@ class TranscriptRequest(Protocol):
     def conversation_id(self) -> object: ...
 
 
+class TranscriptRejectionReason(StrEnum):
+    """Lists the reasons why the server rejects a transcript, as codes."""
+
+    INVALID_WINDOW = "invalid_window"
+    SUMMARY_WITHOUT_TURNS = "summary_without_turns"
+    CONVERSATION_ID_WITHOUT_TURNS = "conversation_id_without_turns"
+    TURNS_WITHOUT_CONVERSATION_ID = "turns_without_conversation_id"
+    WINDOW_START_MISMATCH = "window_start_mismatch"
+    NON_CONTIGUOUS_TURNS = "non_contiguous_turns"
+    DUPLICATE_IDEMPOTENCY_KEY = "duplicate_idempotency_key"
+    SIGNATURE_MISMATCH = "signature_mismatch"
+
+
+@dataclass(frozen=True, kw_only=True)
+class TranscriptRejectedRecord(StructuredRecord):
+    """Holds the `transcript_rejected` record of one rejected request.
+
+    The server writes this record when it rejects the conversation history
+    of a request. The reason is the only field that a caller can set. The
+    record does not include the conversation ID, a turn, the summary, or
+    any other value from the request, because a rejected request does not
+    have a verified conversation ID.
+
+    Attributes:
+        reason: Why the server rejected the conversation history.
+    """
+
+    severity: Severity = field(default="WARNING", init=False)
+    message: str = field(default=_TRANSCRIPT_REJECTED_MESSAGE, init=False)
+    event: str = field(default=TRANSCRIPT_REJECTED_EVENT, init=False)
+    schema_version: int = field(
+        default=TRANSCRIPT_REJECTED_SCHEMA_VERSION, init=False
+    )
+    reason: TranscriptRejectionReason
+
+
 class TranscriptError(Exception):
     """Raised when a request's transcript fails verification.
 
@@ -382,7 +439,7 @@ class TranscriptError(Exception):
     to return to the client.
     """
 
-    def __init__(self, reason: str) -> None:
+    def __init__(self, reason: TranscriptRejectionReason) -> None:
         super().__init__("The conversation history could not be verified.")
         self.reason = reason
 
@@ -502,9 +559,34 @@ def _sign_window(
     return signed
 
 
-def _reject(reason: str) -> TranscriptError:
-    """Logs a rejected transcript and returns the error to raise."""
-    logger.warning("Rejected the request transcript: %s", reason)
+def _reject(
+    reason: TranscriptRejectionReason, *, error_count: int | None = None
+) -> TranscriptError:
+    """Reports a rejected transcript and returns the error to raise.
+
+    Every rejection goes through this function. It logs the reason, writes
+    the `transcript_rejected` record, and builds the error. The log line
+    and the record do not hold any value from the request.
+
+    Args:
+        reason: Why the transcript is rejected.
+        error_count: The number of validation errors of a window that
+            does not match its schema, or `None` for any other rejection.
+            The function logs only the count of a `ValidationError`,
+            because the error's messages can include values of the request.
+
+    Returns:
+        The `TranscriptError` for the caller to raise.
+    """
+    if error_count is None:
+        logger.warning("Rejected the request transcript: %s", reason)
+    else:
+        logger.warning(
+            "Rejected the request transcript: %s (%d errors)",
+            reason,
+            error_count,
+        )
+    write_structured_record(TranscriptRejectedRecord(reason=reason))
     return TranscriptError(reason)
 
 
@@ -524,22 +606,24 @@ def _check_window_shape(
     """
     if not turns:
         if compacted_summary is not None:
-            raise _reject("summary_without_turns")
+            raise _reject(TranscriptRejectionReason.SUMMARY_WITHOUT_TURNS)
         if conversation_id is not None:
-            raise _reject("conversation_id_without_turns")
+            raise _reject(
+                TranscriptRejectionReason.CONVERSATION_ID_WITHOUT_TURNS
+            )
         return
     if conversation_id is None:
-        raise _reject("turns_without_conversation_id")
+        raise _reject(TranscriptRejectionReason.TURNS_WITHOUT_CONVERSATION_ID)
     first_index = turns[0].turn_index
     if (first_index == 0) != (compacted_summary is None):
-        raise _reject("window_start_mismatch")
+        raise _reject(TranscriptRejectionReason.WINDOW_START_MISMATCH)
     for offset, turn in enumerate(turns):
         if turn.turn_index != first_index + offset:
-            raise _reject("non_contiguous_turns")
+            raise _reject(TranscriptRejectionReason.NON_CONTIGUOUS_TURNS)
     keys = [turn.idempotency_key for turn in turns]
     keys.append(current_idempotency_key)
     if len(set(keys)) != len(keys):
-        raise _reject("duplicate_idempotency_key")
+        raise _reject(TranscriptRejectionReason.DUPLICATE_IDEMPOTENCY_KEY)
 
 
 def load_transcript(request: TranscriptRequest) -> Transcript:
@@ -571,11 +655,10 @@ def load_transcript(request: TranscriptRequest) -> Transcript:
             }
         )
     except ValidationError as error:
-        logger.warning(
-            "Rejected the request transcript: invalid_window (%d errors)",
-            error.error_count(),
-        )
-        raise TranscriptError("invalid_window") from error
+        raise _reject(
+            TranscriptRejectionReason.INVALID_WINDOW,
+            error_count=error.error_count(),
+        ) from error
     turns = window.turns
     summary = window.compacted_summary
     _check_window_shape(
@@ -590,7 +673,7 @@ def load_transcript(request: TranscriptRequest) -> Transcript:
     for turn in turns:
         expected = _turn_signature(prev_hmac, turn, summary, conversation_id)
         if not hmac.compare_digest(expected, turn.hmac):
-            raise _reject("signature_mismatch")
+            raise _reject(TranscriptRejectionReason.SIGNATURE_MISMATCH)
         prev_hmac = turn.hmac
     return Transcript(
         turns=turns,
@@ -647,7 +730,7 @@ async def finalize_turn(
     # placeholder `hmac` is replaced by `_sign_window` before the turn
     # leaves here.
     completed = Turn.model_construct(
-        turn_index=previous[-1].turn_index + 1 if previous else 0,
+        turn_index=transcript.next_turn_index,
         idempotency_key=transcript.current_idempotency_key,
         user_query=transcript.current_query,
         model_response=model_response,
@@ -656,7 +739,8 @@ async def finalize_turn(
     )
     window = [*previous, completed]
     summary = transcript.compacted_summary
-    if len(window) > MAX_VERBATIM_TURNS:
+    was_compacted = len(window) > MAX_VERBATIM_TURNS
+    if was_compacted:
         evicted = window[:-MAX_VERBATIM_TURNS]
         window = window[-MAX_VERBATIM_TURNS:]
         summary = await _compact(summary, evicted, config, token_usage)
@@ -664,6 +748,7 @@ async def finalize_turn(
         turns=_sign_window(window, summary, transcript.conversation_id),
         compacted_summary=summary,
         conversation_id=transcript.conversation_id,
+        was_compacted=was_compacted,
     )
 
 

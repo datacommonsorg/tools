@@ -37,6 +37,12 @@ Verifies that:
 7. The final user message opens with the server-authored date line in a
    text part of its own, before the unchanged request text. The messages of
    earlier turns and the compaction request carry no date.
+8. When `load_transcript` rejects a request, it logs one warning and writes
+   one `transcript_rejected` record. The record holds the reason code and
+   does not hold any value from the request. When `load_transcript` accepts
+   a request, it does not write a record.
+9. The transcript reports the index that its current turn is signed with,
+   and the signed window reports whether signing compacted it.
 """
 
 import asyncio
@@ -73,6 +79,7 @@ from narratives_agent.workflows.transcript import (
     ConversationStateSlots,
     QueryScope,
     TranscriptError,
+    TranscriptRejectionReason,
     Turn,
     finalize_turn,
     load_transcript,
@@ -818,6 +825,217 @@ def test_a_rejected_conversation_id_is_not_logged(
     assert "conversation_id_without_turns" in caplog.text
     assert malformed not in caplog.text
     assert _CONVERSATION_ID not in caplog.text
+
+
+# Each value of a marked request starts with this prefix, so one search of
+# a `transcript_rejected` line finds any of them.
+_MARKER_PREFIX = "zzmarker_"
+
+
+def _build_rejected_request(
+    reason: TranscriptRejectionReason, window: Window
+) -> _Request:
+    """Builds a request that `load_transcript` rejects for `reason`.
+
+    `window` is a signed window of three turns that starts at turn 0.
+    """
+    turns, _, conversation_id = window
+    wire = _wire(turns)
+    altered = wire[0].model_copy(update={"model_response": "Altered answer"})
+    requests = {
+        TranscriptRejectionReason.INVALID_WINDOW: _Request(
+            "Question", "key-next", [{"turn_index": 0}], None, conversation_id
+        ),
+        TranscriptRejectionReason.SUMMARY_WITHOUT_TURNS: _Request(
+            "Question", "key-next", (), "Orphan summary"
+        ),
+        TranscriptRejectionReason.CONVERSATION_ID_WITHOUT_TURNS: _Request(
+            "Question", "key-next", (), None, conversation_id
+        ),
+        TranscriptRejectionReason.TURNS_WITHOUT_CONVERSATION_ID: _Request(
+            "Question", "key-next", wire
+        ),
+        TranscriptRejectionReason.WINDOW_START_MISMATCH: _Request(
+            "Question", "key-next", wire, "Invented summary", conversation_id
+        ),
+        TranscriptRejectionReason.NON_CONTIGUOUS_TURNS: _Request(
+            "Question", "key-next", [wire[0], wire[2]], None, conversation_id
+        ),
+        TranscriptRejectionReason.DUPLICATE_IDEMPOTENCY_KEY: _Request(
+            "Question", wire[0].idempotency_key, wire, None, conversation_id
+        ),
+        TranscriptRejectionReason.SIGNATURE_MISMATCH: _Request(
+            "Question", "key-next", [altered, *wire[1:]], None, conversation_id
+        ),
+    }
+    return requests[reason]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("reason", list(TranscriptRejectionReason))
+async def test_each_rejection_writes_one_transcript_rejected_record(
+    reason: TranscriptRejectionReason, structured_lines: list[str]
+) -> None:
+    # Test: The `transcript_rejected` record of each rejection reason.
+    # Situation: `_build_rejected_request` builds a request that breaks one
+    #   rule of the transcript, for each of the eight rejection reasons.
+    # Expectation: `load_transcript` raises `TranscriptError` with the
+    #   reason, and writes exactly one line. The line has exactly the keys
+    #   `severity`, `message`, `event`, `schema_version`, and `reason`, in
+    #   that order, and the reason is the reason's code.
+    request = _build_rejected_request(reason, await _converse(3))
+
+    with pytest.raises(TranscriptError) as caught:
+        load_transcript(request)
+
+    assert caught.value.reason is reason
+    assert structured_lines == [
+        '{"severity":"WARNING","message":"transcript rejected",'
+        '"event":"transcript_rejected","schema_version":1,'
+        f'"reason":"{reason.value}"}}'
+    ]
+
+
+def test_each_rejection_logs_one_warning_with_its_reason(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    # Test: The plain-text log line of a rejected window.
+    # Situation: One request carries a summary without turns. Another
+    #   carries a conversation ID that fails one rule of the window's
+    #   schema.
+    # Expectation: Each rejection logs one warning. The first names the
+    #   reason, and the second names `invalid_window` and the number of
+    #   validation errors.
+    with caplog.at_level(logging.WARNING, logger=transcript.__name__):
+        for request in (
+            _Request("Question", "key-0", (), "Orphan summary"),
+            _Request("Question", "key-0", (), None, "not-an-id"),
+        ):
+            with pytest.raises(TranscriptError):
+                load_transcript(request)
+
+    assert [
+        (record.levelno, record.getMessage()) for record in caplog.records
+    ] == [
+        (
+            logging.WARNING,
+            "Rejected the request transcript: summary_without_turns",
+        ),
+        (
+            logging.WARNING,
+            "Rejected the request transcript: invalid_window (1 errors)",
+        ),
+    ]
+
+
+@pytest.mark.asyncio
+async def test_the_transcript_rejected_record_does_not_hold_request_values(
+    structured_lines: list[str],
+) -> None:
+    # Test: The `transcript_rejected` lines do not contain any value from
+    #   the rejected requests.
+    # Situation: Three requests are rejected. In the first, the message, the
+    #   idempotency key, a turn's query and answer, the summary, and the
+    #   conversation ID are marker strings, and the window fails its schema.
+    #   The second sends a signed window with a marker summary. The third
+    #   sends a signed window in which markers replace the first query and
+    #   the first answer.
+    # Expectation: The server writes three lines, with the reasons
+    #   `invalid_window`, `window_start_mismatch`, and `signature_mismatch`.
+    #   The raw lines do not contain any marker or the conversation ID that
+    #   the server minted.
+    turns, _, conversation_id = await _converse(2)
+    assert conversation_id is not None
+    wire = _wire(turns)
+    forged = wire[0].model_copy(
+        update={
+            "user_query": f"{_MARKER_PREFIX}forged_query",
+            "model_response": f"{_MARKER_PREFIX}forged_answer",
+        }
+    )
+    requests = [
+        _Request(
+            f"{_MARKER_PREFIX}message",
+            f"{_MARKER_PREFIX}key",
+            [
+                {
+                    "turn_index": 0,
+                    "user_query": f"{_MARKER_PREFIX}query",
+                    "model_response": f"{_MARKER_PREFIX}answer",
+                }
+            ],
+            f"{_MARKER_PREFIX}summary",
+            f"{_MARKER_PREFIX}conversation_id",
+        ),
+        _Request(
+            "Question",
+            "key-next",
+            wire,
+            f"{_MARKER_PREFIX}summary",
+            conversation_id,
+        ),
+        _Request(
+            "Question", "key-next", [forged, wire[1]], None, conversation_id
+        ),
+    ]
+
+    for request in requests:
+        with pytest.raises(TranscriptError):
+            load_transcript(request)
+
+    assert [json.loads(line)["reason"] for line in structured_lines] == [
+        "invalid_window",
+        "window_start_mismatch",
+        "signature_mismatch",
+    ]
+    written = "\n".join(structured_lines)
+    assert _MARKER_PREFIX not in written
+    assert conversation_id not in written
+
+
+@pytest.mark.asyncio
+async def test_an_accepted_transcript_does_not_write_a_record(
+    structured_lines: list[str],
+) -> None:
+    # Test: A request whose transcript verifies.
+    # Situation: The test loads a first request without turns and a
+    #   follow-up request with a signed two-turn window.
+    # Expectation: Both requests load, and the server does not write a
+    #   structured line.
+    load_transcript(_Request("Question", "key-0"))
+    load_transcript(_next_request(await _converse(2)))
+
+    assert structured_lines == []
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("count", "was_compacted"),
+    [
+        (0, False),
+        (2, False),
+        (MAX_VERBATIM_TURNS - 1, False),
+        (MAX_VERBATIM_TURNS, True),
+        (MAX_VERBATIM_TURNS + 2, True),
+    ],
+)
+async def test_signing_reports_the_turn_index_and_whether_it_compacted(
+    count: int, was_compacted: bool, compaction_calls: list[dict[str, Any]]
+) -> None:
+    # Test: `Transcript.next_turn_index` and `SignedWindow.was_compacted`.
+    # Situation: A conversation has run for `count` turns, and the test
+    #   loads and signs the next request.
+    # Expectation: The transcript's next turn index is `count`, and the
+    #   signed turn has that index. The window reports compaction only when
+    #   the request already carried `MAX_VERBATIM_TURNS` turns.
+    loaded = load_transcript(_next_request(await _converse(count)))
+
+    signed = await finalize_turn(loaded, "Answer", _SLOTS, _CONFIG)
+
+    assert signed is not None
+    assert loaded.next_turn_index == count
+    assert signed.turn.turn_index == count
+    assert signed.was_compacted is was_compacted
 
 
 def _sign_uncompacted_window(

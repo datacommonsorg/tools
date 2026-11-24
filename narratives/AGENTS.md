@@ -49,8 +49,8 @@ process and PR expectations: [`CONTRIBUTING.md`](../CONTRIBUTING.md).
     `mypy`, `pytest`).
   - `src/narratives_agent/` — installable Python package (`config.py`,
     `config_model.py`, `gcp_auth.py`, `json_value.py`, `model_armor.py`,
-    `secret_manager.py`, `telemetry.py`, `server/`, `workflows/`, `mcp/`,
-    `gemini/`, `analytics/`).
+    `secret_manager.py`, `telemetry.py`, `token_budget.py`, `server/`,
+    `workflows/`, `mcp/`, `gemini/`, `analytics/`).
     - `server/app.py` — the FastAPI application
       (`uvicorn narratives_agent.server.app:app` in production).
     - `server/security_headers.py`: the ASGI middleware that adds the HTTP
@@ -78,8 +78,10 @@ process and PR expectations: [`CONTRIBUTING.md`](../CONTRIBUTING.md).
       `ProcessingDiagnostic` (`processing.py`), the best-effort request,
       before a specification runs, for the variable metadata of the fetched
       tables it reads (`metadata_backfill.py`), the turn record that collects
-      each turn's results (`turn_record.py`), the turn debug report builder
-      (`debug_report.py`), the chart grammar, resolver, and wire serializer
+      each turn's results (`turn_record.py`), the builder of the `chat_turn`
+      record that the server logs for each turn (`usage_record.py`), the turn
+      debug report builder (`debug_report.py`), the chart grammar, resolver,
+      and wire serializer
       (`charts.py`), the default chart floor (`chart_defaults.py`), the
       synthesis prompt builder (`synthesis.py`), the streaming block splitter
       (`blocks.py`), the parser of the answer's closing Data gaps block
@@ -134,6 +136,9 @@ process and PR expectations: [`CONTRIBUTING.md`](../CONTRIBUTING.md).
     - `secret_manager.py`: reads secrets from Google Cloud Secret Manager,
       caches results, and provides test resets.
     - `settings.py` — every environment variable the agent reads (`Settings`).
+    - `token_budget.py`: optional in-memory per-instance daily Gemini token
+      budget (`DAILY_TOKEN_BUDGET_PER_INSTANCE`), resetting at UTC midnight and
+      emitting once-per-day warning/exhausted telemetry events.
 - `defaults/` — baseline `theme.json`, `agent-config.json`, and `prompts/`.
 - `config/` — instance-specific overrides layered over `defaults/` at deploy
   time.

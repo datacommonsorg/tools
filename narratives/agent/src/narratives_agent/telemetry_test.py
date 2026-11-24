@@ -20,14 +20,20 @@ Verifies these behaviors in `telemetry`:
    response in any span, before or after `format_span` serializes it.
 3. `format_span` drops every attribute outside its allowlist.
 4. A streamed request produces one request span, not one per ASGI message.
-5. `TurnTelemetry` records phases, tool names, and token counts, and its
-   summary carries no conversation content.
-6. The stdout span exporter and the turn-summary log handler write to the
-   current `sys.stdout`, and the handler does not raise when writing fails.
+5. `TurnTelemetry` records phases, tool names, and token counts on the turn
+   span. The span does not have the turn ID, and `finish` does not write a
+   structured line.
+6. The stdout span exporter and the line handler write to the current
+   `sys.stdout`, and the handler does not raise when writing fails.
 7. `flush_telemetry` writes spans still waiting in the batch processor, and
    does nothing before `configure_telemetry` has run.
 8. `configure_telemetry` installs the provider, handler, and instrumentors
    once and is idempotent on subsequent calls.
+9. `write_structured_record` writes a record as one line of compact JSON,
+   with its keys in the order of the dataclass fields and a non-finite
+   number as `null`.
+10. `record_budget_event` emits content-free `daily_token_budget` JSON records
+    at `WARNING` and `ERROR` severities.
 """
 
 import io
@@ -37,6 +43,7 @@ import os
 import sys
 import time
 from collections.abc import AsyncIterator, Iterator
+from dataclasses import dataclass
 
 import httpx
 import pytest
@@ -56,7 +63,7 @@ from opentelemetry.sdk.trace.export import (
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import (
     InMemorySpanExporter,
 )
-from opentelemetry.trace import SpanKind
+from opentelemetry.trace import SpanKind, StatusCode
 from opentelemetry.util.genai.environment_variables import (
     OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT,
     OTEL_INSTRUMENTATION_GENAI_COMPLETION_HOOK,
@@ -211,7 +218,7 @@ def test_format_span_keeps_only_allowlisted_attributes() -> None:
                 "client.address": "203.0.113.7",
                 "user_agent.original": "Mozilla/5.0",
                 "http.route": "/agent/chat/stream",
-                "narratives.turn_id": "turn-1",
+                "narratives.terminal_state": "complete",
             }
         )
 
@@ -220,7 +227,7 @@ def test_format_span_keeps_only_allowlisted_attributes() -> None:
 
     assert record["attributes"] == {
         "http.route": "/agent/chat/stream",
-        "narratives.turn_id": "turn-1",
+        "narratives.terminal_state": "complete",
     }
 
 
@@ -260,53 +267,27 @@ def test_a_streamed_request_produces_one_request_span() -> None:
     assert span.kind is SpanKind.SERVER
 
 
-class _RecordCollector(logging.Handler):
-    """Collects the messages emitted on the turn logger."""
-
-    def __init__(self) -> None:
-        super().__init__()
-        self.messages: list[str] = []
-
-    def emit(self, record: logging.LogRecord) -> None:
-        self.messages.append(record.getMessage())
-
-
-@pytest.fixture
-def turn_records() -> Iterator[list[str]]:
-    """Captures the JSON summaries `TurnTelemetry.finish` emits."""
-    collector = _RecordCollector()
-    logger = telemetry._turn_logger
-    previous_level = logger.level
-    logger.addHandler(collector)
-    logger.setLevel(logging.INFO)
-    yield collector.messages
-    logger.removeHandler(collector)
-    logger.setLevel(previous_level)
-
-
-def test_turn_summary_records_operations_without_content(
-    turn_records: list[str],
+def test_finish_ends_the_turn_span_once_without_a_structured_line(
+    monkeypatch: pytest.MonkeyPatch, structured_lines: list[str]
 ) -> None:
-    # Test: The turn summary carries operational fields only.
-    # Situation: A turn runs a discovery phase with two tool calls over
-    #   three iterations, records the scripts and fetch counts of its
-    #   analysis, adds token usage from two Gemini calls, and finishes
-    #   `complete`; `finish` is then called again with `error`.
-    # Expectation: Exactly one summary is emitted, with state `complete`, the
-    #   phase duration, tool names and counts, the analysis counts, and
-    #   summed tokens, and it contains no tool arguments or other content.
+    # Test: What `TurnTelemetry.finish` does when a turn ends.
+    # Situation: The module tracer records spans in memory. A turn runs a
+    #   discovery phase with two tool calls over three iterations, adds
+    #   token usage from two Gemini calls, and finishes `complete`. `finish`
+    #   is then called again with `error`.
+    # Expectation: The tracer exports one turn span. It has the first
+    #   terminal state, the iteration count, the tool call count, the tool
+    #   names, and the summed tokens, and its status is not an error.
+    #   `finish` does not write a structured line.
+    exporter = InMemorySpanExporter()
+    provider = TracerProvider()
+    provider.add_span_processor(SimpleSpanProcessor(exporter))
+    monkeypatch.setattr(telemetry, "_tracer", provider.get_tracer(__name__))
     turn = telemetry.TurnTelemetry()
     with turn.phase("discovery"):
         turn.mcp_iterations = 3
         turn.record_tool_call("search_indicators")
         turn.record_tool_call("fetch_observations")
-    turn.scripts = ["rank_cohort", "summarize_distribution"]
-    turn.tables_fetched = 2
-    turn.total_rows_fetched = 1_200
-    turn.processing_retries = 1
-    turn.charts_emitted = 2
-    turn.charts_rejected = 1
-    turn.title_outcome = telemetry.TitleOutcome.OMITTED
     turn.tokens.add(
         telemetry.TokenCounts(prompt=10, candidates=0, thoughts=0, total=15)
     )
@@ -317,50 +298,55 @@ def test_turn_summary_records_operations_without_content(
     turn.finish(telemetry.TerminalState.COMPLETE)
     turn.finish(telemetry.TerminalState.ERROR, "late_error")
 
-    (message,) = turn_records
-    record = json.loads(message)
-    assert record["terminal_state"] == telemetry.TerminalState.COMPLETE
-    assert record["turn_id"] == turn.turn_id
-    assert set(record["phase_durations_ms"]) == {"discovery"}
-    assert record["mcp_iterations"] == 3
-    assert record["tool_calls"] == {
-        "search_indicators": 1,
-        "fetch_observations": 1,
+    (span,) = [
+        span
+        for span in exporter.get_finished_spans()
+        if span.name == "narratives.turn"
+    ]
+    attributes = dict(span.attributes or {})
+    assert attributes["narratives.terminal_state"] == "complete"
+    assert attributes["narratives.mcp_iterations"] == 3
+    assert attributes["narratives.tool_call_count"] == 2
+    assert attributes["narratives.tool_names"] == (
+        "fetch_observations",
+        "search_indicators",
+    )
+    assert attributes["narratives.tokens.prompt_token_count"] == 10
+    assert attributes["narratives.tokens.candidates_token_count"] == 4
+    assert attributes["narratives.tokens.thoughts_token_count"] == 2
+    assert attributes["narratives.tokens.total_token_count"] == 15
+    assert "error.type" not in attributes
+    assert span.status.status_code is not StatusCode.ERROR
+    assert structured_lines == []
+
+
+def test_the_turn_span_does_not_have_the_turn_id(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Test: The spans of a turn do not have the turn ID.
+    # Situation: The module tracer records spans in memory, and a turn with
+    #   a known turn ID finishes after one phase.
+    # Expectation: The turn span and the phase span do not have a
+    #   `narratives.turn_id` attribute, and the turn ID does not appear in
+    #   the serialized form of either span.
+    exporter = InMemorySpanExporter()
+    provider = TracerProvider()
+    provider.add_span_processor(SimpleSpanProcessor(exporter))
+    monkeypatch.setattr(telemetry, "_tracer", provider.get_tracer(__name__))
+    turn = telemetry.TurnTelemetry(turn_id="turn-id-0123456789abcdef")
+    with turn.phase("classify"):
+        pass
+
+    turn.finish(telemetry.TerminalState.COMPLETE)
+
+    spans = exporter.get_finished_spans()
+    assert {span.name for span in spans} == {
+        "narratives.turn",
+        "narratives.phase.classify",
     }
-    assert record["scripts"] == ["rank_cohort", "summarize_distribution"]
-    assert record["tables_fetched"] == 2
-    assert record["total_rows_fetched"] == 1_200
-    assert record["processing_retries"] == 1
-    assert record["charts_emitted"] == 2
-    assert record["charts_rejected"] == 1
-    assert record["title_outcome"] == "omitted"
-    assert record["tokens"] == {
-        "prompt_token_count": 10,
-        "candidates_token_count": 4,
-        "thoughts_token_count": 2,
-        "total_token_count": 15,
-    }
-    assert set(record) == {
-        "severity",
-        "message",
-        "event",
-        "turn_id",
-        "terminal_state",
-        "error_type",
-        "duration_ms",
-        "phase_durations_ms",
-        "mcp_iterations",
-        "tool_call_count",
-        "tool_calls",
-        "tokens",
-        "scripts",
-        "tables_fetched",
-        "total_rows_fetched",
-        "processing_retries",
-        "charts_emitted",
-        "charts_rejected",
-        "title_outcome",
-    }
+    for span in spans:
+        assert "narratives.turn_id" not in (span.attributes or {})
+        assert turn.turn_id not in telemetry.format_span(span)
 
 
 def test_repeated_phases_accumulate_and_analysis_fields_reach_the_span(
@@ -417,19 +403,25 @@ def test_repeated_phases_accumulate_and_analysis_fields_reach_the_span(
 
 
 def test_a_turn_that_never_reaches_synthesis_records_no_title_requested(
-    turn_records: list[str],
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     # Test: Default title outcome.
-    # Situation: A turn finishes without any phase setting `title_outcome`,
-    #   as a refused or clarification turn does.
-    # Expectation: The summary records `title_outcome` as `not_requested`,
-    #   so it is not counted as a title the model omitted.
+    # Situation: The module tracer records spans in memory, and a turn
+    #   finishes without any phase setting `title_outcome`, as a refused or
+    #   clarification turn does.
+    # Expectation: The turn span records `narratives.title_outcome` as
+    #   `not_requested`, so it is not counted as a title the model omitted.
+    exporter = InMemorySpanExporter()
+    provider = TracerProvider()
+    provider.add_span_processor(SimpleSpanProcessor(exporter))
+    monkeypatch.setattr(telemetry, "_tracer", provider.get_tracer(__name__))
     turn = telemetry.TurnTelemetry()
 
     turn.finish(telemetry.TerminalState.REFUSED, "off_domain")
 
-    (message,) = turn_records
-    assert json.loads(message)["title_outcome"] == "not_requested"
+    (span,) = exporter.get_finished_spans()
+    attributes = dict(span.attributes or {})
+    assert attributes["narratives.title_outcome"] == "not_requested"
 
 
 @pytest.mark.parametrize(
@@ -445,16 +437,14 @@ def test_a_turn_that_never_reaches_synthesis_records_no_title_requested(
 )
 def test_turn_span_severity_matches_the_terminal_state(
     monkeypatch: pytest.MonkeyPatch,
-    turn_records: list[str],
     state: telemetry.TerminalState,
     error_type: str | None,
     severity: str,
 ) -> None:
-    # Test: The exported turn span has the same severity as the turn summary.
+    # Test: The severity of the exported turn span.
     # Situation: The module tracer is replaced with one that records spans
     #   in memory, and a turn finishes in the parametrized state.
-    # Expectation: The serialized turn span and the `chat_turn` record both
-    #   report the expected severity.
+    # Expectation: The serialized turn span reports the expected severity.
     exporter = InMemorySpanExporter()
     provider = TracerProvider()
     provider.add_span_processor(SimpleSpanProcessor(exporter))
@@ -464,22 +454,19 @@ def test_turn_span_severity_matches_the_terminal_state(
 
     (span,) = exporter.get_finished_spans()
     assert json.loads(telemetry.format_span(span))["severity"] == severity
-    (message,) = turn_records
-    assert json.loads(message)["severity"] == severity
 
 
 def test_the_pattern_is_recorded_only_when_the_classifier_assigned_one(
-    monkeypatch: pytest.MonkeyPatch, turn_records: list[str]
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    # Test: The `pattern` field of the turn summary and span.
+    # Test: The `narratives.pattern` attribute of the turn span.
     # Situation: One turn is classified as `trend_delta` and completes; a
     #   second turn is refused as `off_domain` before any classification is
     #   assigned; a third turn is classified as `single_point` and later
     #   refused as `safety_blocked`.
-    # Expectation: The first summary and span carry `pattern` and the classify
-    #   phase duration; both refused turns omit `pattern` from the summary and
-    #   `narratives.pattern` from the span while recording their refusal
-    #   reasons in `error_type`.
+    # Expectation: The first span carries `narratives.pattern`. Both
+    #   refused spans omit it and carry their refusal reasons in
+    #   `error.type`.
     exporter = InMemorySpanExporter()
     provider = TracerProvider()
     provider.add_span_processor(SimpleSpanProcessor(exporter))
@@ -496,13 +483,6 @@ def test_the_pattern_is_recorded_only_when_the_classifier_assigned_one(
     later_refused.pattern = "single_point"
     later_refused.finish(telemetry.TerminalState.REFUSED, "safety_blocked")
 
-    first, second, third = (json.loads(message) for message in turn_records)
-    assert first["pattern"] == "trend_delta"
-    assert "classify" in first["phase_durations_ms"]
-    assert "pattern" not in second
-    assert second["error_type"] == "off_domain"
-    assert "pattern" not in third
-    assert third["error_type"] == "safety_blocked"
     turn_spans = [
         span
         for span in exporter.get_finished_spans()
@@ -511,7 +491,9 @@ def test_the_pattern_is_recorded_only_when_the_classifier_assigned_one(
     attributes = [dict(span.attributes or {}) for span in turn_spans]
     assert attributes[0]["narratives.pattern"] == "trend_delta"
     assert "narratives.pattern" not in attributes[1]
+    assert attributes[1]["error.type"] == "off_domain"
     assert "narratives.pattern" not in attributes[2]
+    assert attributes[2]["error.type"] == "safety_blocked"
 
 
 def _make_finished_span() -> ReadableSpan:
@@ -724,55 +706,202 @@ def test_token_usage_add_records_call_records_and_accumulates_totals() -> None:
     ]
 
 
-def test_turn_telemetry_finish_stdout_is_unchanged_with_call_records(
-    turn_records: list[str],
+def test_elapsed_ms_stays_at_the_duration_that_finish_recorded(
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    # Test: Turn summary serialization ignores per-call records.
-    # Situation: A turn records attributed calls into its tokens and finishes.
-    # Expectation: The chat_turn log line on stdout contains the standard
-    #   tokens dictionary with prompt, candidates, thoughts, and total, and
-    #   does not include the per-call records list.
+    # Test: `elapsed_ms()` before and after `finish()`.
+    # Situation: The test calls `elapsed_ms()` 0.25 s after the start of
+    #   the turn, `finish()` 1 s after it, and `elapsed_ms()` again 5 s
+    #   after it.
+    # Expectation: `elapsed_ms()` returns 250 ms before `finish()` and
+    #   1000 ms after it, even though the clock has advanced.
     turn = telemetry.TurnTelemetry()
-    counts = telemetry.TokenCounts(
-        prompt=10, candidates=5, thoughts=2, total=17
-    )
-    turn.tokens.add(
-        counts,
-        phase="discovery",
-        model="gemini-3.8-flash",
-        round_number=1,
-    )
-
-    turn.finish(telemetry.TerminalState.COMPLETE)
-
-    (message,) = turn_records
-    record = json.loads(message)
-    assert record["tokens"] == {
-        "prompt_token_count": 10,
-        "candidates_token_count": 5,
-        "thoughts_token_count": 2,
-        "total_token_count": 17,
-    }
-    assert "calls" not in record["tokens"]
-    assert "calls" not in record
-
-
-def test_turn_telemetry_elapsed_ms_matches_duration_ms_after_finish(
-    turn_records: list[str],
-) -> None:
-    # Test: Public `elapsed_ms()` accessor on `TurnTelemetry`.
-    # Situation: `elapsed_ms()` is called before `finish()` and after
-    #   `finish()`.
-    # Expectation: `elapsed_ms()` returns a non-negative float before
-    #   `finish()`, and matches the `duration_ms` recorded in the `chat_turn`
-    #   log line identically after `finish()`.
-    turn = telemetry.TurnTelemetry()
+    clock = [turn._start + 0.25]
+    monkeypatch.setattr(time, "monotonic", lambda: clock[0])
     elapsed_before = turn.elapsed_ms()
-    assert elapsed_before >= 0.0
+    clock[0] = turn._start + 1.0
 
     turn.finish(telemetry.TerminalState.COMPLETE)
 
-    elapsed_after = turn.elapsed_ms()
-    (message,) = turn_records
-    record = json.loads(message)
-    assert elapsed_after == record["duration_ms"]
+    clock[0] = turn._start + 5.0
+    assert elapsed_before == 250.0
+    assert turn.elapsed_ms() == 1000.0
+
+
+@dataclass(frozen=True, kw_only=True)
+class _SampleItem:
+    """Holds one nested item of `_SampleRecord`."""
+
+    name: str
+    ratio: float | None
+
+
+@dataclass(frozen=True, kw_only=True)
+class _SampleRecord(telemetry.StructuredRecord):
+    """Holds a structured record with each kind of value a record uses."""
+
+    state: telemetry.TerminalState
+    reason: str | None
+    is_signed: bool
+    items: tuple[_SampleItem, ...]
+
+
+def _make_sample_record(*items: _SampleItem) -> _SampleRecord:
+    """Builds a sample structured record that holds `items`."""
+    return _SampleRecord(
+        severity="INFO",
+        message="sample event",
+        event="sample",
+        schema_version=1,
+        state=telemetry.TerminalState.COMPLETE,
+        reason=None,
+        is_signed=True,
+        items=items,
+    )
+
+
+_SAMPLE_LINE = (
+    '{"severity":"INFO","message":"sample event","event":"sample",'
+    '"schema_version":1,"state":"complete","reason":null,"is_signed":true,'
+    '"items":[{"name":"two\\nlines \\"quoted\\"","ratio":0.5}]}'
+)
+
+
+def test_write_structured_record_writes_one_line_of_compact_json(
+    structured_lines: list[str],
+) -> None:
+    # Test: The line that `write_structured_record` writes.
+    # Situation: A record holds the four shared keys, an enum, a `None`, a
+    #   boolean, and a tuple with one nested dataclass. The nested string
+    #   holds a line break and a double quote.
+    # Expectation: The function writes exactly one line. It does not have
+    #   a line break, it is JSON without spaces between its tokens, and its
+    #   keys follow the order of the dataclass fields, with the four shared
+    #   keys first.
+    record = _make_sample_record(
+        _SampleItem(name='two\nlines "quoted"', ratio=0.5)
+    )
+
+    telemetry.write_structured_record(record)
+
+    (line,) = structured_lines
+    assert "\n" not in line
+    assert line == _SAMPLE_LINE
+    assert json.loads(line)["items"][0]["name"] == 'two\nlines "quoted"'
+
+
+@pytest.mark.parametrize("value", [float("nan"), float("inf"), float("-inf")])
+def test_write_structured_record_writes_a_non_finite_number_as_null(
+    structured_lines: list[str], value: float
+) -> None:
+    # Test: A non-finite number in a structured record.
+    # Situation: A nested field of the record holds NaN, infinity, or
+    #   negative infinity.
+    # Expectation: The line does not hold the JavaScript names for those
+    #   values, which JSON does not allow, and the field parses as `null`.
+    record = _make_sample_record(_SampleItem(name="x", ratio=value))
+
+    telemetry.write_structured_record(record)
+
+    (line,) = structured_lines
+    assert "NaN" not in line
+    assert "Infinity" not in line
+    assert json.loads(line)["items"] == [{"name": "x", "ratio": None}]
+
+
+def test_write_structured_record_reaches_stdout_as_one_line(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Test: The path of a structured record to stdout.
+    # Situation: The logger for structured lines has the line handler that
+    #   `configure_telemetry` installs, at level `INFO`, and `sys.stdout` is
+    #   replaced.
+    # Expectation: stdout holds the record's JSON followed by one newline,
+    #   without a timestamp or a level in front of it.
+    logger = telemetry._turn_logger
+    level_before = logger.level
+    monkeypatch.setattr(logger, "handlers", [telemetry._StdoutLineHandler()])
+    stdout = io.StringIO()
+    monkeypatch.setattr(sys, "stdout", stdout)
+    record = _make_sample_record(
+        _SampleItem(name='two\nlines "quoted"', ratio=0.5)
+    )
+    logger.setLevel(logging.INFO)
+    try:
+        telemetry.write_structured_record(record)
+    finally:
+        logger.setLevel(level_before)
+
+    assert stdout.getvalue() == _SAMPLE_LINE + "\n"
+
+
+def test_write_structured_record_warns_when_a_line_exceeds_the_size_limit(
+    caplog: pytest.LogCaptureFixture, structured_lines: list[str]
+) -> None:
+    # Test: The runtime size check in `write_structured_record`.
+    # Situation: One structured record fits below `MAX_RECORD_LINE_BYTES`, and
+    #   a second record exceeds `MAX_RECORD_LINE_BYTES`.
+    # Expectation: Both records are written to the structured log stream. The
+    #   first logs nothing on the module logger, and the oversized record logs
+    #   one warning naming the event, the byte length, and the limit without
+    #   logging the record's payload.
+    small = _make_sample_record(_SampleItem(name="small", ratio=1.0))
+    oversized_value = "x" * telemetry.MAX_RECORD_LINE_BYTES
+    large = _make_sample_record(_SampleItem(name=oversized_value, ratio=1.0))
+
+    with caplog.at_level(logging.WARNING, logger=telemetry.__name__):
+        telemetry.write_structured_record(small)
+        assert caplog.records == []
+        telemetry.write_structured_record(large)
+
+    assert len(structured_lines) == 2
+    (warning,) = caplog.records
+    assert warning.levelname == "WARNING"
+    assert "sample" in warning.getMessage()
+    assert str(telemetry.MAX_RECORD_LINE_BYTES) in warning.getMessage()
+    assert oversized_value not in warning.getMessage()
+
+
+@pytest.mark.parametrize(
+    ("state", "expected_severity", "used_tokens"),
+    [
+        pytest.param(
+            telemetry.BudgetEventState.WARNING, "WARNING", 800, id="warning"
+        ),
+        pytest.param(
+            telemetry.BudgetEventState.EXHAUSTED,
+            "ERROR",
+            1000,
+            id="exhausted",
+        ),
+    ],
+)
+def test_record_budget_event_emits_structured_content_free_json(
+    structured_lines: list[str],
+    state: telemetry.BudgetEventState,
+    expected_severity: str,
+    used_tokens: int,
+) -> None:
+    # Test: Structured `daily_token_budget` event schema and severity.
+    # Situation: `record_budget_event` is invoked for the `warning` and
+    #   `exhausted` states.
+    # Expectation: One JSON line is written to the structured stdout logger
+    #   with severity WARNING or ERROR and only the allowlisted operational
+    #   budget fields.
+    telemetry.record_budget_event(
+        state,
+        used_tokens=used_tokens,
+        limit_tokens=1000,
+        utc_day="2026-11-20",
+    )
+
+    (message,) = structured_lines
+    assert json.loads(message) == {
+        "severity": expected_severity,
+        "message": f"daily token budget {state}",
+        "event": "daily_token_budget",
+        "state": state,
+        "used_tokens": used_tokens,
+        "limit_tokens": 1000,
+        "utc_day": "2026-11-20",
+    }

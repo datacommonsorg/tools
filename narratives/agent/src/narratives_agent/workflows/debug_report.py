@@ -35,7 +35,11 @@ from narratives_agent.config_model import PROMPT_SLOTS, AgentConfig, GeminiRole
 from narratives_agent.gemini.schemas import QueryPattern
 from narratives_agent.json_value import JsonObject, json_safe
 from narratives_agent.settings import DebugReportMode
-from narratives_agent.telemetry import TerminalState, TitleOutcome
+from narratives_agent.telemetry import (
+    NESTED_PHASES,
+    TerminalState,
+    TitleOutcome,
+)
 from narratives_agent.workflows.mcp_loop import RejectionReason
 from narratives_agent.workflows.processing import (
     ProcessingDiagnostic,
@@ -715,12 +719,14 @@ def build_debug_report(
     """
     telemetry = record.telemetry
     terminal_state = _resolve_terminal_state(record.terminal_state)
-    phase_durations_ms = dict(telemetry.phase_durations_ms)
-    nested_phases = (
-        {"processing": "discovery"}
-        if "processing" in phase_durations_ms
-        else {}
+    phase_durations_ms: dict[str, float] = dict(
+        telemetry.phase_durations_ms.items()
     )
+    nested_phases: dict[str, str] = {
+        phase: parent
+        for phase, parent in NESTED_PHASES.items()
+        if phase in phase_durations_ms
+    }
 
     tokens = DebugTokenUsage(
         prompt_token_count=telemetry.tokens.prompt_token_count,

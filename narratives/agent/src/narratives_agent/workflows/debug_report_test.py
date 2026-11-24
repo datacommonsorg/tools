@@ -40,6 +40,7 @@ from types import MappingProxyType
 import pytest
 
 from narratives_agent.analytics.digest import AnalysisDigest, CoverageReport
+from narratives_agent.analytics.metrics import ScriptName
 from narratives_agent.analytics.provenance import Provenance, Source
 from narratives_agent.analytics.summarize import SUMMARY_PLACE_LIST_CAP
 from narratives_agent.analytics.tables import ObservationRow, ObservationTable
@@ -58,6 +59,7 @@ from narratives_agent.telemetry import (
     TerminalState,
     TitleOutcome,
     TokenCounts,
+    TurnPhase,
     TurnTelemetry,
 )
 from narratives_agent.workflows.classify import RefusedReason
@@ -96,11 +98,11 @@ def _make_telemetry(
     turn_id: str = "test-turn-123",
     pattern: QueryPattern | None = "single_point",
     mcp_iterations: int = 2,
-    scripts: list[str] | None = None,
+    scripts: list[ScriptName] | None = None,
     processing_retries: int = 1,
     charts_emitted: int = 2,
     charts_rejected: int = 0,
-    phase_durations: dict[str, float] | None = None,
+    phase_durations: dict[TurnPhase, float] | None = None,
 ) -> TurnTelemetry:
     """Factory helper returning a populated TurnTelemetry instance."""
     telemetry = TurnTelemetry(turn_id=turn_id)

@@ -500,6 +500,15 @@ The agent reads these values at startup, so apply a change with
 or a `chat.enabled` that is not a JSON boolean (for example `"false"` or `0`),
 is logged as an error and disables chat.
 
+While chat is enabled, the server also sends `chat.unavailable_message`,
+without a retry button, when an instance's daily Gemini token budget is
+exhausted or when a turn's query permanently cannot be screened
+(`reason: "model_armor_unavailable"` or `"classifier_unavailable"`, see
+[Monitoring](#monitoring)). If you set a time-specific maintenance notice in
+`chat.unavailable_message` or `UNAVAILABLE_MESSAGE` while disabling chat, reset
+or clear it when re-enabling chat so later non-retryable turns do not display
+stale maintenance text.
+
 The `ENABLE_CHAT`, `UNAVAILABLE_TITLE`, and `UNAVAILABLE_MESSAGE` environment
 variables override these values when set, in either direction, and take effect
 without a configuration sync. Setting `ENABLE_CHAT=true` forces chat on
@@ -550,6 +559,88 @@ since Vite does not read them. `/healthz` and `/agent/health` keep answering
   An `ENABLE_CHAT` value that the deployment always sets, such as `true`, takes
   precedence over `chat.enabled` in `agent-config.json`.
 
+### Daily Gemini token budget (optional)
+
+Set `DAILY_TOKEN_BUDGET_PER_INSTANCE` to a positive integer to cap the total
+Gemini tokens (`total_token_count`, including prompt, output, and thinking
+tokens) that each agent instance may spend per UTC calendar day. When the
+variable is unset or blank, budget enforcement is disabled. A zero, negative,
+or non-integer value fails startup validation so a misconfigured deployment
+does not start unguarded.
+
+Once an instance reaches or exceeds its daily limit, `POST /agent/chat/stream`
+immediately ends new turns with a non-retryable terminal error frame
+(`reason: "daily_token_budget_exhausted"`, `is_retryable: false`) carrying the
+effective `chat.unavailable_message` (or `UNAVAILABLE_MESSAGE`), before calling
+Model Armor, Gemini, or MCP. `/healthz` and `/agent/health` keep answering
+`200`. In a multi-replica environment, an exhausted instance still receives
+routed requests and returns this error even while sibling replicas still have
+tokens remaining for the day; uneven errors are expected under per-instance
+tracking until global token tracking is introduced.
+
+Turns already in flight finish and record tokens from their completed Gemini
+calls in `finally`. Because the SDK reports `usage_metadata` only on the final
+chunk of a streamed call or after a non-streaming call returns, tokens from
+streams canceled by client disconnect before the final chunk or from timed-out
+model calls are not added to the instance's counter even though Gemini or
+Vertex AI may bill them. Counters reset automatically when the UTC date
+advances.
+
+- **Cloud Run:**
+
+  ```sh
+  # Set a per-instance daily token cap
+  gcloud run services update <instance>-app --region=<region> \
+    --update-env-vars=DAILY_TOKEN_BUDGET_PER_INSTANCE=<tokens>
+
+  # Disable token-budget enforcement
+  gcloud run services update <instance>-app --region=<region> \
+    --remove-env-vars=DAILY_TOKEN_BUDGET_PER_INSTANCE
+  ```
+
+  `deploy/terraform-custom-datacommons/modules/main.tf` manages container `env`
+  without `ignore_changes` and does not yet include
+  `DAILY_TOKEN_BUDGET_PER_INSTANCE`. Until it is wired through
+  `config/instance.env` and Terraform, the next `./deploy.sh` run (including
+  `--agent-only` or `--infra-only`) drops an out-of-band value and leaves the
+  service uncapped.
+
+- **GKE (`datacommons-website`):**
+
+  ```sh
+  # Set or adjust the per-instance cap immediately (restarts pods)
+  kubectl set env deployment/website-agentic-apps -n website \
+    -c discover DAILY_TOKEN_BUDGET_PER_INSTANCE=<tokens>
+
+  # Disable token-budget enforcement
+  kubectl set env deployment/website-agentic-apps -n website \
+    -c discover DAILY_TOKEN_BUDGET_PER_INSTANCE-
+  ```
+
+  Out-of-band `kubectl set env` changes are overwritten on subsequent Cloud
+  Deploy releases unless the budget is configured in the environment's
+  `datacommons-website` Helm values.
+
+- **Sizing across replicas and Cloud Run scale-to-zero:** Counters live in
+  process memory (one Uvicorn worker per container). For fixed-replica GKE
+  deployments, set the per-instance cap to `global daily cap / replicas`; pod
+  restarts, rollouts, or changing the variable via `kubectl set env` reset each
+  restarted instance's counter to zero for the current UTC day. On Cloud Run,
+  where `app_min_instances` defaults to `0` and the service scales down and
+  starts fresh containers at zero repeatedly over a day, the cap bounds tokens
+  per container instance lifetime (at most one UTC day) rather than total daily
+  service spend. Pair this cap with a project-level Vertex AI token alert or
+  quota to bound total daily spend, and use `ENABLE_CHAT=false` for an
+  immediate stop across all instances.
+- **Model and thinking-level changes:** Because the budget counts tokens rather
+  than dollars, re-size `DAILY_TOKEN_BUDGET_PER_INSTANCE` (and any project-level
+  Vertex AI alert threshold) whenever changing Gemini models or raising thinking
+  levels in `agent-config.json`.
+- **Threshold telemetry:** Each instance emits at most one structured
+  `daily_token_budget` JSON record to stdout at 80% usage (`state: "warning"`,
+  severity `WARNING`) and one at 100% (`state: "exhausted"`, severity `ERROR`)
+  per UTC day, suitable for Cloud Logging alerts.
+
 ### Screening prompts with Google Cloud Model Armor (optional)
 
 By default, Narratives screens incoming queries with its built-in regex
@@ -568,6 +659,19 @@ screening before the `classify` Gemini call:
 
 When `MODEL_ARMOR_TEMPLATE` is unset, Model Armor screening is skipped. When
 set, it works with both `GEMINI_API_KEY` and Vertex AI deployments.
+
+Once `MODEL_ARMOR_TEMPLATE` is set, chat depends on Model Armor being
+available in the template's region. A turn that Model Armor cannot screen
+ends with an error (`reason: "model_armor_unavailable"`) rather than
+continuing unscreened. Transient failures (timeouts, network or token-refresh
+errors, HTTP 408/429/499/5xx, and responses that are neither a match nor a
+complete pass) are retryable. Permanent rejections (other HTTP 4xx statuses
+such as 403 or 404, and missing Application Default Credentials) return
+`chat.unavailable_message` without a retry button. A complete pass reports
+`filterMatchState` `NO_MATCH_FOUND` and `invocationResult` `SUCCESS`, so a
+response in which some filters did not run, or that omits either field, ends
+the turn. See [Monitoring](#monitoring) for the log filter that finds these
+turns.
 
 ### Protecting traffic with reCAPTCHA Enterprise (optional)
 
@@ -734,25 +838,169 @@ Cloud Run intercepts `/healthz` at the frontend layer and does not forward it to
 the container. Configure external uptime checks to query `/agent/health`
 instead.
 
+**Chat turns end with an error because a question could not be screened**
+
+A turn ends with an error, before any data is fetched, when Model Armor or the
+query classifier cannot screen the question. The `chat_turn` log entry of such
+a turn has severity `ERROR` and one of two `outcome_reason` values:
+
+- `model_armor_unavailable`: `MODEL_ARMOR_TEMPLATE` is set and Model Armor
+  did not return a complete result. Check that the template exists in its
+  region, that the runtime service account holds `roles/modelarmor.user`, and
+  that Model Armor is available in that region.
+- `classifier_unavailable`: the `classify` Gemini call failed twice, Gemini
+  rejected the request permanently (for example, an invalid API key or model
+  name), or the `classify` prompt is empty. The Gemini client logs the
+  upstream error in a separate entry.
+
+Use this Cloud Logging filter to find these turns or to alert on them:
+
+```text
+jsonPayload.event="chat_turn" AND jsonPayload.outcome_reason=("model_armor_unavailable" OR "classifier_unavailable")
+```
+
 ### Inspecting Cloud Run logs
 
-For further diagnostics, inspect the Cloud Run service logs. Each completed chat
-turn writes a structured `chat_turn` JSON log entry keyed by `turn_id`,
-containing the terminal state, error reason (if any), phase latencies
-(`classify`, `discovery`, `processing`, `synthesis`, `finalize`, `follow_ups`),
-tool names and counts, token usage, the analytical `pattern` assigned by the
-`classify` phase, the analysis counts (`scripts`, `tables_fetched`,
-`total_rows_fetched`, `processing_retries`, `charts_emitted`, and
-`charts_rejected`), and `title_outcome` (`emitted`, `omitted` when the model
-wrote no usable title on a turn with data, or `not_requested` when the turn
-had no data or never reached synthesis; read `emitted` and `omitted` on
-`complete` turns, since a synthesis that fails part-way records the outcome
-reached when it stopped); user query text is never logged.
-The turn span carries the same fields as `narratives.scripts`,
-`narratives.tables_fetched`, `narratives.total_rows_fetched`,
-`narratives.processing_retries`, `narratives.charts_emitted`,
-`narratives.charts_rejected`, and `narratives.title_outcome`. On a `refused`
-turn, `error_type` holds the refusal reason (`adversarial`, `off_domain`,
-`safety_blocked`, or `chat_disabled`) and `pattern` is omitted; if the
-classifier call itself fails, the turn falls through with `pattern` set to
-`exploratory`.
+For further diagnostics, inspect the Cloud Run service logs. The server
+writes structured JSON entries to stdout, each on one line. The `chat_turn`
+and `transcript_rejected` records start with the keys `severity`, `message`,
+`event`, and `schema_version`. `event` names the kind of entry.
+`schema_version` changes when a key of that entry is renamed or removed, or
+when the type or the meaning of a key changes. Adding a key does not change
+it. When `DAILY_TOKEN_BUDGET_PER_INSTANCE` is configured, each instance also
+writes `daily_token_budget` JSON entries (`state: "warning"` at 80% and
+`state: "exhausted"` at 100%, once each per UTC day, described in
+[Daily Gemini token budget](#daily-gemini-token-budget-optional)).
+
+The entries do not contain text from the conversation. The server never logs
+the user's query, the answer, the model's thoughts, tool arguments, tool
+results, or chart titles. Every string in an entry is a code that the server
+defines, an identifier that the server creates, a configured model name, or
+the build SHA.
+
+#### The `chat_turn` record
+
+The server writes one `chat_turn` record (`schema_version` 2) when a chat
+turn ends. It writes the record for turns that complete, turns that it
+refuses, turns that fail, turns that the client cancels, and turns that end
+because chat is disabled or the instance's daily token budget is exhausted.
+Every record has every key, and a value that does not apply is `null`.
+
+| Key | Type | Value |
+| :--- | :--- | :--- |
+| `severity` | string | `ERROR` when the turn failed, otherwise `INFO` |
+| `message` | string | `chat turn <terminal_state>` |
+| `event` | string | `chat_turn` |
+| `schema_version` | integer | `2` |
+| `build_sha` | string or null | `BUILD_SHA` of the deployment |
+| `turn_id` | string | ID that the server creates for the turn |
+| `conversation_id` | string | ID of the turn's conversation |
+| `turn_index` | integer | Index of the turn in its conversation |
+| `is_signed` | boolean | Whether the server signed the turn |
+| `was_compacted` | boolean | Whether signing compacted the conversation |
+| `terminal_state` | string | `complete`, `refused`, `error`, or `canceled` |
+| `outcome` | string | How the turn ended |
+| `outcome_reason` | string or null | Reason code of a refused or failed turn |
+| `refusal_stage` | string or null | Where the server refused the turn |
+| `has_data` | boolean | Whether the turn's analysis produced data |
+| `is_clarification` | boolean | Whether the answer is a clarification question |
+| `is_truncated` | boolean | Whether the search for data stopped at a limit |
+| `title_outcome` | string | `emitted`, `omitted`, or `not_requested` |
+| `pattern` | string or null | Analytical pattern from the `classify` phase |
+| `duration_ms` | number | Duration of the turn |
+| `phase_durations` | list | Duration of each phase that ran |
+| `tokens` | object | Token totals of the turn |
+| `token_calls` | list | Token counts of each model call |
+| `mcp_iterations` | integer | Number of discovery rounds |
+| `tool_call_count` | integer | Number of tool calls |
+| `tool_call_counts` | list | Number of calls of each tool |
+| `tables_fetched` | integer | Number of observation tables fetched |
+| `total_rows_fetched` | integer | Number of observation rows fetched |
+| `scripts` | list of strings | Analytical scripts that ran, in step order |
+| `processing_retries` | integer | Specifications returned to the model |
+| `charts_emitted` | integer | Charts in the answer |
+| `charts_rejected` | integer | Charts that the server dropped |
+
+More detail on some keys:
+
+- **`conversation_id` and `turn_index`:** The turns of one conversation share
+  a `conversation_id` (see
+  [architecture.md](architecture.md#conversation-id)). `turn_index` is the
+  index that the turn has when it is signed. An unsigned turn has the index
+  that it would have had, so the next signed turn of the conversation has
+  the same index.
+- **`was_compacted`:** The value is `true` when signing the turn compacted
+  the oldest turns of the conversation into a summary (see
+  [architecture.md](architecture.md#keeping-conversation-history-compact)).
+- **`outcome`:** The value is `answered_with_data`, `answered_without_data`
+  (the server did not find data to answer from), `clarified`, `refused`,
+  `error`, or `canceled` (the client disconnected before the turn
+  finished).
+- **`outcome_reason`:** On a `refused` turn, the reason is `adversarial`,
+  `off_domain`, `safety_blocked`, `chat_disabled`, or
+  `daily_token_budget_exhausted`. On an `error` turn, it is the `reason` of
+  the turn's `terminal` event, such as `mcp_timeout`,
+  `model_armor_unavailable`, or `classifier_unavailable` (see
+  [Monitoring](#monitoring)).
+- **`refusal_stage`:** The value is `availability` (chat is disabled or the
+  instance's daily token budget is exhausted, so the turn did not run any
+  phase), `classify`, `discovery`, or `synthesis`.
+- **`has_data`:** On a `complete` turn, `has_data` says whether the server
+  wrote the answer from data. A turn that fails or is refused after its
+  analysis can also have `has_data` set to `true`.
+- **`title_outcome`:** `omitted` means that the model did not write a usable
+  title on a turn with data. `not_requested` means that the turn did not
+  have data or did not reach synthesis. Read `emitted` and `omitted` only on
+  `complete` turns. When synthesis fails part-way, the server records the
+  outcome that it had reached.
+- **`pattern`:** The value is `null` on a `refused` turn and on a turn that
+  ended before the `classify` phase assigned a pattern (including
+  `model_armor_unavailable` and `classifier_unavailable`).
+- **`phase_durations`:** The list has one item for each phase that ran, in
+  the order `classify`, `discovery`, `processing`, `synthesis`, `finalize`,
+  `follow_ups`. Each item has `phase`, `duration_ms`, and `is_nested`.
+  `is_nested` is `true` for `processing`, because its time is also counted
+  in `discovery`. Leave the nested items out of a sum of the durations.
+- **`tokens` and `token_calls`:** `tokens` holds `prompt_token_count`,
+  `candidates_token_count`, `thoughts_token_count`, `total_token_count`, and
+  `call_count`, which is the number of items in `token_calls`. Each item of
+  `token_calls` has `role` (`classify`, `discovery`, `synthesis`,
+  `follow_up`, or `compaction`), `model`, `round_number` (the discovery
+  round, or `null` outside discovery), and the same four token counts.
+- **`tool_call_counts`:** The list has one item for each tool name, with
+  `tool` and `count`, and it is sorted by tool name.
+
+#### The `transcript_rejected` record
+
+When the server rejects the conversation history of a request (HTTP 400
+`transcript_invalid`), it writes one `transcript_rejected` record
+(`schema_version` 1):
+
+| Key | Value |
+| :--- | :--- |
+| `severity` | `WARNING` |
+| `message` | `transcript rejected` |
+| `event` | `transcript_rejected` |
+| `schema_version` | `1` |
+| `reason` | Reason code of the rejection |
+
+`reason` is `invalid_window` (the history does not match its schema or
+exceeds a size limit), `summary_without_turns`,
+`conversation_id_without_turns`, `turns_without_conversation_id`,
+`window_start_mismatch` (the history starts at turn 0 with a summary, or
+starts after turn 0 without a summary), `non_contiguous_turns`,
+`duplicate_idempotency_key`, or `signature_mismatch`. The record does not
+include the conversation ID or any other value from the request, because a
+rejected request does not have a verified conversation ID.
+
+#### The turn span
+
+The turn span (`narratives.turn`) carries some of the same fields as
+attributes: `narratives.terminal_state`, `narratives.pattern`,
+`narratives.scripts`, `narratives.tables_fetched`,
+`narratives.total_rows_fetched`, `narratives.processing_retries`,
+`narratives.charts_emitted`, `narratives.charts_rejected`, and
+`narratives.title_outcome`. The span does not carry the turn ID. It shares a
+trace ID with the HTTP request span, and a load balancer log can hold that
+trace ID next to the client's address. With the turn ID on the span, someone
+could join a `chat_turn` record to a client address.

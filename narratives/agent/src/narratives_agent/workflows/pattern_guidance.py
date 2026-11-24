@@ -450,9 +450,9 @@ def append_pattern_guidance(
     Args:
         system_instruction: The prompt body of the discovery loop or of
             synthesis.
-        classification: The classify phase's verdict, or `None` when the
-            classifier failed, in which case the instruction is returned
-            unchanged.
+        classification: The classify phase's verdict, or `None` for a call
+            that does not have a classification, in which case the
+            instruction is returned unchanged.
         phase: Which half of the directive to append.
         has_cohort_table: Whether a fetched table covers a cohort of child
             places, passed to `build_pattern_directive`.

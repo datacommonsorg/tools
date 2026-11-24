@@ -1819,8 +1819,7 @@ async def test_the_classification_directive_is_appended_to_the_prompt(
 ) -> None:
     # Test: Pattern guidance in the discovery loop's system instruction.
     # Situation: The loop runs once with a ranking classification of
-    #   comparison shape, and once without a classification, as when the
-    #   classifier failed.
+    #   comparison shape, and once without a classification.
     # Expectation: With the classification, the system instruction is the
     #   `discovery` prompt followed by the discovery contract and the
     #   discovery half of the pattern's directive and the comparison

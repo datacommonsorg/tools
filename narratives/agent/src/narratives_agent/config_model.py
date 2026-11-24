@@ -60,9 +60,10 @@ DEFAULT_THINKING_LEVEL = types.ThinkingLevel.MEDIUM
 # `schemas/agent-config.schema.json` declares for the key.
 DEFAULT_UNAVAILABLE_TITLE = "High demand right now"
 
-# Message of a disabled chat turn when `chat.unavailable_message` is absent,
-# blank, or not a string. It matches the `"default"` that
-# `schemas/agent-config.schema.json` declares for the key.
+# Message returned when chat is disabled, an instance's daily Gemini token
+# budget is exhausted, or a turn's query permanently cannot be screened, and
+# `chat.unavailable_message` is absent, blank, or not a string. It matches the
+# `"default"` that `schemas/agent-config.schema.json` declares for the key.
 DEFAULT_UNAVAILABLE_MESSAGE = (
     "Due to high traffic, this feature is temporarily paused. Capacity is "
     "being scaled to restore service as quickly as possible. Please try "
@@ -224,6 +225,8 @@ class ChatConfig:
     `enabled` set to `False` ends every chat turn with a `chat_disabled`
     error carrying `unavailable_message`, and the HTML shell stamps
     `unavailable_title` and `unavailable_message` for the unavailable view.
+    The same message is returned when an instance's daily Gemini token budget
+    is exhausted or when a turn's query permanently cannot be screened.
     `get_chat_config` in `config.py` applies the environment overrides to
     these values.
     """
@@ -315,8 +318,8 @@ class AgentConfig:
         `_FIXED_THINKING_LEVELS`. A level below the lowest the role's model
         accepts is raised to that floor, so the classifier runs at `LOW` on
         a model that rejects `MINIMAL` rather than failing its call on every
-        turn and leaving the turn unclassified. Every role samples at its
-        temperature in `_ROLE_TEMPERATURES`.
+        turn, which would end every turn in an error. Every role samples at
+        its temperature in `_ROLE_TEMPERATURES`.
         """
         model: str = getattr(self.gemini, _ROLE_MODEL_ATTRS[role])
         if role is GeminiRole.DISCOVERY:
@@ -435,8 +438,8 @@ def _read_non_blank_chat_string(
     """Returns `chat.<key>`, stripped, or `default` when absent or unusable.
 
     A blank string is reported and replaced by `default`, like a value of the
-    wrong type, because the unavailable view and disabled turns always carry
-    text for the reader.
+    wrong type, because the unavailable view and every turn that sends the
+    message always carry text for the reader.
     """
     value = _read_string(chat, "chat", key, default).strip()
     if value:

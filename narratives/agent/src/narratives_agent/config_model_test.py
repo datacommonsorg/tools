@@ -507,7 +507,7 @@ def test_the_classify_level_is_raised_to_what_the_model_accepts(
     # Expectation: `CLASSIFY` runs at `MINIMAL` on the first group and at
     #   `LOW`, which every model accepts, on the others, so an unlisted model
     #   runs rather than failing the classify call on every turn with HTTP
-    #   400 and leaving the turn unclassified.
+    #   400, which would end every turn in an error.
     config = AgentConfig(gemini=GeminiConfig(classify_model=classify_model))
 
     assert config.resolve_role_config(GeminiRole.CLASSIFY) == RoleConfig(

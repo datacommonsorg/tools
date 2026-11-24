@@ -28,6 +28,7 @@ from pydantic import (
     AfterValidator,
     BeforeValidator,
     Field,
+    PositiveInt,
     SecretStr,
     field_validator,
     model_validator,
@@ -55,6 +56,9 @@ TRANSCRIPT_HMAC_SECRET_NAME_ENV = "TRANSCRIPT_HMAC_SECRET_NAME"
 ENABLE_CHAT_ENV = "ENABLE_CHAT"
 UNAVAILABLE_TITLE_ENV = "UNAVAILABLE_TITLE"
 UNAVAILABLE_MESSAGE_ENV = "UNAVAILABLE_MESSAGE"
+
+# Environment variable name of the optional per-instance daily Gemini token cap.
+DAILY_TOKEN_BUDGET_PER_INSTANCE_ENV = "DAILY_TOKEN_BUDGET_PER_INSTANCE"
 
 # Environment variable name of the debug report mode override.
 DEBUG_REPORT_ENV = "DEBUG_REPORT"
@@ -379,7 +383,8 @@ class Settings(BaseSettings):
     # Resource name of the Google Cloud Model Armor template used to screen
     # user queries before classification
     # (`projects/<project>/locations/<location>/templates/<template>`). When
-    # unset, Model Armor screening is skipped.
+    # unset, Model Armor screening is skipped. When set, a turn that Model
+    # Armor cannot screen ends with an error.
     model_armor_template: str = ""
 
     # When set, overrides `chat.enabled` in agent-config.json in either
@@ -394,8 +399,14 @@ class Settings(BaseSettings):
     unavailable_title: str = ""
 
     # When set, overrides `chat.unavailable_message` in agent-config.json,
-    # the message of a turn while chat is disabled.
+    # the message returned when chat is disabled, an instance's daily Gemini
+    # token budget is exhausted, or a turn's query permanently cannot be
+    # screened.
     unavailable_message: str = ""
+
+    # Optional per-instance daily Gemini token limit, resetting at UTC midnight.
+    # When unset, token-budget enforcement is disabled.
+    daily_token_budget_per_instance: PositiveInt | None = None
 
     # When set, overrides `debug.report` in agent-config.json in either
     # direction; unset leaves `debug.report` in effect. The mode controls

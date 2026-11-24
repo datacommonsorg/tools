@@ -1273,8 +1273,8 @@ async def execute_discovery_loop(
         status_callback: Optional callable invoked with a phase name and a
             message when the loop moves between discovery and processing.
         classification: The classify phase's verdict, whose pattern
-            directive is appended to the system instruction, or `None` when
-            the classifier failed.
+            directive is appended to the system instruction, or `None` for
+            a call that does not have a classification.
         result: Optional pre-allocated DiscoveryResult to receive partial state.
 
     Returns:

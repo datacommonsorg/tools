@@ -32,6 +32,7 @@ from narratives_agent.analytics.metrics import (
     CompositionMode,
     DerivedOperation,
     RankingDirection,
+    ScriptName,
     SeriesMetric,
 )
 from narratives_agent.analytics.ranking import DEFAULT_MAX_ENTRIES_PER_END
@@ -687,7 +688,7 @@ class AnalysisSpecification(BaseModel):
             )
         )
 
-    def list_script_names(self) -> list[str]:
+    def list_script_names(self) -> list[ScriptName]:
         """Returns the script of each step.
 
         Returns:
