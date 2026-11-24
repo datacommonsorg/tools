@@ -32,6 +32,8 @@ from narratives_agent.workflows.blocks import (
 )
 from narratives_agent.workflows.charts import (
     MAX_CHARTS_PER_TURN,
+    ChartRejection,
+    ChartRejectionReason,
     ChartSpecification,
     PlaceList,
     ResolvedChart,
@@ -53,7 +55,8 @@ class _Recorder:
     """Records the blocks a splitter emits and resolves charts by title.
 
     An accepted specification resolves to a line of one place, whatever its
-    kind, carrying the specification's title.
+    kind, carrying the specification's title. A rejected specification
+    resolves to a rejection for an unavailable table.
     """
 
     def __init__(self, should_accept: bool = True) -> None:
@@ -65,11 +68,15 @@ class _Recorder:
         """Appends an emitted block."""
         self.blocks.append(block)
 
-    def resolve(self, spec: ChartSpecification) -> ResolvedChart | None:
+    def resolve(
+        self, spec: ChartSpecification
+    ) -> ResolvedChart | ChartRejection:
         """Records `spec` and accepts it as a chart, or rejects it."""
         self.specs.append(spec)
         if not self.should_accept:
-            return None
+            return ChartRejection(
+                ChartRejectionReason.TABLE_UNAVAILABLE, spec.kind
+            )
         return _make_line_chart(spec.title)
 
 
@@ -1054,3 +1061,99 @@ def test_only_the_first_label_opens_a_data_gaps_block() -> None:
         ("More prose.", None),
         ("**Data gaps**\n- B", None),
     ]
+
+
+# One more chart block than an answer may hold.
+_CHARTS_OVER_THE_CAP = "\n\n".join(
+    f"```chart\n{_CHART}\n```" for _ in range(MAX_CHARTS_PER_TURN + 1)
+)
+
+
+@pytest.mark.parametrize(
+    ("text", "reason"),
+    [
+        (
+            "```chart\n{not json\n```",
+            ChartRejectionReason.INVALID_SPECIFICATION,
+        ),
+        (
+            '```chart\n{"kind": "line", "tables": [], "title": "x"}\n```',
+            ChartRejectionReason.INVALID_SPECIFICATION,
+        ),
+        (f"```chart\n{_CHART[:20]}", ChartRejectionReason.UNCLOSED_BLOCK),
+        (_CHARTS_OVER_THE_CAP, ChartRejectionReason.CHART_LIMIT_REACHED),
+    ],
+    ids=[
+        "malformed_json",
+        "grammar_violation",
+        "unclosed_block",
+        "chart_beyond_the_cap",
+    ],
+)
+def test_a_block_the_splitter_drops_is_recorded_with_its_reason(
+    text: str, reason: ChartRejectionReason
+) -> None:
+    # Test: The rejections the splitter records for the blocks it drops
+    #   without calling the resolver.
+    # Situation: A chart body is not JSON, a chart body fails the grammar,
+    #   the stream ends inside a chart block, or the answer holds one more
+    #   chart block than the cap.
+    # Expectation: The splitter records one rejection with the reason of
+    #   that path and without a kind, because the block was never parsed.
+    splitter, _ = _split(f"Before.\n\n{text}")
+
+    assert splitter.chart_rejections == (ChartRejection(reason, kind=None),)
+
+
+def test_a_rejection_from_the_resolver_is_recorded_unchanged() -> None:
+    # Test: The rejection recorded for a block the resolver rejects.
+    # Situation: The resolver returns one rejection object for the answer's
+    #   chart block.
+    # Expectation: The splitter records that same object and does not emit
+    #   a chart block.
+    rejection = ChartRejection(ChartRejectionReason.COHORT_REQUIRED, "map")
+    blocks: list[SynthesisBlock] = []
+    splitter = BlockSplitter(blocks.append, lambda spec: rejection)
+
+    splitter.feed(f"Before.\n\n```chart\n{_CHART}\n```\n\nAfter.")
+    splitter.finish()
+
+    (recorded,) = splitter.chart_rejections
+    assert recorded is rejection
+    assert [_get_block_kind(block) for block in blocks] == ["text", "text"]
+
+
+def test_rejections_are_recorded_in_stream_order() -> None:
+    # Test: The order of the recorded rejections, and their count.
+    # Situation: The stream holds an invalid chart block, a chart the
+    #   resolver accepts, a bar the resolver rejects, a second accepted
+    #   chart, and a chart block left open at the end.
+    # Expectation: The three rejections are recorded in stream order, the
+    #   rejected bar with its kind and the other two without one, the two
+    #   accepted charts are emitted, and `charts_rejected` is the number of
+    #   rejections recorded.
+    def resolve(spec: ChartSpecification) -> ResolvedChart | ChartRejection:
+        if spec.kind == "bar":
+            return ChartRejection(ChartRejectionReason.UNKNOWN_PLACE, spec.kind)
+        return _make_line_chart(spec.title)
+
+    bar = '{"kind": "bar", "tables": ["t1"], "title": "Dropped"}'
+    blocks: list[SynthesisBlock] = []
+    splitter = BlockSplitter(blocks.append, resolve)
+
+    splitter.feed(
+        "```chart\n{bad\n```\n\n"
+        f"```chart\n{_CHART}\n```\n\n"
+        f"```chart\n{bar}\n```\n\n"
+        f"```chart\n{_CHART}\n```\n\n"
+        "```chart\n{"
+    )
+    splitter.finish()
+
+    assert splitter.chart_rejections == (
+        ChartRejection(ChartRejectionReason.INVALID_SPECIFICATION, kind=None),
+        ChartRejection(ChartRejectionReason.UNKNOWN_PLACE, "bar"),
+        ChartRejection(ChartRejectionReason.UNCLOSED_BLOCK, kind=None),
+    )
+    assert splitter.charts_emitted == 2
+    assert splitter.charts_rejected == 3

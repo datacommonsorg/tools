@@ -48,6 +48,7 @@ from narratives_agent.workflows.charts import (
     INVENTORY_PLACE_CAP,
     MIN_LINE_CHART_DATES,
     BarChartSpecification,
+    ChartRejection,
     ChartSpecification,
     ChildCohort,
     HighlightChartSpecification,
@@ -108,10 +109,15 @@ class _FloorContext:
     analysis: AnalysisSpecification | None
 
     def resolve(self, spec: ChartSpecification) -> ResolvedChart | None:
-        """Resolves a specification the floor built, or returns None."""
-        return resolve_chart_specification(
+        """Resolves a specification the floor built, or returns None.
+
+        A specification that is rejected is not a chart block of the answer,
+        so its rejection is not kept.
+        """
+        resolved = resolve_chart_specification(
             spec, self.cache, self.digest, self.analysis
         )
+        return None if isinstance(resolved, ChartRejection) else resolved
 
     def has_shared_chart_cohort(self, table_ids: Sequence[str]) -> bool:
         """Returns whether every table in `table_ids` draws the same cohort.

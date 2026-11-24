@@ -73,6 +73,8 @@ from narratives_agent.token_budget import get_daily_token_budget
 from narratives_agent.workflows.blocks import BlockSplitter, TextBlock
 from narratives_agent.workflows.chart_defaults import build_default_charts
 from narratives_agent.workflows.charts import (
+    ChartRejection,
+    ChartRejectionReason,
     ChartSpecification,
     ResolvedChart,
     get_chart_cohort,
@@ -745,26 +747,11 @@ async def run_synthesis_phase(
         ) from error
 
     raw_chunks: list[str] = []
-    allowed_table_ids = {entry.table_id for entry in discovery.tables}
-
-    def resolve(spec: ChartSpecification) -> ResolvedChart | None:
-        if not discovery.has_data:
-            logger.info("Chart block rejected: turn has no data")
-            return None
-        for table_id in spec.tables:
-            if table_id not in allowed_table_ids:
-                logger.info(
-                    "Chart block rejected: %s is not in the table inventory",
-                    table_id,
-                )
-                return None
-        return resolve_chart_specification(
-            spec, ctx.cache, discovery.digest, discovery.spec
-        )
-
     splitter = BlockSplitter(
         on_block=lambda block: ctx.emit(BlockContentFrame(block=block)),
-        resolve_chart=resolve,
+        resolve_chart=lambda spec: _resolve_chart_block(
+            spec, discovery, ctx.cache
+        ),
     )
     extractor = TitleExtractor(
         forward=splitter.feed,
@@ -810,6 +797,46 @@ def _resolve_title_outcome(extractor: TitleExtractor) -> TitleOutcome:
     if extractor.title is None:
         return TitleOutcome.OMITTED
     return TitleOutcome.EMITTED
+
+
+def _resolve_chart_block(
+    spec: ChartSpecification,
+    discovery: DiscoveryPhaseResult,
+    cache: TurnCache,
+) -> ResolvedChart | ChartRejection:
+    """Resolves a chart block of the answer against the turn's data.
+
+    Args:
+        spec: The parsed chart block.
+        discovery: The discovery phase result the answer is written from.
+        cache: The turn's table cache.
+
+    Returns:
+        The resolved chart. Returns a `ChartRejection` when the turn does
+        not have data, when the block names a table ID that is not in the
+        cache, when it names a cached table that is not among the tables
+        the answer used, or when `resolve_chart_specification` rejects the
+        block.
+    """
+    if not discovery.has_data:
+        logger.info("Chart block rejected: turn has no data")
+        return ChartRejection(ChartRejectionReason.TURN_WITHOUT_DATA, spec.kind)
+    allowed_table_ids = {entry.table_id for entry in discovery.tables}
+    for table_id in spec.tables:
+        if table_id not in allowed_table_ids:
+            logger.info(
+                "Chart block rejected: %s is not in the table inventory",
+                table_id,
+            )
+            reason = (
+                ChartRejectionReason.TABLE_NOT_IN_ANSWER
+                if cache.get(table_id) is not None
+                else ChartRejectionReason.UNKNOWN_TABLE
+            )
+            return ChartRejection(reason, spec.kind)
+    return resolve_chart_specification(
+        spec, cache, discovery.digest, discovery.spec
+    )
 
 
 async def _consume_synthesis_stream(

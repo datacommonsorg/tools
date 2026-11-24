@@ -35,7 +35,9 @@ Verifies that:
 5. A chart block in the synthesis stream is resolved against the turn cache
    and emitted in place while its markdown fence is stripped from the signed
    text; a rejected chart block is dropped and, when no chart block is
-   emitted for a turn with data, a default chart is appended.
+   emitted for a turn with data, a default chart is appended. A chart block
+   that the agent loop's own check rejects gets the reason for that check,
+   and a default chart that cannot be drawn is not recorded as a rejection.
 6. Cancellation mid-turn is recorded as `canceled`; cancellation after the
    terminal event stays `complete`.
 7. Synthesis receives the verified window before the current query, an
@@ -129,7 +131,14 @@ from narratives_agent.token_budget import get_daily_token_budget
 from narratives_agent.workflows import chat_pipeline
 from narratives_agent.workflows import follow_up as follow_up_module
 from narratives_agent.workflows import transcript as transcript_module
-from narratives_agent.workflows.charts import PlaceList, ResolvedLineChart
+from narratives_agent.workflows.blocks import BlockSplitter
+from narratives_agent.workflows.charts import (
+    ChartRejection,
+    ChartRejectionReason,
+    LineChartSpecification,
+    PlaceList,
+    ResolvedLineChart,
+)
 from narratives_agent.workflows.classify import (
     Admitted,
     Clarification,
@@ -4848,3 +4857,119 @@ async def test_canceled_turn_during_follow_ups_emits_no_debug_report(
         await task
 
     assert "debug_report" not in turn.list_event_names()
+
+
+_LINE_OF_T1 = LineChartSpecification(tables=("t1",), title="Population")
+
+
+def test_a_chart_block_on_a_turn_without_data_gives_that_reason() -> None:
+    # Test: The rejection of a chart block on a turn without data.
+    # Situation: The discovery result does not have data, and a line block
+    #   names `t1`, which is cached.
+    # Expectation: The block is rejected with the reason that the turn does
+    #   not have data, and the rejection holds the block's kind.
+    table = _make_table("t1")
+    cache = TurnCache()
+    cache.store_fetched(table)
+    discovery = chat_pipeline.DiscoveryPhaseResult(has_data=False)
+
+    rejection = chat_pipeline._resolve_chart_block(
+        _LINE_OF_T1, discovery, cache
+    )
+
+    assert rejection == ChartRejection(
+        ChartRejectionReason.TURN_WITHOUT_DATA, "line"
+    )
+
+
+def test_a_chart_block_naming_an_unused_table_gives_that_reason() -> None:
+    # Test: The rejection of a chart block that names a table outside the
+    #   tables the answer used.
+    # Situation: The cache holds `t1` and `t2`, the answer used `t2` alone,
+    #   and a line block names `t1`.
+    # Expectation: The block is rejected with the reason that the table is
+    #   not in the answer, and the rejection holds the block's kind.
+    unused = _make_table("t1")
+    used = _make_table("t2")
+    cache = TurnCache()
+    cache.store_fetched(unused)
+    cache.store_fetched(used)
+    discovery = chat_pipeline.DiscoveryPhaseResult(
+        has_data=True, tables=(used,)
+    )
+
+    rejection = chat_pipeline._resolve_chart_block(
+        _LINE_OF_T1, discovery, cache
+    )
+
+    assert rejection == ChartRejection(
+        ChartRejectionReason.TABLE_NOT_IN_ANSWER, "line"
+    )
+
+
+def test_a_chart_block_naming_an_unfetched_table_gives_that_reason() -> None:
+    # Test: The rejection of a chart block that names a table ID the turn
+    #   never fetched.
+    # Situation: The cache holds `t1` alone, the answer used it, and a line
+    #   block names `t9`, which is not in the cache.
+    # Expectation: The block is rejected with the reason that the table is
+    #   unknown, not the reason for a cached table the answer did not use,
+    #   and the rejection holds the block's kind.
+    used = _make_table("t1")
+    cache = TurnCache()
+    cache.store_fetched(used)
+    discovery = chat_pipeline.DiscoveryPhaseResult(
+        has_data=True, tables=(used,)
+    )
+    block = LineChartSpecification(tables=("t9",), title="Population")
+
+    rejection = chat_pipeline._resolve_chart_block(block, discovery, cache)
+
+    assert rejection == ChartRejection(
+        ChartRejectionReason.UNKNOWN_TABLE, "line"
+    )
+
+
+@pytest.mark.asyncio
+async def test_a_default_chart_candidate_that_fails_is_not_recorded(
+    monkeypatch: pytest.MonkeyPatch, turn: _Turn
+) -> None:
+    # Test: The rejections recorded when the default chart floor tries a
+    #   chart that cannot be drawn.
+    # Situation: The digest ranks a cohort of four states that holds one
+    #   date, and the answer does not include a chart block. The floor
+    #   first tries a line of the ranked states, which fails for lack of a
+    #   second date, and then a ranking chart.
+    # Expectation: The ranking chart is emitted, so the line was tried and
+    #   rejected, and the splitter does not record a rejection.
+    table = _make_state_cohort("t1", "Median_Income", "01 02 03 04")
+    specification = AnalysisSpecification.model_validate(
+        {"steps": [{"step_id": "s1", "script": "rank_cohort", "table": "t1"}]}
+    )
+    ctx, _ = _make_synthesis_context(
+        monkeypatch, turn, "Income varies by state."
+    )
+    ctx.cache.store_fetched(table)
+    discovery = chat_pipeline.DiscoveryPhaseResult(
+        digest=AnalysisDigest.from_results(
+            (rank_cohort(table.table, step_id="s1"),)
+        ),
+        spec=specification,
+        has_data=True,
+        tables=(table,),
+        sources=[_INSEE],
+    )
+    splitters: list[BlockSplitter] = []
+
+    def make_splitter(**kwargs: Any) -> BlockSplitter:
+        splitters.append(BlockSplitter(**kwargs))
+        return splitters[-1]
+
+    monkeypatch.setattr(chat_pipeline, "BlockSplitter", make_splitter)
+
+    result = await chat_pipeline.run_synthesis_phase(ctx, discovery)
+
+    assert [chart.viz_type for chart in result.charts] == ["ranking"]
+    (splitter,) = splitters
+    assert splitter.chart_rejections == ()
+    assert ctx.telemetry.charts_rejected == 0

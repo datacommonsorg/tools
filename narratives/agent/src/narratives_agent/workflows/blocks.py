@@ -27,6 +27,8 @@ from pydantic import ValidationError
 
 from narratives_agent.workflows.charts import (
     MAX_CHARTS_PER_TURN,
+    ChartRejection,
+    ChartRejectionReason,
     ChartSpecification,
     ResolvedChart,
     parse_chart_specification,
@@ -108,8 +110,11 @@ class ChartBlock:
 type SynthesisBlock = TextBlock | ChartBlock
 # Receives each block a `BlockSplitter` emits.
 type BlockCallback = Callable[[SynthesisBlock], None]
-# Resolves a parsed chart block, or returns None to reject it.
-type ChartResolver = Callable[[ChartSpecification], ResolvedChart | None]
+# Resolves a parsed chart block, or returns a rejection when it cannot be
+# drawn.
+type ChartResolver = Callable[
+    [ChartSpecification], ResolvedChart | ChartRejection
+]
 
 
 @dataclass
@@ -165,7 +170,7 @@ class BlockSplitter:
     string cannot span lines, so no line of a chart body is a bare fence. When
     the block closes, its body is parsed as a `ChartSpecification` and resolved.
     A body that is not valid JSON, does not match the grammar, or fails
-    resolution is dropped and counted in `charts_rejected`, as is a fence still
+    resolution is dropped and added to `chart_rejections`, as is a fence still
     open when the stream ends, so a chart block never reaches the reader as
     text. A chart fence line inside a code block the model left open ends that
     code block, which is emitted as text, and opens the chart block. A chart
@@ -180,17 +185,19 @@ class BlockSplitter:
 
     Attributes:
         on_block: Receives each completed `TextBlock` or `ChartBlock`.
-        resolve_chart: Resolves a parsed specification, or returns None.
-        charts_rejected: How many chart blocks were dropped.
+        resolve_chart: Resolves a parsed specification, or returns a
+            `ChartRejection` when the chart cannot be drawn.
     """
 
     on_block: BlockCallback
     resolve_chart: ChartResolver
-    charts_rejected: int = field(default=0, init=False)
     _text_blocks: list[str] = field(
         default_factory=list, init=False, repr=False
     )
     _charts: list[ResolvedChart] = field(
+        default_factory=list, init=False, repr=False
+    )
+    _chart_rejections: list[ChartRejection] = field(
         default_factory=list, init=False, repr=False
     )
     _pending: str = field(default="", init=False, repr=False)
@@ -219,6 +226,16 @@ class BlockSplitter:
     def charts_emitted(self) -> int:
         """How many chart blocks were emitted."""
         return len(self._charts)
+
+    @property
+    def chart_rejections(self) -> tuple[ChartRejection, ...]:
+        """The chart blocks dropped so far, in the order they were dropped."""
+        return tuple(self._chart_rejections)
+
+    @property
+    def charts_rejected(self) -> int:
+        """How many chart blocks were dropped."""
+        return len(self._chart_rejections)
 
     @property
     def text(self) -> str:
@@ -273,7 +290,9 @@ class BlockSplitter:
         if isinstance(self._open, _ChartFence):
             # The stream ended inside a chart block, so the block is dropped
             # rather than shown to the reader as raw JSON.
-            self.charts_rejected += 1
+            self._chart_rejections.append(
+                ChartRejection(ChartRejectionReason.UNCLOSED_BLOCK, kind=None)
+            )
         self._open = None
         self._flush_paragraph()
 
@@ -390,15 +409,15 @@ class BlockSplitter:
 
     def _accept_chart_body(self, body: str) -> None:
         """Resolves a chart block body and emits or counts its chart."""
-        chart = self._resolve(body)
-        if chart is None:
-            self.charts_rejected += 1
+        resolved = self._resolve(body)
+        if isinstance(resolved, ChartRejection):
+            self._chart_rejections.append(resolved)
             return
-        self._charts.append(chart)
-        self._emit(ChartBlock(index=self._next_index, chart=chart))
+        self._charts.append(resolved)
+        self._emit(ChartBlock(index=self._next_index, chart=resolved))
 
-    def _resolve(self, body: str) -> ResolvedChart | None:
-        """Parses and resolves a chart fence body, or returns None.
+    def _resolve(self, body: str) -> ResolvedChart | ChartRejection:
+        """Parses and resolves a chart fence body, or returns its rejection.
 
         A validation failure is logged by its error count only, so the
         model's raw JSON is never written to the log.
@@ -408,7 +427,9 @@ class BlockSplitter:
                 "Chart block dropped: the answer already holds %d charts",
                 MAX_CHARTS_PER_TURN,
             )
-            return None
+            return ChartRejection(
+                ChartRejectionReason.CHART_LIMIT_REACHED, kind=None
+            )
         try:
             spec = parse_chart_specification(body)
         except ValidationError as error:
@@ -416,7 +437,9 @@ class BlockSplitter:
                 "Chart block rejected: %d validation errors",
                 error.error_count(),
             )
-            return None
+            return ChartRejection(
+                ChartRejectionReason.INVALID_SPECIFICATION, kind=None
+            )
         return self.resolve_chart(spec)
 
     def _close_data_gaps(self, collector: DataGapsCollector) -> None:

@@ -39,6 +39,8 @@ from narratives_agent.workflows.charts import (
     MAX_CHARTS_PER_TURN,
     BarSort,
     ChartKind,
+    ChartRejection,
+    ChartRejectionReason,
     ChartSpecification,
 )
 from narratives_agent.workflows.data_gaps import DataGaps
@@ -1094,7 +1096,12 @@ def test_synthesis_contract_data_gaps_example_parses_as_data_gaps() -> None:
     start = contract.index("**Data gaps**\\\nThese measures are not available")
     example = contract[start : contract.index("\n\n", start)]
     blocks: list[SynthesisBlock] = []
-    splitter = BlockSplitter(blocks.append, lambda specification: None)
+    splitter = BlockSplitter(
+        blocks.append,
+        lambda specification: ChartRejection(
+            ChartRejectionReason.TABLE_UNAVAILABLE, specification.kind
+        ),
+    )
 
     splitter.feed(example)
     splitter.finish()
