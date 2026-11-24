@@ -76,6 +76,7 @@ _CONFIG = AgentConfig()
 _TRANSCRIPT = Transcript(
     turns=[],
     compacted_summary=None,
+    conversation_id="0" * 32,
     current_query="What is the population of France?",
     current_idempotency_key="key-1",
 )
@@ -1738,6 +1739,7 @@ async def test_the_first_request_carries_the_transcript(
     transcript = Transcript(
         turns=[earlier],
         compacted_summary=None,
+        conversation_id="0" * 32,
         current_query="And for Germany?",
         current_idempotency_key="key-1",
     )
