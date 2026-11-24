@@ -64,16 +64,18 @@ MAX_REQUEST_BYTES = 4 * 1024 * 1024
 class ChatRequest(BaseModel):
     """The JSON body of a chat request.
 
-    `turns` and `compacted_summary` are the signed transcript window from
-    the previous turn's terminal event. They are kept as decoded JSON here
-    and validated by `load_transcript`, so that a window that fails its
-    schema or caps is rejected with HTTP 400 `transcript_invalid`, which
-    the browser recovers from, rather than with HTTP 422.
+    `turns`, `compacted_summary`, and `conversation_id` are the signed
+    transcript window from the previous turn's terminal event. They are kept
+    as decoded JSON here and validated by `load_transcript`, so that a
+    window that fails its schema or caps is rejected with HTTP 400
+    `transcript_invalid`, which the browser recovers from, rather than with
+    HTTP 422.
     """
 
     message: str = Field(min_length=1, max_length=MAX_QUERY_CHARS)
     turns: list[Any] = Field(default_factory=list)
     compacted_summary: Any = None
+    conversation_id: Any = None
     # The browser sends a new key with each chat request, and the server signs
     # it into the completed turn and copies it into the terminal event, where
     # the browser uses it to match the signed window to its turns. A future
@@ -188,6 +190,7 @@ async def chat_stream(request: Request) -> ClosingEventSourceResponse:
         "message": "user query",
         "turns": [...signed turns from the previous terminal event...],
         "compacted_summary": "summary of compacted turns, or null",
+        "conversation_id": "ID from the previous terminal event, or null",
         "idempotency_key": "optional client-generated key",
         "debug": false
     }

@@ -20,8 +20,8 @@ Verifies that:
 2. The terminal frames carry exactly the keys of their outcome: `error` and
    `reason` on an error, `reason` and `message` without `error` on a
    refusal, the signing keys with `compacted_summary` present even when it
-   is `null` on a signed completion, and no signing keys on an unsigned
-   completion.
+   is `null` and with `conversation_id` on a signed completion, and no
+   signing keys on an unsigned completion.
 """
 
 import json
@@ -29,7 +29,7 @@ import json
 import pytest
 
 from narratives_agent.analytics.provenance import Source
-from narratives_agent.telemetry import ErrorType, TurnTelemetry
+from narratives_agent.telemetry import ErrorType, TerminalState, TurnTelemetry
 from narratives_agent.workflows.blocks import ChartBlock, TextBlock
 from narratives_agent.workflows.charts import PlaceList, ResolvedLineChart
 from narratives_agent.workflows.classify import RefusedReason
@@ -58,8 +58,10 @@ from narratives_agent.workflows.transcript import (
     SignedWindow,
     Turn,
 )
+from narratives_agent.workflows.turn_record import TurnRecord
 
 _IDEMPOTENCY_KEY = "key-4"
+_CONVERSATION_ID = "0123456789abcdef0123456789abcdef"
 _EARLIER_HMAC = "a" * 64
 _LATEST_HMAC = "b" * 64
 
@@ -97,6 +99,7 @@ def _make_window(compacted_summary: str | None) -> SignedWindow:
             _make_turn(4, _IDEMPOTENCY_KEY, _LATEST_HMAC),
         ],
         compacted_summary=compacted_summary,
+        conversation_id=_CONVERSATION_ID,
     )
 
 
@@ -106,6 +109,7 @@ _SIGNED_FIELDS = (
     '"child_place_type": null, "variables": {"Count_Person": '
     '"Total Population"}, "date_range": ["2023", "2023"]}]}'
 )
+_CONVERSATION_ID_FIELD = f'"conversation_id": "{_CONVERSATION_ID}"'
 _WINDOW_FIELD = (
     f'"window": [{{"turn_index": 3, "idempotency_key": "key-3", '
     f'"hmac": "{_EARLIER_HMAC}"}}, {{"turn_index": 4, '
@@ -395,7 +399,8 @@ def test_a_signed_complete_frame_carries_the_summary_and_the_window() -> None:
     # Situation: The completed turn is the second of a window that carries a
     #   compacted summary.
     # Expectation: The payload adds the latest turn's index, signature, and
-    #   slots, the summary, and every turn of the window, oldest first.
+    #   slots, the summary, the conversation ID, and every turn of the
+    #   window, oldest first.
     frame = TerminalCompleteFrame(
         idempotency_key=_IDEMPOTENCY_KEY,
         window=_make_window("Earlier turns."),
@@ -405,7 +410,7 @@ def test_a_signed_complete_frame_carries_the_summary_and_the_window() -> None:
         "terminal",
         '{"state": "complete", "idempotency_key": "key-4", '
         f'{_SIGNED_FIELDS}, "compacted_summary": "Earlier turns.", '
-        f"{_WINDOW_FIELD}}}",
+        f"{_CONVERSATION_ID_FIELD}, {_WINDOW_FIELD}}}",
     )
 
 
@@ -421,7 +426,8 @@ def test_a_signed_complete_frame_keeps_a_null_summary_key() -> None:
     assert _serialize(frame) == (
         "terminal",
         '{"state": "complete", "idempotency_key": "key-4", '
-        f'{_SIGNED_FIELDS}, "compacted_summary": null, {_WINDOW_FIELD}}}',
+        f'{_SIGNED_FIELDS}, "compacted_summary": null, '
+        f"{_CONVERSATION_ID_FIELD}, {_WINDOW_FIELD}}}",
     )
 
 
@@ -446,10 +452,9 @@ def test_a_debug_report_frame_serializes_to_event_and_report_dictionary() -> (
     #   serialized.
     # Expectation: The event is "debug_report" and the payload matches
     #   report.to_dict().
-    report = build_debug_report(
-        telemetry=TurnTelemetry(turn_id="turn-debug-123"),
-        terminal_state="complete",
-    )
+    record = TurnRecord(telemetry=TurnTelemetry(turn_id="turn-debug-123"))
+    record.terminal_state = TerminalState.COMPLETE
+    report = build_debug_report(record)
     frame = DebugReportFrame(report=report)
 
     assert _serialize(frame) == ("debug_report", json.dumps(report.to_dict()))

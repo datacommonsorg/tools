@@ -16,9 +16,10 @@
 Verifies that:
 1. `/chat/stream` sends each event the turn emits as a typed SSE frame with
    an `id:` counting up from 1, byte for byte, with the streaming headers.
-2. The request's message, signed turns, and idempotency key reach the turn
-   as a verified transcript; omitted turns reach it as an empty window and
-   an omitted key as a server-generated one.
+2. The request's message, signed turns, conversation ID, and idempotency
+   key reach the turn as a verified transcript; omitted turns reach it as an
+   empty window with a server-minted conversation ID, and an omitted key as
+   a server-generated one.
 3. Invalid request bodies are rejected with 422, transcripts that fail
    their schema, caps, or verification with 400, and bodies over
    `MAX_REQUEST_BYTES` with 413, before the turn runs.
@@ -30,6 +31,7 @@ Verifies that:
 import asyncio
 import gc
 import json
+import re
 from collections.abc import Iterator
 from typing import Any
 
@@ -63,6 +65,7 @@ from narratives_agent.workflows.transcript import (
 )
 
 _IDEMPOTENCY_KEY = "test-idempotency-key"
+_CONVERSATION_ID = "0123456789abcdef0123456789abcdef"
 # `_CLEANUP_STEPS` sets the number of event-loop iterations a canceled stub
 # turn spends in cleanup. Using more than one iteration verifies that a second
 # cancellation does not interrupt cleanup mid-way.
@@ -110,12 +113,13 @@ def signing_secret(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
 
 
 def _signed_turn() -> dict[str, Any]:
-    """Returns the wire form of one signed turn, as the browser sends it."""
+    """Returns the wire form of one turn signed under `_CONVERSATION_ID`."""
     window = asyncio.run(
         finalize_turn(
             Transcript(
                 turns=[],
                 compacted_summary=None,
+                conversation_id=_CONVERSATION_ID,
                 current_query="What is the population of France?",
                 current_idempotency_key="key-0",
             ),
@@ -185,9 +189,9 @@ def test_request_fields_reach_the_turn(
 ) -> None:
     # Test: Mapping of the request body onto the turn's inputs.
     # Situation: A follow-up request carries a message, one signed turn,
-    #   and an idempotency key.
+    #   its conversation ID, and an idempotency key.
     # Expectation: The turn receives a verified transcript holding all
-    #   three unchanged.
+    #   four unchanged.
     signed = _signed_turn()
     response = client.post(
         "/agent/chat/stream",
@@ -195,6 +199,7 @@ def test_request_fields_reach_the_turn(
             "message": "And Spain?",
             "turns": [signed],
             "compacted_summary": None,
+            "conversation_id": _CONVERSATION_ID,
             "idempotency_key": _IDEMPOTENCY_KEY,
         },
     )
@@ -205,6 +210,7 @@ def test_request_fields_reach_the_turn(
     assert received.current_idempotency_key == _IDEMPOTENCY_KEY
     assert [t.model_dump(mode="json") for t in received.turns] == [signed]
     assert received.compacted_summary is None
+    assert received.conversation_id == _CONVERSATION_ID
 
 
 def test_omitted_optional_fields_reach_the_turn_defaulted(
@@ -214,9 +220,10 @@ def test_omitted_optional_fields_reach_the_turn_defaulted(
     # Test: Defaults for a request body with only a message.
     # Situation: A client posts only a message, then a message with the
     #   `history` field that earlier clients sent.
-    # Expectation: The turn receives an empty window and a server-generated
-    #   idempotency key that differs between the two requests; the obsolete
-    #   field is ignored.
+    # Expectation: The turn receives an empty window, a server-generated
+    #   idempotency key, and a server-minted conversation ID of 32 lowercase
+    #   hexadecimal characters; the key and the ID each differ between the
+    #   two requests; the obsolete field is ignored.
     client.post("/agent/chat/stream", json={"message": "Hello"})
     response = client.post(
         "/agent/chat/stream",
@@ -230,6 +237,9 @@ def test_omitted_optional_fields_reach_the_turn_defaulted(
     assert second.turns == []
     assert first.current_idempotency_key
     assert first.current_idempotency_key != second.current_idempotency_key
+    assert re.fullmatch(r"[0-9a-f]{32}", first.conversation_id)
+    assert re.fullmatch(r"[0-9a-f]{32}", second.conversation_id)
+    assert first.conversation_id != second.conversation_id
 
 
 @pytest.mark.parametrize(
@@ -298,6 +308,11 @@ def test_invalid_request_body_returns_422(
         "too-many-turns",
         "overlong-summary",
         "non-string-summary",
+        "changed-conversation-id",
+        "missing-conversation-id",
+        "malformed-conversation-id",
+        "non-string-conversation-id",
+        "orphan-conversation-id",
     ],
 )
 def test_an_unverifiable_transcript_returns_400(
@@ -306,30 +321,44 @@ def test_an_unverifiable_transcript_returns_400(
     # Test: Transcript verification happens before the stream opens.
     # Situation: A request carries a signed turn whose answer or signature was
     #   altered, a window from turn 0 with an invented summary, a summary
-    #   without turns, or a window outside its schema or caps (an incomplete
+    #   without turns, a window outside its schema or caps (an incomplete
     #   turn, more than MAX_VERBATIM_TURNS turns, an overlong summary, or a
-    #   non-string summary).
+    #   non-string summary), a signed turn with another conversation ID, with
+    #   no conversation ID, or with one that is malformed or not a string, or
+    #   a conversation ID without turns. Each window is otherwise valid.
     # Expectation: The route answers 400 with a JSON body whose reason is
     #   `transcript_invalid`, and the turn never runs.
     signed = _signed_turn()
+    window = {"turns": [signed], "conversation_id": _CONVERSATION_ID}
     bodies: dict[str, dict[str, Any]] = {
-        "altered-answer": {"turns": [{**signed, "model_response": "Altered."}]},
-        "altered-signature": {"turns": [{**signed, "hmac": "f" * 64}]},
-        "invented-summary": {
-            "turns": [signed],
-            "compacted_summary": "Invented summary",
+        "altered-answer": {
+            **window,
+            "turns": [{**signed, "model_response": "Altered."}],
         },
+        "altered-signature": {
+            **window,
+            "turns": [{**signed, "hmac": "f" * 64}],
+        },
+        "invented-summary": {**window, "compacted_summary": "Invented summary"},
         "orphan-summary": {"compacted_summary": "Orphan summary"},
-        "incomplete-turn": {"turns": [{"turn_index": 0, "user_query": "Hi"}]},
-        "too-many-turns": {"turns": [signed] * (MAX_VERBATIM_TURNS + 1)},
+        "incomplete-turn": {
+            **window,
+            "turns": [{"turn_index": 0, "user_query": "Hi"}],
+        },
+        "too-many-turns": {
+            **window,
+            "turns": [signed] * (MAX_VERBATIM_TURNS + 1),
+        },
         "overlong-summary": {
-            "turns": [signed],
+            **window,
             "compacted_summary": "s" * (MAX_SUMMARY_CHARS + 1),
         },
-        "non-string-summary": {
-            "turns": [signed],
-            "compacted_summary": 123,
-        },
+        "non-string-summary": {**window, "compacted_summary": 123},
+        "changed-conversation-id": {**window, "conversation_id": "f" * 32},
+        "missing-conversation-id": {"turns": [signed]},
+        "malformed-conversation-id": {**window, "conversation_id": "not-an-id"},
+        "non-string-conversation-id": {**window, "conversation_id": 123},
+        "orphan-conversation-id": {"conversation_id": _CONVERSATION_ID},
     }
     body = bodies[change]
 

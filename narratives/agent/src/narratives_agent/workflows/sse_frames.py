@@ -32,8 +32,9 @@ from narratives_agent.telemetry import ErrorType, TerminalState
 from narratives_agent.workflows.blocks import SynthesisBlock, TextBlock
 from narratives_agent.workflows.charts import serialize_resolved_chart
 from narratives_agent.workflows.classify import RefusedReason
-from narratives_agent.workflows.debug_report import DebugReport, ThoughtPhase
+from narratives_agent.workflows.debug_report import DebugReport
 from narratives_agent.workflows.transcript import SignedWindow
+from narratives_agent.workflows.turn_record import ThoughtPhase
 
 type EventName = Literal[
     "status", "thought", "content", "terminal", "follow_ups", "debug_report"
@@ -278,8 +279,9 @@ class TerminalCompleteFrame:
 
     With a `window`, the payload adds the completed turn's `turn_index`,
     `hmac`, and `state_slots`, the window's `compacted_summary` (present even
-    when it is `null`), and `window`: the `turn_index`, `idempotency_key`, and
-    `hmac` of every turn the browser must send next, oldest first.
+    when it is `null`) and `conversation_id`, and `window`: the `turn_index`,
+    `idempotency_key`, and `hmac` of every turn the browser must send next,
+    oldest first.
     Compaction re-signs the whole window, so the browser replaces the
     signatures it holds with these and drops any turn that `window` does not
     list. Without a window, the payload carries none of those keys, which
@@ -302,8 +304,8 @@ class TerminalCompleteFrame:
 
         Returns:
             A JSON object with `state: "complete"` and `idempotency_key`, plus
-            `turn_index`, `hmac`, `state_slots`, `compacted_summary`, and
-            `window` when `window` is not `None`.
+            `turn_index`, `hmac`, `state_slots`, `compacted_summary`,
+            `conversation_id`, and `window` when `window` is not `None`.
         """
         frame: JsonObject = {
             "state": TerminalState.COMPLETE,
@@ -316,6 +318,7 @@ class TerminalCompleteFrame:
         frame["hmac"] = turn.hmac
         frame["state_slots"] = turn.state_slots.model_dump(mode="json")
         frame["compacted_summary"] = self.window.compacted_summary
+        frame["conversation_id"] = self.window.conversation_id
         frame["window"] = [
             {
                 "turn_index": signed.turn_index,
@@ -444,7 +447,6 @@ __all__ = [
     "TerminalErrorFrame",
     "TerminalRefusedFrame",
     "ThoughtFrame",
-    "ThoughtPhase",
     "TitleFrame",
     "ToolCallFrame",
     "serialize_source",

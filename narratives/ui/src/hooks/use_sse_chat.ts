@@ -460,6 +460,11 @@ export interface ChatTurn {
    * the latest signed turn keeps it, since it covers the whole window.
    */
   compactedSummary?: string | null;
+  /**
+   * Holds the conversation ID the agent signed the window under. Only the
+   * latest signed turn keeps it, since it covers the whole window.
+   */
+  conversationId?: string;
   /** Holds the non-empty machine-readable reason reported by the `terminal` event. */
   terminalReason?: string;
   /** Client-observed submission timestamp and monotonic elapsed milestones for this turn. */
@@ -505,9 +510,9 @@ interface SignedWindowEntry {
  * identified as permanent. A `refused` event carries a `reason` (for example, `adversarial`,
  * `off_domain`, or `safety_blocked`) and a user-facing `message` with no
  * `error`. A `complete` event for a signed turn also carries the turn's
- * `turn_index`, `hmac`, and `state_slots`, the window's `compacted_summary`,
- * and `window`, which lists every turn the next request must send with its
- * current signature.
+ * `turn_index`, `hmac`, and `state_slots`, the window's `compacted_summary`
+ * and `conversation_id`, and `window`, which lists every turn the next
+ * request must send with its current signature.
  */
 interface TerminalPayload {
   state: TerminalState;
@@ -520,6 +525,7 @@ interface TerminalPayload {
   hmac?: string;
   state_slots?: ConversationStateSlots;
   compacted_summary?: string | null;
+  conversation_id?: string;
   window?: SignedWindowEntry[];
 }
 
@@ -647,6 +653,7 @@ export function assignCitationNumbers(turns: ChatTurn[]): number[][] {
 export function transcriptRequestFields(turns: ChatTurn[]): {
   turns: WireTurn[];
   compacted_summary: string | null;
+  conversation_id: string | null;
 } {
   const signed = turns.filter(isSignedTurn);
   return {
@@ -659,6 +666,7 @@ export function transcriptRequestFields(turns: ChatTurn[]): {
       hmac: turn.hmac,
     })),
     compacted_summary: signed.at(-1)?.compactedSummary ?? null,
+    conversation_id: signed.at(-1)?.conversationId ?? null,
   };
 }
 
@@ -672,6 +680,7 @@ function withoutSignature(turn: ChatTurn): ChatTurn {
         turnIndex: undefined,
         stateSlots: undefined,
         compactedSummary: undefined,
+        conversationId: undefined,
       };
 }
 
@@ -679,7 +688,8 @@ function withoutSignature(turn: ChatTurn): ChatTurn {
  * Applies the signed window of a `complete` terminal event to every turn.
  *
  * The turn with `idempotencyKey` receives its signature, state slots, and the
- * window's summary, which every other turn drops so that it is stored once.
+ * window's summary and conversation ID, which every other turn drops so that
+ * each is stored once.
  * Compaction re-signs the whole window, so each other signed turn takes the
  * signature the window lists for its idempotency key, and a turn the window
  * no longer lists, because it was compacted into the summary, loses its
@@ -705,6 +715,7 @@ export function applySignedWindow(
         hmac,
         stateSlots: state_slots,
         compactedSummary: terminal.compacted_summary ?? null,
+        conversationId: readOptionalString(terminal.conversation_id),
       };
     }
     if (turn.hmac === undefined) return turn;
@@ -718,6 +729,7 @@ export function applySignedWindow(
           hmac: entry.hmac,
           turnIndex: entry.turn_index,
           compactedSummary: undefined,
+          conversationId: undefined,
         }
       : withoutSignature(turn);
   });
