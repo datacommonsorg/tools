@@ -876,11 +876,11 @@ The entries do not contain text from the conversation. The server never logs
 the user's query, the answer, the model's thoughts, tool arguments, tool
 results, chart titles, or the display names of variables, places, or sources.
 Every string in an entry is a code that the server defines, an identifier that
-the server creates, a configured model name, the build SHA, or a verified Data
-Commons identifier (DCID), facet ID, place type, or observation date from a
-fetched table that returned rows. Each structured record is kept within 14 KiB
-so that container runtimes do not split the JSON line across multiple log
-entries.
+the server creates, a configured model name, the build SHA, the ID of an
+analysis step (`s1`, `s2`, and so on), or a verified Data Commons identifier
+(DCID), facet ID, place type, or observation date from a fetched table that
+returned rows. Each structured record is kept within 14 KiB so that container
+runtimes do not split the JSON line across multiple log entries.
 
 #### The `chat_turn` record
 
@@ -923,10 +923,14 @@ Every record has every key, and a value that does not apply is `null`.
 | `tables_truncated` | boolean | Whether fetched tables were left out of `tables` |
 | `tables` | list | Fetched observation tables that returned rows |
 | `highlighted_places` | list | Places that the turn's analysis highlighted |
+| `specification_origin` | string or null | `model`, `default`, or `null` |
 | `scripts` | list of strings | Analytical scripts that ran, in step order |
+| `script_steps` | list | Outcome of each analysis step that ran |
 | `processing_retries` | integer | Specifications returned to the model |
+| `rejected_submissions` | list | Specifications that the server rejected |
 | `charts_emitted` | integer | Charts in the answer |
 | `charts_rejected` | integer | Charts that the server dropped |
+| `charts` | list | Charts in the answer |
 
 More detail on some keys:
 
@@ -1004,6 +1008,54 @@ More detail on some keys:
   from `analyze_timeseries`, or `composition` from `compute_composition`. On
   ranking and distribution steps, focal places come before the top, bottom,
   maximum, and minimum places.
+- **`specification_origin`:** An analysis specification lists the analytical
+  scripts to run over the fetched tables. The value is `model` when the server
+  accepted a specification that the model submitted. It is `default` when the
+  search for data ended without an accepted specification, and the server built
+  one itself over the fetched tables. It is `null` when the turn does not have
+  a specification. Like `has_data`, the value describes the turn's analysis, so
+  a turn that fails or is refused after its analysis keeps `model` or
+  `default`.
+- **`script_steps`:** The list has one item for each step of that specification
+  that ran, in step order. Each item has `step_index` (the position of the
+  step, from 0), `step_id`, `script`, `status` (`ok` or `refused`), and
+  `refusal_reason`. `refusal_reason` is `null` on an `ok` step. On a `refused`
+  step, it is `insufficient_coverage`, `no_observations`, `unit_mismatch`,
+  `scaling_mismatch`, `invalid_parameters`, or `components_exceed_total`. A run
+  stops at the first step that refuses, so a `refused` step is always the last
+  item. Only a `default` specification can have a `refused` step, because the
+  server rejects a specification from the model when one of its steps refuses.
+  The list is empty when the run exceeded its time limit, because the server
+  cannot tell which steps finished. `scripts` still lists every step of the
+  specification.
+- **`rejected_submissions`:** The list has up to three specifications that the
+  server rejected, in the order in which the model submitted them. The server
+  returns a rejected specification to the model at most twice, and a third
+  rejection ends the search for data. Each item has `round_number` (the
+  discovery round), `reason`, `scripts`, `failed_step_id`, `failed_script`,
+  `refusal_reason`, and `timed_out`. `reason` is `schema_invalid` (the
+  specification did not parse, so `scripts` is empty), `reference_invalid` (the
+  specification did not match the fetched tables), or `processing_failed` (the
+  specification ran and failed). When a step refused, `failed_step_id`,
+  `failed_script`, and `refusal_reason` describe that step. Otherwise all three
+  are `null`. `timed_out` is `true` when the run exceeded its time limit.
+- **`charts`:** The list has up to four charts, in the order in which they
+  appear in the answer. Each item has `index` (from 0), `kind` (`line`, `bar`,
+  `map`, `ranking`, `scatter`, or `highlight`), `origin`, `variable_dcids`,
+  `facet_pins`, `parent_place_dcid`, `child_place_type`, `place_dcids`, and
+  `per_capita`. `origin` is `model` when the model wrote the chart, and
+  `default` when the server added a chart because the answer did not have one.
+  `variable_dcids` lists up to 10 variables. Each item of `facet_pins` has
+  `variable_dcid` and `facet_id`, and names the facet that the chart draws that
+  variable from. When a chart draws every place of one type inside a parent
+  place (a child-place cohort, such as the counties of a state),
+  `parent_place_dcid` and `child_place_type` identify that group and
+  `place_dcids` is empty. Otherwise both are `null`, and `place_dcids` lists up
+  to 25 places in the chart's order. `per_capita` is `true` when the chart
+  divides its values by population. The server includes only variables, places,
+  and parent places from a non-empty fetched table of the turn, including
+  fetched tables left out of `tables` by truncation. The record does not hold
+  the title or the unit of a chart.
 
 #### The `transcript_rejected` record
 

@@ -760,13 +760,9 @@ def build_debug_report(
                 )
             )
 
-    resolved_specification_origin: SpecificationOrigin | None
-    if record.specification is None:
-        resolved_specification_origin = None
-    elif record.specification_origin is not None:
-        resolved_specification_origin = record.specification_origin
-    else:
-        resolved_specification_origin = "model"
+    resolved_specification_origin = (
+        None if record.specification is None else record.specification_origin
+    )
 
     rejected_specs = tuple(
         DebugRejectedSpecification(

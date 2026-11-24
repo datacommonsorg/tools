@@ -2202,7 +2202,9 @@ async def test_rejected_submissions_and_diagnostics_recorded(
     #   errors and None specification; reference_invalid with populated
     #   specification and error naming t99; and processing_failed for both
     #   StepRefusalDiagnostic and TimeoutDiagnostic, with both stored in
-    #   result.diagnostics with their round numbers.
+    #   result.diagnostics with their round numbers. Only the two
+    #   processing_failed submissions hold a diagnostic, which is the
+    #   diagnostic of their run.
     _ = calls
     cache = TurnCache()
     cache.store_fetched(
@@ -2293,6 +2295,7 @@ async def test_rejected_submissions_and_diagnostics_recorded(
     assert sub1.round_number == 1
     assert sub1.reason == "schema_invalid"
     assert sub1.specification is None
+    assert sub1.diagnostic is None
     assert any("Invalid 'script' tag" in err for err in sub1.errors)
     assert not any(
         "untrusted_extra_field" in err or "secret_value" in err
@@ -2303,6 +2306,7 @@ async def test_rejected_submissions_and_diagnostics_recorded(
     assert sub2.round_number == 2
     assert sub2.reason == "reference_invalid"
     assert sub2.specification is not None
+    assert sub2.diagnostic is None
     assert any("t99" in err for err in sub2.errors)
 
     sub3 = result.rejected_submissions[2]
@@ -2310,12 +2314,14 @@ async def test_rejected_submissions_and_diagnostics_recorded(
     assert sub3.reason == "processing_failed"
     assert sub3.errors == ("Coverage too low",)
     assert sub3.specification is not None
+    assert sub3.diagnostic is refusal_diagnostic
 
     sub4 = result.rejected_submissions[3]
     assert sub4.round_number == 4
     assert sub4.reason == "processing_failed"
     assert sub4.errors == ("Step timed out",)
     assert sub4.specification is not None
+    assert sub4.diagnostic is timeout_diagnostic
 
     assert result.diagnostics == [
         (3, refusal_diagnostic),

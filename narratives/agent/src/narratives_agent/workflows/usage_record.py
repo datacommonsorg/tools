@@ -26,7 +26,11 @@ from dataclasses import dataclass, field, replace
 from enum import StrEnum
 from typing import assert_never
 
-from narratives_agent.analytics.digest import AnalysisDigest
+from narratives_agent.analytics.digest import (
+    AnalysisDigest,
+    RefusalReason,
+    ResultStatus,
+)
 from narratives_agent.analytics.metrics import (
     CompositionMetrics,
     DerivedMetrics,
@@ -56,26 +60,60 @@ from narratives_agent.telemetry import (
     TurnPhase,
     TurnTelemetry,
 )
+from narratives_agent.workflows.charts import (
+    MAX_CHARTS_PER_TURN,
+    ChartKind,
+    ChildCohort,
+    PlaceList,
+    ResolvedBarChart,
+    ResolvedChart,
+    ResolvedHighlightChart,
+    ResolvedLineChart,
+    ResolvedMapChart,
+    ResolvedRankingChart,
+    ResolvedScatterChart,
+)
 from narratives_agent.workflows.classify import RefusedReason
+from narratives_agent.workflows.mcp_loop import (
+    MAX_PROCESSING_RETRIES,
+    RejectedSubmission,
+    RejectionReason,
+)
+from narratives_agent.workflows.processing import (
+    StepRefusalDiagnostic,
+    TimeoutDiagnostic,
+)
 from narratives_agent.workflows.transcript import (
     MAX_PLACE_TYPE_CHARS,
     PLACE_TYPE_PATTERN,
     Transcript,
 )
 from narratives_agent.workflows.turn_cache import (
+    DERIVED_TABLE_PREFIX,
     FETCHED_TABLE_PREFIX,
     TABLE_ID_NUMBER_PATTERN,
     CachedTable,
 )
-from narratives_agent.workflows.turn_record import TurnRecord
+from narratives_agent.workflows.turn_record import (
+    ChartOrigin,
+    SpecificationOrigin,
+    TurnRecord,
+)
 
 __all__ = [
     "CHAT_TURN_EVENT",
     "CHAT_TURN_SCHEMA_VERSION",
+    "MAX_CHART_VARIABLES",
     "MAX_HIGHLIGHTED_PLACES",
+    "MAX_LOGGED_CHARTS",
+    "MAX_LOGGED_REJECTED_SUBMISSIONS",
     "MAX_LOGGED_TABLES",
     "MAX_TABLE_PLACE_DCIDS",
+    "ChartFacetPin",
     "HighlightedPlace",
+    "LoggedChart",
+    "LoggedRejectedSubmission",
+    "LoggedScriptStep",
     "LoggedTable",
     "PhaseDuration",
     "PlaceHighlightSource",
@@ -97,9 +135,17 @@ CHAT_TURN_SCHEMA_VERSION = 2
 MAX_LOGGED_TABLES = 20
 MAX_TABLE_PLACE_DCIDS = 25
 MAX_HIGHLIGHTED_PLACES = 25
+# The discovery loop rejects at most this many specifications in a turn: the
+# ones that it returns to the model, and the one that ends the loop.
+MAX_LOGGED_REJECTED_SUBMISSIONS = MAX_PROCESSING_RETRIES + 1
+MAX_LOGGED_CHARTS = MAX_CHARTS_PER_TURN
+MAX_CHART_VARIABLES = 10
 
 _FETCHED_TABLE_ID_PATTERN = re.compile(
     rf"{FETCHED_TABLE_PREFIX}{TABLE_ID_NUMBER_PATTERN}"
+)
+_STEP_ID_PATTERN = re.compile(
+    rf"{DERIVED_TABLE_PREFIX}{TABLE_ID_NUMBER_PATTERN}"
 )
 _PLACE_TYPE_PATTERN = re.compile(PLACE_TYPE_PATTERN)
 
@@ -277,17 +323,114 @@ class HighlightedPlace:
 
 
 @dataclass(frozen=True, kw_only=True)
+class LoggedScriptStep:
+    """Holds the outcome of one step of a turn's specification.
+
+    Attributes:
+        step_index: The 0-based position of the step in the specification.
+        step_id: The `s<n>` identifier of the step.
+        script: The analytical script that the step ran.
+        status: Whether the script produced its output or refused.
+        refusal_reason: The reason code of a refused step, or `None` for a
+            step that succeeded.
+    """
+
+    step_index: int
+    step_id: str
+    script: ScriptName
+    status: ResultStatus
+    refusal_reason: RefusalReason | None
+
+
+@dataclass(frozen=True, kw_only=True)
+class LoggedRejectedSubmission:
+    """Holds why the server rejected one specification from the model.
+
+    Attributes:
+        round_number: The 1-based discovery round of the submission.
+        reason: Whether the specification failed schema validation, failed
+            the check of its references, or failed when it ran.
+        scripts: The scripts of the specification, in step order, or an
+            empty tuple when the specification did not parse.
+        failed_step_id: The `s<n>` identifier of the step that refused, or
+            `None` when the run did not stop at a refused step.
+        failed_script: The script of the step that refused, or `None` when
+            the run did not stop at a refused step.
+        refusal_reason: The reason code of the step that refused, or `None`
+            when the run did not stop at a refused step.
+        timed_out: Whether the run exceeded its time limit.
+    """
+
+    round_number: int
+    reason: RejectionReason
+    scripts: tuple[ScriptName, ...]
+    failed_step_id: str | None
+    failed_script: ScriptName | None
+    refusal_reason: RefusalReason | None
+    timed_out: bool
+
+
+@dataclass(frozen=True, kw_only=True)
+class ChartFacetPin:
+    """Holds the facet that a chart draws one of its variables from.
+
+    Attributes:
+        variable_dcid: The Data Commons identifier of the variable.
+        facet_id: The identifier of the facet.
+    """
+
+    variable_dcid: str
+    facet_id: str
+
+
+@dataclass(frozen=True, kw_only=True)
+class LoggedChart:
+    """Holds the kind, origin, variables, and scope of one chart of an answer.
+
+    Attributes:
+        index: The 0-based position of the chart among the logged charts.
+        kind: The chart kind, such as `line` or `map`.
+        origin: Whether the model wrote the chart or the server supplied it
+            as a default chart.
+        variable_dcids: Up to `MAX_CHART_VARIABLES` of the chart's variable
+            identifiers that a fetched table of the turn holds, in the
+            chart's order.
+        facet_pins: The facet of each of those variables that the chart
+            pins to one facet.
+        parent_place_dcid: The parent place identifier when the chart draws
+            a child-place cohort, or `None` otherwise.
+        child_place_type: The child place type when the chart draws a
+            child-place cohort, or `None` otherwise.
+        place_dcids: Up to `MAX_TABLE_PLACE_DCIDS` place identifiers that
+            the chart lists and that have rows in a fetched table of the
+            turn, in the chart's order. The tuple is empty for a chart that
+            draws a cohort.
+        per_capita: Whether the chart divides its values by population.
+    """
+
+    index: int
+    kind: ChartKind
+    origin: ChartOrigin
+    variable_dcids: tuple[str, ...]
+    facet_pins: tuple[ChartFacetPin, ...]
+    parent_place_dcid: str | None
+    child_place_type: str | None
+    place_dcids: tuple[str, ...]
+    per_capita: bool
+
+
+@dataclass(frozen=True, kw_only=True)
 class UsageRecord(StructuredRecord):
     """Holds the `chat_turn` record of one turn.
 
     Every string in the record is a code that the server defines, an
     identifier that the server creates, a model name from the configuration,
-    the build SHA, or a verified Data Commons identifier, facet ID, place
-    type, or observation date from a fetched table that has rows. The record
-    does not have a field for free text. The server writes every field on
-    every record, and a value that does not apply is `None`. A caller cannot
-    pass `severity` or `message`, because the record derives both from
-    `terminal_state`.
+    the build SHA, the `s<n>` identifier of an analysis step, or a verified
+    Data Commons identifier, facet ID, place type, or observation date from
+    a fetched table that has rows. The record does not have a field for free
+    text. The server writes every field on every record, and a value that
+    does not apply is `None`. A caller cannot pass `severity` or `message`,
+    because the record derives both from `terminal_state`.
 
     Attributes:
         build_sha: The build or commit SHA of the running image, or `None`
@@ -333,11 +476,20 @@ class UsageRecord(StructuredRecord):
             in fetch order.
         highlighted_places: Up to `MAX_HIGHLIGHTED_PLACES` distinct places
             from the steps of the digest that succeeded.
+        specification_origin: Whether the model or the server wrote the
+            turn's specification, or `None` when the turn does not have
+            one. A turn that fails after its analysis keeps the origin.
         scripts: The analytical scripts that the turn ran, in step order.
+        script_steps: The steps of that specification that ran, in step
+            order, each with its outcome.
         processing_retries: The number of specifications that the server
             returned to the model for another attempt.
+        rejected_submissions: Up to `MAX_LOGGED_REJECTED_SUBMISSIONS`
+            specifications that the server rejected, in submission order.
         charts_emitted: The number of charts in the answer.
         charts_rejected: The number of charts that the server dropped.
+        charts: Up to `MAX_LOGGED_CHARTS` charts of the answer, in the
+            order in which the server emitted them.
     """
 
     severity: Severity = field(init=False)
@@ -379,12 +531,17 @@ class UsageRecord(StructuredRecord):
     tables_truncated: bool
     tables: tuple[LoggedTable, ...]
     highlighted_places: tuple[HighlightedPlace, ...]
+    specification_origin: SpecificationOrigin | None
     # The list has one item for each step of the specification, which holds
     # at most six steps.
     scripts: tuple[ScriptName, ...]
+    # The list has at most one item for each step of the specification.
+    script_steps: tuple[LoggedScriptStep, ...]
     processing_retries: int
+    rejected_submissions: tuple[LoggedRejectedSubmission, ...]
     charts_emitted: int
     charts_rejected: int
+    charts: tuple[LoggedChart, ...]
 
     def __post_init__(self) -> None:
         """Sets `severity` and `message` from the terminal state."""
@@ -546,26 +703,54 @@ def _build_logged_table(
     return logged, valid_places
 
 
-def _collect_fetched_tables(
-    record: TurnRecord,
-) -> tuple[tuple[LoggedTable, ...], bool, set[str]]:
-    """Collects up to `MAX_LOGGED_TABLES` tables and all grounded place DCIDs.
+@dataclass(frozen=True, kw_only=True)
+class _FetchedTables:
+    """Holds the logged tables of a turn and the identifiers that they ground.
 
-    Every qualifying fetched table contributes its valid place DCIDs to the
-    grounding set before the `MAX_LOGGED_TABLES` cap is applied, so a place
-    from `t21` still counts as grounded in a fetched table.
+    Every qualifying fetched table contributes to the three identifier sets
+    before the `MAX_LOGGED_TABLES` cap is applied, so an identifier from
+    `t21` still counts as grounded in a fetched table.
+
+    Attributes:
+        tables: Up to `MAX_LOGGED_TABLES` qualifying tables, in fetch order.
+        is_truncated: Whether the cap left qualifying tables out of `tables`.
+        variable_dcids: The variable DCIDs of the qualifying tables.
+        place_dcids: The valid place DCIDs that have rows in a qualifying
+            table.
+        parent_place_dcids: The parent place DCIDs of the qualifying tables
+            that cover a complete child-place cohort. The rows of such a
+            table hold the child places and do not hold the parent place.
     """
+
+    tables: tuple[LoggedTable, ...]
+    is_truncated: bool
+    variable_dcids: frozenset[str]
+    place_dcids: frozenset[str]
+    parent_place_dcids: frozenset[str]
+
+
+def _collect_fetched_tables(record: TurnRecord) -> _FetchedTables:
+    """Collects the turn's qualifying fetched tables and their identifiers."""
     qualifying: list[LoggedTable] = []
-    grounded_places: set[str] = set()
+    place_dcids: set[str] = set()
     for entry in record.cache.list_fetched_tables():
         built = _build_logged_table(entry, record.used_table_ids)
         if built is None:
             continue
         logged, valid_places = built
         qualifying.append(logged)
-        grounded_places.update(valid_places)
-    is_truncated = len(qualifying) > MAX_LOGGED_TABLES
-    return tuple(qualifying[:MAX_LOGGED_TABLES]), is_truncated, grounded_places
+        place_dcids.update(valid_places)
+    return _FetchedTables(
+        tables=tuple(qualifying[:MAX_LOGGED_TABLES]),
+        is_truncated=len(qualifying) > MAX_LOGGED_TABLES,
+        variable_dcids=frozenset(table.variable_dcid for table in qualifying),
+        place_dcids=frozenset(place_dcids),
+        parent_place_dcids=frozenset(
+            table.parent_place_dcid
+            for table in qualifying
+            if table.parent_place_dcid is not None
+        ),
+    )
 
 
 def _iter_metric_places(
@@ -610,7 +795,7 @@ def _iter_metric_places(
 
 
 def _build_highlighted_places(
-    digest: AnalysisDigest | None, grounded_places: set[str]
+    digest: AnalysisDigest | None, grounded_places: frozenset[str]
 ) -> tuple[HighlightedPlace, ...]:
     """Builds up to `MAX_HIGHLIGHTED_PLACES` deduplicated grounded places."""
     if digest is None or not grounded_places:
@@ -630,6 +815,182 @@ def _build_highlighted_places(
             if len(highlighted) == MAX_HIGHLIGHTED_PLACES:
                 return tuple(highlighted)
     return tuple(highlighted)
+
+
+def _is_valid_step_id(value: str) -> bool:
+    """Returns whether `value` is a step identifier such as `s1`."""
+    return _STEP_ID_PATTERN.fullmatch(value) is not None
+
+
+def _build_script_steps(record: TurnRecord) -> tuple[LoggedScriptStep, ...]:
+    """Returns the steps of the turn's specification that ran, in order.
+
+    `execute_specification` stops at the first step that refuses, so the
+    steps after a refused step are left out. The diagnostic of a run that
+    exceeded its time limit does not identify the steps that finished, so
+    the list is empty for that run. A step whose identifier is not `s<n>`
+    is left out.
+
+    Raises:
+        ValueError: If the record's diagnostic names a refused step that
+            its specification does not hold.
+    """
+    specification = record.specification
+    diagnostic = record.specification_diagnostic
+    if specification is None or isinstance(diagnostic, TimeoutDiagnostic):
+        return ()
+    refused_step_id = diagnostic.step_id if diagnostic is not None else None
+    if refused_step_id is not None and all(
+        step.step_id != refused_step_id for step in specification.steps
+    ):
+        raise ValueError("The specification does not hold the refused step.")
+    refusal_reason = (
+        diagnostic.refusal_reason if diagnostic is not None else None
+    )
+    steps: list[LoggedScriptStep] = []
+    for step_index, step in enumerate(specification.steps):
+        is_refused = step.step_id == refused_step_id
+        if _is_valid_step_id(step.step_id):
+            steps.append(
+                LoggedScriptStep(
+                    step_index=step_index,
+                    step_id=step.step_id,
+                    script=step.script,
+                    status="refused" if is_refused else "ok",
+                    refusal_reason=refusal_reason if is_refused else None,
+                )
+            )
+        if is_refused:
+            break
+    return tuple(steps)
+
+
+def _build_rejected_submission(
+    submission: RejectedSubmission,
+) -> LoggedRejectedSubmission:
+    """Builds the logged form of one rejected specification.
+
+    The function reads only codes and identifiers. It does not read the
+    error messages of the submission or the message of its diagnostic.
+    """
+    specification = submission.specification
+    diagnostic = submission.diagnostic
+    refusal = (
+        diagnostic if isinstance(diagnostic, StepRefusalDiagnostic) else None
+    )
+    return LoggedRejectedSubmission(
+        round_number=submission.round_number,
+        reason=submission.reason,
+        scripts=(
+            tuple(specification.list_script_names())
+            if specification is not None
+            else ()
+        ),
+        failed_step_id=(
+            refusal.step_id
+            if refusal is not None and _is_valid_step_id(refusal.step_id)
+            else None
+        ),
+        failed_script=refusal.script if refusal is not None else None,
+        refusal_reason=refusal.refusal_reason if refusal is not None else None,
+        timed_out=isinstance(diagnostic, TimeoutDiagnostic),
+    )
+
+
+def _read_chart_scope(
+    chart: ResolvedChart,
+) -> tuple[tuple[str, ...], ChildCohort | None]:
+    """Returns the places that a chart lists, or the cohort that it draws."""
+    match chart:
+        case ResolvedLineChart(scope=scope) | ResolvedBarChart(scope=scope):
+            if isinstance(scope, PlaceList):
+                return scope.place_dcids, None
+            return (), scope
+        case ResolvedHighlightChart(place_dcid=place_dcid):
+            return (place_dcid,), None
+        case (
+            ResolvedRankingChart(cohort=cohort)
+            | ResolvedMapChart(cohort=cohort)
+            | ResolvedScatterChart(cohort=cohort)
+        ):
+            return (), cohort
+
+
+def _build_logged_chart(
+    index: int,
+    chart: ResolvedChart,
+    origin: ChartOrigin,
+    fetched: _FetchedTables,
+) -> LoggedChart:
+    """Builds the logged form of one chart from grounded identifiers.
+
+    A variable, a place, or a parent place is logged only when a qualifying
+    fetched table of the turn holds it, so an identifier that the model
+    wrote is left out. The function does not read the chart's title or
+    unit.
+    """
+    places, cohort = _read_chart_scope(chart)
+    variable_dcids = tuple(
+        variable_dcid
+        for variable_dcid in chart.variable_dcids
+        if variable_dcid in fetched.variable_dcids
+    )[:MAX_CHART_VARIABLES]
+    grounded_cohort = (
+        cohort
+        if cohort is not None
+        and (
+            cohort.parent_place in fetched.parent_place_dcids
+            or cohort.parent_place in fetched.place_dcids
+        )
+        and _is_valid_place_type(cohort.child_place_type)
+        else None
+    )
+    return LoggedChart(
+        index=index,
+        kind=chart.viz_type,
+        origin=origin,
+        variable_dcids=variable_dcids,
+        # A chart pins each variable to at most one facet, so the list has at
+        # most one item for each logged variable.
+        facet_pins=tuple(
+            ChartFacetPin(variable_dcid=variable_dcid, facet_id=facet_id)
+            for variable_dcid, facet_id in chart.facet_ids
+            if variable_dcid in variable_dcids and is_valid_dcid(facet_id)
+        ),
+        parent_place_dcid=(
+            grounded_cohort.parent_place
+            if grounded_cohort is not None
+            else None
+        ),
+        child_place_type=(
+            grounded_cohort.child_place_type
+            if grounded_cohort is not None
+            else None
+        ),
+        place_dcids=tuple(
+            place_dcid
+            for place_dcid in places
+            if place_dcid in fetched.place_dcids
+        )[:MAX_TABLE_PLACE_DCIDS],
+        per_capita=chart.per_capita,
+    )
+
+
+def _build_logged_charts(
+    record: TurnRecord, fetched: _FetchedTables
+) -> tuple[LoggedChart, ...]:
+    """Builds up to `MAX_LOGGED_CHARTS` charts of the answer, in order.
+
+    Raises:
+        ValueError: If the record does not hold one origin for each chart.
+    """
+    if len(record.charts) != len(record.chart_origins):
+        raise ValueError("The turn does not hold one origin for each chart.")
+    pairs = zip(record.charts, record.chart_origins, strict=True)
+    return tuple(
+        _build_logged_chart(index, chart, origin, fetched)
+        for index, (chart, origin) in enumerate(pairs)
+    )[:MAX_LOGGED_CHARTS]
 
 
 def _measure_record_bytes(record: UsageRecord) -> int:
@@ -669,19 +1030,17 @@ def build_usage_record(
         The record, which `telemetry.write_structured_record` writes.
 
     Raises:
-        ValueError: If the turn does not have a terminal state yet.
+        ValueError: If the turn does not have a terminal state yet, if the
+            record does not hold one origin for each chart, or if its
+            diagnostic names a refused step that its specification does not
+            hold.
     """
     state = record.terminal_state
     if state is None:
         raise ValueError("The turn has not ended.")
     telemetry = record.telemetry
     has_data = record.digest is not None and record.digest.has_data
-    tables, is_tables_truncated, grounded_places = _collect_fetched_tables(
-        record
-    )
-    highlighted_places = _build_highlighted_places(
-        record.digest, grounded_places
-    )
+    fetched = _collect_fetched_tables(record)
     usage = UsageRecord(
         build_sha=build_sha,
         turn_id=telemetry.turn_id,
@@ -713,12 +1072,27 @@ def build_usage_record(
         tool_call_counts=_build_tool_call_counts(telemetry),
         tables_fetched=telemetry.tables_fetched,
         total_rows_fetched=telemetry.total_rows_fetched,
-        tables_truncated=is_tables_truncated,
-        tables=tables,
-        highlighted_places=highlighted_places,
+        tables_truncated=fetched.is_truncated,
+        tables=fetched.tables,
+        highlighted_places=_build_highlighted_places(
+            record.digest, fetched.place_dcids
+        ),
+        specification_origin=(
+            None
+            if record.specification is None
+            else record.specification_origin
+        ),
         scripts=tuple(telemetry.scripts),
+        script_steps=_build_script_steps(record),
         processing_retries=telemetry.processing_retries,
+        rejected_submissions=tuple(
+            _build_rejected_submission(submission)
+            for submission in record.loop_result.rejected_submissions[
+                :MAX_LOGGED_REJECTED_SUBMISSIONS
+            ]
+        ),
         charts_emitted=telemetry.charts_emitted,
         charts_rejected=telemetry.charts_rejected,
+        charts=_build_logged_charts(record, fetched),
     )
     return _fit_tables_to_line_budget(usage)

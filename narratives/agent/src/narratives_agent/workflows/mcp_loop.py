@@ -199,12 +199,16 @@ class RejectedSubmission:
             reason.
         specification: The parsed specification when available, or None when
             schema validation failed.
+        diagnostic: The diagnostic of the processing run that failed, or
+            None when the server rejected the specification before running
+            it.
     """
 
     round_number: int
     reason: RejectionReason
     errors: tuple[str, ...]
     specification: AnalysisSpecification | None = None
+    diagnostic: ProcessingDiagnostic | None = None
 
 
 class McpLoopError(Exception):
@@ -847,6 +851,7 @@ class _Loop:
                     reason="processing_failed",
                     errors=(outcome.message,),
                     specification=specification,
+                    diagnostic=outcome,
                 )
             )
             return self._record_failed_submission(outcome.format_for_retry())
