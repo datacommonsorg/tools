@@ -825,7 +825,7 @@ instead.
 
 A turn ends with an error, before any data is fetched, when Model Armor or the
 query classifier cannot screen the question. The `chat_turn` log entry of such
-a turn has severity `ERROR` and one of two `error_type` values:
+a turn has severity `ERROR` and one of two `outcome_reason` values:
 
 - `model_armor_unavailable`: `MODEL_ARMOR_TEMPLATE` is set and Model Armor
   did not return a complete result. Check that the template exists in its
@@ -839,33 +839,151 @@ a turn has severity `ERROR` and one of two `error_type` values:
 Use this Cloud Logging filter to find these turns or to alert on them:
 
 ```text
-jsonPayload.event="chat_turn" AND jsonPayload.error_type=("model_armor_unavailable" OR "classifier_unavailable")
+jsonPayload.event="chat_turn" AND jsonPayload.outcome_reason=("model_armor_unavailable" OR "classifier_unavailable")
 ```
 
 ### Inspecting Cloud Run logs
 
-For further diagnostics, inspect the Cloud Run service logs. Each completed chat
-turn writes a structured `chat_turn` JSON log entry keyed by `turn_id`,
-containing the terminal state, error reason (if any), phase latencies
-(`classify`, `discovery`, `processing`, `synthesis`, `finalize`, `follow_ups`),
-tool names and counts, token usage, the analytical `pattern` assigned by the
-`classify` phase, the analysis counts (`scripts`, `tables_fetched`,
-`total_rows_fetched`, `processing_retries`, `charts_emitted`, and
-`charts_rejected`), and `title_outcome` (`emitted`, `omitted` when the model
-wrote no usable title on a turn with data, or `not_requested` when the turn
-had no data or never reached synthesis; read `emitted` and `omitted` on
-`complete` turns, since a synthesis that fails part-way records the outcome
-reached when it stopped); user query text is never logged.
-The turn span carries the same fields as `narratives.scripts`,
-`narratives.tables_fetched`, `narratives.total_rows_fetched`,
-`narratives.processing_retries`, `narratives.charts_emitted`,
-`narratives.charts_rejected`, and `narratives.title_outcome`. On a `refused`
-turn, `error_type` holds the refusal reason (`adversarial`, `off_domain`,
-`safety_blocked`, `chat_disabled`, or `daily_token_budget_exhausted`) and
-`pattern` is omitted. On a turn that ends because the question could not be
-screened, `error_type` is `model_armor_unavailable` or
-`classifier_unavailable` and `pattern` is also omitted (see
-[Monitoring](#monitoring)). When `DAILY_TOKEN_BUDGET_PER_INSTANCE` is
-configured, each instance also writes content-free `daily_token_budget` JSON
-records (`state: "warning"` at 80% and `state: "exhausted"` at 100%, once each
-per UTC day).
+For further diagnostics, inspect the Cloud Run service logs. The server
+writes structured JSON entries to stdout, each on one line. The `chat_turn`
+and `transcript_rejected` records start with the keys `severity`, `message`,
+`event`, and `schema_version`. `event` names the kind of entry.
+`schema_version` changes when a key of that entry is renamed or removed, or
+when the type or the meaning of a key changes. Adding a key does not change
+it. When `DAILY_TOKEN_BUDGET_PER_INSTANCE` is configured, each instance also
+writes `daily_token_budget` JSON entries (`state: "warning"` at 80% and
+`state: "exhausted"` at 100%, once each per UTC day, described in
+[Daily Gemini token budget](#daily-gemini-token-budget-optional)).
+
+The entries do not contain text from the conversation. The server never logs
+the user's query, the answer, the model's thoughts, tool arguments, tool
+results, or chart titles. Every string in an entry is a code that the server
+defines, an identifier that the server creates, a configured model name, or
+the build SHA.
+
+#### The `chat_turn` record
+
+The server writes one `chat_turn` record (`schema_version` 2) when a chat
+turn ends. It writes the record for turns that complete, turns that it
+refuses, turns that fail, turns that the client cancels, and turns that end
+because chat is disabled or the instance's daily token budget is exhausted.
+Every record has every key, and a value that does not apply is `null`.
+
+| Key | Type | Value |
+| :--- | :--- | :--- |
+| `severity` | string | `ERROR` when the turn failed, otherwise `INFO` |
+| `message` | string | `chat turn <terminal_state>` |
+| `event` | string | `chat_turn` |
+| `schema_version` | integer | `2` |
+| `build_sha` | string or null | `BUILD_SHA` of the deployment |
+| `turn_id` | string | ID that the server creates for the turn |
+| `conversation_id` | string | ID of the turn's conversation |
+| `turn_index` | integer | Index of the turn in its conversation |
+| `is_signed` | boolean | Whether the server signed the turn |
+| `was_compacted` | boolean | Whether signing compacted the conversation |
+| `terminal_state` | string | `complete`, `refused`, `error`, or `canceled` |
+| `outcome` | string | How the turn ended |
+| `outcome_reason` | string or null | Reason code of a refused or failed turn |
+| `refusal_stage` | string or null | Where the server refused the turn |
+| `has_data` | boolean | Whether the turn's analysis produced data |
+| `is_clarification` | boolean | Whether the answer is a clarification question |
+| `is_truncated` | boolean | Whether the search for data stopped at a limit |
+| `title_outcome` | string | `emitted`, `omitted`, or `not_requested` |
+| `pattern` | string or null | Analytical pattern from the `classify` phase |
+| `duration_ms` | number | Duration of the turn |
+| `phase_durations` | list | Duration of each phase that ran |
+| `tokens` | object | Token totals of the turn |
+| `token_calls` | list | Token counts of each model call |
+| `mcp_iterations` | integer | Number of discovery rounds |
+| `tool_call_count` | integer | Number of tool calls |
+| `tool_call_counts` | list | Number of calls of each tool |
+| `tables_fetched` | integer | Number of observation tables fetched |
+| `total_rows_fetched` | integer | Number of observation rows fetched |
+| `scripts` | list of strings | Analytical scripts that ran, in step order |
+| `processing_retries` | integer | Specifications returned to the model |
+| `charts_emitted` | integer | Charts in the answer |
+| `charts_rejected` | integer | Charts that the server dropped |
+
+More detail on some keys:
+
+- **`conversation_id` and `turn_index`:** The turns of one conversation share
+  a `conversation_id` (see
+  [architecture.md](architecture.md#conversation-id)). `turn_index` is the
+  index that the turn has when it is signed. An unsigned turn has the index
+  that it would have had, so the next signed turn of the conversation has
+  the same index.
+- **`was_compacted`:** The value is `true` when signing the turn compacted
+  the oldest turns of the conversation into a summary (see
+  [architecture.md](architecture.md#keeping-conversation-history-compact)).
+- **`outcome`:** The value is `answered_with_data`, `answered_without_data`
+  (the server did not find data to answer from), `clarified`, `refused`,
+  `error`, or `canceled` (the client disconnected before the turn
+  finished).
+- **`outcome_reason`:** On a `refused` turn, the reason is `adversarial`,
+  `off_domain`, `safety_blocked`, `chat_disabled`, or
+  `daily_token_budget_exhausted`. On an `error` turn, it is the `reason` of
+  the turn's `terminal` event, such as `mcp_timeout`,
+  `model_armor_unavailable`, or `classifier_unavailable` (see
+  [Monitoring](#monitoring)).
+- **`refusal_stage`:** The value is `availability` (chat is disabled or the
+  instance's daily token budget is exhausted, so the turn did not run any
+  phase), `classify`, `discovery`, or `synthesis`.
+- **`has_data`:** On a `complete` turn, `has_data` says whether the server
+  wrote the answer from data. A turn that fails or is refused after its
+  analysis can also have `has_data` set to `true`.
+- **`title_outcome`:** `omitted` means that the model did not write a usable
+  title on a turn with data. `not_requested` means that the turn did not
+  have data or did not reach synthesis. Read `emitted` and `omitted` only on
+  `complete` turns. When synthesis fails part-way, the server records the
+  outcome that it had reached.
+- **`pattern`:** The value is `null` on a `refused` turn and on a turn that
+  ended before the `classify` phase assigned a pattern (including
+  `model_armor_unavailable` and `classifier_unavailable`).
+- **`phase_durations`:** The list has one item for each phase that ran, in
+  the order `classify`, `discovery`, `processing`, `synthesis`, `finalize`,
+  `follow_ups`. Each item has `phase`, `duration_ms`, and `is_nested`.
+  `is_nested` is `true` for `processing`, because its time is also counted
+  in `discovery`. Leave the nested items out of a sum of the durations.
+- **`tokens` and `token_calls`:** `tokens` holds `prompt_token_count`,
+  `candidates_token_count`, `thoughts_token_count`, `total_token_count`, and
+  `call_count`, which is the number of items in `token_calls`. Each item of
+  `token_calls` has `role` (`classify`, `discovery`, `synthesis`,
+  `follow_up`, or `compaction`), `model`, `round_number` (the discovery
+  round, or `null` outside discovery), and the same four token counts.
+- **`tool_call_counts`:** The list has one item for each tool name, with
+  `tool` and `count`, and it is sorted by tool name.
+
+#### The `transcript_rejected` record
+
+When the server rejects the conversation history of a request (HTTP 400
+`transcript_invalid`), it writes one `transcript_rejected` record
+(`schema_version` 1):
+
+| Key | Value |
+| :--- | :--- |
+| `severity` | `WARNING` |
+| `message` | `transcript rejected` |
+| `event` | `transcript_rejected` |
+| `schema_version` | `1` |
+| `reason` | Reason code of the rejection |
+
+`reason` is `invalid_window` (the history does not match its schema or
+exceeds a size limit), `summary_without_turns`,
+`conversation_id_without_turns`, `turns_without_conversation_id`,
+`window_start_mismatch` (the history starts at turn 0 with a summary, or
+starts after turn 0 without a summary), `non_contiguous_turns`,
+`duplicate_idempotency_key`, or `signature_mismatch`. The record does not
+include the conversation ID or any other value from the request, because a
+rejected request does not have a verified conversation ID.
+
+#### The turn span
+
+The turn span (`narratives.turn`) carries some of the same fields as
+attributes: `narratives.terminal_state`, `narratives.pattern`,
+`narratives.scripts`, `narratives.tables_fetched`,
+`narratives.total_rows_fetched`, `narratives.processing_retries`,
+`narratives.charts_emitted`, `narratives.charts_rejected`, and
+`narratives.title_outcome`. The span does not carry the turn ID. It shares a
+trace ID with the HTTP request span, and a load balancer log can hold that
+trace ID next to the client's address. With the turn ID on the span, someone
+could join a `chat_turn` record to a client address.

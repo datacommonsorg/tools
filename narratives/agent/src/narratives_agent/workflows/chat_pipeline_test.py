@@ -66,13 +66,20 @@ Verifies that:
     and without emitting a debug report, while `chat_disabled` still takes
     precedence and spent tokens from completed, failed, and canceled turns are
     recorded into the budget.
+13. The server writes exactly one `chat_turn` record for every turn, whether
+    the turn completes, is refused, fails, is canceled, or ends because chat
+    is disabled. The record holds the transcript's conversation ID, the
+    outcome, the stage of a refusal, and the index and signing of the turn.
+    A failure to build or write the record does not change what the browser
+    receives.
+14. The `chat_turn` record does not contain any text from the conversation.
 """
 
 import asyncio
 import json
 import logging
 import re
-from collections.abc import AsyncGenerator, Iterator, Sequence
+from collections.abc import AsyncGenerator, Callable, Iterator, Sequence
 from dataclasses import dataclass, field, replace
 from typing import Any
 
@@ -134,6 +141,7 @@ from narratives_agent.workflows.follow_up import FollowUpTopics
 from narratives_agent.workflows.mcp_loop import (
     DiscoveryResult,
     McpLoopError,
+    RejectedSubmission,
     StatusCallback,
     ThoughtCallback,
 )
@@ -169,7 +177,9 @@ from narratives_agent.workflows.sse_frames import (
 from narratives_agent.workflows.transcript import (
     CURRENT_DATE_LABEL,
     MAX_RESPONSE_CHARS,
+    MAX_VERBATIM_TURNS,
     ConversationStateSlots,
+    QueryScope,
     SignedWindow,
     Transcript,
     Turn,
@@ -3425,6 +3435,829 @@ async def test_run_synthesis_phase_records_on_abort_and_stream_failure(
     assert record_error.synthesis_raw_output is None
     assert record_error.synthesis_prompt is not None
     assert "What is the population of France?" in record_error.synthesis_prompt
+
+
+def _get_chat_turn_record(lines: list[str]) -> JsonObject:
+    """Returns the one `chat_turn` record that the turn wrote, parsed."""
+    (line,) = lines
+    record = json.loads(line)
+    assert isinstance(record, dict)
+    assert record["event"] == "chat_turn"
+    return record
+
+
+def _make_follow_up_transcript(*turn_indexes: int) -> Transcript:
+    """Builds a transcript whose earlier turns have `turn_indexes`."""
+    return replace(
+        _TRANSCRIPT,
+        turns=[
+            Turn(
+                turn_index=index,
+                idempotency_key=f"key-{index}",
+                user_query=f"Question {index}",
+                model_response=f"Answer {index}",
+                state_slots=ConversationStateSlots(),
+                hmac="0" * 64,
+            )
+            for index in turn_indexes
+        ],
+    )
+
+
+@pytest.mark.asyncio
+async def test_a_complete_turn_writes_one_chat_turn_record(
+    monkeypatch: pytest.MonkeyPatch, turn: _Turn, structured_lines: list[str]
+) -> None:
+    # Test: The `chat_turn` record of a turn in which every phase succeeds.
+    # Situation: The first turn of a conversation completes with data, on a
+    #   deployment whose build SHA is set.
+    # Expectation: The server writes exactly one record. It holds the build
+    #   SHA, the turn ID, a non-negative duration, the transcript's
+    #   conversation ID, index 0, the outcome `answered_with_data`, the
+    #   classified pattern, the counts of the analysis, and the five phases
+    #   that ran. It also marks the turn as signed and not compacted.
+    monkeypatch.setenv("BUILD_SHA", "test-build-sha-1234")
+
+    await chat_pipeline.run_turn(_TRANSCRIPT, turn.emit)
+
+    record = _get_chat_turn_record(structured_lines)
+    assert turn.telemetry is not None
+    assert record["build_sha"] == "test-build-sha-1234"
+    assert record["turn_id"] == turn.telemetry.turn_id
+    assert isinstance(record["duration_ms"], float)
+    assert record["duration_ms"] >= 0.0
+    assert record["conversation_id"] == _CONVERSATION_ID
+    assert record["turn_index"] == 0
+    assert record["is_signed"] is True
+    assert record["was_compacted"] is False
+    assert record["terminal_state"] == "complete"
+    assert record["outcome"] == "answered_with_data"
+    assert record["outcome_reason"] is None
+    assert record["refusal_stage"] is None
+    assert record["has_data"] is True
+    assert record["is_truncated"] is False
+    assert record["pattern"] == "single_point"
+    assert record["scripts"] == ["analyze_timeseries"]
+    assert record["tables_fetched"] == 1
+    assert record["total_rows_fetched"] == 2
+    assert record["charts_emitted"] == 1
+    phase_durations = record["phase_durations"]
+    assert isinstance(phase_durations, list)
+    assert [
+        item["phase"] for item in phase_durations if isinstance(item, dict)
+    ] == ["classify", "discovery", "synthesis", "finalize", "follow_ups"]
+
+
+@pytest.mark.asyncio
+async def test_a_clarification_is_recorded_as_clarified(
+    monkeypatch: pytest.MonkeyPatch, turn: _Turn, structured_lines: list[str]
+) -> None:
+    # Test: The `chat_turn` record of a clarification.
+    # Situation: The classifier asks which Georgia the user means.
+    # Expectation: The server writes one record with the outcome `clarified`,
+    #   `is_clarification` true, `is_signed` true, the transcript's
+    #   conversation ID, and only the `classify` and `finalize` phases.
+    async def clarify(*args: object, **_: object) -> Clarification:
+        return Clarification(_CLARIFICATION_QUESTION, _CLASSIFICATION)
+
+    monkeypatch.setattr(chat_pipeline, "classify_query", clarify)
+
+    await chat_pipeline.run_turn(_TRANSCRIPT, turn.emit)
+
+    record = _get_chat_turn_record(structured_lines)
+    assert record["terminal_state"] == "complete"
+    assert record["outcome"] == "clarified"
+    assert record["is_clarification"] is True
+    assert record["is_signed"] is True
+    assert record["has_data"] is False
+    assert record["conversation_id"] == _CONVERSATION_ID
+    phase_durations = record["phase_durations"]
+    assert isinstance(phase_durations, list)
+    assert [
+        item["phase"] for item in phase_durations if isinstance(item, dict)
+    ] == ["classify", "finalize"]
+
+
+def _refuse_turn_at(monkeypatch: pytest.MonkeyPatch, stage: str) -> None:
+    """Makes the turn end as refused at the given refusal stage."""
+    if stage == "availability":
+        monkeypatch.setenv(ENABLE_CHAT_ENV, "false")
+        return
+
+    async def refuse_classify(*args: object, **_: object) -> Admitted:
+        raise TurnRefusedError(RefusedReason.OFF_DOMAIN, "Out of scope.")
+
+    async def block_after_processing(
+        transcript: Transcript,
+        config: AgentConfig,
+        tools: Sequence[mcp_client.McpTool],
+        telemetry: TurnTelemetry,
+        cache: TurnCache,
+        **_: object,
+    ) -> DiscoveryResult:
+        # A processing run records its duration before the discovery phase
+        # around it does.
+        with telemetry.phase("processing"):
+            pass
+        raise GeminiBlockedError("SAFETY")
+
+    async def block_synthesis(**_: object) -> AsyncGenerator[StreamChunk]:
+        raise GeminiBlockedError("SAFETY")
+
+    if stage == "classify":
+        monkeypatch.setattr(chat_pipeline, "classify_query", refuse_classify)
+    elif stage == "discovery":
+        monkeypatch.setattr(
+            chat_pipeline, "execute_discovery_loop", block_after_processing
+        )
+    else:
+        monkeypatch.setattr(
+            chat_pipeline, "async_gemini_stream", block_synthesis
+        )
+
+
+@pytest.mark.parametrize(
+    ("stage", "reason"),
+    [
+        ("availability", "chat_disabled"),
+        ("classify", "off_domain"),
+        ("discovery", "safety_blocked"),
+        ("synthesis", "safety_blocked"),
+    ],
+)
+@pytest.mark.asyncio
+async def test_a_refused_turn_is_recorded_with_the_stage_of_the_refusal(
+    monkeypatch: pytest.MonkeyPatch,
+    turn: _Turn,
+    structured_lines: list[str],
+    stage: str,
+    reason: str,
+) -> None:
+    # Test: The `chat_turn` record of a refused turn.
+    # Situation: Chat is disabled, the classifier refuses the query, Gemini
+    #   blocks a discovery call after a processing run in the same turn, or
+    #   Gemini blocks the synthesis prompt.
+    # Expectation: The server writes exactly one record. It holds the
+    #   terminal state and the outcome `refused`, the reason code, the stage
+    #   at which the turn was refused, and the transcript's conversation ID.
+    #   Its pattern is `null`, and `is_signed` is `false`.
+    _refuse_turn_at(monkeypatch, stage)
+
+    await chat_pipeline.run_turn(_TRANSCRIPT, turn.emit)
+
+    record = _get_chat_turn_record(structured_lines)
+    assert record["terminal_state"] == "refused"
+    assert record["outcome"] == "refused"
+    assert record["outcome_reason"] == reason
+    assert record["refusal_stage"] == stage
+    assert record["severity"] == "INFO"
+    assert record["conversation_id"] == _CONVERSATION_ID
+    assert record["pattern"] is None
+    assert record["is_signed"] is False
+
+
+@pytest.mark.asyncio
+async def test_a_failed_turn_is_recorded_as_an_error(
+    monkeypatch: pytest.MonkeyPatch, turn: _Turn, structured_lines: list[str]
+) -> None:
+    # Test: The `chat_turn` record of a failed turn.
+    # Situation: The discovery loop raises `McpLoopError` of type
+    #   `mcp_timeout`.
+    # Expectation: The server writes exactly one record with severity
+    #   `ERROR`, the terminal state and the outcome `error`, the reason
+    #   `mcp_timeout`, a `null` refusal stage, and the transcript's
+    #   conversation ID.
+    _install_loop(
+        monkeypatch,
+        McpLoopError(
+            ErrorType.MCP_TIMEOUT,
+            "The data request took too long.",
+            is_retryable=True,
+        ),
+    )
+
+    await chat_pipeline.run_turn(_TRANSCRIPT, turn.emit)
+
+    record = _get_chat_turn_record(structured_lines)
+    assert record["severity"] == "ERROR"
+    assert record["terminal_state"] == "error"
+    assert record["outcome"] == "error"
+    assert record["outcome_reason"] == "mcp_timeout"
+    assert record["refusal_stage"] is None
+    assert record["conversation_id"] == _CONVERSATION_ID
+    assert record["is_signed"] is False
+
+
+@pytest.mark.asyncio
+async def test_a_canceled_turn_writes_one_chat_turn_record(
+    turn: _Turn, structured_lines: list[str]
+) -> None:
+    # Test: The `chat_turn` record of a turn that the client cancels.
+    # Situation: The test holds synthesis open and cancels the turn once
+    #   synthesis has started.
+    # Expectation: `run_turn` raises `CancelledError` to the caller, and
+    #   the server still writes exactly one record, with the terminal state
+    #   and the outcome `canceled`, a `null` reason, and the transcript's
+    #   conversation ID.
+    turn.synthesis_release.clear()
+    task = await _start_and_wait_for(turn, "status")
+    async with asyncio.timeout(1):
+        while turn.synthesis_calls == 0:
+            await asyncio.sleep(0)
+
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+
+    record = _get_chat_turn_record(structured_lines)
+    assert record["terminal_state"] == "canceled"
+    assert record["outcome"] == "canceled"
+    assert record["outcome_reason"] is None
+    assert record["conversation_id"] == _CONVERSATION_ID
+    assert record["is_signed"] is False
+
+
+@pytest.mark.asyncio
+async def test_a_turn_canceled_after_its_answer_is_recorded_as_answered(
+    turn: _Turn, structured_lines: list[str]
+) -> None:
+    # Test: The `chat_turn` record of a turn canceled during follow-ups.
+    # Situation: The test holds follow-up generation open and cancels the
+    #   turn after the turn has emitted its terminal event.
+    # Expectation: The server writes exactly one record, with the terminal
+    #   state `complete`, the outcome `answered_with_data`, and `is_signed`
+    #   true, because the answer was already delivered.
+    turn.follow_ups_release.clear()
+    task = await _start_and_wait_for(turn, "terminal")
+
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+
+    record = _get_chat_turn_record(structured_lines)
+    assert record["terminal_state"] == "complete"
+    assert record["outcome"] == "answered_with_data"
+    assert record["is_signed"] is True
+
+
+@pytest.mark.asyncio
+async def test_a_follow_up_turn_is_recorded_at_the_index_it_is_signed_with(
+    turn: _Turn, structured_lines: list[str]
+) -> None:
+    # Test: `turn_index` in the record of a follow-up turn.
+    # Situation: The transcript holds the earlier turns 3 and 4, and the
+    #   turn completes and is signed.
+    # Expectation: The record and the terminal frame both report index 5,
+    #   and the record marks the turn as signed and not compacted.
+    await chat_pipeline.run_turn(_make_follow_up_transcript(3, 4), turn.emit)
+
+    record = _get_chat_turn_record(structured_lines)
+    _, terminal = turn.events[-2]
+    assert terminal["turn_index"] == 5
+    assert record["turn_index"] == 5
+    assert record["is_signed"] is True
+    assert record["was_compacted"] is False
+
+
+@pytest.mark.asyncio
+async def test_a_turn_that_compacts_the_conversation_is_recorded_as_compacted(
+    monkeypatch: pytest.MonkeyPatch, turn: _Turn, structured_lines: list[str]
+) -> None:
+    # Test: `was_compacted` in the record of a turn that fills the window.
+    # Situation: The transcript holds `MAX_VERBATIM_TURNS` earlier turns,
+    #   so signing the turn moves the oldest one into the summary, which the
+    #   compaction model writes.
+    # Expectation: The terminal frame carries the new summary, and the
+    #   record marks the turn as signed and compacted at the next index.
+    async def summarize(**_: object) -> GeminiResponse:
+        return GeminiResponse(text="Summary of the earliest turn.")
+
+    monkeypatch.setattr(transcript_module, "async_gemini_request", summarize)
+    transcript = _make_follow_up_transcript(*range(MAX_VERBATIM_TURNS))
+
+    await chat_pipeline.run_turn(transcript, turn.emit)
+
+    record = _get_chat_turn_record(structured_lines)
+    _, terminal = turn.events[-2]
+    assert terminal["compacted_summary"] == "Summary of the earliest turn."
+    assert record["turn_index"] == MAX_VERBATIM_TURNS
+    assert record["is_signed"] is True
+    assert record["was_compacted"] is True
+
+
+@pytest.mark.parametrize("cause", ["answer too long", "signing failure"])
+@pytest.mark.asyncio
+async def test_an_unsigned_turn_is_recorded_at_the_index_it_would_have_had(
+    monkeypatch: pytest.MonkeyPatch,
+    turn: _Turn,
+    structured_lines: list[str],
+    cause: str,
+) -> None:
+    # Test: The record of a turn that completes unsigned.
+    # Situation: The transcript holds the earlier turns 3 and 4. The answer
+    #   is longer than `MAX_RESPONSE_CHARS`, or signing raises.
+    # Expectation: The terminal frame does not have signing fields. The
+    #   record reports an unsigned turn without compaction, at index 5,
+    #   which is the index that signing would have given it.
+    async def fail_finalize(*args: object, **_: object) -> None:
+        raise RuntimeError("signing failed")
+
+    if cause == "answer too long":
+        turn.answer = "x" * (MAX_RESPONSE_CHARS + 1)
+    else:
+        monkeypatch.setattr(chat_pipeline, "finalize_turn", fail_finalize)
+
+    await chat_pipeline.run_turn(_make_follow_up_transcript(3, 4), turn.emit)
+
+    record = _get_chat_turn_record(structured_lines)
+    _, terminal = turn.events[-2]
+    assert "hmac" not in terminal
+    assert record["terminal_state"] == "complete"
+    assert record["turn_index"] == 5
+    assert record["is_signed"] is False
+    assert record["was_compacted"] is False
+
+
+@pytest.mark.parametrize(
+    "failing", ["build_usage_record", "write_structured_record"]
+)
+@pytest.mark.asyncio
+async def test_a_failure_to_write_the_record_does_not_fail_the_turn(
+    monkeypatch: pytest.MonkeyPatch,
+    turn: _Turn,
+    structured_lines: list[str],
+    caplog: pytest.LogCaptureFixture,
+    failing: str,
+) -> None:
+    # Test: The guard around the `chat_turn` record.
+    # Situation: Building the record, or writing it, raises a `RuntimeError`
+    #   whose message holds text. The debug report is on.
+    # Expectation: `run_turn` returns normally. The browser still receives
+    #   the `complete` terminal frame, the follow-ups, and the debug report
+    #   as the last frame. The server does not write a structured line, and
+    #   it logs the failure as one error that names the exception type and
+    #   does not hold its message.
+    detail = "text that must not be logged"
+
+    def fail(*args: object, **_: object) -> None:
+        raise RuntimeError(detail)
+
+    monkeypatch.setenv(DEBUG_REPORT_ENV, "on")
+    monkeypatch.setattr(chat_pipeline, failing, fail)
+
+    with caplog.at_level(logging.ERROR, logger=chat_pipeline.__name__):
+        await chat_pipeline.run_turn(_TRANSCRIPT, turn.emit)
+
+    assert turn.list_event_names()[-3:] == [
+        "terminal",
+        "follow_ups",
+        "debug_report",
+    ]
+    (terminal,) = [data for event, data in turn.events if event == "terminal"]
+    assert terminal["state"] == TerminalState.COMPLETE
+    assert turn.finished == [(TerminalState.COMPLETE, None)]
+    assert structured_lines == []
+    (error,) = [
+        record
+        for record in caplog.records
+        if record.name == chat_pipeline.__name__
+    ]
+    assert error.levelno == logging.ERROR
+    assert error.getMessage() == (
+        "Writing the chat_turn record failed with RuntimeError"
+    )
+    assert detail not in caplog.text
+
+
+# Each piece of free text of a marked turn starts with this prefix, so one
+# search of the `chat_turn` line finds any of them.
+_MARKER_PREFIX = "zzmarker_"
+# `_TABLE_MARKERS` and `_SOURCE_MARKERS` name the pieces of free text that the
+# marked table and its source hold.
+_TABLE_MARKERS = (
+    "variable",
+    "place",
+    "unit",
+    "measurement_method",
+    "observation_period",
+)
+_SOURCE_MARKERS = (
+    "source",
+    "source_url",
+    "source_dataset",
+    "source_license",
+    "source_provider",
+    "source_date_range",
+)
+# `_SYNTHESIS_MARKERS` names the pieces of free text that a marked turn
+# produces once it reaches synthesis. The debug report holds the title and
+# the chart title in the raw synthesis output, even when the answer does not
+# show them.
+_SYNTHESIS_MARKERS = (
+    "synthesis_thought",
+    "title",
+    "answer",
+    "chart_title",
+    "follow_up",
+)
+
+
+def _mark(name: str) -> str:
+    """Returns the marker string that stands for one piece of free text."""
+    return f"{_MARKER_PREFIX}{name}"
+
+
+_MARKED_TRANSCRIPT = Transcript(
+    turns=[
+        Turn(
+            turn_index=3,
+            idempotency_key=_mark("earlier_key"),
+            user_query=_mark("earlier_query"),
+            model_response=_mark("earlier_answer"),
+            state_slots=ConversationStateSlots(
+                scopes=[
+                    QueryScope(
+                        places={"country/FRA": _mark("slot_place")},
+                        variables={"Count_Person": _mark("slot_variable")},
+                    )
+                ]
+            ),
+            hmac="0" * 64,
+        )
+    ],
+    compacted_summary=_mark("summary"),
+    conversation_id=_CONVERSATION_ID,
+    current_query=_mark("query"),
+    current_idempotency_key=_mark("key"),
+)
+_MARKED_TOOL_CALL: JsonObject = {
+    "name": "search_indicators",
+    "arguments": {"query": _mark("tool_argument")},
+    "result": _mark("tool_result"),
+    "status": "success",
+}
+
+
+def _make_marked_table() -> CachedTable:
+    """Builds table `t1` with a marked variable, place, unit, and source."""
+    source = Source(
+        name=_mark("source"),
+        url=f"https://example.org/{_mark('source_url')}",
+        dataset=_mark("source_dataset"),
+        license=_mark("source_license"),
+        provider=_mark("source_provider"),
+        date_range=_mark("source_date_range"),
+    )
+    return CachedTable(
+        table_id="t1",
+        table=ObservationTable(
+            variable_dcid="Count_Person",
+            variable_name=_mark("variable"),
+            unit=_mark("unit"),
+            scaling_factor=None,
+            measurement_method=_mark("measurement_method"),
+            observation_period=_mark("observation_period"),
+            provenance=Provenance(sources=(source,)),
+            rows=(
+                ObservationRow("country/FRA", _mark("place"), "2022", 67.8e6),
+                ObservationRow("country/FRA", _mark("place"), "2023", 68.2e6),
+            ),
+            requested_places=("country/FRA",),
+            place_names={"country/FRA": _mark("place")},
+            facet_id="f1",
+            source=source,
+        ),
+    )
+
+
+def _make_marked_diagnostic() -> StepRefusalDiagnostic:
+    """Builds a step refusal whose message is a marker."""
+    return StepRefusalDiagnostic(
+        refusal_reason="insufficient_coverage",
+        message=_mark("diagnostic"),
+        step_id="s1",
+        script="rank_cohort",
+        input_table_ids=("t1",),
+        coverage=None,
+        alternative_sources=(),
+        completed_results=(),
+    )
+
+
+def _plant_synthesis_markers(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Makes synthesis and follow-up generation produce marked text."""
+    chart = json.dumps(
+        {
+            "kind": "line",
+            "tables": ["t1"],
+            "places": ["country/FRA"],
+            "title": _mark("chart_title"),
+        }
+    )
+
+    async def stream_marked_answer() -> AsyncGenerator[StreamChunk]:
+        yield StreamChunk("thought", _mark("synthesis_thought"))
+        yield StreamChunk(
+            "text",
+            f"# {_mark('title')}\n\n{_mark('answer')}\n\n"
+            f"```chart\n{chart}\n```",
+        )
+
+    async def start_synthesis(**_: object) -> AsyncGenerator[StreamChunk]:
+        return stream_marked_answer()
+
+    async def generate_follow_ups(*args: object) -> list[str]:
+        return [_mark("follow_up")]
+
+    monkeypatch.setattr(chat_pipeline, "async_gemini_stream", start_synthesis)
+    monkeypatch.setattr(
+        chat_pipeline, "generate_follow_up_questions", generate_follow_ups
+    )
+
+
+def _plant_model_specification_markers(
+    monkeypatch: pytest.MonkeyPatch,
+) -> tuple[str, ...]:
+    """Makes the turn complete with a marked specification from the model.
+
+    Returns:
+        The names of the markers that the turn holds.
+    """
+    specification = AnalysisSpecification.model_validate(
+        {
+            "steps": [
+                {
+                    "step_id": "s1",
+                    "script": "analyze_timeseries",
+                    "table": "t1",
+                }
+            ],
+            "findings": [_mark("finding")],
+            "missing": [_mark("missing")],
+            "related": [_mark("related")],
+        }
+    )
+
+    async def run_loop(
+        transcript: Transcript,
+        config: AgentConfig,
+        tools: Sequence[mcp_client.McpTool],
+        telemetry: TurnTelemetry,
+        cache: TurnCache,
+        *,
+        thought_callback: ThoughtCallback,
+        **_: object,
+    ) -> DiscoveryResult:
+        thought_callback(_mark("discovery_thought"), 1)
+        cache.store_fetched(_make_marked_table())
+        digest = await execute_specification(specification, cache)
+        assert isinstance(digest, AnalysisDigest)
+        return DiscoveryResult(
+            tool_calls=[dict(_MARKED_TOOL_CALL)],
+            specification=specification,
+            digest=digest,
+            rejected_submissions=[
+                RejectedSubmission(
+                    round_number=1,
+                    reason="processing_failed",
+                    errors=(_mark("rejection_error"),),
+                )
+            ],
+            diagnostics=[(1, _make_marked_diagnostic())],
+        )
+
+    monkeypatch.setattr(chat_pipeline, "execute_discovery_loop", run_loop)
+    return (
+        "discovery_thought",
+        "tool_argument",
+        "tool_result",
+        "rejection_error",
+        "diagnostic",
+        "finding",
+        "missing",
+        "related",
+        *_TABLE_MARKERS,
+        *_SOURCE_MARKERS,
+        *_SYNTHESIS_MARKERS,
+    )
+
+
+def _plant_default_specification_markers(
+    monkeypatch: pytest.MonkeyPatch,
+) -> tuple[str, ...]:
+    """Makes the turn complete with the default specification.
+
+    The model's last specification was refused with a marked diagnostic, so
+    the default specification answers the turn. Its first run is refused
+    with a second marked diagnostic, and its second run succeeds. The server
+    also receives marked variable metadata before the first run. The frames
+    of this turn hold the source that the metadata names, and they do not
+    hold the table's own source.
+
+    Returns:
+        The names of the markers that the turn holds.
+    """
+    diagnostic = _make_marked_diagnostic()
+    default_refusals: list[ProcessingDiagnostic] = [
+        replace(
+            diagnostic,
+            message=_mark("default_diagnostic"),
+            input_table_ids=("t9",),
+        )
+    ]
+    metadata: JsonObject = {
+        "provenances": {
+            "dc/base/marked": {
+                "properties": {
+                    "source": _mark("metadata_provider"),
+                    "url": "https://example.org/",
+                }
+            }
+        },
+        "variables": {
+            "Count_Person": {
+                "facets": [{"id": "f1", "provenanceId": "dc/base/marked"}]
+            }
+        },
+    }
+
+    async def refuse_first_run(
+        specification: AnalysisSpecification, cache: TurnCache
+    ) -> AnalysisDigest | ProcessingDiagnostic:
+        if default_refusals:
+            return default_refusals.pop()
+        return await execute_specification(specification, cache)
+
+    async def describe_variable(name: str, arguments: JsonObject) -> JsonObject:
+        return {"content": [{"type": "text", "text": json.dumps(metadata)}]}
+
+    monkeypatch.setattr(
+        chat_pipeline, "execute_specification", refuse_first_run
+    )
+    monkeypatch.setattr(mcp_client, "async_call_tool", describe_variable)
+    _install_loop(
+        monkeypatch,
+        DiscoveryResult(
+            tool_calls=[dict(_MARKED_TOOL_CALL)],
+            processing_retries=2,
+            last_diagnostic=diagnostic,
+            diagnostics=[(2, diagnostic)],
+        ),
+        _make_marked_table(),
+    )
+    return (
+        "tool_argument",
+        "tool_result",
+        "diagnostic",
+        "default_diagnostic",
+        "metadata_provider",
+        *_TABLE_MARKERS,
+        *_SYNTHESIS_MARKERS,
+    )
+
+
+def _plant_unavailable_report_markers(
+    monkeypatch: pytest.MonkeyPatch,
+) -> tuple[str, ...]:
+    """Makes the turn complete with a marked report that data is unavailable.
+
+    Returns:
+        The names of the markers that the turn holds.
+    """
+    report = UnavailableReport(
+        searched_indicators=[_mark("searched_indicator")],
+        searched_places=[_mark("searched_place")],
+        reason=_mark("unavailable_reason"),
+        related_available=[_mark("related_available")],
+    )
+    _install_loop(monkeypatch, DiscoveryResult(unavailable=report))
+    return (
+        "searched_indicator",
+        "searched_place",
+        "unavailable_reason",
+        "related_available",
+        *_SYNTHESIS_MARKERS,
+    )
+
+
+def _plant_clarification_markers(
+    monkeypatch: pytest.MonkeyPatch,
+) -> tuple[str, ...]:
+    """Makes the turn end with a marked clarification question.
+
+    Returns:
+        The names of the markers that the turn holds.
+    """
+
+    async def clarify(*args: object, **_: object) -> Clarification:
+        return Clarification(_mark("clarification"), _CLASSIFICATION)
+
+    monkeypatch.setattr(chat_pipeline, "classify_query", clarify)
+    return ("clarification",)
+
+
+def _plant_refusal_markers(monkeypatch: pytest.MonkeyPatch) -> tuple[str, ...]:
+    """Makes the classifier refuse the turn with a marked message.
+
+    Returns:
+        The names of the markers that the turn holds.
+    """
+
+    async def refuse(*args: object, **_: object) -> Admitted:
+        raise TurnRefusedError(
+            RefusedReason.OFF_DOMAIN, _mark("refusal_message")
+        )
+
+    monkeypatch.setattr(chat_pipeline, "classify_query", refuse)
+    return ("refusal_message",)
+
+
+def _plant_failure_markers(monkeypatch: pytest.MonkeyPatch) -> tuple[str, ...]:
+    """Makes the discovery loop fail with a marked message.
+
+    The loop fails after a marked thought and a marked tool call.
+
+    Returns:
+        The names of the markers that the turn holds.
+    """
+
+    async def run_loop(
+        transcript: Transcript,
+        config: AgentConfig,
+        tools: Sequence[mcp_client.McpTool],
+        telemetry: TurnTelemetry,
+        cache: TurnCache,
+        *,
+        thought_callback: ThoughtCallback,
+        result: DiscoveryResult,
+        **_: object,
+    ) -> DiscoveryResult:
+        thought_callback(_mark("discovery_thought"), 1)
+        result.tool_calls.append(dict(_MARKED_TOOL_CALL))
+        raise McpLoopError(
+            ErrorType.MCP_TIMEOUT,
+            _mark("error_message"),
+            is_retryable=True,
+            result=result,
+        )
+
+    monkeypatch.setattr(chat_pipeline, "execute_discovery_loop", run_loop)
+    return (
+        "discovery_thought",
+        "tool_argument",
+        "tool_result",
+        "error_message",
+    )
+
+
+@pytest.mark.parametrize(
+    "plant_markers",
+    [
+        pytest.param(
+            _plant_model_specification_markers, id="model specification"
+        ),
+        pytest.param(
+            _plant_default_specification_markers, id="default specification"
+        ),
+        pytest.param(_plant_unavailable_report_markers, id="unavailable"),
+        pytest.param(_plant_clarification_markers, id="clarification"),
+        pytest.param(_plant_refusal_markers, id="refused"),
+        pytest.param(_plant_failure_markers, id="failed"),
+    ],
+)
+@pytest.mark.asyncio
+async def test_the_chat_turn_record_does_not_contain_conversation_text(
+    monkeypatch: pytest.MonkeyPatch,
+    turn: _Turn,
+    structured_lines: list[str],
+    plant_markers: Callable[[pytest.MonkeyPatch], tuple[str, ...]],
+) -> None:
+    # Test: The `chat_turn` line does not contain any text from the
+    #   conversation.
+    # Situation: Every piece of free text of a turn is a marker string. The
+    #   transcript marks the query, the idempotency keys, the summary, and
+    #   the query, the answer, and the data scope names of an earlier turn.
+    #   Synthesis marks a thought, the title, the text, a chart title, and
+    #   a follow-up question. Each case then marks the text of one kind of
+    #   turn: a specification from the model, the default specification
+    #   after a refusal, a report that data is unavailable, a
+    #   clarification, a refused turn, or a failed turn. The debug report
+    #   is on.
+    # Expectation: Each marker that the case plants appears in a frame of
+    #   the turn, which shows that the turn held it. The server writes
+    #   exactly one line, and the raw line does not contain any marker.
+    monkeypatch.setenv(DEBUG_REPORT_ENV, "on")
+    _plant_synthesis_markers(monkeypatch)
+    planted = plant_markers(monkeypatch)
+
+    await chat_pipeline.run_turn(_MARKED_TRANSCRIPT, turn.emit)
+
+    turn_text = json.dumps([data for _, data in turn.events])
+    for name in planted:
+        assert _mark(name) in turn_text, name
+    (line,) = structured_lines
+    assert json.loads(line)["event"] == "chat_turn"
+    assert _MARKER_PREFIX not in line
 
 
 @pytest.mark.parametrize(

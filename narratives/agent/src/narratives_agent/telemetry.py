@@ -17,7 +17,9 @@ This module records what the Architecture document's telemetry contract
 (section 4.5) allows and nothing else: per-phase spans and durations, token
 counts, MCP tool-loop iteration counts, tool names, and the terminal state of
 each turn. It never records prompts, responses, tool arguments, raw MCP
-payloads, session or user identifiers, or client IP addresses.
+payloads, user identifiers, or client IP addresses. The only identifiers it
+records are the turn ID and the conversation ID, and the server creates both
+from random bytes.
 
 This module writes two streams of output, each formatted as one JSON object
 per line on stdout so Cloud Logging parses every line as a structured entry.
@@ -26,9 +28,10 @@ google-genai instrumentations and from `TurnTelemetry`. Spans are serialized by
 `format_span`, which keeps only allowlisted attribute keys so that an
 instrumentation that records a URL, a client address, or message text cannot
 leak it regardless of its own configuration. The second stream consists of
-structured JSON records written to stdout: one summary record per chat turn
-(`TurnTelemetry.finish`) and daily token budget threshold transitions
-(`record_budget_event`).
+structured JSON records written to stdout: `chat_turn` and
+`transcript_rejected` records (frozen dataclasses extending `StructuredRecord`
+and serialized by `write_structured_record`), and daily token budget threshold
+transitions (`record_budget_event`).
 
 Content capture on the google-genai instrumentation is also switched off at
 its source by `configure_telemetry`, so message text is never collected in
@@ -46,6 +49,8 @@ from collections.abc import Iterator, Mapping, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from enum import StrEnum
+from types import MappingProxyType
+from typing import Literal, get_args
 
 from fastapi import FastAPI
 from opentelemetry import trace
@@ -69,10 +74,32 @@ from opentelemetry.util.genai.environment_variables import (
 )
 from opentelemetry.util.types import AnyValue
 
+from narratives_agent.analytics.metrics import ScriptName
 from narratives_agent.gemini.schemas import QueryPattern
-from narratives_agent.json_value import JsonObject
+from narratives_agent.json_value import JsonObject, json_safe
 
 SERVICE_NAME = "narratives-agent"
+
+# `TurnPhase` lists the phases of a turn. The agent loop starts them in this
+# order.
+type TurnPhase = Literal[
+    "classify", "discovery", "processing", "synthesis", "finalize", "follow_ups"
+]
+TURN_PHASES: tuple[TurnPhase, ...] = get_args(TurnPhase.__value__)
+
+# `NESTED_PHASES` maps each phase that runs inside another phase to the phase
+# around it. The time of a nested phase is also counted in the phase around
+# it, so a sum of phase durations must leave the nested phases out.
+NESTED_PHASES: Mapping[TurnPhase, TurnPhase] = MappingProxyType(
+    {"processing": "discovery"}
+)
+
+# `MAX_RECORD_LINE_BYTES` is the size that one structured line must stay
+# under. Container runtimes split a stdout line at 16 KiB, and Cloud Logging
+# cannot parse a split line as one JSON entry.
+MAX_RECORD_LINE_BYTES = 8 * 1024
+
+type Severity = Literal["INFO", "WARNING", "ERROR"]
 
 
 class TerminalState(StrEnum):
@@ -158,7 +185,7 @@ _MILLISECONDS_PER_SECOND = 1000
 
 _tracer = trace.get_tracer(__name__)
 
-# `_turn_logger` emits the per-turn summary as a bare JSON line. A formatter
+# `_turn_logger` writes each structured record as a bare JSON line. A formatter
 # that prepends a timestamp or level would make Cloud Logging treat the line as
 # plain text, so this logger has its own handler and does not propagate to the
 # root logger's formatter.
@@ -276,6 +303,49 @@ class _StdoutLineHandler(logging.Handler):
         # mirrors `logging.StreamHandler.emit`.
         except Exception:
             self.handleError(record)
+
+
+@dataclass(frozen=True, kw_only=True)
+class StructuredRecord:
+    """Holds the four keys that every structured record starts with.
+
+    A structured record is one event that the server writes to stdout as a
+    JSON line, such as the `chat_turn` record of a turn. Each event defines
+    a frozen dataclass that extends this class and adds its own fields.
+    Cloud Logging reads `severity` and `message` as the level and the text
+    of the log entry.
+
+    Attributes:
+        severity: The Cloud Logging severity of the entry.
+        message: A short description of the event, which the server composes
+            from fixed text and codes.
+        event: The name of the event, which identifies the record's schema.
+        schema_version: The version of that schema.
+    """
+
+    severity: Severity
+    message: str
+    event: str
+    schema_version: int
+
+
+def write_structured_record(record: StructuredRecord) -> None:
+    """Writes `record` to stdout as one line of compact JSON.
+
+    This function is the only place that serializes a structured record.
+    The keys of the line are the fields of `record`, in declaration order.
+    The function writes a number that is not finite as `null`, because JSON
+    cannot represent it.
+
+    Args:
+        record: The record to write.
+
+    Raises:
+        TypeError: If a field of `record` holds a value that JSON cannot
+            represent.
+    """
+    line = json.dumps(json_safe(record), separators=(",", ":"), allow_nan=False)
+    _turn_logger.info(line)
 
 
 def _disable_genai_content_capture() -> None:
@@ -492,13 +562,13 @@ class TurnTelemetry:
     tokens: TokenUsage = field(default_factory=TokenUsage)
     tool_calls: Counter[str] = field(default_factory=Counter)
     mcp_iterations: int = 0
-    phase_durations_ms: dict[str, float] = field(default_factory=dict)
+    phase_durations_ms: dict[TurnPhase, float] = field(default_factory=dict)
     # The analytical pattern assigned during the classify phase, or `None` when
     # the turn was refused or ended before classification.
     pattern: QueryPattern | None = None
     # The scripts the turn's specification ran, in step order, and the counts
     # of its fetches, processing retries, and charts.
-    scripts: list[str] = field(default_factory=list)
+    scripts: list[ScriptName] = field(default_factory=list)
     tables_fetched: int = 0
     total_rows_fetched: int = 0
     processing_retries: int = 0
@@ -513,11 +583,11 @@ class TurnTelemetry:
     _finished: bool = False
 
     @contextmanager
-    def phase(self, name: str) -> Iterator[None]:
+    def phase(self, name: TurnPhase) -> Iterator[None]:
         """Records a span and a duration for one pipeline phase.
 
         Args:
-            name: The pipeline phase name (for example, `"discovery"` or
+            name: The phase to time (for example, `"discovery"` or
                 `"processing"`).
 
         Yields:
@@ -562,11 +632,12 @@ class TurnTelemetry:
     def finish(
         self, state: TerminalState, error_type: str | None = None
     ) -> None:
-        """Ends the turn span and emits the turn summary.
+        """Ends the turn span and records the turn's duration.
 
-        Only the first call has an effect, so the terminal state recorded is
-        the one reached first. The summary includes `pattern` only when the
-        classify phase assigned one and the turn was not refused.
+        Only the first call has an effect, so the terminal state on the span
+        is the one that the turn reached first. The span has
+        `narratives.pattern` only when the classify phase assigned a pattern
+        and the turn was not refused.
 
         Args:
             state: The terminal state the turn reached.
@@ -577,43 +648,21 @@ class TurnTelemetry:
         if self._finished:
             return
         self._finished = True
-        duration_ms = compute_elapsed_ms(self._start)
-        self._duration_ms = duration_ms
-        tool_call_count = sum(self.tool_calls.values())
+        self._duration_ms = compute_elapsed_ms(self._start)
         tokens: dict[str, int] = {
             "prompt_token_count": self.tokens.prompt_token_count,
             "candidates_token_count": self.tokens.candidates_token_count,
             "thoughts_token_count": self.tokens.thoughts_token_count,
             "total_token_count": self.tokens.total_token_count,
         }
-        record: JsonObject = {
-            "severity": "ERROR" if state == TerminalState.ERROR else "INFO",
-            "message": f"chat turn {state}",
-            "event": "chat_turn",
-            "turn_id": self.turn_id,
-            "terminal_state": state,
-            "error_type": error_type,
-            "duration_ms": duration_ms,
-            "phase_durations_ms": dict(self.phase_durations_ms),
-            "mcp_iterations": self.mcp_iterations,
-            "tool_call_count": tool_call_count,
-            "tool_calls": dict(self.tool_calls),
-            "tokens": dict(tokens),
-            "scripts": list(self.scripts),
-            "tables_fetched": self.tables_fetched,
-            "total_rows_fetched": self.total_rows_fetched,
-            "processing_retries": self.processing_retries,
-            "charts_emitted": self.charts_emitted,
-            "charts_rejected": self.charts_rejected,
-            "title_outcome": self.title_outcome,
-        }
-        if self.pattern is not None and state != TerminalState.REFUSED:
-            record["pattern"] = self.pattern
+        # The span does not have the turn ID. The span shares a trace ID with
+        # the HTTP request span, and a load balancer log can hold that trace
+        # ID next to the client's address. With the turn ID on the span,
+        # someone could join a `chat_turn` record to a client address.
         attributes: Mapping[str, AnyValue] = {
-            "narratives.turn_id": self.turn_id,
             "narratives.terminal_state": state,
             "narratives.mcp_iterations": self.mcp_iterations,
-            "narratives.tool_call_count": tool_call_count,
+            "narratives.tool_call_count": sum(self.tool_calls.values()),
             "narratives.tool_names": sorted(self.tool_calls),
             "narratives.scripts": list(self.scripts),
             "narratives.tables_fetched": self.tables_fetched,
@@ -638,7 +687,6 @@ class TurnTelemetry:
         if state == TerminalState.ERROR:
             self._span.set_status(StatusCode.ERROR)
         self._span.end()
-        _turn_logger.info(json.dumps(record))
 
 
 def record_budget_event(
@@ -671,14 +719,20 @@ def record_budget_event(
 
 
 __all__ = [
+    "MAX_RECORD_LINE_BYTES",
+    "NESTED_PHASES",
     "SERVICE_NAME",
+    "TURN_PHASES",
     "BudgetEventState",
     "ErrorType",
+    "Severity",
+    "StructuredRecord",
     "TerminalState",
     "TitleOutcome",
     "TokenCallRecord",
     "TokenCounts",
     "TokenUsage",
+    "TurnPhase",
     "TurnTelemetry",
     "compute_elapsed_ms",
     "configure_telemetry",
@@ -686,4 +740,5 @@ __all__ = [
     "format_span",
     "instrument_app",
     "record_budget_event",
+    "write_structured_record",
 ]

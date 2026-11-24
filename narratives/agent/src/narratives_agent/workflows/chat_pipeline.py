@@ -20,7 +20,8 @@ phase reports progress by calling the turn's `emit` callback with one typed
 SSE frame at a time (an `SseFrame` from `sse_frames`, which declares each
 frame's event name and payload) and hands its results to the next phase as
 typed values rather than shared mutable state. Each phase also records what
-it did on the turn's `TurnRecord`, which the debug report is built from.
+it did on the turn's `TurnRecord`. The `chat_turn` record that the server
+logs for the turn and the debug report are both built from it.
 
 Every turn that is not canceled ends in one `terminal` frame
 (`TerminalCompleteFrame`, `TerminalRefusedFrame`, or `TerminalErrorFrame`).
@@ -66,6 +67,7 @@ from narratives_agent.telemetry import (
     TerminalState,
     TitleOutcome,
     TurnTelemetry,
+    write_structured_record,
 )
 from narratives_agent.token_budget import get_daily_token_budget
 from narratives_agent.workflows.blocks import BlockSplitter, TextBlock
@@ -168,6 +170,7 @@ from narratives_agent.workflows.turn_record import (
     TurnRecord,
     TurnThought,
 )
+from narratives_agent.workflows.usage_record import build_usage_record
 
 logger = logging.getLogger(__name__)
 
@@ -1066,7 +1069,8 @@ async def run_turn(
     cancellation emits no terminal frame because the client has already
     disconnected, and it is recorded as `canceled` unless the turn has
     already completed. Follow-up questions are emitted after the terminal
-    frame.
+    frame. The agent loop writes one `chat_turn` record when a turn ends,
+    including a turn that the client cancels.
 
     Args:
         transcript: The verified transcript holding the current query,
@@ -1216,6 +1220,7 @@ async def run_turn(
         record.terminal_state = final_state
         record.terminal_reason = error_type
         telemetry.finish(final_state, error_type)
+        _write_usage_record(record, transcript, settings.build_sha)
         if budget is not None:
             # Counts only Gemini calls that returned `usage_metadata`; streams
             # canceled before their final chunk and timed-out calls are omitted
@@ -1266,6 +1271,8 @@ async def _sign_turn(
     Because the answer has already been delivered, a failure here is logged
     and the turn completes unsigned, as an answer too long to sign does: the
     browser leaves it out of later context and keeps the window it holds.
+    The turn's record stores whether the server signed the turn and whether
+    signing compacted older turns into a summary.
 
     Args:
         ctx: The turn context holding the transcript, config, and telemetry.
@@ -1277,7 +1284,7 @@ async def _sign_turn(
         response exceeded the signing length limit.
     """
     try:
-        return await finalize_turn(
+        window = await finalize_turn(
             ctx.transcript,
             full_text,
             state_slots(),
@@ -1290,6 +1297,35 @@ async def _sign_turn(
             type(error).__name__,
         )
         return None
+    ctx.record.is_signed = window is not None
+    ctx.record.was_compacted = window is not None and window.was_compacted
+    return window
+
+
+def _write_usage_record(
+    record: TurnRecord, transcript: Transcript, build_sha: str | None
+) -> None:
+    """Writes the `chat_turn` record of a turn that has ended.
+
+    The agent loop calls this function after it has decided the turn's
+    result, so a failure to build or write the record does not fail the
+    turn. The function logs only the type of the exception, because the
+    turn's record holds text from the conversation.
+
+    Args:
+        record: The turn's record, with its terminal state set.
+        transcript: The verified transcript that the turn ran with.
+        build_sha: The build or commit SHA of the running image, or `None`.
+    """
+    try:
+        write_structured_record(
+            build_usage_record(record, transcript, build_sha=build_sha)
+        )
+    except Exception as error:
+        logger.error(
+            "Writing the chat_turn record failed with %s",
+            type(error).__name__,
+        )
 
 
 __all__ = [

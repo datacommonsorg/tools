@@ -13,10 +13,12 @@
 # limitations under the License.
 """Pytest fixtures shared by every test in the agent package."""
 
+import logging
 from collections.abc import Iterator
 
 import pytest
 
+from narratives_agent import telemetry
 from narratives_agent.gcp_auth import reset_adc_credentials, reset_dc_api_key
 from narratives_agent.model_armor import reset_model_armor_client
 from narratives_agent.secret_manager import reset_secret_manager_client
@@ -82,3 +84,33 @@ def clear_settings_cache(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
     reset_model_armor_client()
     reset_secret_manager_client()
     reset_daily_token_budget()
+
+
+class _StructuredLineCollector(logging.Handler):
+    """Collects the lines that the server writes for structured records."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.lines: list[str] = []
+
+    def emit(self, record: logging.LogRecord) -> None:
+        self.lines.append(record.getMessage())
+
+
+@pytest.fixture
+def structured_lines() -> Iterator[list[str]]:
+    """Collects each structured record as the line that the server writes.
+
+    The lines are the strings that `telemetry.write_structured_record`
+    hands to the stdout handler, before the handler adds the newline. A
+    test can therefore check the serialized form of a record, and not only
+    its parsed fields.
+    """
+    collector = _StructuredLineCollector()
+    logger = telemetry._turn_logger
+    previous_level = logger.level
+    logger.addHandler(collector)
+    logger.setLevel(logging.INFO)
+    yield collector.lines
+    logger.removeHandler(collector)
+    logger.setLevel(previous_level)
