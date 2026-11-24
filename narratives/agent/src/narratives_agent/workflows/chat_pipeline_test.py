@@ -4907,6 +4907,29 @@ def test_a_chart_block_naming_an_unused_table_gives_that_reason() -> None:
     )
 
 
+def test_a_chart_block_naming_an_unfetched_table_gives_that_reason() -> None:
+    # Test: The rejection of a chart block that names a table ID the turn
+    #   never fetched.
+    # Situation: The cache holds `t1` alone, the answer used it, and a line
+    #   block names `t9`, which is not in the cache.
+    # Expectation: The block is rejected with the reason that the table is
+    #   unknown, not the reason for a cached table the answer did not use,
+    #   and the rejection holds the block's kind.
+    used = _make_table("t1")
+    cache = TurnCache()
+    cache.store_fetched(used)
+    discovery = chat_pipeline.DiscoveryPhaseResult(
+        has_data=True, tables=(used,)
+    )
+    block = LineChartSpecification(tables=("t9",), title="Population")
+
+    rejection = chat_pipeline._resolve_chart_block(block, discovery, cache)
+
+    assert rejection == ChartRejection(
+        ChartRejectionReason.UNKNOWN_TABLE, "line"
+    )
+
+
 @pytest.mark.asyncio
 async def test_a_default_chart_candidate_that_fails_is_not_recorded(
     monkeypatch: pytest.MonkeyPatch, turn: _Turn

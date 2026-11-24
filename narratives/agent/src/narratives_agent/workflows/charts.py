@@ -24,7 +24,15 @@ from collections.abc import Mapping, Sequence
 from collections.abc import Set as AbstractSet
 from dataclasses import dataclass
 from enum import StrEnum
-from typing import Annotated, ClassVar, Literal, Protocol, Self, TypedDict
+from typing import (
+    Annotated,
+    ClassVar,
+    Literal,
+    Protocol,
+    Self,
+    TypedDict,
+    assert_never,
+)
 
 from pydantic import (
     BaseModel,
@@ -855,8 +863,9 @@ def get_chart_cohort(table: ObservationTable) -> ChildCohort | None:
 class ChartRejectionReason(StrEnum):
     """Why a chart block was dropped. The server defines every value."""
 
-    # The block names a table ID that is not in the cache or whose table
-    # does not have rows.
+    # The block names a table ID that is not in the cache.
+    UNKNOWN_TABLE = "unknown_table"
+    # The block names a cached table that does not have rows.
     TABLE_UNAVAILABLE = "table_unavailable"
     # A derived table the block names is not a chartable per-capita table.
     DERIVED_TABLE_NOT_CHARTABLE = "derived_table_not_chartable"
@@ -877,8 +886,9 @@ class ChartRejectionReason(StrEnum):
     # A table of a line chart does not have a place with two dates in the
     # drawn range.
     INSUFFICIENT_LINE_DATES = "insufficient_line_dates"
-    # A highlight chart does not have a value for its place at the date the
-    # block names, or a bar table does not have one for any named place.
+    # A highlight chart's place does not have a value at the date the block
+    # names, or a table of a bar chart does not have a value at that date
+    # for any place the block names.
     NO_VALUE_AT_DATE = "no_value_at_date"
     # A table of a bar chart does not have a value for any place the block
     # names.
@@ -902,7 +912,8 @@ class ChartRejectionReason(StrEnum):
     UNCLOSED_BLOCK = "unclosed_block"
     # The turn does not have any data to chart.
     TURN_WITHOUT_DATA = "turn_without_data"
-    # The block names a table that is not among the tables the answer used.
+    # The block names a cached table that is not among the tables the answer
+    # used.
     TABLE_NOT_IN_ANSWER = "table_not_in_answer"
 
 
@@ -923,11 +934,17 @@ class ChartRejection:
     kind: ChartKind | None
 
 
-# The rejection reason for each way tables that share an axis can disagree.
-_UNIT_MISMATCH_REASONS: Mapping[UnitMismatchReason, ChartRejectionReason] = {
-    "unit_mismatch": ChartRejectionReason.UNIT_MISMATCH,
-    "scaling_mismatch": ChartRejectionReason.SCALING_MISMATCH,
-}
+def _map_unit_mismatch_reason(
+    reason: UnitMismatchReason,
+) -> ChartRejectionReason:
+    """Maps an alignment unit mismatch reason to its chart rejection code."""
+    match reason:
+        case "unit_mismatch":
+            return ChartRejectionReason.UNIT_MISMATCH
+        case "scaling_mismatch":
+            return ChartRejectionReason.SCALING_MISMATCH
+        case _:
+            assert_never(reason)
 
 
 class _ChartRejectedError(Exception):
@@ -1038,7 +1055,12 @@ def _resolve_tables(
     raw = 0
     for table_id in dict.fromkeys(spec.tables):
         analysis_entry = context.cache.get(table_id)
-        if analysis_entry is None or not analysis_entry.table.rows:
+        if analysis_entry is None:
+            raise _ChartRejectedError(
+                ChartRejectionReason.UNKNOWN_TABLE,
+                f"{table_id} is not a cached table with rows",
+            )
+        if not analysis_entry.table.rows:
             raise _ChartRejectedError(
                 ChartRejectionReason.TABLE_UNAVAILABLE,
                 f"{table_id} is not a cached table with rows",
@@ -1084,7 +1106,7 @@ def _check_shared_axis(
         mismatch = find_unit_mismatch(*group) if len(group) > 1 else None
         if mismatch is not None:
             raise _ChartRejectedError(
-                _UNIT_MISMATCH_REASONS[mismatch.reason], mismatch.message
+                _map_unit_mismatch_reason(mismatch.reason), mismatch.message
             )
 
 

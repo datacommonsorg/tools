@@ -2556,7 +2556,7 @@ def test_a_bounded_line_counts_only_the_named_places() -> None:
 @pytest.mark.parametrize(
     ("kind", "tables", "fields", "reason"),
     [
-        ("line", ["t9"], {}, ChartRejectionReason.TABLE_UNAVAILABLE),
+        ("line", ["t9"], {}, ChartRejectionReason.UNKNOWN_TABLE),
         ("bar", ["s1"], {}, ChartRejectionReason.DERIVED_TABLE_NOT_CHARTABLE),
         (
             "line",
@@ -2627,6 +2627,22 @@ def test_a_rejection_holds_the_reason_of_the_check_that_failed(
     rejection = _resolve_chart(kind, tables, cache, None, analysis, **fields)
 
     assert rejection == ChartRejection(reason, kind)
+
+
+def test_a_cached_table_without_rows_gives_the_unavailable_reason() -> None:
+    # Test: The reason code of a chart that names a cached table without
+    #   rows.
+    # Situation: The cache holds `t1`, which does not have any rows, and a
+    #   line names it.
+    # Expectation: The rejection holds the reason that the table is
+    #   unavailable, not the reason for a table ID that is not in the cache.
+    empty = _make_table("t1", places=())
+
+    rejection = _resolve_chart("line", ["t1"], _make_cache(empty))
+
+    assert rejection == ChartRejection(
+        ChartRejectionReason.TABLE_UNAVAILABLE, "line"
+    )
 
 
 def test_tables_that_differ_only_in_scaling_factor_give_that_reason() -> None:

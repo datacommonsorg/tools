@@ -813,9 +813,10 @@ def _resolve_chart_block(
 
     Returns:
         The resolved chart. Returns a `ChartRejection` when the turn does
-        not have data, when the block names a table that is not among the
-        tables the answer used, or when `resolve_chart_specification`
-        rejects the block.
+        not have data, when the block names a table ID that is not in the
+        cache, when it names a cached table that is not among the tables
+        the answer used, or when `resolve_chart_specification` rejects the
+        block.
     """
     if not discovery.has_data:
         logger.info("Chart block rejected: turn has no data")
@@ -827,9 +828,12 @@ def _resolve_chart_block(
                 "Chart block rejected: %s is not in the table inventory",
                 table_id,
             )
-            return ChartRejection(
-                ChartRejectionReason.TABLE_NOT_IN_ANSWER, spec.kind
+            reason = (
+                ChartRejectionReason.TABLE_NOT_IN_ANSWER
+                if cache.get(table_id) is not None
+                else ChartRejectionReason.UNKNOWN_TABLE
             )
+            return ChartRejection(reason, spec.kind)
     return resolve_chart_specification(
         spec, cache, discovery.digest, discovery.spec
     )
