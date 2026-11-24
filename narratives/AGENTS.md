@@ -76,11 +76,13 @@ process and PR expectations: [`CONTRIBUTING.md`](../CONTRIBUTING.md).
       specification and returns an `AnalysisDigest` or a
       `ProcessingDiagnostic` (`processing.py`), the best-effort request,
       before a specification runs, for the variable metadata of the fetched
-      tables it reads (`metadata_backfill.py`), the turn debug report builder
+      tables it reads (`metadata_backfill.py`), the turn record that collects
+      each turn's results (`turn_record.py`), the turn debug report builder
       (`debug_report.py`), the chart grammar, resolver, and wire serializer
       (`charts.py`), the default chart floor (`chart_defaults.py`), the
       synthesis prompt builder (`synthesis.py`), the streaming block splitter
-      (`blocks.py`), the selection of the title-line addendum and the
+      (`blocks.py`), the parser of the answer's closing Data gaps block
+      (`data_gaps.py`), the selection of the title-line addendum and the
       extractor that takes the title line off the synthesis stream
       (`title.py`), follow-up generation (`follow_up.py`), user-visible
       messages (`messages.py`), the typed SSE frames the agent loop sends
@@ -109,8 +111,9 @@ process and PR expectations: [`CONTRIBUTING.md`](../CONTRIBUTING.md).
       and `json_value.py`.
     - `config.py`: loads `agent-config.json` (or the local `config.json`),
       layers the prompts, and returns the result as an `AgentConfig`; renders
-      prompts with the turn's pinned `{{CURRENT_DATETIME}}`
-      (`pin_current_datetime`); resolves chat availability with the
+      the `{{instance.*}}` placeholders of a prompt (`render_prompt`);
+      provides the turn's pinned current date in the `TIMEZONE` zone
+      (`pin_current_date`); resolves chat availability with the
       `ENABLE_CHAT` and `UNAVAILABLE_MESSAGE` overrides (`get_chat_config`);
       and resolves the turn debug report mode with the `DEBUG_REPORT`
       override (`get_debug_report_mode`).

@@ -50,17 +50,19 @@ describe('Toast', () => {
     vi.useRealTimers();
   });
 
-  it('keeps EXIT_MS equal to the --animate-exit duration', () => {
+  it('keeps EXIT_MS equal to the --duration-exit duration', () => {
     // Test: The unmount delay against the exit animation.
     // Situation: EXIT_MS delays onDismiss; --animate-exit in index.css plays
-    //            the slide-out.
-    // Expectation: Both durations are equal, so the toast is neither cut off
+    //            the slide-out over --duration-exit.
+    // Expectation: Both durations are equal and the exit animation uses
+    //              --duration-exit, so the toast is neither cut off
     //              mid-animation nor left invisible but mounted.
     // Vitest runs from the ui/ package root.
     const css = readFileSync('src/index.css', 'utf8');
-    const duration = css.match(/--animate-exit:\s*exit\s+(\d+)ms/);
+    const duration = css.match(/--duration-exit:\s*(\d+)ms/);
     expect(duration).not.toBeNull();
     expect(Number(duration?.[1])).toBe(EXIT_MS);
+    expect(css).toMatch(/--animate-exit:\s*exit\s+var\(--duration-exit\)/);
   });
 
   it('plays the exit animation before dismissing', () => {

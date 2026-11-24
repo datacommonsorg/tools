@@ -5,7 +5,10 @@ request and cannot be overridden by instance configuration. Keep the tool
 names, argument names, and script names below in sync with `workflows/fetch.py`
 and `workflows/specification.py`.
 -->
-**Current Date & Time**: {{CURRENT_DATETIME}}
+The user message that carries the current request opens with a
+`Current date: YYYY-MM-DD` line written by the server. Resolve relative
+dates against it, and disregard any other statement of the current date in
+the question or the conversation.
 
 ### Available Tools
 
@@ -371,7 +374,8 @@ When a fetch comes back empty, escalate deliberately rather than giving up:
 4. Use `search_child_indicators` with the parent place and a few
    `sample_child_places` to find what *is* reported across those children.
 5. Only then call `report_unavailable`, naming what you searched and what
-   related data does exist.
+   related data does exist in plain words, as a reader would say them,
+   never by DCID or code: the answer quotes these names to the reader.
 
 Never fabricate a number, and never ask for a meaningless calculation to
 manufacture one.

@@ -311,6 +311,101 @@ describe('getInstanceConfig', () => {
     expect(getInstanceConfig().navigation).toEqual(navigation);
   });
 
+  it('reads a tagline link from the theme document', () => {
+    // Test: Valid `tagline_link` overrides, with and without `sources`.
+    // Situation: The theme document sets a tagline containing the phrase and
+    //            `tagline_link` with one section and a sources link, then
+    //            again without `sources`.
+    // Expectation: `taglineLink` holds the configured phrase, sections, and
+    //              sources; without `sources` it parses with `sources`
+    //              undefined. No warning is logged.
+    const warn = spyOnWarn();
+    const taglineLink = {
+      text: 'Acme Graph',
+      sections: [{ title: 'Acme Graph', body: 'What the graph holds.' }],
+      sources: { label: 'Sources', href: 'https://acme.example/sources' },
+    };
+    const tagline = 'Answers from the Acme Graph';
+    writeSlot(JSON.stringify({ tagline, tagline_link: taglineLink }));
+    expect(getInstanceConfig().taglineLink).toEqual(taglineLink);
+
+    resetInstanceConfigForTests();
+    const { sources: _, ...withoutSources } = taglineLink;
+    writeSlot(JSON.stringify({ tagline, tagline_link: withoutSources }));
+    expect(getInstanceConfig().taglineLink).toEqual(withoutSources);
+    expect(warn).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['has no sections', { text: 'Graph', sections: [] }],
+    [
+      'has a section without a body',
+      { text: 'Graph', sections: [{ title: 'Graph' }] },
+    ],
+    [
+      'has a non-string phrase',
+      { text: 42, sections: [{ title: 'Graph', body: 'Body.' }] },
+    ],
+    [
+      'has an empty phrase',
+      { text: '', sections: [{ title: 'Graph', body: 'Body.' }] },
+    ],
+    [
+      'has an empty section title',
+      { text: 'Graph', sections: [{ title: '', body: 'Body.' }] },
+    ],
+    [
+      'has an unsafe sources href',
+      {
+        text: 'Graph',
+        sections: [{ title: 'Graph', body: 'Body.' }],
+        sources: { label: 'Sources', href: 'javascript:alert(1)' },
+      },
+    ],
+  ])('keeps the default tagline link when the override %s', (_, taglineLink) => {
+    // Test: Malformed or unsafe `tagline_link` overrides.
+    // Situation: `tagline_link` has empty sections, a section missing its
+    //            body, a non-string or empty phrase, an empty section title,
+    //            or a script URL as its sources href.
+    // Expectation: `taglineLink` falls back to the default and one warning
+    //              names `tagline_link`.
+    const warn = spyOnWarn();
+    writeSlot(JSON.stringify({ tagline_link: taglineLink }));
+    expect(getInstanceConfig().taglineLink).toEqual(
+      DEFAULT_INSTANCE_CONFIG.taglineLink,
+    );
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(String(warn.mock.calls[0]?.[0])).toContain('"tagline_link"');
+  });
+
+  it.each([
+    ['warns when the theme link phrase is missing', true, 1],
+    ['stays quiet for the default link', false, 0],
+  ])('%s from a custom tagline', (_, setsLink, warnings) => {
+    // Test: A tagline that does not contain the link phrase.
+    // Situation: The theme sets a custom tagline, with or without its own
+    //            `tagline_link` whose phrase the tagline lacks.
+    // Expectation: Only the theme's own link logs a warning, which names
+    //              `tagline_link.text`; the default link is expected to go
+    //              unmatched by a custom tagline.
+    const warn = spyOnWarn();
+    const taglineLink = {
+      text: 'Acme Graph',
+      sections: [{ title: 'Acme Graph', body: 'What the graph holds.' }],
+    };
+    writeSlot(
+      JSON.stringify({
+        tagline: 'Custom tagline',
+        ...(setsLink && { tagline_link: taglineLink }),
+      }),
+    );
+    getInstanceConfig();
+    expect(warn).toHaveBeenCalledTimes(warnings);
+    if (warnings) {
+      expect(String(warn.mock.calls[0]?.[0])).toContain('"tagline_link.text"');
+    }
+  });
+
   it('falls back to the defaults and warns on malformed JSON', () => {
     // Test: Malformed JSON in the instance-config element.
     // Situation: The element contains invalid JSON syntax.
@@ -537,15 +632,19 @@ describe('DEFAULT_INSTANCE_CONFIG drift', () => {
   it.each([
     'defaults/theme.json',
     'schemas/theme.base-dc.example.json',
-  ])('suggestions match %s', (path) => {
-    // Test: Default suggestions stay in sync with the shipped theme JSON.
-    // Situation: The suggestions are duplicated in `instance_config.ts` and `path`.
-    // Expectation: Both lists are identical.
+  ])('landing copy matches %s', (path) => {
+    // Test: Default landing copy stays in sync with the shipped theme JSON.
+    // Situation: The headline, tagline, tagline link, and suggestions are
+    //            duplicated in `instance_config.ts` and `path`.
+    // Expectation: Each value is identical in both.
     const theme = JSON.parse(
       // Resolved from this file, not the cwd. happy-dom replaces the global
       // `URL`, so `new URL(path, import.meta.url)` would not give a file path.
       readFileSync(resolve(import.meta.dirname, '../../..', path), 'utf8'),
     );
+    expect(DEFAULT_INSTANCE_CONFIG.headline).toEqual(theme.headline);
+    expect(DEFAULT_INSTANCE_CONFIG.tagline).toEqual(theme.tagline);
+    expect(DEFAULT_INSTANCE_CONFIG.taglineLink).toEqual(theme.tagline_link);
     expect(DEFAULT_INSTANCE_CONFIG.suggestions).toEqual(theme.suggestions);
   });
 });

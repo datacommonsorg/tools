@@ -100,10 +100,10 @@ def _collect_problems(
     """Recursively validates `node` against `spec` and appends violations.
 
     Checks the JSON Schema keywords used by `theme.schema.json` (`type`,
-    `pattern`, `enum`, `additionalProperties`, and `required`), resolving any
-    local `$ref` targets against `root`. Human-readable error messages
-    prefixed with the dotted/indexed path `where` are appended to `problems`
-    in place.
+    `pattern`, `minLength`, `enum`, `minItems`, `additionalProperties`, and
+    `required`), resolving any local `$ref` targets against `root`.
+    Human-readable error messages prefixed with the dotted/indexed path
+    `where` are appended to `problems` in place.
 
     Args:
         node: The current parsed JSON value being validated.
@@ -132,11 +132,22 @@ def _collect_problems(
     ):
         problems.append(f"{location}: does not match {pattern}")
 
+    min_length = spec.get("minLength")
+    if (
+        isinstance(min_length, int)
+        and isinstance(node, str)
+        and len(node) < min_length
+    ):
+        problems.append(f"{location}: needs at least {min_length} character(s)")
+
     enum = spec.get("enum")
     if isinstance(enum, list) and node not in enum:
         problems.append(f"{location}: must be one of {enum}")
 
     if isinstance(node, list):
+        min_items = spec.get("minItems")
+        if isinstance(min_items, int) and len(node) < min_items:
+            problems.append(f"{location}: needs at least {min_items} item(s)")
         items = spec.get("items")
         if items:
             for index, element in enumerate(node):

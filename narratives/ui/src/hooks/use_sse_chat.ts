@@ -213,24 +213,57 @@ function mapRawChartItem(raw: RawChartItem): ChartItem {
 }
 
 /**
+ * The measures an answer could not cover, which the agent parsed from the
+ * answer's closing Data gaps block. `intro` is the line that introduces the
+ * list, or `''` when the model wrote none, and `items` is never empty. Both
+ * are plain text.
+ */
+export interface DataGaps {
+  intro: string;
+  items: string[];
+}
+
+/**
  * Wire format of one streamed answer block: a completed Markdown paragraph,
- * or a chart resolved against the turn's cached tables.
+ * or a chart resolved against the turn's cached tables. The text block that
+ * is the answer's Data gaps block also carries `data_gaps`.
  */
 export type RawAnswerBlock =
-  | { type: 'text'; markdown: string }
+  | { type: 'text'; markdown: string; data_gaps?: DataGaps }
   | { type: 'chart'; chart: RawChartItem; standalone?: boolean };
 
 /**
  * One block of an answer in the UI's domain shape, rendered in order. `index`
  * is the block's position in the turn, which the answer panel uses as its key.
  * The position is assigned on arrival, so a dropped malformed block cannot
- * produce duplicate or invalid React keys. A `standalone` chart was supplied
+ * produce duplicate or invalid React keys. A text block with `dataGaps` is
+ * the answer's Data gaps block, which the answer panel shows as a section
+ * of its own after the answer. A `standalone` chart was supplied
  * by the server, such as a default chart appended after the answer, and is
  * never shown beside the text before it.
  */
 export type AnswerBlock =
-  | { index: number; type: 'text'; markdown: string }
+  | { index: number; type: 'text'; markdown: string; dataGaps?: DataGaps }
   | { index: number; type: 'chart'; chart: ChartItem; standalone?: boolean };
+
+/**
+ * Reads a text block's `data_gaps` from the wire. Returns undefined unless
+ * `intro` is a string and `items` is a non-empty list of non-empty strings,
+ * so a malformed object leaves the block an ordinary text block.
+ */
+function readDataGaps(value: unknown): DataGaps | undefined {
+  if (typeof value !== 'object' || value === null) return undefined;
+  const { intro, items } = value as { intro?: unknown; items?: unknown };
+  if (
+    typeof intro !== 'string' ||
+    !Array.isArray(items) ||
+    items.length === 0 ||
+    !items.every((item) => typeof item === 'string' && item.length > 0)
+  ) {
+    return undefined;
+  }
+  return { intro, items };
+}
 
 /** Returns the charts a turn renders: the charts of its chart blocks, in order. */
 export function getTurnCharts(turn: ChatTurn): ChartItem[] {
@@ -427,6 +460,11 @@ export interface ChatTurn {
    * the latest signed turn keeps it, since it covers the whole window.
    */
   compactedSummary?: string | null;
+  /**
+   * Holds the conversation ID the agent signed the window under. Only the
+   * latest signed turn keeps it, since it covers the whole window.
+   */
+  conversationId?: string;
   /** Holds the non-empty machine-readable reason reported by the `terminal` event. */
   terminalReason?: string;
   /** Client-observed submission timestamp and monotonic elapsed milestones for this turn. */
@@ -472,9 +510,9 @@ interface SignedWindowEntry {
  * identified as permanent. A `refused` event carries a `reason` (for example, `adversarial`,
  * `off_domain`, or `safety_blocked`) and a user-facing `message` with no
  * `error`. A `complete` event for a signed turn also carries the turn's
- * `turn_index`, `hmac`, and `state_slots`, the window's `compacted_summary`,
- * and `window`, which lists every turn the next request must send with its
- * current signature.
+ * `turn_index`, `hmac`, and `state_slots`, the window's `compacted_summary`
+ * and `conversation_id`, and `window`, which lists every turn the next
+ * request must send with its current signature.
  */
 interface TerminalPayload {
   state: TerminalState;
@@ -487,6 +525,7 @@ interface TerminalPayload {
   hmac?: string;
   state_slots?: ConversationStateSlots;
   compacted_summary?: string | null;
+  conversation_id?: string;
   window?: SignedWindowEntry[];
 }
 
@@ -614,6 +653,7 @@ export function assignCitationNumbers(turns: ChatTurn[]): number[][] {
 export function transcriptRequestFields(turns: ChatTurn[]): {
   turns: WireTurn[];
   compacted_summary: string | null;
+  conversation_id: string | null;
 } {
   const signed = turns.filter(isSignedTurn);
   return {
@@ -626,6 +666,7 @@ export function transcriptRequestFields(turns: ChatTurn[]): {
       hmac: turn.hmac,
     })),
     compacted_summary: signed.at(-1)?.compactedSummary ?? null,
+    conversation_id: signed.at(-1)?.conversationId ?? null,
   };
 }
 
@@ -639,6 +680,7 @@ function withoutSignature(turn: ChatTurn): ChatTurn {
         turnIndex: undefined,
         stateSlots: undefined,
         compactedSummary: undefined,
+        conversationId: undefined,
       };
 }
 
@@ -646,7 +688,8 @@ function withoutSignature(turn: ChatTurn): ChatTurn {
  * Applies the signed window of a `complete` terminal event to every turn.
  *
  * The turn with `idempotencyKey` receives its signature, state slots, and the
- * window's summary, which every other turn drops so that it is stored once.
+ * window's summary and conversation ID, which every other turn drops so that
+ * each is stored once.
  * Compaction re-signs the whole window, so each other signed turn takes the
  * signature the window lists for its idempotency key, and a turn the window
  * no longer lists, because it was compacted into the summary, loses its
@@ -672,6 +715,7 @@ export function applySignedWindow(
         hmac,
         stateSlots: state_slots,
         compactedSummary: terminal.compacted_summary ?? null,
+        conversationId: readOptionalString(terminal.conversation_id),
       };
     }
     if (turn.hmac === undefined) return turn;
@@ -685,6 +729,7 @@ export function applySignedWindow(
           hmac: entry.hmac,
           turnIndex: entry.turn_index,
           compactedSummary: undefined,
+          conversationId: undefined,
         }
       : withoutSignature(turn);
   });
@@ -1240,7 +1285,8 @@ function applyTerminal(turn: ChatTurn, terminal: TerminalPayload): ChatTurn {
  * agent joins its text blocks by, so the two stay byte for byte equal.
  * Malformed blocks are ignored: unrecognized types, empty text blocks, and
  * chart blocks whose kind is not one the agent emits or whose variables are
- * missing or not all non-empty strings.
+ * missing or not all non-empty strings. A text block keeps a well-formed
+ * `data_gaps` as `dataGaps`.
  */
 function applyBlock(turn: ChatTurn, raw: RawAnswerBlock): ChatTurn {
   const blocks = turn.blocks;
@@ -1275,7 +1321,13 @@ function applyBlock(turn: ChatTurn, raw: RawAnswerBlock): ChatTurn {
     console.warn('Ignoring a malformed or empty answer block.');
     return turn;
   }
-  const block: AnswerBlock = { index, type: 'text', markdown: raw.markdown };
+  const dataGaps = readDataGaps(raw.data_gaps);
+  const block: AnswerBlock = {
+    index,
+    type: 'text',
+    markdown: raw.markdown,
+    ...(dataGaps === undefined ? {} : { dataGaps }),
+  };
   const text = turn.text
     ? turn.text + TEXT_BLOCK_SEPARATOR + raw.markdown
     : raw.markdown;

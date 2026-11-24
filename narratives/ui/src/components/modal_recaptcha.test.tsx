@@ -31,7 +31,6 @@ import {
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { RecaptchaModal } from '@/src/components/modal_recaptcha';
 import {
-  RECAPTCHA_MODAL_CLOSE_LABEL,
   RECAPTCHA_MODAL_EXPIRED_NOTE,
   RECAPTCHA_MODAL_LOAD_ERROR,
   RECAPTCHA_MODAL_LOADING_LABEL,
@@ -212,11 +211,11 @@ describe('RecaptchaModal', () => {
     expect(mock.renderFn.mock.calls[0][1].size).toBe('compact');
   });
 
-  it('moves initial focus to close and dismisses via close button, Escape, and backdrop click while respecting defaultPrevented', async () => {
+  it('moves initial focus to the dialog and dismisses via Escape and backdrop click while respecting defaultPrevented', async () => {
     // Test: Initial dialog focus, dismissal controls, and Escape defaultPrevented handling.
     // Situation: The modal opens in a mocked session context.
-    // Expectation: Opening focuses the close button immediately, clicking the
-    //   close button or backdrop or pressing Escape invokes `cancelVerification`,
+    // Expectation: Opening focuses the dialog immediately, clicking the
+    //   backdrop or pressing Escape invokes `cancelVerification`,
     //   Escape calls `preventDefault()`, and already-prevented Escape events are
     //   ignored.
     const mock = createMockEnterprise();
@@ -230,12 +229,8 @@ describe('RecaptchaModal', () => {
       { cancelVerification },
     );
 
-    const closeButton = screen.getByRole('button', {
-      name: RECAPTCHA_MODAL_CLOSE_LABEL,
-    });
-    expect(document.activeElement).toBe(closeButton);
+    expect(document.activeElement).toBe(screen.getByRole('dialog'));
 
-    fireEvent.click(closeButton);
     const escapeEvent = new KeyboardEvent('keydown', {
       key: 'Escape',
       bubbles: true,
@@ -259,17 +254,17 @@ describe('RecaptchaModal', () => {
     if (scrim) {
       fireEvent.click(scrim);
     }
-    expect(cancelVerification).toHaveBeenCalledTimes(3);
+    expect(cancelVerification).toHaveBeenCalledTimes(2);
   });
 
   it('traps Tab and Shift+Tab inside the dialog and leaves focus in external challenge iframes', async () => {
     // Test: Modal keyboard focus trap and challenge iframe exemption.
-    // Situation: The modal is in the error state with Close and Retry buttons;
-    //   later an external body-level iframe holds focus (simulating Google's
-    //   floating image-grid challenge bubble).
-    // Expectation: `Shift+Tab` on Close wraps to Retry, `Tab` on Retry wraps to
-    //   Close, clicking Retry moves focus back to Close, and `Tab` while an
-    //   external iframe is focused does not steal focus away.
+    // Situation: The modal is in the error state with the dialog focused and
+    //   a Retry button; later an external body-level iframe holds focus
+    //   (simulating Google's floating image-grid challenge bubble).
+    // Expectation: `Tab` from the dialog enters Retry, `Tab` and `Shift+Tab`
+    //   on Retry stay on it, clicking Retry moves focus back to the dialog,
+    //   and `Tab` while an external iframe is focused does not steal focus.
     vi.spyOn(console, 'warn').mockImplementation(() => undefined);
     const mock = createMockEnterprise();
     vi.spyOn(recaptchaLoader, 'ensureRecaptchaScript')
@@ -278,24 +273,24 @@ describe('RecaptchaModal', () => {
 
     renderModal({ status: 'open', checkboxSiteKey: '6Lc_checkbox' });
 
-    const closeButton = screen.getByRole('button', {
-      name: RECAPTCHA_MODAL_CLOSE_LABEL,
-    });
+    const dialog = screen.getByRole('dialog');
     const retryButton = await screen.findByRole('button', {
       name: RETRY_LABEL,
     });
 
-    closeButton.focus();
-    fireEvent.keyDown(document, { key: 'Tab', shiftKey: true });
+    dialog.focus();
+    fireEvent.keyDown(document, { key: 'Tab' });
     expect(document.activeElement).toBe(retryButton);
 
     fireEvent.keyDown(document, { key: 'Tab' });
-    expect(document.activeElement).toBe(closeButton);
+    expect(document.activeElement).toBe(retryButton);
 
-    // Clicking Retry unmounts the Retry button and returns focus to Close.
-    retryButton.focus();
+    fireEvent.keyDown(document, { key: 'Tab', shiftKey: true });
+    expect(document.activeElement).toBe(retryButton);
+
+    // Clicking Retry unmounts the Retry button and returns focus to the dialog.
     fireEvent.click(retryButton);
-    expect(document.activeElement).toBe(closeButton);
+    expect(document.activeElement).toBe(dialog);
 
     await waitFor(() => {
       expect(mock.renderFn).toHaveBeenCalledTimes(1);

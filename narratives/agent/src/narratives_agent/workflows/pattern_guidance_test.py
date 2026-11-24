@@ -473,13 +473,17 @@ def test_the_correlation_directive_relates_and_never_divides(
     assert "ratio" not in directive
 
 
-@pytest.mark.parametrize("shape", get_args(GeographicShape))
+@pytest.mark.parametrize(
+    "shape",
+    [shape for shape in get_args(GeographicShape) if shape != "single_place"],
+)
 def test_a_correlation_without_a_cohort_is_written_as_a_comparison(
     shape: str,
 ) -> None:
     # Test: The synthesis directive of a correlation over named places.
-    # Situation: A `correlation` classification of each shape, in the
-    #   synthesis phase, when no fetched table covers a cohort.
+    # Situation: A `correlation` classification of each shape that covers
+    #   several places, in the synthesis phase, when no fetched table
+    #   covers a cohort.
     # Expectation: The directive sends the answer to "Comparing several
     #   places" and never asks for a `scatter` chart, which the chart
     #   resolver rejects without a cohort; the comparison sentence is still
@@ -499,6 +503,35 @@ def test_a_correlation_without_a_cohort_is_written_as_a_comparison(
         "synthesis"
     )
     assert directive.endswith(comparison) is (shape == "comparison")
+
+
+def test_a_single_place_correlation_is_written_as_two_histories() -> None:
+    # Test: The synthesis directive of a correlation within one place.
+    # Situation: A `correlation` classification of the `single_place`
+    #   shape, in the synthesis phase, when no fetched table covers a
+    #   cohort, as when a question relates two indicators of one country
+    #   over time.
+    # Expectation: The directive sends the answer to the one-place layout
+    #   of "Relationships between two measures", with a block per
+    #   indicator. It does not send the answer to "Comparing several
+    #   places", names no leading place, and asks for no `scatter` chart.
+    directive = pattern_guidance.build_pattern_directive(
+        _make_classification("correlation", "single_place"),
+        "synthesis",
+        has_cohort_table=False,
+    )
+
+    assert directive == pattern_guidance._SINGLE_PLACE_CORRELATION_SYNTHESIS
+    assert (
+        '"Relationships between two measures" describes for one place over time'
+    ) in directive
+    assert "each indicator's own section heading, short list, and chart" in (
+        directive
+    )
+    assert "rather than measuring a correlation or causal link" in directive
+    assert '"Comparing several places"' not in directive
+    assert "leading place" not in directive
+    assert "`scatter`" not in directive
 
 
 def test_a_correlation_over_a_cohort_keeps_its_scatter_directive() -> None:

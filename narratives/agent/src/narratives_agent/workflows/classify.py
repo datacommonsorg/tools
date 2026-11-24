@@ -29,6 +29,7 @@ from enum import StrEnum
 
 from pydantic import ValidationError
 
+from narratives_agent.config import get_current_date
 from narratives_agent.config_model import AgentConfig, GeminiRole
 from narratives_agent.gemini.client import (
     GeminiBlockedError,
@@ -47,6 +48,9 @@ from narratives_agent.workflows.messages import (
     SAFETY_REFUSED_MESSAGE,
 )
 from narratives_agent.workflows.prefilter import prefilter_match
+from narratives_agent.workflows.prompt_contracts import (
+    compose_system_instruction,
+)
 from narratives_agent.workflows.transcript import (
     Transcript,
     transcript_contents,
@@ -151,6 +155,7 @@ async def _request_classification(
     messages = transcript_contents(
         transcript,
         transcript.current_query,
+        current_date=get_current_date(),
         max_response_chars=MCP_HISTORY_RESPONSE_CHARS,
     )
     role = config.resolve_role_config(GeminiRole.CLASSIFY)
@@ -158,7 +163,9 @@ async def _request_classification(
         async with asyncio.timeout(CLASSIFY_TIMEOUT_SECONDS):
             response = await async_gemini_request(
                 messages=messages,
-                system_instruction=prompt,
+                system_instruction=compose_system_instruction(
+                    prompt, "classify"
+                ),
                 model=role.model,
                 temperature=role.temperature,
                 thinking_level=role.thinking_level,

@@ -13,22 +13,35 @@
 # limitations under the License.
 """Tests for `prompt_contracts`."""
 
+import json
 import re
+from collections.abc import Iterator
 from pathlib import Path
-from typing import get_args
+from typing import Any, get_args
 
+import httpx
 import pytest
+from google import genai
 from pydantic import TypeAdapter
 
-from narratives_agent.config import strip_prompt_comments
+from narratives_agent import config
+from narratives_agent.config import pin_current_date, strip_prompt_comments
+from narratives_agent.config_model import AgentConfig
+from narratives_agent.gemini import client as gemini_client
 from narratives_agent.gemini.schemas import QueryClassification
 from narratives_agent.workflows import pattern_guidance, prompt_contracts
+from narratives_agent.workflows.blocks import (
+    BlockSplitter,
+    SynthesisBlock,
+    TextBlock,
+)
 from narratives_agent.workflows.charts import (
     MAX_CHARTS_PER_TURN,
     BarSort,
     ChartKind,
     ChartSpecification,
 )
+from narratives_agent.workflows.data_gaps import DataGaps
 from narratives_agent.workflows.mcp_loop import (
     DISCOVERY_TOOL_NAMES,
     SERVER_FUNCTION_NAMES,
@@ -43,7 +56,9 @@ from narratives_agent.workflows.prompt_contracts import (
 from narratives_agent.workflows.specification import (
     _MAX_SPECIFICATION_STEPS,
     AnalysisSpecification,
+    UnavailableReport,
 )
+from narratives_agent.workflows.transcript import CURRENT_DATE_LABEL
 
 # The step limit as the discovery contract writes it, keyed by its value.
 _STEP_LIMIT_WORDS = {6: "six"}
@@ -52,6 +67,14 @@ _CONTRACTS: tuple[ContractName | ContractAddendumName, ...] = (
     *get_args(ContractName.__value__),
     *get_args(ContractAddendumName.__value__),
 )
+
+_DEFAULT_PROMPTS_DIR = (
+    Path(__file__).resolve().parents[4] / "defaults" / "prompts"
+)
+# The requests of these phases carry the server-authored current date.
+_DATED_PHASES = ("classify", "discovery", "synthesis")
+# `render_prompt` does not substitute this placeholder.
+_DATETIME_PLACEHOLDER = "{{CURRENT_DATETIME}}"
 
 
 def _extract_table_first_column_names(contract: str, heading: str) -> set[str]:
@@ -200,6 +223,187 @@ def test_composed_default_discovery_prompt_includes_guidance_and_contract() -> (
     )
     assert "\n\n### Available Tools\n\n" in composed
     assert "<!--" not in composed
+
+
+def _read_default_prompt(slot: str) -> str:
+    """Returns the shipped default prompt of `slot` with comments stripped."""
+    return strip_prompt_comments(
+        (_DEFAULT_PROMPTS_DIR / f"{slot}.md").read_text(encoding="utf-8")
+    )
+
+
+def _compose_default_instruction(phase: str) -> str:
+    """Returns the system instruction of `phase` under the default prompts.
+
+    Each instruction carries its phase contract. The discovery and synthesis
+    instructions also carry a pattern directive, and the synthesis
+    instruction carries its title addendum, as on a classified turn with
+    data.
+    """
+    if phase == "classify":
+        return compose_system_instruction(
+            _read_default_prompt("classify"), "classify"
+        )
+    classification = QueryClassification.model_validate(
+        {
+            "serviceable": True,
+            "pattern": "trend_delta",
+            "geographic_shape": "single_place",
+            "requires_computation": True,
+        }
+    )
+    if phase == "discovery":
+        return compose_system_instruction(
+            _read_default_prompt("discovery"), "discovery", classification
+        )
+    return compose_system_instruction(
+        _read_default_prompt("synthesis"),
+        "synthesis",
+        classification,
+        addendum="synthesis_title",
+    )
+
+
+@pytest.fixture
+def request_bodies(
+    monkeypatch: pytest.MonkeyPatch,
+) -> Iterator[list[dict[str, Any]]]:
+    """Serves Gemini requests from a mock transport and records their bodies.
+
+    The Gemini client and `render_prompt` run unmodified. The configuration
+    that `render_prompt` reads is replaced by one that defines the template
+    variables of the default prompts.
+    """
+    gemini_client.reset_client()
+    for variable in (
+        "GOOGLE_GENAI_USE_VERTEXAI",
+        "GOOGLE_CLOUD_PROJECT",
+        "GOOGLE_CLOUD_LOCATION",
+    ):
+        monkeypatch.delenv(variable, raising=False)
+    monkeypatch.setattr(gemini_client, "get_gemini_api_key", lambda: "test-key")
+    template_vars = {
+        "name": "Example Data Commons",
+        "region": "the world",
+        "states_term": "regions",
+    }
+    monkeypatch.setattr(
+        config, "load_config", lambda: AgentConfig(template_vars=template_vars)
+    )
+    bodies: list[dict[str, Any]] = []
+
+    def respond(request: httpx.Request) -> httpx.Response:
+        bodies.append(json.loads(request.content))
+        reply = {"content": {"parts": [{"text": "ok"}], "role": "model"}}
+        return httpx.Response(200, json={"candidates": [reply]})
+
+    sdk_client = genai.Client
+
+    def build_client(**kwargs: Any) -> genai.Client:
+        transport = httpx.MockTransport(respond)
+        options = kwargs["http_options"].model_copy(
+            update={
+                "httpx_client": httpx.Client(transport=transport),
+                "httpx_async_client": httpx.AsyncClient(transport=transport),
+            }
+        )
+        return sdk_client(**{**kwargs, "http_options": options})
+
+    monkeypatch.setattr(genai, "Client", build_client)
+    yield bodies
+    gemini_client.reset_client()
+
+
+@pytest.mark.parametrize("phase", _DATED_PHASES)
+@pytest.mark.asyncio
+async def test_the_sent_system_instruction_does_not_depend_on_the_date(
+    request_bodies: list[dict[str, Any]], phase: str
+) -> None:
+    # Test: The system instruction a request carries under two dates.
+    # Situation: The default `classify` prompt, the composed discovery
+    #   instruction, or the composed synthesis instruction is sent through
+    #   the Gemini client once under each of two pinned dates.
+    # Expectation: The two request bodies carry equal `systemInstruction`
+    #   values, which contain neither date and no unsubstituted placeholder.
+    instruction = _compose_default_instruction(phase)
+
+    for date in ("2031-02-03", "2031-02-04"):
+        with pin_current_date(date):
+            await gemini_client.async_gemini_request(
+                messages=[{"role": "user", "parts": [{"text": "Question"}]}],
+                system_instruction=instruction,
+                model="gemini-test",
+            )
+
+    first, second = (body["systemInstruction"] for body in request_bodies)
+    assert first == second
+    sent = json.dumps(first)
+    assert "2031-02-03" not in sent
+    assert "2031-02-04" not in sent
+    assert "{{" not in sent
+
+
+@pytest.mark.parametrize("name", _CONTRACTS)
+def test_no_contract_holds_the_datetime_placeholder(
+    name: ContractName | ContractAddendumName,
+) -> None:
+    # Test: The absence of `{{CURRENT_DATETIME}}` from the packaged contracts.
+    # Situation: Each contract and each addendum is loaded.
+    # Expectation: The loaded text does not contain the placeholder, which
+    #   `render_prompt` would leave in the system instruction unsubstituted.
+    assert _DATETIME_PLACEHOLDER not in load_prompt_contract(name)
+
+
+@pytest.mark.parametrize(
+    "path",
+    sorted(_DEFAULT_PROMPTS_DIR.glob("*.md")),
+    ids=lambda path: path.name,
+)
+def test_no_default_prompt_holds_the_datetime_placeholder(path: Path) -> None:
+    # Test: The absence of `{{CURRENT_DATETIME}}` from the default prompts.
+    # Situation: Each Markdown file in `defaults/prompts/` is read with its
+    #   HTML comments.
+    # Expectation: The file does not contain the placeholder, which
+    #   `render_prompt` would leave in the system instruction unsubstituted.
+    assert _DATETIME_PLACEHOLDER not in path.read_text(encoding="utf-8")
+
+
+@pytest.mark.parametrize("phase", _DATED_PHASES)
+def test_each_dated_phase_defines_the_date_line(phase: str) -> None:
+    # Test: Agreement between the date line of the request and the text
+    #   that defines it for the model.
+    # Situation: The classify, discovery, or synthesis contract is read.
+    # Expectation: The contract names the date line by the label that
+    #   `transcript_contents` writes, with the `YYYY-MM-DD` format.
+    text = load_prompt_contract(phase)
+
+    assert f"`{CURRENT_DATE_LABEL} YYYY-MM-DD` line" in text
+
+
+def test_the_classify_contract_follows_the_guidance_without_a_directive() -> (
+    None
+):
+    # Test: Composition of the classify system instruction.
+    # Situation: `compose_system_instruction` is called for `classify` with
+    #   custom guidance and a ranking classification.
+    # Expectation: The instruction is the guidance followed by the classify
+    #   contract, with no pattern directive.
+    classification = QueryClassification.model_validate(
+        {
+            "serviceable": True,
+            "pattern": "top_n_ranking",
+            "geographic_shape": "single_place",
+            "requires_computation": True,
+        }
+    )
+
+    composed = compose_system_instruction(
+        "Custom guidance.", "classify", classification
+    )
+
+    assert composed == (
+        f"Custom guidance.\n\n{load_prompt_contract('classify')}"
+    )
 
 
 def test_discovery_contract_tables_match_declared_tools_and_scripts() -> None:
@@ -521,7 +725,7 @@ def test_synthesis_contract_gives_related_measures_their_own_charts() -> None:
     # Test: Related measures follow the chart rule.
     # Situation: The synthesis contract the model receives.
     # Expectation: With three or more related measures, each indicator gets
-    #   its own lead-in line, short list, and chart rather than a bullet in
+    #   its own section heading, short list, and chart rather than a bullet in
     #   one shared list; the series rule defers to the chart rule; and the
     #   broad-question example shows a chart after each indicator's list.
     contract = load_prompt_contract("synthesis")
@@ -536,7 +740,7 @@ def test_synthesis_contract_gives_related_measures_their_own_charts() -> None:
         flattened
     )
     assert (
-        "get their own lead-in line, short list, and chart instead of a "
+        "get their own section heading, short list, and chart instead of a "
         "bullet in one shared list"
     ) in flattened
     example = contract[
@@ -545,34 +749,411 @@ def test_synthesis_contract_gives_related_measures_their_own_charts() -> None:
         )
     ]
     assert example.count("```chart") == 3
-    assert "Skilled birth attendance:\n\n- **Latest:**" in example
+    assert "## Skilled birth attendance\n\n- **Latest:**" in example
 
 
-def test_synthesis_contract_writes_lead_in_lines_as_labels() -> None:
-    # Test: Lead-in lines read as the headings the app shows them as.
+def test_synthesis_contract_writes_section_headings_as_labels() -> None:
+    # Test: Section headings are written as Markdown heading lines.
+    # Situation: The synthesis contract the model receives and its title
+    #   addendum.
+    # Expectation: The contract asks for a `## ` line holding a short label
+    #   rather than a sentence, with no colon, and keeps the Data gaps
+    #   label a bold label; no rule still asks for a lead-in line or a
+    #   lead-in sentence; the groups that share one chart are introduced
+    #   by a section heading; and the title addendum allows `## ` headings
+    #   below the title.
+    flattened = " ".join(load_prompt_contract("synthesis").split())
+    title = " ".join(load_prompt_contract("synthesis_title").split())
+
+    assert (
+        "The app shows a section heading above the list or table and chart "
+        "under it. Write it on a line of its own as `## ` followed by a "
+        "short label of a few words"
+    ) in flattened
+    assert (
+        "(`## Population by sex`, `## Skilled birth attendance`), never a "
+        "sentence (`## Population figures also break down by sex`), and "
+        "with no colon, no figure, no citation marker, and no bold."
+    ) in flattened
+    assert (
+        'Write the `**Data gaps**` label as "Caveats and missing data" '
+        "describes, never as a `## ` heading."
+    ) in flattened
+    assert "lead-in" not in flattened
+    assert (
+        "introduce them with a section heading that names the breakdown"
+    ) in flattened
+    assert "introduce them in one short sentence" not in flattened
+    assert (
+        "Write no other `# ` heading: a section heading, where the answer "
+        "has one, starts with `## `."
+    ) in title
+
+
+def test_synthesis_contract_keeps_introducing_sentences_out_of_headings() -> (
+    None
+):
+    # Test: Only `## ` lines become section headings.
     # Situation: The synthesis contract the model receives.
-    # Expectation: The contract says the app shows a lead-in line as a
-    #   heading and asks for a short label rather than a sentence, leaving
-    #   the line under the Data gaps label as written; no rule
-    #   still asks for a lead-in sentence; and the groups that share one
-    #   chart are introduced by such a lead-in line rather than by a short
-    #   sentence.
+    # Expectation: A sentence that leads into a list or table ends with a
+    #   colon and stays text, and no rule asks for a period in its place;
+    #   a table of all places opens with a section heading and names any
+    #   places of another type in a sentence; the ranking's note on such
+    #   places is a sentence with a period; the old sentence-with-colon
+    #   example is gone; and the worked example introduces its second list
+    #   with a section heading, not with a sentence ending in a colon.
+    contract = load_prompt_contract("synthesis")
+    flattened = " ".join(contract.split())
+
+    assert (
+        "Only a `## ` line is a heading. A sentence that ends with a colon "
+        "stays text, so a sentence that leads into a list or table ends "
+        'with a colon ("These related statistics are available instead:").'
+    ) in flattened
+    assert "never a colon" not in flattened
+    assert "never becomes a heading" not in flattened
+    assert "(`## Dengue cases by state`)" in flattened
+    assert "by dengue cases in [year]:" not in flattened
+    assert (
+        'in a sentence ending with a period: "The ten highest are Puerto '
+        'Rico and nine states."'
+    ) in flattened
+    assert "\n\n## Labor force participation by sex\n\n- **Women:**" in contract
+    assert "differs by sex:" not in flattened
+
+
+def test_synthesis_contract_compares_groups_by_their_medians() -> None:
+    # Test: The figure a group comparison reports.
+    # Situation: The synthesis contract the model receives.
+    # Expectation: A comparison of two groups of places reports each
+    #   group's median, never its mean, names "median" once, and gives no
+    #   gap between the groups, which the digest does not calculate.
     flattened = " ".join(load_prompt_contract("synthesis").split())
 
     assert (
-        "The app shows a lead-in line, a paragraph of one line ending with a "
-        "colon, as the heading of the list or table and chart under it."
+        'each group\'s median, never its mean, naming "median" once, on the '
+        "first figure"
     ) in flattened
     assert (
-        "The line under `**Data gaps**` is part of that paragraph, not a "
-        "lead-in line, and keeps its wording."
+        "Give no gap or difference between the two groups: the digest does "
+        "not calculate one between medians."
     ) in flattened
-    assert '("Population by sex:", "Skilled birth attendance:")' in flattened
-    assert "lead-in sentence" not in flattened
-    assert "introduce them with a lead-in line that names the breakdown" in (
+
+
+def test_synthesis_contract_lays_out_relationships_by_what_data_covers() -> (
+    None
+):
+    # Test: The two relationship layouts and their wording.
+    # Situation: The synthesis contract and the relationship directives.
+    # Expectation: All places of a kind get one two-measure table per group
+    #   with no chart beside it and one scatter as the last chart; a few
+    #   named places follow "Comparing several places" with no scatter; the
+    #   finding carries a woven scope phrase instead of a separate note,
+    #   never a yes or no on correlation; ranking charts no longer sit
+    #   beside group tables; and the directives say the same.
+    flattened = " ".join(load_prompt_contract("synthesis").split())
+    directives = " ".join(
+        directive.synthesis
+        for directive in pattern_guidance._DIRECTIVES.values()
+    )
+
+    assert "Write no chart after either table." in flattened
+    assert "one `scatter` of the two measures across all the places, the " in (
         flattened
     )
-    assert "introduce them in one short sentence" not in flattened
+    assert (
+        "Do not draw a scatter: a scatter needs every place of a kind."
+    ) in flattened
+    assert (
+        "say once, in a few words, that it compares the places side by side "
+        "rather than measuring a correlation or causal link"
+    ) in flattened
+    assert "belongs to the finding, never a separate note" in flattened
+    assert 'Never answer "yes" or "no" to whether one exists' in flattened
+    assert "chart each variable as its own `ranking`" not in flattened
+    assert "go together" not in flattened
+    assert "go hand in hand with" not in flattened
+    assert "never on the chart itself" in flattened
+    assert 'follow "Relationships between two measures" instead' in flattened
+    assert "chart a `ranking` for each variable" not in directives
+    assert "rather than measuring a correlation or causal link" in directives
+    assert "rather than measuring a correlation or causal link" in (
+        pattern_guidance._NAMED_PLACE_CORRELATION_SYNTHESIS
+    )
+
+
+def test_relationship_answers_skip_a_scatter_that_cannot_be_drawn() -> None:
+    # Test: The cases in which a relationship answer writes no scatter.
+    # Situation: The synthesis contract and the relationship directives.
+    # Expectation: The contract leaves out the scatter and the sentences
+    #   leading to it when a table is marked "do not chart it", when a
+    #   per-capita table is paired with a fetched table, and when a measure
+    #   is compared as a change over a window; the chart grammar states
+    #   that a per-capita table and a fetched table cannot share a chart;
+    #   and both relationship directives ask for the scatter only when the
+    #   tables can be charted together.
+    flattened = " ".join(load_prompt_contract("synthesis").split())
+    directives = [
+        pattern_guidance._DIRECTIVES[pattern].synthesis
+        for pattern in ("top_n_ranking", "correlation")
+    ]
+
+    assert (
+        "Write neither the sentences nor the scatter when the scatter "
+        "cannot be drawn: when the TABLE INVENTORY marks either measure's "
+        'table "do not chart it"; when one measure\'s table is a per-capita '
+        "table and the other's a fetched table, which cannot share a chart; "
+        "or when the digest compares either measure as a change over a "
+        "window from one date to another"
+    ) in flattened
+    assert (
+        "a per-capita table and a fetched table cannot share one chart"
+    ) in flattened
+    assert ("both fetched tables or both per-capita tables.") in flattened
+    for directive in directives:
+        assert (
+            "when the two tables can be charted together, as that section "
+            "describes; otherwise write no scatter and no sentences leading "
+            "to one."
+        ) in directive
+
+
+def test_synthesis_contract_lays_out_a_relationship_within_one_place() -> None:
+    # Test: The relationship layout for two measures of one place.
+    # Situation: The synthesis contract the model receives.
+    # Expectation: "Relationships between two measures" gives a third
+    #   layout for one place over time: an opening on how each measure
+    #   moved, a block per measure with its own line chart, no scatter, and
+    #   a scope phrase about two histories rather than about places.
+    flattened = " ".join(load_prompt_contract("synthesis").split())
+
+    assert (
+        "One place over time (inflation and unemployment in one country): "
+        "there are no places to compare, so set the two measures' histories "
+        "side by side."
+    ) in flattened
+    assert (
+        "Then give each measure its own section heading, short list, and "
+        '`line` chart, as "Charts" describes, never one list for both. Do '
+        "not draw a scatter."
+    ) in flattened
+    assert (
+        "For one place over time, say instead that it sets the two "
+        "histories side by side"
+    ) in flattened
+
+
+def test_one_end_of_a_cross_variable_ranking_is_answered_alone() -> None:
+    # Test: The layout of a ranking question that asks for a second measure
+    #   in one end of the ranking only.
+    # Situation: The synthesis contract and the `top_n_ranking` directive.
+    # Expectation: "Rankings" sends a question about how the two measures
+    #   relate to "Relationships between two measures", and a question
+    #   about one end to its own section; that section gives one table with
+    #   both measures and a `bar` of the second measure for the same
+    #   places, with no scatter and nothing about correlation; and the
+    #   directive draws the same line between the two cases.
+    flattened = " ".join(load_prompt_contract("synthesis").split())
+    directive = pattern_guidance._DIRECTIVES["top_n_ranking"].synthesis
+
+    assert (
+        "When the question asks for the second measure in one end of the "
+        'ranking only ("the unemployment rate in the ten most populous '
+        'states"), follow "A second measure in one end of a ranking" '
+        "instead."
+    ) in flattened
+    assert "### A second measure in one end of a ranking" in flattened
+    assert (
+        "add one `bar` of the second measure for the same places"
+    ) in flattened
+    assert (
+        "Write no `ranking` chart, which cannot be limited to the table's "
+        "places, and no `scatter`."
+    ) in flattened
+    assert (
+        "state no pattern between them, and leave out what "
+        '"Relationships between two measures" asks an answer to say about '
+        "correlation"
+    ) in flattened
+    assert (
+        "the question asks for that variable in one end of the ranking "
+        'only, answer for that end alone, as "A second measure in one end '
+        'of a ranking" describes'
+    ) in directive
+    assert (
+        "When the question asks how the two variables relate, or sets the "
+        "two ends side by side, write the answer as "
+        '"Relationships between two measures" describes instead'
+    ) in directive
+
+
+def test_synthesis_contract_keeps_names_sources_and_headings_consistent() -> (
+    None
+):
+    # Test: Naming, attribution, and heading length.
+    # Situation: The synthesis contract the model receives.
+    # Expectation: An indicator keeps one name throughout, and that name
+    #   keeps the word for its statistic, such as "median"; a comparison's
+    #   figure-free opening still names the source; a section heading's
+    #   label is a few words long; and the worked examples give each
+    #   indicator one name in the prose, the section heading or column
+    #   header, and the chart title.
+    contract = load_prompt_contract("synthesis")
+    flattened = " ".join(contract.split())
+    examples = contract[
+        contract.index("A comparison of several places:") : contract.index(
+            "### Chart blocks"
+        )
+    ]
+
+    assert "Call an indicator by one name throughout the answer" in flattened
+    assert (
+        "Keep in that name the word that says which statistic the figure is "
+        '("median", "average", "per capita"): "median household income", '
+        'never "household income" alone'
+    ) in flattened
+    assert "Median gross rent" not in examples
+    for name in ("Median household income", "Median rent"):
+        assert f"| City | {name} (USD, [year])" in examples
+        assert f'"title": "{name} in [city A]' in examples
+    assert (
+        "median rent rises with median household income across the four cities"
+    ) in " ".join(examples.split())
+    for name in (
+        "Skilled birth attendance",
+        "Family planning coverage",
+        "Maternal mortality",
+    ):
+        assert f"\n\n## {name}\n\n- **Latest:** {name}" in examples
+        assert f'"title": "{name} worldwide"' in examples
+    assert "Keep the official name for table headers and chart" not in (
+        flattened
+    )
+    assert "in the prose, table headers, and chart titles alike" in flattened
+    assert "the nine highest-income states and the District of Columbia" in (
+        flattened
+    )
+    assert "though it still names the source" in flattened
+    assert (
+        "followed by a short label of a few words, in sentence case"
+    ) in flattened
+
+
+def test_synthesis_contract_keeps_no_data_answers_free_of_headings() -> None:
+    # Test: The no-data answer introduces related statistics in its prose.
+    # Situation: The synthesis contract's section for a digest with no data.
+    # Expectation: The section asks for the exact-match opening, whose
+    #   second sentence ends with a colon when a list follows and with a
+    #   period when it names the statistics itself, never addresses the
+    #   reader,
+    #   names at most three search terms in plain words rather than
+    #   identifiers or sources, forbids a label line above the related
+    #   statistics, and forbids a closing line or link, which the app shows
+    #   itself. The contract holds no link for requesting or suggesting data.
+    contract = load_prompt_contract("synthesis")
+    start = contract.index("### When the digest holds no data")
+    end = contract.index("### Example", start)
+    section = " ".join(contract[start:end].split())
+
+    assert (
+        '"Searching for [topic] (along with related terms like [term 1], '
+        "[term 2], and [term 3]) did not return an exact match in Data "
+        'Commons. These related statistics are available instead:"'
+    ) in section
+    assert "at most three of the related terms searched" in section
+    assert 'Never address the reader as "you" or "your".' in section
+    assert "Never write an identifier, such as a variable DCID" in section
+    assert "Leave out the name of a source or an organization" in section
+    assert (
+        "Keep both sentences in one paragraph. End the second with a "
+        "colon, because it introduces the list under it."
+    ) in section
+    assert (
+        'and end it with a period ("[statistic 1] and [statistic 2] are '
+        'available instead.")'
+    ) in section
+    assert "Never write a separate label line" in section
+    assert (
+        "no closing line, no link, and no invitation to request or suggest data"
+    ) in section
+    assert re.search(r"\bwe\b", section, re.IGNORECASE) is None
+    assert "submit a data request" not in contract
+    assert "docs.datacommons.org/contributing" not in contract
+    assert "docs.google.com/forms" not in contract
+
+
+def test_synthesis_contract_data_gaps_example_parses_as_data_gaps() -> None:
+    # Test: The contract's Data gaps wording against the server's parser.
+    # Situation: The worked Data gaps example in the synthesis contract,
+    #   from its label line to the end of its list, is fed to a
+    #   `BlockSplitter`.
+    # Expectation: The splitter emits it as one text block that carries
+    #   the example's intro and its two measures, so a change to the
+    #   label or the layout the contract prescribes fails here.
+    contract = load_prompt_contract("synthesis")
+    start = contract.index("**Data gaps**\\\nThese measures are not available")
+    example = contract[start : contract.index("\n\n", start)]
+    blocks: list[SynthesisBlock] = []
+    splitter = BlockSplitter(blocks.append, lambda specification: None)
+
+    splitter.feed(example)
+    splitter.finish()
+
+    assert blocks == [
+        TextBlock(
+            index=0,
+            markdown=example,
+            data_gaps=DataGaps(
+                intro="These measures are not available in Data Commons:",
+                items=(
+                    "Antenatal care coverage",
+                    "Cervical cancer screening coverage",
+                ),
+            ),
+        )
+    ]
+
+
+def test_synthesis_contract_keeps_data_gaps_out_of_no_data_answers() -> None:
+    # Test: The `**Data gaps**` list and the no-data answer.
+    # Situation: The synthesis contract's general rules that send missing
+    #   measures to a `**Data gaps**` list, and its rules for a digest with
+    #   no data, whose MISSING DATA notes are always present.
+    # Expectation: The no-data case and its section ask for no list, and
+    #   both general rules apply only to an answer that has data.
+    flattened = " ".join(load_prompt_contract("synthesis").split())
+
+    assert (
+        "which names what was searched in the opening and writes no "
+        "`**Data gaps**` list"
+    ) in flattened
+    assert "Write no `**Data gaps**` section" in flattened
+    assert (
+        "Except in a no-data answer, the full list of what is missing goes "
+        "once, at the end, under `**Data gaps**`"
+    ) in flattened
+    assert (
+        "When the digest holds data and the MISSING DATA notes name measures"
+    ) in flattened
+    assert "- When the MISSING DATA notes name measures" not in flattened
+
+
+def test_the_unavailable_report_is_asked_for_in_plain_words() -> None:
+    # Test: The instructions for the `report_unavailable` call, whose fields
+    #   the answer quotes to the reader.
+    # Situation: The discovery contract's fallback protocol and the field
+    #   descriptions the model receives with the function declaration.
+    # Expectation: The contract asks for plain words and never a DCID or
+    #   code, and every field description rules out a DCID.
+    flattened = " ".join(load_prompt_contract("discovery").split())
+
+    assert (
+        "naming what you searched and what related data does exist in plain "
+        "words, as a reader would say them, never by DCID or code"
+    ) in flattened
+    for name, field in UnavailableReport.model_fields.items():
+        assert field.description is not None, name
+        assert "no DCID" in field.description, name
 
 
 def test_prompts_carry_no_conflicting_instructions() -> None:
@@ -583,7 +1164,10 @@ def test_prompts_carry_no_conflicting_instructions() -> None:
     #   A and Y in B" shape; trend answers take the change measure the
     #   contract gives; a peer comparison spans two sentences; the ranking
     #   chart bullet appears once; caveats never split a stats-chart pair;
-    #   and exploratory answers follow the per-indicator block shape.
+    #   exploratory answers follow the per-indicator block shape; and a
+    #   comparison of several indicators names its source in the rule for
+    #   its first sentence and in the worked example, as the headline rule
+    #   asks.
     flattened = " ".join(load_prompt_contract("synthesis").split())
     directives = " ".join(
         directive.synthesis
@@ -602,9 +1186,21 @@ def test_prompts_carry_no_conflicting_instructions() -> None:
         flattened.count("A ranking of places on one indicator is charted") == 1
     )
     assert "after the bullets they qualify and their chart" in flattened
-    assert "each indicator's own lead-in line, short list, and chart" in (
+    assert "each indicator's own section heading, short list, and chart" in (
         directives
     )
+    assert (
+        "The first sentence names the source and states the pattern"
+    ) in flattened
+    assert (
+        '"According to [source], median rent rises with median household '
+        'income across all four cities, led by Austin." Nothing more'
+    ) in flattened
+    assert (
+        "According to [source], median rent rises with median household "
+        "income across the four cities, led by [city A]."
+    ) in flattened
+    assert "Rents rise with household incomes" not in flattened
 
 
 # The spelled-out chart caps the contracts may state, and their ordinals.
@@ -668,8 +1264,8 @@ def test_discovery_fetches_the_indicators_an_answer_reports() -> None:
     assert "up to four, one table each" in exploratory
     assert (
         "When the digest gives more because the question itself names them, "
-        "give every named indicator its block, with a lead-in line and list "
-        "but no chart past the fourth"
+        "give every named indicator its block, with a section heading and "
+        "list but no chart past the fourth"
     ) in synthesis
     assert "Keep to four indicators" not in synthesis
 

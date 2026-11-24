@@ -260,7 +260,7 @@ You only need to include the keys you want to override in
 
 | Category | Configurable keys |
 | :--- | :--- |
-| **Identity** | `instance_name`, `headline`, `tagline`, `logo`, `logo_text`, `logo_height`, `logo_alt`, `logo_href`, `favicon` |
+| **Identity** | `instance_name`, `headline`, `tagline`, `tagline_link`, `logo`, `logo_text`, `logo_height`, `logo_alt`, `logo_href`, `favicon` |
 | **Theme** | `colors` (`primary`, text, surfaces, borders, `gradient_border_stop_1`–`_4` for the prompt glow ring), `radius` (`card`, `input`, `chip`), `fonts` |
 | **Content** | `suggestions` (landing page starter prompts), `footer` (text and links) |
 | **Structure** | `navigation` (header links), `metrics.tabs` (Key Metrics dashboard tiles), `analytics.ga_tag_id` |
@@ -332,7 +332,9 @@ grounding guidance rather than restating the citation or chart-block grammar.
 
 `classify.md` governs the admission phase that runs at the start of every turn
 to decide whether a question is served, refused, or answered with a
-clarification question, and which analytical pattern it follows. Each LLM stage
+clarification question, and which analytical pattern it follows. A short
+code-owned contract (`workflows/contracts/classify.md`) is appended after it on
+every request and tells the model which current date to use. Each LLM stage
 reads its own model key under `gemini` in `agent-config.json`:
 `gemini.classify_model` (default `gemini-3.5-flash-lite`), and
 `gemini.discovery_model`, `gemini.synthesis_model`, `gemini.follow_up_model`,
@@ -342,7 +344,6 @@ Prompts support runtime template placeholders:
 
 | Placeholder | Substitution |
 | :--- | :--- |
-| `{{CURRENT_DATETIME}}` | Current date and time in the `TIMEZONE` environment variable's zone |
 | `{{instance.<key>}}` | Matching key from `template_vars` in `agent-config.json` (keys starting with `_` are ignored) |
 
 For example, given `config/agent-config.json`:

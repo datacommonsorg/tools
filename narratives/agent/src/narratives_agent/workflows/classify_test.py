@@ -23,6 +23,7 @@ from typing import Any
 import pytest
 from google.genai import types
 
+from narratives_agent import config
 from narratives_agent.config_model import (
     DEFAULT_GEMINI_CLASSIFY_MODEL,
     AgentConfig,
@@ -39,7 +40,9 @@ from narratives_agent.workflows.messages import (
     REFUSED_MESSAGE,
     SAFETY_REFUSED_MESSAGE,
 )
+from narratives_agent.workflows.prompt_contracts import load_prompt_contract
 from narratives_agent.workflows.transcript import (
+    CURRENT_DATE_LABEL,
     ConversationStateSlots,
     Transcript,
     Turn,
@@ -62,8 +65,8 @@ _SERVICEABLE: dict[str, Any] = {
 }
 _SENTENCE_END = (
     " falls outside the public statistics Data Commons is built to explore. "
-    "Try asking about a demographic, economic, health, climate, or social "
-    "measure for a country, state, or city."
+    "Try asking about statistics on population, the economy, health, "
+    "climate, or society for any country, state, or city."
 )
 
 
@@ -72,6 +75,7 @@ def _transcript(query: str = _QUESTION) -> Transcript:
     return Transcript(
         turns=[],
         compacted_summary=None,
+        conversation_id="0" * 32,
         current_query=query,
         current_idempotency_key="key-1",
     )
@@ -304,7 +308,8 @@ async def test_a_serviceable_verdict_is_admitted_with_its_classification(
     # Situation: The classifier returns a serviceable verdict without
     #   clarification.
     # Expectation: `Admitted` carries the classification, and the Gemini request
-    #   uses the configured model, the classify prompt, temperature 0.0,
+    #   uses the configured model, the classify prompt followed by the
+    #   classify contract, temperature 0.0,
     #   `ThinkingLevel.MINIMAL`, `QueryClassification` schema, and no tools.
     requests = model(
         _verdict(pattern="trend_delta", geographic_shape="comparison")
@@ -318,14 +323,16 @@ async def test_a_serviceable_verdict_is_admitted_with_its_classification(
     assert outcome.classification.geographic_shape == "comparison"
     (request,) = requests
     assert request["model"] == "gemini-3.5-flash-lite-test"
-    assert request["system_instruction"] == _PROMPT
+    assert request["system_instruction"] == (
+        f"{_PROMPT}\n\n{load_prompt_contract('classify')}"
+    )
     assert request["temperature"] == 0.0
     assert request["thinking_level"] is types.ThinkingLevel.MINIMAL
     assert request["response_schema"] is QueryClassification
     assert request.get("tools") is None
     assert request["token_usage"] is telemetry.tokens
     assert request["token_phase"] == "classify"
-    assert request["messages"][-1]["parts"] == [{"text": _QUESTION}]
+    assert request["messages"][-1]["parts"][-1] == {"text": _QUESTION}
 
 
 @pytest.mark.asyncio
@@ -350,6 +357,7 @@ async def test_classifier_receives_conversation_with_capped_answers(
     transcript = Transcript(
         turns=[earlier],
         compacted_summary=None,
+        conversation_id="0" * 32,
         current_query="And for Germany?",
         current_idempotency_key="key-1",
     )
@@ -368,8 +376,69 @@ async def test_classifier_receives_conversation_with_capped_answers(
     assert messages[0]["parts"] == [{"text": _QUESTION}]
     answer = messages[1]["parts"][0]["text"]
     assert len(answer) <= MCP_HISTORY_RESPONSE_CHARS + 3
-    assert messages[2]["parts"][0]["text"].endswith("And for Germany?")
+    assert messages[2]["parts"][-1]["text"].endswith("And for Germany?")
     assert request["model"] == DEFAULT_GEMINI_CLASSIFY_MODEL
+
+
+@pytest.mark.asyncio
+async def test_an_overridden_classify_prompt_keeps_the_date_rule(
+    model: Callable[..., list[Any]], telemetry: TurnTelemetry
+) -> None:
+    # Test: The date rule of the classify request under a prompt override.
+    # Situation: The configured classify prompt is an override that does not
+    #   mention the current date.
+    # Expectation: The system instruction still names the `Current date:`
+    #   line and tells the model to disregard other statements of the date.
+    requests = model(_verdict())
+    override = AgentConfig(
+        prompts=Prompts(classify="Classify questions for this instance.")
+    )
+
+    await classify.classify_query(_transcript(), override, telemetry)
+
+    (request,) = requests
+    instruction = request["system_instruction"]
+    assert instruction.startswith("Classify questions for this instance.")
+    assert f"`{CURRENT_DATE_LABEL} YYYY-MM-DD` line" in instruction
+    assert "disregard any other statement of the current date" in (instruction)
+
+
+@pytest.mark.asyncio
+async def test_the_classifier_request_opens_with_the_pinned_date(
+    model: Callable[..., list[Any]], telemetry: TurnTelemetry
+) -> None:
+    # Test: The current date in the classifier request.
+    # Situation: A date is pinned, and the transcript holds one earlier turn
+    #   and the current query.
+    # Expectation: The final user message opens with the date line of the
+    #   pinned date in a part of its own, followed by the query. Neither the
+    #   earlier messages nor the system instruction contain the date.
+    requests = model(_verdict())
+    earlier = Turn(
+        turn_index=0,
+        idempotency_key="key-0",
+        user_query=_QUESTION,
+        model_response="About 68 million.",
+        state_slots=ConversationStateSlots(),
+        hmac="0" * 64,
+    )
+    transcript = Transcript(
+        turns=[earlier],
+        compacted_summary=None,
+        conversation_id="0" * 32,
+        current_query="And for Germany?",
+        current_idempotency_key="key-1",
+    )
+
+    with config.pin_current_date("2031-02-03"):
+        await classify.classify_query(transcript, _CONFIG, telemetry)
+
+    (request,) = requests
+    *history, final = request["messages"]
+    date_part, request_part = final["parts"]
+    assert date_part == {"text": f"{CURRENT_DATE_LABEL} 2031-02-03\n\n"}
+    assert request_part == {"text": "And for Germany?"}
+    assert "2031-02-03" not in f"{history!r}{request['system_instruction']}"
 
 
 @pytest.mark.parametrize(

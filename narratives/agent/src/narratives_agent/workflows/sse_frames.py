@@ -32,8 +32,9 @@ from narratives_agent.telemetry import ErrorType, TerminalState
 from narratives_agent.workflows.blocks import SynthesisBlock, TextBlock
 from narratives_agent.workflows.charts import serialize_resolved_chart
 from narratives_agent.workflows.classify import RefusedReason
-from narratives_agent.workflows.debug_report import DebugReport, ThoughtPhase
+from narratives_agent.workflows.debug_report import DebugReport
 from narratives_agent.workflows.transcript import SignedWindow
+from narratives_agent.workflows.turn_record import ThoughtPhase
 
 type EventName = Literal[
     "status", "thought", "content", "terminal", "follow_ups", "debug_report"
@@ -139,18 +140,24 @@ class BlockContentFrame:
 
         Returns:
             A JSON object with `block` (`index`, `type`, and either `markdown`
-            or `chart`), plus `standalone: true` on a chart the server
-            supplied.
+            or `chart`), plus `data_gaps` (`intro` and `items`) on the text
+            block that is the answer's Data gaps block, and
+            `standalone: true` on a chart the server supplied.
         """
+        block: JsonObject
         if isinstance(self.block, TextBlock):
-            return {
-                "block": {
-                    "index": self.block.index,
-                    "type": "text",
-                    "markdown": self.block.markdown,
-                }
+            block = {
+                "index": self.block.index,
+                "type": "text",
+                "markdown": self.block.markdown,
             }
-        block: JsonObject = {
+            if self.block.data_gaps is not None:
+                block["data_gaps"] = {
+                    "intro": self.block.data_gaps.intro,
+                    "items": list(self.block.data_gaps.items),
+                }
+            return {"block": block}
+        block = {
             "index": self.block.index,
             "type": "chart",
             "chart": serialize_resolved_chart(self.block.chart),
@@ -272,8 +279,9 @@ class TerminalCompleteFrame:
 
     With a `window`, the payload adds the completed turn's `turn_index`,
     `hmac`, and `state_slots`, the window's `compacted_summary` (present even
-    when it is `null`), and `window`: the `turn_index`, `idempotency_key`, and
-    `hmac` of every turn the browser must send next, oldest first.
+    when it is `null`) and `conversation_id`, and `window`: the `turn_index`,
+    `idempotency_key`, and `hmac` of every turn the browser must send next,
+    oldest first.
     Compaction re-signs the whole window, so the browser replaces the
     signatures it holds with these and drops any turn that `window` does not
     list. Without a window, the payload carries none of those keys, which
@@ -296,8 +304,8 @@ class TerminalCompleteFrame:
 
         Returns:
             A JSON object with `state: "complete"` and `idempotency_key`, plus
-            `turn_index`, `hmac`, `state_slots`, `compacted_summary`, and
-            `window` when `window` is not `None`.
+            `turn_index`, `hmac`, `state_slots`, `compacted_summary`,
+            `conversation_id`, and `window` when `window` is not `None`.
         """
         frame: JsonObject = {
             "state": TerminalState.COMPLETE,
@@ -310,6 +318,7 @@ class TerminalCompleteFrame:
         frame["hmac"] = turn.hmac
         frame["state_slots"] = turn.state_slots.model_dump(mode="json")
         frame["compacted_summary"] = self.window.compacted_summary
+        frame["conversation_id"] = self.window.conversation_id
         frame["window"] = [
             {
                 "turn_index": signed.turn_index,
@@ -438,7 +447,6 @@ __all__ = [
     "TerminalErrorFrame",
     "TerminalRefusedFrame",
     "ThoughtFrame",
-    "ThoughtPhase",
     "TitleFrame",
     "ToolCallFrame",
     "serialize_source",

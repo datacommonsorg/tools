@@ -19,7 +19,8 @@ interleaved text and chart blocks, turn signing, and follow-up questions. Each
 phase reports progress by calling the turn's `emit` callback with one typed
 SSE frame at a time (an `SseFrame` from `sse_frames`, which declares each
 frame's event name and payload) and hands its results to the next phase as
-typed values rather than shared mutable state.
+typed values rather than shared mutable state. Each phase also records what
+it did on the turn's `TurnRecord`, which the debug report is built from.
 
 Every turn that is not canceled ends in one `terminal` frame
 (`TerminalCompleteFrame`, `TerminalRefusedFrame`, or `TerminalErrorFrame`).
@@ -38,9 +39,10 @@ from narratives_agent.analytics.provenance import Source
 from narratives_agent.analytics.tables import ObservationTable
 from narratives_agent.config import (
     get_chat_config,
+    get_current_date,
     get_debug_report_mode,
     load_config,
-    pin_current_datetime,
+    pin_current_date,
 )
 from narratives_agent.config_model import AgentConfig, GeminiRole
 from narratives_agent.gemini.client import (
@@ -81,9 +83,6 @@ from narratives_agent.workflows.classify import (
     classify_query,
 )
 from narratives_agent.workflows.debug_report import (
-    DebugTerminalState,
-    DebugThought,
-    SpecificationOrigin,
     build_debug_report,
     should_emit_debug_report,
 )
@@ -161,6 +160,11 @@ from narratives_agent.workflows.transcript import (
     transcript_contents,
 )
 from narratives_agent.workflows.turn_cache import CachedTable, TurnCache
+from narratives_agent.workflows.turn_record import (
+    SpecificationOrigin,
+    TurnRecord,
+    TurnThought,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -228,25 +232,33 @@ class TurnContext:
 
     `classification` is the classify phase's verdict, or `None` when the
     classifier failed and the turn proceeds without a pattern directive.
-    `cache` holds the observation tables the turn fetches; it is created
-    with the context and discarded with it, so nothing is shared across
-    turns or requests.
+    `record` is the only holder of the turn's telemetry and of the cache of
+    observation tables the turn fetches; `telemetry` and `cache` return the
+    record's own objects.
 
     Attributes:
         transcript: The verified transcript for the current turn.
         config: The loaded agent configuration.
-        telemetry: The turn's telemetry collector.
+        record: The turn's record, on which the phases record what they did.
         emit: Callback invoked with each SSE frame of the turn.
         classification: The classify phase's verdict, or `None` on fallback.
-        cache: Per-turn observation table and metadata cache.
     """
 
     transcript: Transcript
     config: AgentConfig
-    telemetry: TurnTelemetry
+    record: TurnRecord
     emit: Emit
     classification: QueryClassification | None = None
-    cache: TurnCache = field(default_factory=TurnCache)
+
+    @property
+    def telemetry(self) -> TurnTelemetry:
+        """The turn's telemetry collector."""
+        return self.record.telemetry
+
+    @property
+    def cache(self) -> TurnCache:
+        """The per-turn observation table and metadata cache."""
+        return self.record.cache
 
 
 def _build_empty_digest() -> AnalysisDigest:
@@ -281,28 +293,6 @@ class DiscoveryPhaseResult:
     tool_calls: list[JsonObject] = field(default_factory=list)
     sources: list[Source] = field(default_factory=list)
     tables: tuple[CachedTable, ...] = ()
-
-
-@dataclass
-class DiscoveryCapture:
-    """Captures intermediate discovery and processing state for reporting."""
-
-    loop_result: DiscoveryResult = field(default_factory=DiscoveryResult)
-    default_diagnostics: list[ProcessingDiagnostic] = field(
-        default_factory=list
-    )
-    specification: AnalysisSpecification | None = None
-    specification_origin: SpecificationOrigin | None = None
-    digest: AnalysisDigest | None = None
-    used_table_ids: frozenset[str] = frozenset()
-
-
-@dataclass
-class SynthesisCapture:
-    """Holds optional capture slots for debug reporting during synthesis."""
-
-    rendered_prompt: str | None = None
-    raw_output: str | None = None
 
 
 @dataclass(frozen=True)
@@ -343,8 +333,6 @@ async def _run_default_specification(
     specification: AnalysisSpecification,
     notes: list[str],
     capabilities: Capabilities,
-    *,
-    capture: DiscoveryCapture | None = None,
 ) -> tuple[AnalysisDigest, AnalysisSpecification]:
     """Runs the default specification and retries without any refused step.
 
@@ -352,17 +340,18 @@ async def _run_default_specification(
     step's relation or table so the remaining tables still answer the turn,
     and each refusal is appended to `notes`. When a retry leaves no table,
     or processing times out, the digest holds the results completed before
-    the last failure and carries the failure in `notes`.
+    the last failure and carries the failure in `notes`. The diagnostic of
+    each failed run is recorded on the turn's record.
 
     Args:
-        ctx: The turn context holding the classification, cache, and telemetry.
+        ctx: The turn context holding the classification, cache, telemetry,
+            and record.
         specification: The initial default specification built over the cache.
         notes: Mutable list of missing-data notes accumulated before and during
             the default specification run.
         capabilities: The MCP server's tools; variable metadata is requested
             before the first run only when they include
             `get_variable_metadata`.
-        capture: Optional sink recording default specification diagnostics.
 
     Returns:
         A `(digest, specification)` pair holding the resulting `AnalysisDigest`
@@ -378,8 +367,8 @@ async def _run_default_specification(
         # default references every table a retry can read.
         await backfill_variable_metadata(specification, ctx.cache, capabilities)
         outcome = await execute_specification(specification, ctx.cache)
-        if isinstance(outcome, ProcessingDiagnostic) and capture is not None:
-            capture.default_diagnostics.append(outcome)
+        if isinstance(outcome, ProcessingDiagnostic):
+            ctx.record.default_diagnostics.append(outcome)
         relate = True
         excluded: set[str] = set()
         # Each retry drops the relation or the refused step's table, so there
@@ -412,11 +401,8 @@ async def _run_default_specification(
                 specification.list_script_names(),
             )
             outcome = await execute_specification(specification, ctx.cache)
-            if (
-                isinstance(outcome, ProcessingDiagnostic)
-                and capture is not None
-            ):
-                capture.default_diagnostics.append(outcome)
+            if isinstance(outcome, ProcessingDiagnostic):
+                ctx.record.default_diagnostics.append(outcome)
     if isinstance(outcome, AnalysisDigest):
         return (
             replace(outcome, missing_notes=(*outcome.missing_notes, *notes)),
@@ -440,8 +426,6 @@ async def _resolve_digest(
     ctx: TurnContext,
     loop: DiscoveryResult,
     capabilities: Capabilities,
-    *,
-    capture: DiscoveryCapture | None = None,
 ) -> tuple[AnalysisDigest, AnalysisSpecification | None]:
     """Returns the digest the turn is answered from, and its specification.
 
@@ -450,14 +434,15 @@ async def _resolve_digest(
     retries exhausted, and the turn is answered from a default
     specification over the fetched tables rather than from partial raw
     data. When no fetched table has rows, the digest is empty and says so.
+    The digest, the specification, and the specification's origin are
+    recorded on the turn's record.
 
     Args:
-        ctx: The turn context holding the classification, cache, and telemetry.
+        ctx: The turn context holding the classification, cache, telemetry,
+            and record.
         loop: The completed discovery loop result.
         capabilities: The MCP server's tools, passed to the default
             specification run.
-        capture: Optional sink recording the resolved digest, specification,
-            and specification origin.
 
     Returns:
         A `(digest, specification)` pair holding the resolved `AnalysisDigest`
@@ -498,14 +483,13 @@ async def _resolve_digest(
             origin = None
         else:
             digest, specification = await _run_default_specification(
-                ctx, default_spec, notes, capabilities, capture=capture
+                ctx, default_spec, notes, capabilities
             )
             origin = "default"
 
-    if capture is not None:
-        capture.specification = specification
-        capture.specification_origin = origin
-        capture.digest = digest
+    ctx.record.specification = specification
+    ctx.record.specification_origin = origin
+    ctx.record.digest = digest
     return digest, specification
 
 
@@ -541,20 +525,17 @@ def _collect_tables_used(
     return tuple(table for table in tables if table is not None)
 
 
-async def run_discovery_phase(
-    ctx: TurnContext, *, capture: DiscoveryCapture | None = None
-) -> DiscoveryPhaseResult:
+async def run_discovery_phase(ctx: TurnContext) -> DiscoveryPhaseResult:
     """Finds and analyzes the data, the discovery and processing phases.
 
     Runs the discovery loop, resolves the digest the turn is answered from,
     streams the tool calls, the data status, and the provenance sources,
-    and records the phase's telemetry counts.
+    and records the phase's telemetry counts. The loop's result and the IDs
+    of the tables the specification used are recorded on the turn's record.
 
     Args:
-        ctx: The turn context holding the transcript, config, telemetry, and
-            cache.
-        capture: Optional sink recording intermediate discovery progress for
-            debug reporting.
+        ctx: The turn context holding the transcript, config, telemetry,
+            cache, and record.
 
     Returns:
         The populated `DiscoveryPhaseResult` for synthesis, state slots, and
@@ -591,10 +572,9 @@ async def run_discovery_phase(
     warn_on_missing_tools(tools)
 
     _emit_status(ctx, DISCOVERY_STATUS)
-    loop_result = DiscoveryResult()
-    if capture is not None:
-        capture.loop_result = loop_result
     try:
+        # The loop fills the record's result in place, so the record holds
+        # the calls that completed before a loop that fails.
         loop = await execute_discovery_loop(
             ctx.transcript,
             ctx.config,
@@ -610,28 +590,24 @@ async def run_discovery_phase(
                 StatusFrame(phase=phase, message=message)
             ),
             classification=ctx.classification,
-            result=loop_result,
+            result=ctx.record.loop_result,
         )
     except McpLoopError as error:
         raise TurnAbortedError(
             error.error_type, str(error), is_retryable=error.is_retryable
         ) from error
 
-    if capture is not None:
-        capture.loop_result = loop
+    ctx.record.loop_result = loop
     result.tool_calls = loop.tool_calls
     for call in result.tool_calls:
         ctx.emit(ToolCallFrame(tool_call=call))
 
-    digest, specification = await _resolve_digest(
-        ctx, loop, from_tools(tools), capture=capture
-    )
+    digest, specification = await _resolve_digest(ctx, loop, from_tools(tools))
     result.digest = digest
     result.spec = specification
     result.has_data = digest.has_data
     result.tables = _collect_tables_used(specification, ctx.cache)
-    if capture is not None:
-        capture.used_table_ids = frozenset(t.table_id for t in result.tables)
+    ctx.record.used_table_ids = frozenset(t.table_id for t in result.tables)
     ctx.telemetry.scripts = (
         specification.list_script_names() if specification is not None else []
     )
@@ -665,10 +641,7 @@ async def run_discovery_phase(
 
 
 async def run_synthesis_phase(
-    ctx: TurnContext,
-    discovery: DiscoveryPhaseResult,
-    *,
-    capture: SynthesisCapture | None = None,
+    ctx: TurnContext, discovery: DiscoveryPhaseResult
 ) -> SynthesisPhaseResult:
     """Streams the answer as text and chart blocks, the synthesis phase.
 
@@ -682,11 +655,13 @@ async def run_synthesis_phase(
     primary result is appended. Opening the stream and reading each chunk
     are bounded by `SYNTHESIS_CHUNK_TIMEOUT_SECONDS`, so a stalled stream
     ends the turn rather than holding it open for the whole HTTP timeout.
+    The rendered user message and the raw output are recorded on the turn's
+    record, including when the phase aborts.
 
     Args:
-        ctx: The turn context holding the transcript, config, and telemetry.
+        ctx: The turn context holding the transcript, config, telemetry, and
+            record.
         discovery: The discovery phase result to synthesize into prose.
-        capture: Optional mutable capture for debug reporting slots.
 
     Returns:
         The signed text and the resolved charts.
@@ -708,10 +683,11 @@ async def run_synthesis_phase(
         discovery.sources,
     )
     rendered_prompt = render_synthesis_message(inputs)
-    if capture is not None:
-        capture.rendered_prompt = rendered_prompt
+    ctx.record.synthesis_prompt = rendered_prompt
     # Put the verified window first, then the query with the analysis context.
-    messages = transcript_contents(ctx.transcript, rendered_prompt)
+    messages = transcript_contents(
+        ctx.transcript, rendered_prompt, current_date=get_current_date()
+    )
     # A `scatter` chart is drawn only across a cohort, so the synthesis
     # directive of a correlation question depends on whether one was fetched.
     has_cohort_table = any(
@@ -810,8 +786,7 @@ async def run_synthesis_phase(
         ctx.telemetry.charts_rejected = splitter.charts_rejected
         ctx.telemetry.title_outcome = _resolve_title_outcome(extractor)
         raw_output = "".join(raw_chunks)
-        if capture is not None:
-            capture.raw_output = raw_output
+        ctx.record.synthesis_raw_output = raw_output
     return SynthesisPhaseResult(
         splitter.text,
         tuple(splitter.charts),
@@ -1062,15 +1037,15 @@ async def run_turn(
     settings = get_settings()
     budget = get_daily_token_budget()
     idempotency_key = transcript.current_idempotency_key
-    telemetry = TurnTelemetry()
+    record = TurnRecord(telemetry=TurnTelemetry())
+    telemetry = record.telemetry
     state: TerminalState | None = None
     error_type: ErrorType | RefusedReason | None = None
-    thoughts: list[DebugThought] = []
 
     def tracking_emit(frame: SseFrame) -> None:
         if isinstance(frame, ThoughtFrame):
-            thoughts.append(
-                DebugThought(
+            record.thoughts.append(
+                TurnThought(
                     phase=frame.phase,
                     text=frame.thought,
                     round_number=frame.round_number,
@@ -1078,11 +1053,7 @@ async def run_turn(
             )
         emit(frame)
 
-    discovery_capture = DiscoveryCapture()
-    synthesis_capture = SynthesisCapture()
-    ctx: TurnContext | None = None
     config: AgentConfig | None = None
-    is_clarification = False
     canceled = False
     try:
         # Chat availability and daily token budget are checked before the
@@ -1106,9 +1077,9 @@ async def run_turn(
             )
             return
         config = _require_turn_config(load_config())
-        # Every prompt of the turn renders `{{CURRENT_DATETIME}}` as one
-        # timestamp, isolated from concurrent turns.
-        with pin_current_datetime():
+        # The classify, discovery, and synthesis requests of the turn carry
+        # one current date, isolated from concurrent turns.
+        with pin_current_date():
             tracking_emit(
                 StatusFrame(phase="classify", message=CLASSIFY_STATUS)
             )
@@ -1122,13 +1093,13 @@ async def run_turn(
             ctx = TurnContext(
                 transcript,
                 config,
-                telemetry,
+                record,
                 tracking_emit,
                 admission.classification,
             )
             if isinstance(admission, Clarification):
                 window = await run_clarification(ctx, admission.question)
-                is_clarification = True
+                record.is_clarification = True
                 state = TerminalState.COMPLETE
                 tracking_emit(
                     TerminalCompleteFrame(
@@ -1139,13 +1110,9 @@ async def run_turn(
                 # Processing runs inside discovery are also timed under their
                 # own phase.
                 with telemetry.phase("discovery"):
-                    discovery = await run_discovery_phase(
-                        ctx, capture=discovery_capture
-                    )
+                    discovery = await run_discovery_phase(ctx)
                 with telemetry.phase("synthesis"):
-                    synthesis = await run_synthesis_phase(
-                        ctx, discovery, capture=synthesis_capture
-                    )
+                    synthesis = await run_synthesis_phase(ctx, discovery)
                 with telemetry.phase("finalize"):
                     window = await _sign_turn(
                         ctx,
@@ -1208,6 +1175,8 @@ async def run_turn(
         )
     finally:
         final_state = state or TerminalState.ERROR
+        record.terminal_state = final_state
+        record.terminal_reason = error_type
         telemetry.finish(final_state, error_type)
         if budget is not None:
             # Counts only Gemini calls that returned `usage_metadata`; streams
@@ -1221,38 +1190,8 @@ async def run_turn(
                 get_debug_report_mode(), request_debug=request_debug
             )
         ):
-            report_state: DebugTerminalState
-            if final_state == TerminalState.COMPLETE:
-                report_state = "complete"
-            elif final_state == TerminalState.REFUSED:
-                report_state = "refused"
-            else:
-                report_state = "error"
-            reason_str = str(error_type) if error_type is not None else None
             report = build_debug_report(
-                telemetry=telemetry,
-                terminal_state=report_state,
-                terminal_reason=reason_str,
-                is_clarification=is_clarification,
-                cache=ctx.cache if ctx is not None else None,
-                used_table_ids=discovery_capture.used_table_ids,
-                thoughts=thoughts,
-                tool_calls=discovery_capture.loop_result.tool_calls,
-                rejected_submissions=(
-                    discovery_capture.loop_result.rejected_submissions
-                ),
-                diagnostics=(
-                    *discovery_capture.loop_result.diagnostics,
-                    *((None, d) for d in discovery_capture.default_diagnostics),
-                ),
-                specification=discovery_capture.specification,
-                specification_origin=discovery_capture.specification_origin,
-                unavailable=discovery_capture.loop_result.unavailable,
-                digest=discovery_capture.digest,
-                synthesis_prompt=synthesis_capture.rendered_prompt,
-                synthesis_raw_output=synthesis_capture.raw_output,
-                config=config,
-                build_sha=settings.build_sha,
+                record, config=config, build_sha=settings.build_sha
             )
             emit(DebugReportFrame(report=report))
 
@@ -1316,10 +1255,8 @@ async def _sign_turn(
 
 
 __all__ = [
-    "DiscoveryCapture",
     "DiscoveryPhaseResult",
     "Emit",
-    "SynthesisCapture",
     "SynthesisPhaseResult",
     "TurnAbortedError",
     "TurnContext",

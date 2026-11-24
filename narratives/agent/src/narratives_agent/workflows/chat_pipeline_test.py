@@ -56,7 +56,10 @@ Verifies that:
     in one `chat_disabled` terminal frame carrying the effective unavailable
     message before any model call, even without a configuration, and
     `ENABLE_CHAT=true` overrides a configuration that disables chat.
-11. When `DAILY_TOKEN_BUDGET_PER_INSTANCE` is exhausted, `run_turn` ends the
+11. Every phase of a turn reads one pinned date. The synthesis request opens
+    its final user message with the date line, while the signed turn and
+    the follow-up request carry no date.
+12. When `DAILY_TOKEN_BUDGET_PER_INSTANCE` is exhausted, `run_turn` ends the
     turn in one non-retryable `daily_token_budget_exhausted` terminal frame
     carrying the effective unavailable message without calling Gemini or MCP
     and without emitting a debug report, while `chat_disabled` still takes
@@ -70,6 +73,7 @@ import logging
 import re
 from collections.abc import AsyncGenerator, Iterator, Sequence
 from dataclasses import dataclass, field, replace
+from typing import Any
 
 import pytest
 
@@ -94,7 +98,7 @@ from narratives_agent.gemini.client import (
     GeminiError,
     GeminiStreamError,
 )
-from narratives_agent.gemini.response import StreamChunk
+from narratives_agent.gemini.response import GeminiResponse, StreamChunk
 from narratives_agent.gemini.schemas import QueryClassification
 from narratives_agent.json_value import JsonObject, JsonValue
 from narratives_agent.mcp import capabilities
@@ -115,6 +119,7 @@ from narratives_agent.telemetry import (
 )
 from narratives_agent.token_budget import get_daily_token_budget
 from narratives_agent.workflows import chat_pipeline
+from narratives_agent.workflows import follow_up as follow_up_module
 from narratives_agent.workflows import transcript as transcript_module
 from narratives_agent.workflows.charts import PlaceList, ResolvedLineChart
 from narratives_agent.workflows.classify import (
@@ -159,16 +164,20 @@ from narratives_agent.workflows.sse_frames import (
     serialize_source,
 )
 from narratives_agent.workflows.transcript import (
+    CURRENT_DATE_LABEL,
     MAX_RESPONSE_CHARS,
     ConversationStateSlots,
+    SignedWindow,
     Transcript,
     Turn,
     load_transcript,
 )
 from narratives_agent.workflows.turn_cache import CachedTable, TurnCache
+from narratives_agent.workflows.turn_record import TurnRecord
 
 _QUESTION = "What is the population of France?"
 _IDEMPOTENCY_KEY = "test-idempotency-key"
+_CONVERSATION_ID = "0123456789abcdef0123456789abcdef"
 _ANSWER = "About 68 million."
 # Default chart of the series summary over `t1`: a line chart over France.
 _DEFAULT_CHART: JsonObject = {
@@ -184,6 +193,7 @@ _CLOSED = "Closed for maintenance."
 _TRANSCRIPT = Transcript(
     turns=[],
     compacted_summary=None,
+    conversation_id=_CONVERSATION_ID,
     current_query=_QUESTION,
     current_idempotency_key=_IDEMPOTENCY_KEY,
 )
@@ -290,6 +300,7 @@ class _Request:
     idempotency_key: str
     turns: Sequence[Turn] = ()
     compacted_summary: str | None = None
+    conversation_id: JsonValue = None
 
 
 class _RecordingTelemetry(TurnTelemetry):
@@ -366,16 +377,22 @@ class _Turn:
             and isinstance(chart := block.get("chart"), dict)
         ]
 
-    def get_synthesis_context(self) -> str:
-        """Returns the text of the final user message synthesis received."""
+    def list_synthesis_parts(self) -> list[str]:
+        """Returns the text parts of the final user message of synthesis."""
         (messages,) = self.synthesis_messages
         parts = messages[-1]["parts"]
         assert isinstance(parts, list)
-        part = parts[0]
-        assert isinstance(part, dict)
-        text = part["text"]
-        assert isinstance(text, str)
-        return text
+        texts: list[str] = []
+        for part in parts:
+            assert isinstance(part, dict)
+            text = part["text"]
+            assert isinstance(text, str)
+            texts.append(text)
+        return texts
+
+    def get_synthesis_context(self) -> str:
+        """Returns the request text of the final user message of synthesis."""
+        return self.list_synthesis_parts()[-1]
 
 
 async def _run_accepted_loop(cache: TurnCache, **_: object) -> DiscoveryResult:
@@ -573,6 +590,7 @@ async def test_complete_turn_emits_the_answer_then_the_follow_ups(
         "hmac": signature,
         "state_slots": _SCOPES,
         "compacted_summary": None,
+        "conversation_id": _CONVERSATION_ID,
         "window": [
             {
                 "turn_index": 0,
@@ -1089,6 +1107,57 @@ async def test_a_default_requests_metadata_once_before_its_first_run(
     assert turn.finished == [(TerminalState.COMPLETE, None)]
 
 
+@pytest.mark.asyncio
+async def test_run_discovery_phase_records_the_specification_and_its_origin(
+    turn: _Turn,
+) -> None:
+    # Test: Recording of the answering specification in `run_discovery_phase`.
+    # Situation: The loop fetches one table and has a series specification
+    #   accepted.
+    # Expectation: The turn's record holds that specification with the
+    #   origin `model`.
+    ctx = chat_pipeline.TurnContext(
+        transcript=_TRANSCRIPT,
+        config=AgentConfig(),
+        record=TurnRecord(telemetry=TurnTelemetry("test-turn-id")),
+        emit=turn.emit,
+        classification=_CLASSIFICATION,
+    )
+
+    await chat_pipeline.run_discovery_phase(ctx)
+
+    assert ctx.record.specification == _SERIES_SPECIFICATION
+    assert ctx.record.specification_origin == "model"
+
+
+@pytest.mark.asyncio
+async def test_run_discovery_phase_records_the_results_it_returns(
+    turn: _Turn,
+) -> None:
+    # Test: Agreement between the turn's record and the result that
+    #   `run_discovery_phase` returns.
+    # Situation: The loop fetches one table and has a series specification
+    #   accepted.
+    # Expectation: The record holds the same digest and specification
+    #   objects as the returned result, and its used table IDs are the IDs
+    #   of the result's tables.
+    ctx = chat_pipeline.TurnContext(
+        transcript=_TRANSCRIPT,
+        config=AgentConfig(),
+        record=TurnRecord(telemetry=TurnTelemetry("test-turn-id")),
+        emit=turn.emit,
+        classification=_CLASSIFICATION,
+    )
+
+    result = await chat_pipeline.run_discovery_phase(ctx)
+
+    assert ctx.record.digest is result.digest
+    assert ctx.record.specification is result.spec
+    result_table_ids = {table.table_id for table in result.tables}
+    assert result_table_ids == {"t1"}
+    assert ctx.record.used_table_ids == result_table_ids
+
+
 def test_tables_used_skips_a_stale_derived_table() -> None:
     # Test: The tables a specification used.
     # Situation: The cache holds `t1`, `t2`, and a derived `s1` left by an
@@ -1130,7 +1199,12 @@ async def test_the_signed_turn_verifies_on_the_next_request(
         }
     )
 
-    loaded = load_transcript(_Request("And Spain?", "key-2", [stored]))
+    conversation_id = terminal["conversation_id"]
+    loaded = load_transcript(
+        _Request(
+            "And Spain?", "key-2", [stored], conversation_id=conversation_id
+        )
+    )
 
     assert loaded.turns == [stored]
 
@@ -1154,6 +1228,7 @@ async def test_synthesis_receives_the_window_before_the_query(
     follow_up = Transcript(
         turns=[earlier],
         compacted_summary=None,
+        conversation_id=_CONVERSATION_ID,
         current_query=_QUESTION,
         current_idempotency_key=_IDEMPOTENCY_KEY,
     )
@@ -1344,9 +1419,11 @@ async def test_a_chart_block_is_resolved_and_streamed_in_place(
             "hmac": terminal["hmac"],
         }
     )
-    assert load_transcript(_Request("And Spain?", "key-2", [stored])).turns == [
-        stored
-    ]
+    conversation_id = terminal["conversation_id"]
+    next_request = _Request(
+        "And Spain?", "key-2", [stored], conversation_id=conversation_id
+    )
+    assert load_transcript(next_request).turns == [stored]
     assert turn.follow_up_topics == [
         FollowUpTopics(
             reported=("Total Population in France", "Population of France")
@@ -2085,8 +2162,8 @@ async def test_the_classify_phase_opens_the_stream_and_guides_the_turn(
             RefusedReason.OFF_DOMAIN,
             'The topic "brand-specific coffee prices" falls outside the '
             "public statistics Data Commons is built to explore. Try asking "
-            "about a demographic, economic, health, climate, or social "
-            "measure for a country, state, or city.",
+            "about statistics on population, the economy, health, climate, "
+            "or society for any country, state, or city.",
         ),
     ],
 )
@@ -2133,10 +2210,11 @@ async def test_a_clarification_is_streamed_and_signed_with_empty_slots(
     # Test: The clarification outcome of the classify phase.
     # Situation: The classifier asks which Georgia the user means.
     # Expectation: The question is emitted as the one text block, the turn
-    #   ends in a signed `complete` frame with empty state slots and a
-    #   one-turn window, no data, sources, charts, or follow-ups are
-    #   emitted, no discovery loop or synthesis runs, the pattern is
-    #   recorded, and the next request carrying the turn verifies.
+    #   ends in a signed `complete` frame with empty state slots, a
+    #   one-turn window, and the transcript's conversation ID, no data,
+    #   sources, charts, or follow-ups are emitted, no discovery loop or
+    #   synthesis runs, the pattern is recorded, and the next request
+    #   carrying the turn verifies.
     async def clarify_classify(*args: object, **_: object) -> Clarification:
         return Clarification(_CLARIFICATION_QUESTION, _CLASSIFICATION)
 
@@ -2145,6 +2223,7 @@ async def test_a_clarification_is_streamed_and_signed_with_empty_slots(
     transcript = Transcript(
         turns=[],
         compacted_summary=None,
+        conversation_id=_CONVERSATION_ID,
         current_query=question,
         current_idempotency_key=_IDEMPOTENCY_KEY,
     )
@@ -2185,7 +2264,13 @@ async def test_a_clarification_is_streamed_and_signed_with_empty_slots(
             "hmac": terminal["hmac"],
         }
     )
-    loaded = load_transcript(_Request("The country", "key-2", [stored]))
+    conversation_id = terminal["conversation_id"]
+    assert conversation_id == _CONVERSATION_ID
+    loaded = load_transcript(
+        _Request(
+            "The country", "key-2", [stored], conversation_id=conversation_id
+        )
+    )
     assert loaded.turns == [stored]
 
 
@@ -2718,7 +2803,7 @@ async def test_canceled_turn_still_records_spent_tokens_in_budget(
 # The serialized frames of a complete turn whose stubs also report a thought
 # from discovery and from synthesis. The HMAC is deterministic because the
 # `signing_secret` fixture fixes the signing key.
-_WIRE_HMAC = "bab7873e1b550debfd0193a70934a1781d7cae19c5be8eea5e6dfe069f2917dc"
+_WIRE_HMAC = "7c5d9d083f1a8c2f44ba055611be041b5a8cf0525c314fc7d7a6c813e0019eba"
 _WIRE_FRAMES: list[tuple[EventName, str]] = [
     (
         "status",
@@ -2767,7 +2852,8 @@ _WIRE_FRAMES: list[tuple[EventName, str]] = [
         '["2022", "2023"]}, {"places": {"country/FRA": "France"}, '
         '"parent_place": null, "child_place_type": null, "variables": '
         '{"Count_Person": "Total Population"}, "date_range": null}]}, '
-        '"compacted_summary": null, "window": '
+        f'"compacted_summary": null, "conversation_id": "{_CONVERSATION_ID}", '
+        '"window": '
         '[{"turn_index": 0, "idempotency_key": "test-idempotency-key", '
         f'"hmac": "{_WIRE_HMAC}"}}]}}',
     ),
@@ -2815,29 +2901,27 @@ async def test_a_complete_turn_serializes_to_the_recorded_frames(
 
 
 @pytest.mark.asyncio
-async def test_every_phase_of_a_turn_reads_one_pinned_timestamp(
+async def test_every_phase_of_a_turn_reads_one_pinned_date(
     monkeypatch: pytest.MonkeyPatch, turn: _Turn
 ) -> None:
-    # Test: The timestamp the prompts of one turn render.
-    # Situation: The current time advances on every read, and the first and
+    # Test: The date the phases of one turn read.
+    # Situation: The current date advances on every read, and the first and
     #   last phases of a turn (classification and follow-ups) each read
-    #   `get_current_datetime`.
-    # Expectation: Both phases read the timestamp pinned when the turn
-    #   started, and a read after the turn sees the time advance again.
-    readings = iter(f"time {index}" for index in range(10))
-    monkeypatch.setattr(
-        config, "_format_current_datetime", lambda: next(readings)
-    )
+    #   `get_current_date`.
+    # Expectation: Both phases read the date pinned when the turn started,
+    #   and a read after the turn sees the date advance again.
+    readings = iter(f"date {index}" for index in range(10))
+    monkeypatch.setattr(config, "_format_current_date", lambda: next(readings))
     seen: list[str] = []
 
     async def classify(*args: object, **_: object) -> Admitted:
-        seen.append(config.get_current_datetime())
+        seen.append(config.get_current_date())
         await asyncio.sleep(0)
-        seen.append(config.get_current_datetime())
+        seen.append(config.get_current_date())
         return Admitted(_CLASSIFICATION)
 
     async def run_follow_ups(*args: object, **_: object) -> None:
-        seen.append(config.get_current_datetime())
+        seen.append(config.get_current_date())
 
     monkeypatch.setattr(chat_pipeline, "classify_query", classify)
     monkeypatch.setattr(chat_pipeline, "run_followups", run_follow_ups)
@@ -2845,8 +2929,124 @@ async def test_every_phase_of_a_turn_reads_one_pinned_timestamp(
     await chat_pipeline.run_turn(_TRANSCRIPT, turn.emit)
 
     assert turn.finished == [(TerminalState.COMPLETE, None)]
-    assert seen == ["time 0", "time 0", "time 0"]
-    assert config.get_current_datetime() == "time 1"
+    assert seen == ["date 0", "date 0", "date 0"]
+    assert config.get_current_date() == "date 1"
+
+
+@pytest.mark.asyncio
+async def test_synthesis_opens_the_current_request_with_the_pinned_date(
+    monkeypatch: pytest.MonkeyPatch, turn: _Turn
+) -> None:
+    # Test: The current date in the synthesis request.
+    # Situation: The turn starts on 2031-02-03, and the transcript holds one
+    #   earlier turn.
+    # Expectation: The final user message of the synthesis request has two
+    #   text parts: the date line of the pinned date, and then the request
+    #   text with the user query. Neither the earlier messages nor the
+    #   system instruction contain the date.
+    monkeypatch.setattr(config, "_format_current_date", lambda: "2031-02-03")
+    earlier = Turn(
+        turn_index=0,
+        idempotency_key="key-0",
+        user_query="Population of Spain?",
+        model_response="About 48 million.",
+        state_slots=ConversationStateSlots(),
+        hmac="0" * 64,
+    )
+    follow_up_transcript = replace(_TRANSCRIPT, turns=[earlier])
+
+    await chat_pipeline.run_turn(follow_up_transcript, turn.emit)
+
+    date_part, request_part = turn.list_synthesis_parts()
+    assert date_part == f"{CURRENT_DATE_LABEL} 2031-02-03\n\n"
+    assert request_part.startswith(f"User Query: {_QUESTION}")
+    (messages,) = turn.synthesis_messages
+    (instruction,) = turn.synthesis_instructions
+    assert "2031-02-03" not in f"{messages[:-1]!r}{instruction}"
+
+
+@pytest.mark.parametrize("is_clarification", [False, True])
+@pytest.mark.asyncio
+async def test_the_signed_turn_carries_the_query_without_the_date(
+    monkeypatch: pytest.MonkeyPatch, turn: _Turn, is_clarification: bool
+) -> None:
+    # Test: The signed fields of a turn that runs under a pinned date.
+    # Situation: The turn starts on 2031-02-03 and either completes through
+    #   discovery and synthesis or ends with a clarification question.
+    # Expectation: The signed turn's `user_query` equals the transcript's
+    #   `current_query`, and no signed field of the window contains the
+    #   date.
+    monkeypatch.setattr(config, "_format_current_date", lambda: "2031-02-03")
+    if is_clarification:
+
+        async def clarify(*args: object, **_: object) -> Clarification:
+            return Clarification(_CLARIFICATION_QUESTION, _CLASSIFICATION)
+
+        monkeypatch.setattr(chat_pipeline, "classify_query", clarify)
+    windows: list[SignedWindow | None] = []
+    finalize_turn = transcript_module.finalize_turn
+
+    async def record_window(*args: Any, **kwargs: Any) -> SignedWindow | None:
+        window = await finalize_turn(*args, **kwargs)
+        windows.append(window)
+        return window
+
+    monkeypatch.setattr(chat_pipeline, "finalize_turn", record_window)
+
+    await chat_pipeline.run_turn(_TRANSCRIPT, turn.emit)
+
+    (window,) = windows
+    assert window is not None
+    assert window.turn.user_query == _TRANSCRIPT.current_query
+    signed = [
+        signed_turn.model_dump(mode="json") for signed_turn in window.turns
+    ]
+    assert "2031-02-03" not in json.dumps([signed, window.compacted_summary])
+
+
+@pytest.mark.asyncio
+async def test_the_follow_up_request_carries_no_date(
+    monkeypatch: pytest.MonkeyPatch, turn: _Turn
+) -> None:
+    # Test: The follow-up request of a turn that runs under a pinned date.
+    # Situation: The turn starts on 2031-02-03, the `follow_up` prompt is
+    #   configured, and follow-up generation runs with only its model call
+    #   replaced.
+    # Expectation: The turn makes one follow-up request, and neither its
+    #   messages nor its system instruction contain the date label or the
+    #   date.
+    monkeypatch.setattr(config, "_format_current_date", lambda: "2031-02-03")
+    _use_config(
+        monkeypatch,
+        AgentConfig(
+            prompts=Prompts(
+                discovery="Gather data.",
+                synthesis="Write prose.",
+                follow_up="Suggest questions.",
+            )
+        ),
+    )
+    requests: list[dict[str, Any]] = []
+
+    async def record_request(**kwargs: Any) -> GeminiResponse:
+        requests.append(kwargs)
+        return GeminiResponse(text=json.dumps({"questions": _FOLLOW_UPS}))
+
+    monkeypatch.setattr(
+        follow_up_module, "async_gemini_request", record_request
+    )
+    monkeypatch.setattr(
+        chat_pipeline,
+        "generate_follow_up_questions",
+        follow_up_module.generate_follow_up_questions,
+    )
+
+    await chat_pipeline.run_turn(_TRANSCRIPT, turn.emit)
+
+    (request,) = requests
+    request_text = f"{request['messages']!r}{request['system_instruction']}"
+    assert CURRENT_DATE_LABEL not in request_text
+    assert "2031-02-03" not in request_text
 
 
 @pytest.mark.asyncio
@@ -2885,26 +3085,33 @@ async def test_a_correlation_over_named_places_is_written_as_a_comparison(
     assert "`scatter`" not in instruction.rpartition("### Analytical")[2]
 
 
+def _make_table_context(
+    turn: _Turn, table: CachedTable
+) -> chat_pipeline.TurnContext:
+    """Builds a turn context whose record's cache holds `table`."""
+    record = TurnRecord(telemetry=TurnTelemetry("test-turn-id"))
+    record.cache.store_fetched(table)
+    return chat_pipeline.TurnContext(
+        transcript=_TRANSCRIPT,
+        config=AgentConfig(),
+        record=record,
+        emit=turn.emit,
+    )
+
+
 @pytest.mark.asyncio
-async def test_run_synthesis_phase_captures_prompt_and_raw_output(
+async def test_run_synthesis_phase_records_prompt_and_raw_output(
     monkeypatch: pytest.MonkeyPatch, turn: _Turn
 ) -> None:
-    # Test: Capture of rendered prompt and raw output in `run_synthesis_phase`.
+    # Test: Recording of rendered prompt and raw output in
+    #   `run_synthesis_phase`.
     # Situation: Synthesis streams text followed by a chart block and a second
     #   text block.
     # Expectation: `rendered_prompt` and `raw_output` are populated on both
-    #   SynthesisPhaseResult and SynthesisCapture, and `raw_output` preserves
+    #   SynthesisPhaseResult and the turn's record, and `raw_output` preserves
     #   the fenced chart block that is stripped from `result.text`.
     table = _make_table("t1")
-    cache = TurnCache()
-    cache.store_fetched(table)
-    ctx = chat_pipeline.TurnContext(
-        transcript=_TRANSCRIPT,
-        config=AgentConfig(),
-        telemetry=TurnTelemetry("test-turn-id"),
-        emit=turn.emit,
-        cache=cache,
-    )
+    ctx = _make_table_context(turn, table)
     discovery = chat_pipeline.DiscoveryPhaseResult(
         digest=AnalysisDigest(results=()),
         spec=_SERIES_SPECIFICATION,
@@ -2928,10 +3135,7 @@ async def test_run_synthesis_phase_captures_prompt_and_raw_output(
 
     monkeypatch.setattr(chat_pipeline, "async_gemini_stream", start_synthesis)
 
-    capture = chat_pipeline.SynthesisCapture()
-    result = await chat_pipeline.run_synthesis_phase(
-        ctx, discovery, capture=capture
-    )
+    result = await chat_pipeline.run_synthesis_phase(ctx, discovery)
 
     expected_signed_text = (
         "Here is the introduction.\n\nHere is the conclusion."
@@ -2943,8 +3147,8 @@ async def test_run_synthesis_phase_captures_prompt_and_raw_output(
     assert result.rendered_prompt != ""
     assert "What is the population of France?" in result.rendered_prompt
 
-    assert capture.raw_output == result.raw_output
-    assert capture.rendered_prompt == result.rendered_prompt
+    assert ctx.record.synthesis_raw_output == result.raw_output
+    assert ctx.record.synthesis_prompt == result.rendered_prompt
 
 
 def _make_synthesis_context(
@@ -2971,7 +3175,7 @@ def _make_synthesis_context(
     ctx = chat_pipeline.TurnContext(
         transcript=_TRANSCRIPT,
         config=AgentConfig(),
-        telemetry=TurnTelemetry("test-turn-id"),
+        record=TurnRecord(telemetry=TurnTelemetry("test-turn-id")),
         emit=turn.emit,
     )
     return ctx, instructions
@@ -3087,28 +3291,19 @@ async def test_an_answer_without_data_gets_no_title(
 
 
 @pytest.mark.asyncio
-async def test_run_synthesis_phase_capture_on_abort_and_stream_failure(
+async def test_run_synthesis_phase_records_on_abort_and_stream_failure(
     monkeypatch: pytest.MonkeyPatch, turn: _Turn
 ) -> None:
-    # Test: `SynthesisCapture` behavior on `SYNTHESIS_EMPTY` and stream error.
+    # Test: The turn's record on `SYNTHESIS_EMPTY` and on a stream error.
     # Situation:
     #   1. Synthesis stream emits only an invalid chart fence and no prose.
     #   2. Synthesis stream open fails with a GeminiError before yielding.
     # Expectation:
-    #   1. On SYNTHESIS_EMPTY, SynthesisCapture retains rendered_prompt and
-    #      raw_output with the rejected fence.
-    #   2. On open failure, SynthesisCapture retains rendered_prompt and
-    #      raw_output is None.
+    #   1. On SYNTHESIS_EMPTY, the record retains the rendered prompt and
+    #      the raw output with the rejected fence.
+    #   2. On open failure, the record retains the rendered prompt and its
+    #      raw output is None.
     table = _make_table("t1")
-    cache = TurnCache()
-    cache.store_fetched(table)
-    ctx = chat_pipeline.TurnContext(
-        transcript=_TRANSCRIPT,
-        config=AgentConfig(),
-        telemetry=TurnTelemetry("test-turn-id"),
-        emit=turn.emit,
-        cache=cache,
-    )
     discovery = chat_pipeline.DiscoveryPhaseResult(
         digest=AnalysisDigest(results=()),
         spec=_SERIES_SPECIFICATION,
@@ -3129,15 +3324,14 @@ async def test_run_synthesis_phase_capture_on_abort_and_stream_failure(
         chat_pipeline, "async_gemini_stream", start_empty_synthesis
     )
 
-    capture_empty = chat_pipeline.SynthesisCapture()
+    ctx_empty = _make_table_context(turn, table)
     with pytest.raises(chat_pipeline.TurnAbortedError) as exc_info:
-        await chat_pipeline.run_synthesis_phase(
-            ctx, discovery, capture=capture_empty
-        )
+        await chat_pipeline.run_synthesis_phase(ctx_empty, discovery)
     assert exc_info.value.error_type == ErrorType.SYNTHESIS_EMPTY
-    assert capture_empty.raw_output == rejected_chart_text
-    assert capture_empty.rendered_prompt is not None
-    assert "What is the population of France?" in capture_empty.rendered_prompt
+    record_empty = ctx_empty.record
+    assert record_empty.synthesis_raw_output == rejected_chart_text
+    assert record_empty.synthesis_prompt is not None
+    assert "What is the population of France?" in record_empty.synthesis_prompt
 
     # 2. SYNTHESIS_ERROR: async_gemini_stream fails to open
     async def start_failing_synthesis(
@@ -3149,15 +3343,14 @@ async def test_run_synthesis_phase_capture_on_abort_and_stream_failure(
         chat_pipeline, "async_gemini_stream", start_failing_synthesis
     )
 
-    capture_error = chat_pipeline.SynthesisCapture()
+    ctx_error = _make_table_context(turn, table)
     with pytest.raises(chat_pipeline.TurnAbortedError) as exc_info_err:
-        await chat_pipeline.run_synthesis_phase(
-            ctx, discovery, capture=capture_error
-        )
+        await chat_pipeline.run_synthesis_phase(ctx_error, discovery)
     assert exc_info_err.value.error_type == ErrorType.SYNTHESIS_ERROR
-    assert capture_error.raw_output is None
-    assert capture_error.rendered_prompt is not None
-    assert "What is the population of France?" in capture_error.rendered_prompt
+    record_error = ctx_error.record
+    assert record_error.synthesis_raw_output is None
+    assert record_error.synthesis_prompt is not None
+    assert "What is the population of France?" in record_error.synthesis_prompt
 
 
 @pytest.mark.parametrize(
@@ -3395,6 +3588,84 @@ async def test_default_specification_sets_origin_default_in_debug_report(
     assert report["terminal_state"] == "complete"
     assert report["specification_origin"] == "default"
     assert report["specification"] is not None
+
+
+@pytest.mark.asyncio
+async def test_refused_default_runs_are_diagnosed_in_the_debug_report(
+    monkeypatch: pytest.MonkeyPatch, turn: _Turn
+) -> None:
+    # Test: The default specification's diagnostics in the debug report.
+    # Situation: A top-N turn ends at a bound with two state cohort tables,
+    #   each requesting four states with a value for one, so the first run
+    #   of the default refuses over `t1` and its retry refuses over `t2`;
+    #   DEBUG_REPORT is "on".
+    # Expectation: debug_report carries one `step_refusal` diagnostic for
+    #   each run, in run order and without a discovery round.
+    monkeypatch.setenv("DEBUG_REPORT", "on")
+    ranking = QueryClassification.model_validate(
+        {
+            "serviceable": True,
+            "pattern": "top_n_ranking",
+            "geographic_shape": "child_places",
+            "requires_computation": True,
+        }
+    )
+
+    async def classify(*args: object, **_: object) -> Admitted:
+        return Admitted(ranking)
+
+    def make_sparse_cohort(table_id: str, variable_dcid: str) -> CachedTable:
+        entry = _make_state_cohort(table_id, variable_dcid, "01 02 03 04")
+        return replace(
+            entry, table=replace(entry.table, rows=entry.table.rows[:1])
+        )
+
+    monkeypatch.setattr(chat_pipeline, "classify_query", classify)
+    _install_loop(
+        monkeypatch,
+        DiscoveryResult(truncated=True),
+        make_sparse_cohort("t1", "Median_Income"),
+        make_sparse_cohort("t2", "Percent_Diabetes"),
+    )
+
+    await chat_pipeline.run_turn(_TRANSCRIPT, turn.emit)
+
+    assert turn.events[-1][0] == "debug_report"
+    diagnostics = turn.events[-1][1]["diagnostics"]
+    assert isinstance(diagnostics, list)
+    assert [
+        (
+            diagnostic["kind"],
+            diagnostic["round"],
+            diagnostic["input_table_ids"],
+        )
+        for diagnostic in diagnostics
+        if isinstance(diagnostic, dict)
+    ] == [
+        ("step_refusal", None, ["t1"]),
+        ("step_refusal", None, ["t2"]),
+    ]
+
+
+@pytest.mark.asyncio
+async def test_the_digest_that_answered_the_turn_is_in_the_debug_report(
+    monkeypatch: pytest.MonkeyPatch, turn: _Turn
+) -> None:
+    # Test: The digest in the debug report.
+    # Situation: The loop fetches one table and has a series specification
+    #   accepted; DEBUG_REPORT is "on".
+    # Expectation: debug_report carries the digest of that specification
+    #   over that table, as `AnalysisDigest.to_dict` serializes it.
+    monkeypatch.setenv("DEBUG_REPORT", "on")
+    cache = TurnCache()
+    cache.store_fetched(_make_table())
+    digest = await execute_specification(_SERIES_SPECIFICATION, cache)
+    assert isinstance(digest, AnalysisDigest)
+
+    await chat_pipeline.run_turn(_TRANSCRIPT, turn.emit)
+
+    assert turn.events[-1][0] == "debug_report"
+    assert turn.events[-1][1]["digest"] == digest.to_dict()
 
 
 @pytest.mark.asyncio

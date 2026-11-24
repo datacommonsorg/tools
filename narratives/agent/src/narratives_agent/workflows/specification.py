@@ -712,30 +712,41 @@ class AnalysisSpecification(BaseModel):
 class UnavailableReport(BaseModel):
     """The structured note the model files when the data does not exist.
 
+    The answer quotes every field to the reader, so each one names things in
+    plain words and holds no DCID or code.
+
     Attributes:
-        searched_indicators: The indicator queries and DCIDs tried.
-        searched_places: The places the search covered.
+        searched_indicators: The indicator queries tried.
+        searched_places: The names of the places the search covered.
         reason: Why the question cannot be answered from the data.
-        related_available: Related indicators that do have data.
+        related_available: The names of related indicators that do have data.
     """
 
     model_config = ConfigDict(extra="forbid")
 
     searched_indicators: list[str] = Field(
         default_factory=list,
-        description="The indicator queries and DCIDs tried.",
+        description=(
+            "The indicator queries tried, in plain words, with no DCID or code."
+        ),
     )
     searched_places: list[str] = Field(
         default_factory=list,
-        description="The places the search covered.",
+        description="The places the search covered, by name, with no DCID.",
     )
     reason: str = Field(
         min_length=1,
-        description="Why the question cannot be answered from the data.",
+        description=(
+            "Why the question cannot be answered from the data, in plain "
+            "words, with no DCID or code."
+        ),
     )
     related_available: list[str] = Field(
         default_factory=list,
-        description="Related indicators that do have data.",
+        description=(
+            "Related indicators that do have data, each by its name in "
+            "plain words, with no DCID or code after the name."
+        ),
     )
 
     def format_note(self) -> str:

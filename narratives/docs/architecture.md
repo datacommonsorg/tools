@@ -259,15 +259,32 @@ Otherwise, the request runs through the agent loop in five steps:
    bounds that clamp the drawn series.
    The server splits the stream at paragraph boundaries and at the closing fence
    of each chart block, and emits one `content {block}` frame per completed
-   paragraph and per chart that resolves. A one-line lead-in ending with a
-   colon directly above a list item or table row is a paragraph of its own,
-   even without a blank line between them. Resolution is set membership against
+   paragraph and per chart that resolves. A Markdown heading line is a
+   paragraph of its own, and so is a one-line lead-in ending with a colon
+   directly above a list item or table row, even without a blank line
+   between them. The Data gaps block that closes an answer (a `**Data gaps**`
+   label line, an introducing line, and a list of the measures the answer
+   could not cover) is one text block even when the model leaves blank lines
+   inside it. The server (`workflows/data_gaps.py`) parses it, and its
+   `content {block}` frame also carries `data_gaps`: the introducing line as
+   `intro` and the measures as `items`, both in plain text. The app shows
+   that list as a "Data gaps" section after the answer's blocks and above
+   the citations, and does not render the block's Markdown. A label that no
+   list follows stays ordinary text. Resolution is set membership against
    the turn cache: an unknown table, a place or date the table does not hold, a
    unit mismatch across the tables on one axis, a `line` whose date bounds
    leave a charted table without a place holding two dates, or a kind the
    table shape cannot support (a map without a cohort, a scatter without two
    variables) rejects the chart, which is dropped and counted while the prose
-   stands.
+   stands. When the digest relates a scatter's two variables
+   (`relate_cohorts`), the resolver orders them from the relation, the
+   compared `target` first and the grouping `by` second, so the component
+   draws the grouping variable on the horizontal axis whatever order the
+   model listed the tables in. A single-date chart without a `date` is drawn
+   at the reference date of the results over its tables only when those
+   tables agree on one date; a relation whose two tables are aligned on
+   different dates leaves the date unset, so the component draws each
+   variable at its latest date.
    The date bounds are checked with the comparison `<datacommons-line>`
    applies, so a `start_date` of `2005-06` excludes an annual `2005`. Each
    resolved chart carries `facet_ids` mapping its variables to the facets that
@@ -285,12 +302,14 @@ Otherwise, the request runs through the agent loop in five steps:
    are not chartable. At most four charts are accepted per answer. The model
    writes each chart directly after the bullet list or table holding its
    figures, and the app shows that list or table beside the chart in one
-   section, headed by its one-line lead-in when it has one. A list's section
+   section, headed by its section heading when it has one. A list's section
    sits on its own surface (`--color-surface-section`, white by default),
    with the heading at the top of the list's column; a table's section has
    no surface, since the table carries its own card, and its heading spans
-   the full width above the table and chart. The app renders a lead-in line
-   whose label is plain text as an h2 section heading, without its colon.
+   the full width above the table and chart. The model writes a section
+   heading as a Markdown heading line (`## Population by sex`), and the app
+   renders one whose label is plain text as an h2 section heading. A line
+   that only ends with a colon is text, never a heading.
    Maps, scatter charts, and a chart after prose render full width. When the
    digest has data and no chart is
    emitted, the default chart floor appends at most one chart projected directly
@@ -298,15 +317,19 @@ Otherwise, the request runs through the agent loop in five steps:
    which is considered first, or the direct chart of `analyze_timeseries`,
    `rank_cohort`, or `compute_composition`; distributions, standalone
    derivations, non-cohort relations, and relations over a window cohort receive
-   none); its block carries `standalone: true`, so the app shows it full width
-   rather than beside the text before it. A ranking of a cohort, or any ranking
+   none). When the digest holds a cohort `relate_cohorts` result, the floor is
+   that relation's scatter or nothing: it never falls back to a chart of one of
+   the two measures, which would show places the answer's group tables do not.
+   The default chart's block carries `standalone: true`, so the app shows it
+   full width rather than beside the text before it. A ranking of a cohort, or
+   any ranking
    over a window cohort, is charted as a `line` of its first five places, with
    the parent place when a step analyzed the parent's series, the parent's table
    holds at least two dates in the drawn span, and the parent's value does not
    exceed every cohort place's value on each date they share (as a total or
    count does, which would flatten their lines), and with the ranked places
    alone otherwise; a single-date cohort ranking falls back to a `ranking` chart
-   when its table has one date, or when the ranking supports a relation. The
+   when its table has one date. The
    default `line` of a window ranking is clamped to the window's start and end
    dates. The default `line` of an `analyze_timeseries` step is clamped to the
    earliest date the step summarized when the step, or the derived table it
@@ -321,7 +344,10 @@ Otherwise, the request runs through the agent loop in five steps:
    first block. Only a Markdown heading (`#` to `######`) or a line starting
    with a `Title:` label counts as a title line. A turn without data gets the
    `synthesis_no_title` addendum and no title, even when the model writes
-   one. The signed `model_response` is the text blocks joined by blank lines,
+   one. The model does not write a closing line or link on such a turn. When
+   the search finished, the app shows its own link to the dataset intake form
+   under the answer (`SUGGEST_DATASET_URL` in `ui/src/config/copy_chat.ts`).
+   The signed `model_response` is the text blocks joined by blank lines,
    with the chart blocks and the title line stripped, matching the text
    blocks emitted in `content` frames. A stream that stalls for 60 seconds
    waiting for a chunk ends the turn with `synthesis_stream_error`.
@@ -344,7 +370,7 @@ for `heartbeat`) a sequential `id` starting at `1`:
 | :--- | :--- |
 | `status` | Current step (`classify`, `discovery`, `processing`, or `synthesis`) and status message |
 | `thought` | Model reasoning summary from the `discovery` or `synthesis` step |
-| `content` | Answer title (`{title}`, before the first block, only when the answer has data), answer block (`{block}` of type `text` or `chart`; a server-supplied default chart adds `standalone: true`), tool call details (`{tool_call}`), citations (`{sources}`), or data status (`{data_status}`) |
+| `content` | Answer title (`{title}`, before the first block, only when the answer has data), answer block (`{block}` of type `text` or `chart`; the Data gaps text block adds `data_gaps: {intro, items}`; a server-supplied default chart adds `standalone: true`), tool call details (`{tool_call}`), citations (`{sources}`), or data status (`{data_status}`) |
 | `terminal` | Final turn status (`state: "complete"`, `"refused"`, or `"error"`), plus the signed conversation state on completion, `{reason, message}` (with no `error` key) on refusal, or `{error, reason, is_retryable}` on failure |
 | `follow_ups` | `{follow_up_questions}`, sent after `terminal` when available |
 | `debug_report` | Gated turn debug report, sent as the final frame when the debug report mode is `on`, or `flag` with `"debug": true` |
@@ -393,7 +419,8 @@ back to the server with each follow-up question:
       "hmac": "<64 hex characters>"
     }
   ],
-  "compacted_summary": null
+  "compacted_summary": null,
+  "conversation_id": "<32 hex characters>"
 }
 ```
 
@@ -403,7 +430,8 @@ Because the conversation history comes from the browser, the server verifies
 that previous answers were not modified before feeding them back to Gemini:
 
 - When a turn finishes, the server computes an HMAC signature (`hmac`) over that
-  turn's question, answer, and position in the conversation using
+  turn's question, answer, and position in the conversation, together with
+  the window's `compacted_summary` and `conversation_id`, using
   `TRANSCRIPT_HMAC_SECRET`.
 - When the browser sends a follow-up question, the server re-checks the
   signatures on every turn before starting the stream:
@@ -412,7 +440,7 @@ that previous answers were not modified before feeding them back to Gemini:
 | :--- | :--- |
 | `403` | Cloud Armor reCAPTCHA policy requires interactive verification |
 | `413` (`request_too_large`) | Request body is larger than 4 MiB |
-| `400` (`transcript_invalid`) | Turn history was modified, reordered, or exceeds size limits (>6 turns, >32,000-character answer, or >8,000-character summary) |
+| `400` (`transcript_invalid`) | Turn history was modified, reordered, or exceeds size limits (>6 turns, >32,000-character answer, or >8,000-character summary), or `conversation_id` does not match the turns |
 | `422` | Request body is invalid JSON, or `message` (>4,000 characters) / `idempotency_key` is invalid |
 
 If the server returns `400`, the UI clears its stored signatures so the user's
@@ -428,6 +456,27 @@ key at startup. In multi-instance deployments (such as GKE or Cloud Run), where
 follow-up requests can land on any container instance, all instances share the
 same key either by injecting `TRANSCRIPT_HMAC_SECRET` directly or by resolving
 `TRANSCRIPT_HMAC_SECRET_NAME` from Secret Manager at startup.
+
+### Conversation ID
+
+Each conversation has a `conversation_id` of 32 lowercase hexadecimal
+characters, which links its turns without server-side state. The server mints
+it from random bytes when a request arrives without `turns`, signs it into
+every turn of the conversation, and returns it in each signed `terminal`
+event. The browser sends it back beside `turns`, and compaction re-signs the
+window under the same ID. The ID is not derived from any user, browser, or
+network identifier, and the browser holds it only in memory with the turns,
+so reloading the page or starting a new chat starts a new conversation. A
+request whose `conversation_id` is changed, malformed, missing beside
+`turns`, or sent without `turns` is rejected with `400`
+(`transcript_invalid`). Two properties follow from keeping no server-side
+state:
+
+- A conversation whose first turn is not signed (it was refused, it failed, or
+  its answer was too large to sign) leaves the browser without a window, so
+  the next request receives a new `conversation_id`.
+- A client that resends an older window it was given keeps that window's
+  `conversation_id` and repeats a `turn_index`.
 
 ### Keeping conversation history compact
 
@@ -487,14 +536,22 @@ configured prompt so an instance override cannot drop or contradict the
 server's contract.
 
 Every Gemini call renders its system instruction with `render_prompt`, which
-fills in `{{CURRENT_DATETIME}}` and the `{{instance.*}}` placeholders. The
-`classify` prompt, the discovery contract, and the `synthesis` prompt name the
-current date and time, so relative dates such as "this month" or "over the
-last decade" resolve against it. `run_turn` pins one timestamp for the whole
-turn with `pin_current_datetime` (a context variable, so concurrent turns
-keep their own), and every phase of the turn renders that same timestamp. An
-instance that overrides the `classify` or `synthesis` prompt keeps the date
-only when its own prompt includes `{{CURRENT_DATETIME}}`.
+fills in only the `{{instance.*}}` placeholders, so no system instruction
+contains the current date. The server supplies the date in the request
+instead: in the `classify`, discovery, and `synthesis` calls, the user
+message that carries the current request opens with a
+`Current date: YYYY-MM-DD` line, which `transcript_contents`
+(`workflows/transcript.py`) writes as a text part of its own before the
+request text. The date is the calendar date in the `TIMEZONE` zone, and
+relative dates such as "this month" or "over the last decade" resolve
+against it. `run_turn` pins one date for the whole turn with
+`pin_current_date` (a context variable, so concurrent turns keep their own),
+and all three calls carry that same date. The code-owned classify,
+discovery, and synthesis contracts state that this line is the
+authoritative current date, so an instance that overrides a prompt keeps
+both the date and that rule. The signed turn, the
+messages of earlier turns, and the follow-up and compaction requests carry
+no date.
 
 For the Gemini API key (`get_gemini_api_key()`):
 

@@ -27,10 +27,18 @@ history to server-side session storage later only requires changing
 Each `Turn.hmac` is an HMAC-SHA256, under the server's key, of a canonical
 JSON encoding of the previous turn's `hmac` (the empty string for the first
 turn of the window), the turn's own fields, and the window's
-`compacted_summary`. `load_transcript` recomputes the chain from the front
-of the window and compares every signature in constant time, so a client
-cannot alter, drop, reorder, or splice turns, or swap the summary, without
-the request being rejected.
+`compacted_summary` and `conversation_id`. `load_transcript` recomputes the
+chain from the front of the window and compares every signature in constant
+time, so a client cannot alter, drop, reorder, or splice turns, or swap the
+summary or the conversation ID, without the request being rejected.
+
+`conversation_id` links the turns of one conversation. `load_transcript`
+mints it, as random bytes, for a request that carries no turns, and every
+later window of the conversation is signed under it, so a client cannot
+choose it or move a window to another conversation. It identifies a
+conversation only: it is not derived from a user, a browser, or a network
+address. A conversation whose first turn is not signed leaves the browser
+without a window, so its next request starts a conversation with a new ID.
 
 A window holds at most `MAX_VERBATIM_TURNS` turns. When a completed turn
 would exceed that limit, `finalize_turn` folds the oldest turns into
@@ -44,8 +52,9 @@ must not carry a summary, and any other window must.
 Without server-side state, a client can resend an older window it was
 legitimately given, rolling the conversation back to an earlier point, and
 it can drop turns from the end of its window. Neither action introduces
-content the server did not sign. Detecting either requires a server-side
-session store.
+content the server did not sign, and both keep the window's conversation
+ID, so a rolled-back conversation repeats a `turn_index` under one ID.
+Detecting either requires a server-side session store.
 """
 
 import asyncio
@@ -113,6 +122,10 @@ DISPLAY_NAME_PATTERN = r"^[^\x00-\x1f\x7f]+$"
 PLACE_TYPE_PATTERN = r"^[A-Za-z0-9]+$"
 # An observation date is a year, a year and month, or a full date.
 DATE_PATTERN = r"^[0-9]{4}(-[0-9]{2}){0,2}$"
+# A conversation ID is `_CONVERSATION_ID_BYTES` random bytes written as
+# lowercase hexadecimal, two characters for each byte.
+_CONVERSATION_ID_BYTES = 16
+CONVERSATION_ID_PATTERN = rf"^[0-9a-f]{{{2 * _CONVERSATION_ID_BYTES}}}$"
 
 # `COMPACTION_TIMEOUT_SECONDS` bounds the compaction model call. The answer
 # has already streamed when compaction runs, so a slow call falls back to
@@ -131,7 +144,7 @@ _FALLBACK_RESPONSE_CHARS = 600
 # Change its version whenever a signed field or the state-slot schema
 # changes, so that windows signed under the old layout fail verification
 # with a clear reason rather than by accident.
-_HMAC_DOMAIN = "narratives.transcript.turn.v1"
+_HMAC_DOMAIN = "narratives.transcript.turn.v2"
 _GENERATED_KEY_BYTES = 32
 
 _COMPACTION_INSTRUCTION = (
@@ -153,6 +166,14 @@ _CONTEXT_HEADER = (
 )
 _CONTEXT_TAG = "conversation_context"
 _REQUEST_TAG = "current_request"
+# `CURRENT_DATE_LABEL` starts the server-authored date line that opens the
+# user message carrying the current request. The `classify` prompt and the
+# discovery and synthesis contracts name this line as the authoritative
+# current date.
+CURRENT_DATE_LABEL = "Current date:"
+# The blank line after the date separates the date line from the request
+# text, which follows in the next part of the same message.
+_CURRENT_DATE_LINE_TEMPLATE = f"{CURRENT_DATE_LABEL} {{current_date}}\n\n"
 _EVICTED_TURN_TAG = "evicted_turn"
 _EARLIER_SUMMARY_TAG = "earlier_summary"
 # `_DELIMITER_PATTERN` matches the opening, closing, self-closing, and
@@ -196,6 +217,9 @@ type IdempotencyKey = Annotated[
 ]
 type SummaryText = Annotated[
     str, StringConstraints(min_length=1, max_length=MAX_SUMMARY_CHARS)
+]
+type ConversationId = Annotated[
+    str, StringConstraints(pattern=CONVERSATION_ID_PATTERN)
 ]
 
 
@@ -283,11 +307,14 @@ class Transcript:
 
     `turns` is the sliding window of recent verified turns, oldest first.
     `compacted_summary` summarizes the turns compacted out of the window and
-    is `None` until the window first overflows.
+    is `None` until the window first overflows. `conversation_id` is the ID
+    that `load_transcript` minted on the conversation's first request and
+    that every signed turn of the conversation carries in its signature.
     """
 
     turns: list[Turn]
     compacted_summary: str | None
+    conversation_id: str
     current_query: str
     current_idempotency_key: str
 
@@ -299,11 +326,14 @@ class SignedWindow:
     `turns` is the complete window the browser must send with its next
     request, oldest first, ending with the turn that just completed. Every
     `hmac` in it may differ from the one the browser holds, because
-    compaction re-signs the whole window.
+    compaction re-signs the whole window. `compacted_summary` and
+    `conversation_id` are the values the window is signed under, which the
+    browser must send with it.
     """
 
     turns: list[Turn]
     compacted_summary: str | None
+    conversation_id: str
 
     @property
     def turn(self) -> Turn:
@@ -316,15 +346,17 @@ class _Window(_WireModel):
 
     turns: list[Turn] = Field(max_length=MAX_VERBATIM_TURNS)
     compacted_summary: SummaryText | None
+    conversation_id: ConversationId | None
 
 
 class TranscriptRequest(Protocol):
     """Describes the request fields from which a transcript is loaded.
 
-    `turns` and `compacted_summary` arrive unvalidated, as decoded JSON, so
-    that a window that does not match the schema is reported by
-    `load_transcript` as a `TranscriptError`, the same as one whose
-    signatures do not match, rather than as a generic validation failure.
+    `turns`, `compacted_summary`, and `conversation_id` arrive unvalidated,
+    as decoded JSON, so that a window that does not match the schema is
+    reported by `load_transcript` as a `TranscriptError`, the same as one
+    whose signatures do not match, rather than as a generic validation
+    failure.
     """
 
     @property
@@ -338,6 +370,9 @@ class TranscriptRequest(Protocol):
 
     @property
     def compacted_summary(self) -> object: ...
+
+    @property
+    def conversation_id(self) -> object: ...
 
 
 class TranscriptError(Exception):
@@ -423,7 +458,10 @@ def reset_signing_key() -> None:
 
 
 def _turn_signature(
-    prev_hmac: str, turn: Turn, compacted_summary: str | None
+    prev_hmac: str,
+    turn: Turn,
+    compacted_summary: str | None,
+    conversation_id: str,
 ) -> str:
     """Returns the hex HMAC-SHA256 that chains `turn` to its predecessor.
 
@@ -441,6 +479,7 @@ def _turn_signature(
         "model_response": turn.model_response,
         "state_slots": turn.state_slots.model_dump(mode="json"),
         "compacted_summary": compacted_summary,
+        "conversation_id": conversation_id,
     }
     message = json.dumps(payload, sort_keys=True, separators=(",", ":"))
     return hmac.new(
@@ -449,13 +488,15 @@ def _turn_signature(
 
 
 def _sign_window(
-    turns: Sequence[Turn], compacted_summary: str | None
+    turns: Sequence[Turn], compacted_summary: str | None, conversation_id: str
 ) -> list[Turn]:
     """Returns `turns` re-signed as one chain from the front of the window."""
     signed: list[Turn] = []
     prev_hmac = ""
     for turn in turns:
-        signature = _turn_signature(prev_hmac, turn, compacted_summary)
+        signature = _turn_signature(
+            prev_hmac, turn, compacted_summary, conversation_id
+        )
         signed.append(turn.model_copy(update={"hmac": signature}))
         prev_hmac = signature
     return signed
@@ -470,19 +511,25 @@ def _reject(reason: str) -> TranscriptError:
 def _check_window_shape(
     turns: Sequence[Turn],
     compacted_summary: str | None,
+    conversation_id: str | None,
     current_idempotency_key: str,
 ) -> None:
     """Checks the structure of a window before its signatures.
 
     Raises:
-        TranscriptError: A summary arrives without turns, the window's
+        TranscriptError: A summary or a conversation ID arrives without
+            turns, turns arrive without a conversation ID, the window's
             first index disagrees with the presence of a summary, the
             indexes are not contiguous, or an idempotency key repeats.
     """
     if not turns:
         if compacted_summary is not None:
             raise _reject("summary_without_turns")
+        if conversation_id is not None:
+            raise _reject("conversation_id_without_turns")
         return
+    if conversation_id is None:
+        raise _reject("turns_without_conversation_id")
     first_index = turns[0].turn_index
     if (first_index == 0) != (compacted_summary is None):
         raise _reject("window_start_mismatch")
@@ -500,11 +547,13 @@ def load_transcript(request: TranscriptRequest) -> Transcript:
 
     This is the only way the model loop obtains conversation history. It
     validates the window against its schema and caps, then checks its
-    structure and its signature chain.
+    structure and its signature chain. A request without turns starts a
+    conversation and receives a new conversation ID; a request with turns
+    keeps the ID its window was signed under.
 
     Args:
         request: The request object carrying `message`, `idempotency_key`,
-            `turns`, and `compacted_summary`.
+            `turns`, `compacted_summary`, and `conversation_id`.
 
     Returns:
         The verified `Transcript` for the turn.
@@ -518,6 +567,7 @@ def load_transcript(request: TranscriptRequest) -> Transcript:
             {
                 "turns": request.turns,
                 "compacted_summary": request.compacted_summary,
+                "conversation_id": request.conversation_id,
             }
         )
     except ValidationError as error:
@@ -528,16 +578,24 @@ def load_transcript(request: TranscriptRequest) -> Transcript:
         raise TranscriptError("invalid_window") from error
     turns = window.turns
     summary = window.compacted_summary
-    _check_window_shape(turns, summary, request.idempotency_key)
+    _check_window_shape(
+        turns, summary, window.conversation_id, request.idempotency_key
+    )
+    # The shape check leaves an ID on exactly the windows that hold turns,
+    # so the server mints the ID of every window that starts a conversation.
+    conversation_id = window.conversation_id or secrets.token_hex(
+        _CONVERSATION_ID_BYTES
+    )
     prev_hmac = ""
     for turn in turns:
-        expected = _turn_signature(prev_hmac, turn, summary)
+        expected = _turn_signature(prev_hmac, turn, summary, conversation_id)
         if not hmac.compare_digest(expected, turn.hmac):
             raise _reject("signature_mismatch")
         prev_hmac = turn.hmac
     return Transcript(
         turns=turns,
         compacted_summary=summary,
+        conversation_id=conversation_id,
         current_query=request.message,
         current_idempotency_key=request.idempotency_key,
     )
@@ -554,8 +612,9 @@ async def finalize_turn(
 
     When the window would exceed `MAX_VERBATIM_TURNS`, the oldest turns are
     compacted into `compacted_summary`, and the retained window is re-signed
-    under the new summary. Compaction never fails the turn: if the model
-    call fails, times out, or returns no text, a structured summary is
+    under the new summary. The window is always signed under the
+    transcript's conversation ID. Compaction never fails the turn: if the
+    model call fails, times out, or returns no text, a structured summary is
     built from the evicted turns instead.
 
     Args:
@@ -602,7 +661,9 @@ async def finalize_turn(
         window = window[-MAX_VERBATIM_TURNS:]
         summary = await _compact(summary, evicted, config, token_usage)
     return SignedWindow(
-        turns=_sign_window(window, summary), compacted_summary=summary
+        turns=_sign_window(window, summary, transcript.conversation_id),
+        compacted_summary=summary,
+        conversation_id=transcript.conversation_id,
     )
 
 
@@ -700,17 +761,24 @@ def transcript_contents(
     transcript: Transcript,
     current_text: str,
     *,
+    current_date: str,
     max_response_chars: int | None = None,
 ) -> list[dict[str, Any]]:
     """Builds Gemini contents from the window and the current request.
 
     The window's turns become strictly alternating user and model messages,
-    oldest first, followed by one user message holding the summary and
-    recent data scopes, when there are any, and then `current_text`.
+    oldest first, followed by one user message for the current request. That
+    message has two text parts: the server-authored `Current date:` line,
+    and then the summary and recent data scopes, when there are any,
+    followed by `current_text`. The date is a part of its own so that it is
+    never joined to text the user wrote, and the messages of earlier turns
+    carry no date.
 
     Args:
         transcript: The verified transcript for the turn.
-        current_text: The text of the final user message.
+        current_text: The request text of the final user message.
+        current_date: The current date as `YYYY-MM-DD`, written into the
+            date line of the final user message.
         max_response_chars: An optional character limit on each quoted
             earlier answer, used by callers that resend the contents on
             every tool-loop iteration.
@@ -732,7 +800,10 @@ def transcript_contents(
         if preamble
         else current_text
     )
-    contents.append({"role": "user", "parts": [{"text": text}]})
+    date_line = _CURRENT_DATE_LINE_TEMPLATE.format(current_date=current_date)
+    contents.append(
+        {"role": "user", "parts": [{"text": date_line}, {"text": text}]}
+    )
     return contents
 
 

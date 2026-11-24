@@ -34,7 +34,6 @@ import { App } from '@/src/app';
 import {
   REASONING_DEFAULT_PHASE_LABEL,
   REASONING_VERIFYING_LABEL,
-  RECAPTCHA_MODAL_CLOSE_LABEL,
   RECAPTCHA_MODAL_TITLE,
 } from '@/src/config/copy_chat';
 import {
@@ -535,13 +534,11 @@ describe('App reCAPTCHA session bootstrap', () => {
       });
     });
 
-    const closeButton = await screen.findByRole('button', {
-      name: RECAPTCHA_MODAL_CLOSE_LABEL,
-    });
+    const dialog = await screen.findByRole('dialog');
     expect(inertBlurredPriorControl).toBe(true);
-    expect(document.activeElement).toBe(closeButton);
+    expect(document.activeElement).toBe(dialog);
 
-    fireEvent.click(closeButton);
+    fireEvent.keyDown(document, { key: 'Escape' });
 
     await waitFor(() => {
       expect(screen.queryByRole('dialog')).toBeNull();
