@@ -835,6 +835,33 @@ def test_write_structured_record_reaches_stdout_as_one_line(
     assert stdout.getvalue() == _SAMPLE_LINE + "\n"
 
 
+def test_write_structured_record_warns_when_a_line_exceeds_the_size_limit(
+    caplog: pytest.LogCaptureFixture, structured_lines: list[str]
+) -> None:
+    # Test: The runtime size check in `write_structured_record`.
+    # Situation: One structured record fits below `MAX_RECORD_LINE_BYTES`, and
+    #   a second record exceeds `MAX_RECORD_LINE_BYTES`.
+    # Expectation: Both records are written to the structured log stream. The
+    #   first logs nothing on the module logger, and the oversized record logs
+    #   one warning naming the event, the byte length, and the limit without
+    #   logging the record's payload.
+    small = _make_sample_record(_SampleItem(name="small", ratio=1.0))
+    oversized_value = "x" * telemetry.MAX_RECORD_LINE_BYTES
+    large = _make_sample_record(_SampleItem(name=oversized_value, ratio=1.0))
+
+    with caplog.at_level(logging.WARNING, logger=telemetry.__name__):
+        telemetry.write_structured_record(small)
+        assert caplog.records == []
+        telemetry.write_structured_record(large)
+
+    assert len(structured_lines) == 2
+    (warning,) = caplog.records
+    assert warning.levelname == "WARNING"
+    assert "sample" in warning.getMessage()
+    assert str(telemetry.MAX_RECORD_LINE_BYTES) in warning.getMessage()
+    assert oversized_value not in warning.getMessage()
+
+
 @pytest.mark.parametrize(
     ("state", "expected_severity", "used_tokens"),
     [

@@ -576,6 +576,7 @@ async def run_discovery_phase(ctx: TurnContext) -> DiscoveryPhaseResult:
     warn_on_missing_tools(tools)
 
     _emit_status(ctx, DISCOVERY_STATUS)
+    loop = ctx.record.loop_result
     try:
         # The loop fills the record's result in place, so the record holds
         # the calls that completed before a loop that fails.
@@ -594,14 +595,20 @@ async def run_discovery_phase(ctx: TurnContext) -> DiscoveryPhaseResult:
                 StatusFrame(phase=phase, message=message)
             ),
             classification=ctx.classification,
-            result=ctx.record.loop_result,
+            result=loop,
         )
     except McpLoopError as error:
+        if error.result is not loop and error.result != DiscoveryResult():
+            loop = error.result
         raise TurnAbortedError(
             error.error_type, str(error), is_retryable=error.is_retryable
         ) from error
+    finally:
+        ctx.record.loop_result = loop
+        ctx.telemetry.tables_fetched = ctx.cache.tables_fetched
+        ctx.telemetry.total_rows_fetched = ctx.cache.total_rows_fetched
+        ctx.telemetry.processing_retries = loop.processing_retries
 
-    ctx.record.loop_result = loop
     result.tool_calls = loop.tool_calls
     for call in result.tool_calls:
         ctx.emit(ToolCallFrame(tool_call=call))
@@ -615,9 +622,6 @@ async def run_discovery_phase(ctx: TurnContext) -> DiscoveryPhaseResult:
     ctx.telemetry.scripts = (
         specification.list_script_names() if specification is not None else []
     )
-    ctx.telemetry.tables_fetched = ctx.cache.tables_fetched
-    ctx.telemetry.total_rows_fetched = ctx.cache.total_rows_fetched
-    ctx.telemetry.processing_retries = loop.processing_retries
 
     # Include `truncated` on `data_status` so the UI knows when data was cut.
     message: str | None = None

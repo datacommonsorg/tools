@@ -577,32 +577,50 @@ def test_the_outcome_reason_is_the_code_of_a_refused_or_failed_turn(
 
 
 @pytest.mark.parametrize(
-    ("phases", "stage"),
+    ("phases", "reason", "stage"),
     [
-        pytest.param((), RefusalStage.AVAILABILITY, id="before any phase"),
-        pytest.param(("classify",), RefusalStage.CLASSIFY, id="classify"),
         pytest.param(
-            ("classify", "discovery"), RefusalStage.DISCOVERY, id="discovery"
+            (),
+            ErrorType.CHAT_DISABLED,
+            RefusalStage.AVAILABILITY,
+            id="before any phase",
+        ),
+        pytest.param(
+            ("classify",),
+            RefusedReason.OFF_DOMAIN,
+            RefusalStage.CLASSIFY,
+            id="classify",
+        ),
+        pytest.param(
+            ("classify", "discovery"),
+            RefusedReason.SAFETY_BLOCKED,
+            RefusalStage.DISCOVERY,
+            id="discovery",
         ),
         pytest.param(
             ("classify", "processing", "discovery"),
+            RefusedReason.SAFETY_BLOCKED,
             RefusalStage.DISCOVERY,
             id="discovery after a processing run",
         ),
         pytest.param(
             ("classify", "processing", "discovery", "synthesis"),
+            RefusedReason.SAFETY_BLOCKED,
             RefusalStage.SYNTHESIS,
             id="synthesis",
         ),
         pytest.param(
             ("synthesis", "processing", "discovery", "classify"),
+            RefusedReason.SAFETY_BLOCKED,
             RefusalStage.SYNTHESIS,
             id="synthesis recorded first",
         ),
     ],
 )
 def test_the_refusal_stage_is_the_last_phase_that_a_refused_turn_entered(
-    phases: tuple[TurnPhase, ...], stage: RefusalStage
+    phases: tuple[TurnPhase, ...],
+    reason: ErrorType | RefusedReason,
+    stage: RefusalStage,
 ) -> None:
     # Test: The four values of `refusal_stage`.
     # Situation: The telemetry of a refused turn holds durations for one of
@@ -613,9 +631,7 @@ def test_the_refusal_stage_is_the_last_phase_that_a_refused_turn_entered(
     #   hold a duration. Otherwise the stage is the last of `classify`,
     #   `discovery`, and `synthesis` that has a duration, whatever the order
     #   of the durations. `processing` is never the stage.
-    record = _make_record(
-        TerminalState.REFUSED, RefusedReason.SAFETY_BLOCKED, phases=phases
-    )
+    record = _make_record(TerminalState.REFUSED, reason, phases=phases)
 
     assert _build_record(record).refusal_stage is stage
 
@@ -799,7 +815,7 @@ def test_the_largest_record_fits_in_one_line(
         monkeypatch,
         record,
         TerminalState.ERROR,
-        ErrorType.SYNTHESIS_STREAM_ERROR,
+        ErrorType.DAILY_TOKEN_BUDGET_EXHAUSTED,
         seconds=999_999.99925,
     )
     usage = build_usage_record(

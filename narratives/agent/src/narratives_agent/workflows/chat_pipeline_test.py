@@ -3538,10 +3538,18 @@ async def test_a_clarification_is_recorded_as_clarified(
     ] == ["classify", "finalize"]
 
 
-def _refuse_turn_at(monkeypatch: pytest.MonkeyPatch, stage: str) -> None:
-    """Makes the turn end as refused at the given refusal stage."""
+def _refuse_turn_at(
+    monkeypatch: pytest.MonkeyPatch, stage: str, reason: str
+) -> None:
+    """Makes the turn end as refused at `stage` with `reason`."""
     if stage == "availability":
-        monkeypatch.setenv(ENABLE_CHAT_ENV, "false")
+        if reason == "daily_token_budget_exhausted":
+            monkeypatch.setenv(DAILY_TOKEN_BUDGET_PER_INSTANCE_ENV, "100")
+            budget = get_daily_token_budget()
+            assert budget is not None
+            budget.record(100)
+        else:
+            monkeypatch.setenv(ENABLE_CHAT_ENV, "false")
         return
 
     async def refuse_classify(*args: object, **_: object) -> Admitted:
@@ -3553,10 +3561,14 @@ def _refuse_turn_at(monkeypatch: pytest.MonkeyPatch, stage: str) -> None:
         tools: Sequence[mcp_client.McpTool],
         telemetry: TurnTelemetry,
         cache: TurnCache,
+        *,
+        result: DiscoveryResult,
         **_: object,
     ) -> DiscoveryResult:
-        # A processing run records its duration before the discovery phase
-        # around it does.
+        # A processing run records its duration, fetched tables, and retries
+        # before the discovery phase around it exits on the safety block.
+        cache.store_fetched(_make_table())
+        result.processing_retries = 1
         with telemetry.phase("processing"):
             pass
         raise GeminiBlockedError("SAFETY")
@@ -3580,6 +3592,7 @@ def _refuse_turn_at(monkeypatch: pytest.MonkeyPatch, stage: str) -> None:
     ("stage", "reason"),
     [
         ("availability", "chat_disabled"),
+        ("availability", "daily_token_budget_exhausted"),
         ("classify", "off_domain"),
         ("discovery", "safety_blocked"),
         ("synthesis", "safety_blocked"),
@@ -3594,14 +3607,15 @@ async def test_a_refused_turn_is_recorded_with_the_stage_of_the_refusal(
     reason: str,
 ) -> None:
     # Test: The `chat_turn` record of a refused turn.
-    # Situation: Chat is disabled, the classifier refuses the query, Gemini
-    #   blocks a discovery call after a processing run in the same turn, or
-    #   Gemini blocks the synthesis prompt.
+    # Situation: Chat is disabled, the daily token budget is exhausted, the
+    #   classifier refuses the query, Gemini blocks a discovery call after a
+    #   processing run in the same turn, or Gemini blocks the synthesis prompt.
     # Expectation: The server writes exactly one record. It holds the
     #   terminal state and the outcome `refused`, the reason code, the stage
     #   at which the turn was refused, and the transcript's conversation ID.
     #   Its pattern is `null`, and `is_signed` is `false`.
-    _refuse_turn_at(monkeypatch, stage)
+    _refuse_turn_at(monkeypatch, stage, reason)
+    structured_lines.clear()
 
     await chat_pipeline.run_turn(_TRANSCRIPT, turn.emit)
 
@@ -3614,6 +3628,11 @@ async def test_a_refused_turn_is_recorded_with_the_stage_of_the_refusal(
     assert record["conversation_id"] == _CONVERSATION_ID
     assert record["pattern"] is None
     assert record["is_signed"] is False
+    if stage in {"discovery", "synthesis"}:
+        assert record["tables_fetched"] == 1
+        assert record["total_rows_fetched"] == 2
+    if stage == "discovery":
+        assert record["processing_retries"] == 1
 
 
 @pytest.mark.asyncio
@@ -3621,19 +3640,21 @@ async def test_a_failed_turn_is_recorded_as_an_error(
     monkeypatch: pytest.MonkeyPatch, turn: _Turn, structured_lines: list[str]
 ) -> None:
     # Test: The `chat_turn` record of a failed turn.
-    # Situation: The discovery loop raises `McpLoopError` of type
-    #   `mcp_timeout`.
+    # Situation: The discovery loop caches one table, records one processing
+    #   retry, and then raises `McpLoopError` of type `mcp_timeout`.
     # Expectation: The server writes exactly one record with severity
     #   `ERROR`, the terminal state and the outcome `error`, the reason
-    #   `mcp_timeout`, a `null` refusal stage, and the transcript's
-    #   conversation ID.
+    #   `mcp_timeout`, a `null` refusal stage, the transcript's conversation
+    #   ID, and the counts recorded before the loop failed.
     _install_loop(
         monkeypatch,
         McpLoopError(
             ErrorType.MCP_TIMEOUT,
             "The data request took too long.",
             is_retryable=True,
+            result=DiscoveryResult(processing_retries=1),
         ),
+        _make_table(),
     )
 
     await chat_pipeline.run_turn(_TRANSCRIPT, turn.emit)
@@ -3646,6 +3667,9 @@ async def test_a_failed_turn_is_recorded_as_an_error(
     assert record["refusal_stage"] is None
     assert record["conversation_id"] == _CONVERSATION_ID
     assert record["is_signed"] is False
+    assert record["tables_fetched"] == 1
+    assert record["total_rows_fetched"] == 2
+    assert record["processing_retries"] == 1
 
 
 @pytest.mark.asyncio

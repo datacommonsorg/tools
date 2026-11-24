@@ -184,6 +184,7 @@ _NANOSECONDS_PER_MILLISECOND = 1_000_000
 _MILLISECONDS_PER_SECOND = 1000
 
 _tracer = trace.get_tracer(__name__)
+_logger = logging.getLogger(__name__)
 
 # `_turn_logger` writes each structured record as a bare JSON line. A formatter
 # that prepends a timestamp or level would make Cloud Logging treat the line as
@@ -335,7 +336,9 @@ def write_structured_record(record: StructuredRecord) -> None:
     This function is the only place that serializes a structured record.
     The keys of the line are the fields of `record`, in declaration order.
     The function writes a number that is not finite as `null`, because JSON
-    cannot represent it.
+    cannot represent it. When a serialized line exceeds
+    `MAX_RECORD_LINE_BYTES`, the function logs a warning on the module logger
+    and still writes the line.
 
     Args:
         record: The record to write.
@@ -345,6 +348,14 @@ def write_structured_record(record: StructuredRecord) -> None:
             represent.
     """
     line = json.dumps(json_safe(record), separators=(",", ":"), allow_nan=False)
+    line_bytes = len(line.encode("utf-8"))
+    if line_bytes > MAX_RECORD_LINE_BYTES:
+        _logger.warning(
+            "Structured record %s is %d bytes, over %d bytes",
+            record.event,
+            line_bytes,
+            MAX_RECORD_LINE_BYTES,
+        )
     _turn_logger.info(line)
 
 

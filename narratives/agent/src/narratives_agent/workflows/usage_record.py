@@ -40,7 +40,18 @@ from narratives_agent.workflows.classify import RefusedReason
 from narratives_agent.workflows.transcript import Transcript
 from narratives_agent.workflows.turn_record import TurnRecord
 
-__all__ = ["UsageRecord", "build_usage_record"]
+__all__ = [
+    "CHAT_TURN_EVENT",
+    "CHAT_TURN_SCHEMA_VERSION",
+    "PhaseDuration",
+    "RefusalStage",
+    "TokenCall",
+    "TokenTotals",
+    "ToolCallCount",
+    "TurnOutcome",
+    "UsageRecord",
+    "build_usage_record",
+]
 
 CHAT_TURN_EVENT = "chat_turn"
 # `CHAT_TURN_SCHEMA_VERSION` is the version of the `chat_turn` schema. It
