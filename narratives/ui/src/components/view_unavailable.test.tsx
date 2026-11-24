@@ -22,9 +22,11 @@ import { cleanup, render, screen, within } from '@testing-library/react';
 import { useReducedMotion } from 'motion/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { UnavailableView } from '@/src/components/view_unavailable';
-import { UNAVAILABLE_TITLE } from '@/src/config/copy_chat';
 import { resetInstanceConfigForTests } from '@/src/config/instance_config';
-import { resetRuntimeConfigForTests } from '@/src/config/runtime_config';
+import {
+  DEFAULT_UNAVAILABLE_TITLE,
+  resetRuntimeConfigForTests,
+} from '@/src/config/runtime_config';
 
 /** Visible text of the default unavailable message, Markdown removed. */
 const DEFAULT_MESSAGE_TEXT =
@@ -92,14 +94,35 @@ describe('UnavailableView', () => {
     ).toBeTruthy();
   });
 
-  it('names the note with its title heading', () => {
-    // Test: Title of the unavailable note.
+  it('names the note with its default title heading when none is configured', () => {
+    // Test: Default title of the unavailable note.
     // Situation: The view renders with the default configuration.
-    // Expectation: The note is named by a level-2 heading holding the title.
+    // Expectation: The note is named by a level-2 heading holding the default
+    //   title.
     render(<UnavailableView />);
-    expect(screen.getByRole('note', { name: UNAVAILABLE_TITLE })).toBeTruthy();
+    expect(
+      screen.getByRole('note', { name: DEFAULT_UNAVAILABLE_TITLE }),
+    ).toBeTruthy();
     expect(screen.getByRole('heading', { level: 2 }).textContent).toBe(
-      UNAVAILABLE_TITLE,
+      DEFAULT_UNAVAILABLE_TITLE,
+    );
+  });
+
+  it('names the note with a configured title heading', () => {
+    // Test: Custom title of the unavailable note.
+    // Situation: #runtime-config disables chat with a custom unavailable title.
+    // Expectation: The note is named by a level-2 heading holding the
+    //   configured title.
+    writeSlot('runtime-config', {
+      enable_chat: false,
+      unavailable_title: 'Scheduled maintenance',
+    });
+    render(<UnavailableView />);
+    expect(
+      screen.getByRole('note', { name: 'Scheduled maintenance' }),
+    ).toBeTruthy();
+    expect(screen.getByRole('heading', { level: 2 }).textContent).toBe(
+      'Scheduled maintenance',
     );
   });
 

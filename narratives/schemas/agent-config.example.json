@@ -19,6 +19,7 @@
 
   "chat": {
     "enabled": true,
+    "unavailable_title": "High demand right now",
     "unavailable_message": "Due to high traffic, this feature is temporarily paused. Capacity is being scaled to restore service as quickly as possible. Please try again later, or explore other [tools in Data Commons](https://datacommons.org)."
   },
 

@@ -589,6 +589,7 @@ hosts, and any configured public reCAPTCHA site keys — into
 ```json
 {
   "enable_chat": true,
+  "unavailable_title": "<str>",
   "unavailable_message": "<str>",
   "web_component_url": "<str>",
   "web_component_api_root": "<str>",
@@ -605,9 +606,11 @@ appends one `<script>` before the first render
 (`ui/src/utils/load_web_components.ts`), and chart components wait for each
 custom element with `customElements.whenDefined`. When `enable_chat` is
 `false`, `App` renders `UnavailableView`
-(`ui/src/components/view_unavailable.tsx`) with the unavailable message on the
-Data Agent route instead of the chat, keeps `Header` and `MetricsPage`
-available, and hides the "New chat" controls. Under `pnpm dev:ui`, the Vite dev
-server copies `#runtime-config` from the agent at `AGENT_URL` on page load
+(`ui/src/components/view_unavailable.tsx`) with `unavailable_title` and
+`unavailable_message` on the Data Agent route, marks the background shell
+(`Header`, `Sidebar`, and `MenuDrawer`) `inert` while the portaled note is
+shown, keeps `MetricsPage` (`#/metrics`) interactive when opened by URL, and
+hides the "New chat" controls. Under `pnpm dev:ui`, the Vite dev server copies
+`#runtime-config` from the agent at `AGENT_URL` on page load
 (`ui/src/config/runtime_config_dev.ts`), leaving the element empty with a
 warning when the agent shell cannot be read.

@@ -474,10 +474,11 @@ def get_chat_config() -> ChatConfig:
     """Returns the effective chat availability for the active configuration.
 
     `ENABLE_CHAT` overrides `chat.enabled` in either direction when set, and
-    a non-blank `UNAVAILABLE_MESSAGE` overrides `chat.unavailable_message`;
-    when no configuration is loaded, the overrides apply to `ChatConfig()`.
-    Every reader of chat availability resolves it here, so the HTML shell and
-    the turn lockout apply the same policy.
+    non-blank `UNAVAILABLE_TITLE` and `UNAVAILABLE_MESSAGE` values override
+    `chat.unavailable_title` and `chat.unavailable_message`. When no
+    configuration is loaded, the overrides apply to `ChatConfig()`. Every
+    reader of chat availability resolves it here, so the HTML shell and the
+    turn lockout apply the same policy.
     """
     settings = get_settings()
     config = load_config()
@@ -486,8 +487,13 @@ def get_chat_config() -> ChatConfig:
         base.enabled if settings.enable_chat is None else settings.enable_chat
     )
     # `Settings` strips values and treats a blank variable as unset (`""`).
+    title = settings.unavailable_title or base.unavailable_title
     message = settings.unavailable_message or base.unavailable_message
-    return ChatConfig(enabled=enabled, unavailable_message=message)
+    return ChatConfig(
+        enabled=enabled,
+        unavailable_title=title,
+        unavailable_message=message,
+    )
 
 
 def get_debug_report_mode() -> DebugReportMode:

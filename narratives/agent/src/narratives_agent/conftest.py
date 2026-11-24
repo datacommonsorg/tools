@@ -33,6 +33,7 @@ from narratives_agent.settings import (
     TRANSCRIPT_HMAC_SECRET_ENV,
     TRANSCRIPT_HMAC_SECRET_NAME_ENV,
     UNAVAILABLE_MESSAGE_ENV,
+    UNAVAILABLE_TITLE_ENV,
     get_settings,
 )
 from narratives_agent.workflows.transcript import reset_signing_key
@@ -62,6 +63,7 @@ def clear_settings_cache(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
         TRANSCRIPT_HMAC_SECRET_ENV,
         TRANSCRIPT_HMAC_SECRET_NAME_ENV,
         UNAVAILABLE_MESSAGE_ENV,
+        UNAVAILABLE_TITLE_ENV,
     ):
         monkeypatch.delenv(var, raising=False)
     get_settings.cache_clear()

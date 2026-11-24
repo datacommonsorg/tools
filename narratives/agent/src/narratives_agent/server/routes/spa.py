@@ -203,18 +203,19 @@ def build_content_security_policy(settings: Settings) -> str:
 def _serialize_runtime_config(settings: Settings) -> bytes:
     """Returns the runtime settings JSON, escaped for a `<script>` element.
 
-    Serializes the chat availability (`enable_chat`, `unavailable_message`),
-    the chart hosts (`web_component_url`, `web_component_api_root`), and any
-    non-empty public reCAPTCHA site keys (`recaptcha_session_site_key`,
-    `recaptcha_checkbox_site_key`); nothing else from the configuration reaches
-    the page. The chart hosts and reCAPTCHA keys come from `settings`, the
-    `Settings` instance that the application was built with, so they stay fixed
-    for the life of the process and match the Content-Security-Policy built
-    from the same instance.
+    Serializes the chat availability (`enable_chat`, `unavailable_title`,
+    `unavailable_message`), the chart hosts (`web_component_url`,
+    `web_component_api_root`), and any non-empty public reCAPTCHA site keys
+    (`recaptcha_session_site_key`, `recaptcha_checkbox_site_key`). Nothing else
+    from the configuration reaches the page. The chart hosts and reCAPTCHA keys
+    come from `settings`, the `Settings` instance that the application was
+    built with, so they stay fixed for the life of the process and match the
+    Content-Security-Policy built from the same instance.
     """
     chat = get_chat_config()
     payload: dict[str, object] = {
         "enable_chat": chat.enabled,
+        "unavailable_title": chat.unavailable_title,
         "unavailable_message": chat.unavailable_message,
         "web_component_url": settings.dc_web_component_url,
         "web_component_api_root": settings.dc_web_component_api_root,

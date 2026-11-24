@@ -27,8 +27,6 @@ export const DATA_GAPS_HEADING = 'Data gaps';
 /** Label of the inline button that resubmits a retryable failed turn's query. */
 export const RETRY_LABEL = 'Try again';
 
-/** Title of the note the Data Agent route shows while chat is disabled. */
-export const UNAVAILABLE_TITLE = 'High demand right now';
 /** Label of the button at the end of finished reasoning that collapses it. */
 export const CLOSE_REASONING_LABEL = 'Close reasoning details';
 

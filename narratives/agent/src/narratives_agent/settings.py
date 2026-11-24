@@ -53,6 +53,7 @@ TRANSCRIPT_HMAC_SECRET_NAME_ENV = "TRANSCRIPT_HMAC_SECRET_NAME"
 
 # Environment variable names of the chat availability overrides.
 ENABLE_CHAT_ENV = "ENABLE_CHAT"
+UNAVAILABLE_TITLE_ENV = "UNAVAILABLE_TITLE"
 UNAVAILABLE_MESSAGE_ENV = "UNAVAILABLE_MESSAGE"
 
 # Environment variable name of the debug report mode override.
@@ -387,6 +388,10 @@ class Settings(BaseSettings):
     # `chat_disabled` before making any Gemini or MCP calls, which makes this
     # an application-level emergency off switch.
     enable_chat: _OptionalEnvBool = None
+
+    # When set, overrides `chat.unavailable_title` in agent-config.json,
+    # the heading of the unavailable note while chat is disabled.
+    unavailable_title: str = ""
 
     # When set, overrides `chat.unavailable_message` in agent-config.json,
     # the message of a turn while chat is disabled.

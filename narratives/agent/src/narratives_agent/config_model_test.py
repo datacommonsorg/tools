@@ -27,7 +27,8 @@ Covers the per-field rules the parser applies to a configuration document:
 6. Unknown keys are ignored without a warning.
 7. The `chat` section fails closed: a section that is not an object, or a
    `chat.enabled` that is not a boolean, disables chat with one error, and
-   an unusable `chat.unavailable_message` gives the default with a warning.
+   an unusable `chat.unavailable_title` or `chat.unavailable_message` gives
+   its default with a warning.
 8. The `debug` section fails closed: a section that is not an object, or a
    `debug.report` that is not `off`, `on`, or `flag` after stripping and
    lowercasing, turns the debug report off with one error.
@@ -50,6 +51,7 @@ from narratives_agent.config_model import (
     DEFAULT_GEMINI_CLASSIFY_MODEL,
     DEFAULT_GEMINI_MODEL,
     DEFAULT_UNAVAILABLE_MESSAGE,
+    DEFAULT_UNAVAILABLE_TITLE,
     AgentConfig,
     ChatConfig,
     DebugConfig,
@@ -670,13 +672,15 @@ def test_an_absent_chat_section_enables_chat(
 ) -> None:
     # Test: Defaults of the `chat` section in `parse_agent_config`.
     # Situation: The document has no `chat` key, or an empty `chat` object.
-    # Expectation: Chat is enabled with `DEFAULT_UNAVAILABLE_MESSAGE`, and
-    #   nothing is logged.
+    # Expectation: Chat is enabled with `DEFAULT_UNAVAILABLE_TITLE` and
+    #   `DEFAULT_UNAVAILABLE_MESSAGE`, and nothing is logged.
     with caplog.at_level(logging.WARNING):
         parsed = parse_agent_config(document)
 
     assert parsed.chat == ChatConfig(
-        enabled=True, unavailable_message=DEFAULT_UNAVAILABLE_MESSAGE
+        enabled=True,
+        unavailable_title=DEFAULT_UNAVAILABLE_TITLE,
+        unavailable_message=DEFAULT_UNAVAILABLE_MESSAGE,
     )
     assert _warnings(caplog) == []
     assert _list_errors(caplog) == []
@@ -684,15 +688,23 @@ def test_an_absent_chat_section_enables_chat(
 
 def test_configured_chat_values_are_carried_through() -> None:
     # Test: A fully populated `chat` section in `parse_agent_config`.
-    # Situation: `chat.enabled` is `False` and `chat.unavailable_message` is
-    #   a custom message padded with whitespace.
-    # Expectation: Chat is disabled and the message is stripped.
+    # Situation: `chat.enabled` is `False` and `chat.unavailable_title` and
+    #   `chat.unavailable_message` are custom values padded with whitespace.
+    # Expectation: Chat is disabled and both strings are stripped.
     parsed = parse_agent_config(
-        {"chat": {"enabled": False, "unavailable_message": " Back at noon. "}}
+        {
+            "chat": {
+                "enabled": False,
+                "unavailable_title": " Scheduled maintenance ",
+                "unavailable_message": " Back at noon. ",
+            }
+        }
     )
 
     assert parsed.chat == ChatConfig(
-        enabled=False, unavailable_message="Back at noon."
+        enabled=False,
+        unavailable_title="Scheduled maintenance",
+        unavailable_message="Back at noon.",
     )
 
 
@@ -706,8 +718,9 @@ def test_a_chat_section_of_the_wrong_type_disables_chat(
 ) -> None:
     # Test: Fail-closed handling of a `chat` section that is not an object.
     # Situation: `chat` is `false`, a string, null, or a list.
-    # Expectation: Chat is disabled with `DEFAULT_UNAVAILABLE_MESSAGE`, and
-    #   exactly one error names the `chat` key.
+    # Expectation: Chat is disabled with `DEFAULT_UNAVAILABLE_TITLE` and
+    #   `DEFAULT_UNAVAILABLE_MESSAGE`, and exactly one error names the `chat`
+    #   key.
     with caplog.at_level(logging.WARNING):
         parsed = parse_agent_config({"chat": value})
 
@@ -740,6 +753,32 @@ def test_a_non_boolean_chat_enabled_disables_chat(
     )
     assert [
         "'chat.enabled'" in message for message in _list_errors(caplog)
+    ] == [True]
+
+
+@pytest.mark.parametrize(
+    "value",
+    ["", "   ", 123, None],
+    ids=["empty", "whitespace", "int", "null"],
+)
+def test_an_unusable_unavailable_title_gives_the_default(
+    caplog: pytest.LogCaptureFixture, value: object
+) -> None:
+    # Test: Fallback of `chat.unavailable_title` in `parse_agent_config`.
+    # Situation: `chat.unavailable_title` is empty, whitespace-only, an
+    #   integer, or null.
+    # Expectation: The title is `DEFAULT_UNAVAILABLE_TITLE`, chat stays
+    #   enabled, and exactly one warning names `chat.unavailable_title`.
+    with caplog.at_level(logging.WARNING):
+        parsed = parse_agent_config({"chat": {"unavailable_title": value}})
+
+    assert parsed.chat == ChatConfig(
+        enabled=True,
+        unavailable_title=DEFAULT_UNAVAILABLE_TITLE,
+        unavailable_message=DEFAULT_UNAVAILABLE_MESSAGE,
+    )
+    assert [
+        "'chat.unavailable_title'" in message for message in _warnings(caplog)
     ] == [True]
 
 

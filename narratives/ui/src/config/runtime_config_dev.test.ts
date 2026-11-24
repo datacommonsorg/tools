@@ -23,6 +23,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   DEFAULT_RUNTIME_CONFIG,
   DEFAULT_UNAVAILABLE_MESSAGE,
+  DEFAULT_UNAVAILABLE_TITLE,
 } from '@/src/config/runtime_config';
 import {
   copyAgentRuntimeConfig,
@@ -113,23 +114,24 @@ describe('copyAgentRuntimeConfig', () => {
   it.each([
     false,
     true,
-  ])('copies enable_chat %s and the message from the agent shell', async (isChatEnabled) => {
+  ])('copies enable_chat %s and the title and message from the agent shell', async (isChatEnabled) => {
     // Test: Agent with chat disabled or enabled.
-    // Situation: The agent shell is stamped with the given `enable_chat` and
-    //   a custom message.
+    // Situation: The agent shell is stamped with the given `enable_chat`, a
+    //   custom title, and a custom message.
     // Expectation: The empty slot in the Vite page receives the same values,
     //   and the agent shell URL is the one requested.
     stubShellResponse(
       buildAgentShell(
         JSON.stringify({
           enable_chat: isChatEnabled,
+          unavailable_title: 'Maintenance',
           unavailable_message: 'Paused',
         }),
       ),
     );
     const stamped = await copyAgentRuntimeConfig(EMPTY_SLOT, SHELL_URL);
     expect(stamped).toBe(
-      `<script id="runtime-config" type="application/json">{"enable_chat":${isChatEnabled},"unavailable_message":"Paused"}</script>`,
+      `<script id="runtime-config" type="application/json">{"enable_chat":${isChatEnabled},"unavailable_title":"Maintenance","unavailable_message":"Paused"}</script>`,
     );
     expect(vi.mocked(fetch).mock.calls[0][0]).toBe(SHELL_URL);
   });
@@ -151,22 +153,23 @@ describe('copyAgentRuntimeConfig', () => {
     );
     const stamped = await copyAgentRuntimeConfig(EMPTY_SLOT, SHELL_URL);
     expect(stamped).toBe(
-      '<script id="runtime-config" type="application/json">{"enable_chat":true,"unavailable_message":"Paused","web_component_url":"https://autopush.datacommons.org/datacommons.js","web_component_api_root":"https://autopush.datacommons.org"}</script>',
+      `<script id="runtime-config" type="application/json">{"enable_chat":true,"unavailable_title":"${DEFAULT_UNAVAILABLE_TITLE}","unavailable_message":"Paused","web_component_url":"https://autopush.datacommons.org/datacommons.js","web_component_api_root":"https://autopush.datacommons.org"}</script>`,
     );
   });
 
-  it('re-escapes the copied message', async () => {
-    // Test: Message with markup and line separator characters.
-    // Situation: The agent shell carries a message holding `<`, `>`, `&`,
-    //   U+2028, and U+2029 inside the text (edge whitespace is trimmed),
-    //   escaped as the agent stamps it.
+  it('re-escapes the copied title and message', async () => {
+    // Test: Title and message with markup and line separator characters.
+    // Situation: The agent shell carries a title and message holding `<`, `>`,
+    //   `&`, U+2028, and U+2029 inside the text (edge whitespace is trimmed),
+    //   escaped as the agent stamps them.
     // Expectation: The Vite page carries the same `\u` escapes.
     stubShellResponse(
       buildAgentShell(
-        '{"enable_chat":false,"unavailable_message":"\\u003cb\\u003e\\u2028\\u0026\\u2029x"}',
+        '{"enable_chat":false,"unavailable_title":"\\u003cb\\u003e\\u0026t","unavailable_message":"\\u003cb\\u003e\\u2028\\u0026\\u2029x"}',
       ),
     );
     const stamped = await copyAgentRuntimeConfig(EMPTY_SLOT, SHELL_URL);
+    expect(stamped).toContain('"unavailable_title":"\\u003cb\\u003e\\u0026t"');
     expect(stamped).toContain(
       '"unavailable_message":"\\u003cb\\u003e\\u2028\\u0026\\u2029x"',
     );
@@ -176,12 +179,12 @@ describe('copyAgentRuntimeConfig', () => {
     // Test: Agent shell with malformed JSON in its slot.
     // Situation: The stamped text is not valid JSON.
     // Expectation: The Vite page is stamped with chat disabled and the
-    //   default message, and a warning is logged.
+    //   default title and message, and a warning is logged.
     const warn = spyOnWarn();
     stubShellResponse(buildAgentShell('{"enable_chat": '));
     const stamped = await copyAgentRuntimeConfig(EMPTY_SLOT, SHELL_URL);
     expect(stamped).toBe(
-      `<script id="runtime-config" type="application/json">{"enable_chat":false,"unavailable_message":"${DEFAULT_UNAVAILABLE_MESSAGE}"}</script>`,
+      `<script id="runtime-config" type="application/json">{"enable_chat":false,"unavailable_title":"${DEFAULT_UNAVAILABLE_TITLE}","unavailable_message":"${DEFAULT_UNAVAILABLE_MESSAGE}"}</script>`,
     );
     expect(warn).toHaveBeenCalledTimes(1);
   });
@@ -298,44 +301,56 @@ describe('stampRuntimeConfigHtml', () => {
       stampRuntimeConfigHtml(html, {
         ...DEFAULT_RUNTIME_CONFIG,
         isChatEnabled: false,
+        unavailableTitle: 'Maintenance',
         unavailableMessage: 'Paused',
         webComponentUrl: 'https://autopush.datacommons.org/datacommons.js',
         webComponentApiRoot: 'https://autopush.datacommons.org',
       }),
     ).toBe(
-      '<head><script id="runtime-config" type="application/json">{"enable_chat":false,"unavailable_message":"Paused","web_component_url":"https://autopush.datacommons.org/datacommons.js","web_component_api_root":"https://autopush.datacommons.org"}</script></head>',
+      '<head><script id="runtime-config" type="application/json">{"enable_chat":false,"unavailable_title":"Maintenance","unavailable_message":"Paused","web_component_url":"https://autopush.datacommons.org/datacommons.js","web_component_api_root":"https://autopush.datacommons.org"}</script></head>',
     );
   });
 
   it('escapes characters that could end the element or a JavaScript string', () => {
-    // Test: Message with markup and line separator characters.
-    // Situation: The message holds `<`, `>`, `&`, U+2028, and U+2029.
+    // Test: Title and message with markup and line separator characters.
+    // Situation: Both strings hold `<`, `>`, `&`, U+2028, and U+2029.
     // Expectation: Each is written as its `\u` escape, and the payload still
-    //   parses back to the original message.
+    //   parses back to the original title and message.
+    const title = '</script><i>&\u2028\u2029';
     const message = '</script><b>&\u2028\u2029';
     const stamped = stampRuntimeConfigHtml(EMPTY_SLOT, {
       ...DEFAULT_RUNTIME_CONFIG,
       isChatEnabled: false,
+      unavailableTitle: title,
       unavailableMessage: message,
     });
+    expect(stamped).toContain(
+      '"unavailable_title":"\\u003c/script\\u003e\\u003ci\\u003e\\u0026\\u2028\\u2029"',
+    );
     expect(stamped).toContain(
       '"unavailable_message":"\\u003c/script\\u003e\\u003cb\\u003e\\u0026\\u2028\\u2029"',
     );
     const payload = stamped
       .replace('<script id="runtime-config" type="application/json">', '')
       .replace(/<\/script>$/, '');
-    expect(JSON.parse(payload).unavailable_message).toBe(message);
+    const parsed = JSON.parse(payload);
+    expect(parsed.unavailable_title).toBe(title);
+    expect(parsed.unavailable_message).toBe(message);
   });
 
-  it('keeps dollar sequences in the message literal', () => {
-    // Test: Message with `String.prototype.replace` substitution patterns.
-    // Situation: The message holds `$$`, `` $` ``, and `$'`.
+  it('keeps dollar sequences in the title and message literals', () => {
+    // Test: Title and message with `String.prototype.replace` patterns.
+    // Situation: Both strings hold `$$`, `` $` ``, and `$'`.
     // Expectation: The sequences appear verbatim in the stamped JSON.
     const stamped = stampRuntimeConfigHtml(EMPTY_SLOT, {
       ...DEFAULT_RUNTIME_CONFIG,
       isChatEnabled: false,
+      unavailableTitle: "Heading $$ and $` and $'",
       unavailableMessage: "Costs $$ and $` and $'",
     });
+    expect(stamped).toContain(
+      '"unavailable_title":"Heading $$ and $` and $\'"',
+    );
     expect(stamped).toContain(
       '"unavailable_message":"Costs $$ and $` and $\'"',
     );
@@ -380,6 +395,7 @@ describe('stampRuntimeConfigHtml', () => {
       .replace(/<\/script>$/, '');
     expect(JSON.parse(payload)).toEqual({
       enable_chat: true,
+      unavailable_title: DEFAULT_UNAVAILABLE_TITLE,
       unavailable_message: DEFAULT_UNAVAILABLE_MESSAGE,
       recaptcha_session_site_key: '6Lc_session',
       recaptcha_checkbox_site_key: '6Lc_checkbox',
@@ -418,6 +434,7 @@ describe('copyAgentRuntimeConfig with fallback dev reCAPTCHA keys', () => {
       .replace(/<\/script>$/, '');
     expect(JSON.parse(payload)).toEqual({
       enable_chat: true,
+      unavailable_title: DEFAULT_UNAVAILABLE_TITLE,
       unavailable_message: DEFAULT_UNAVAILABLE_MESSAGE,
       recaptcha_session_site_key: 'agent_session',
       recaptcha_checkbox_site_key: 'env_checkbox',
@@ -492,7 +509,7 @@ describe('copyAgentRuntimeConfig with fallback dev reCAPTCHA keys', () => {
     });
     expect(warn).toHaveBeenCalledTimes(1);
     expect(stamped).toBe(
-      `<script id="runtime-config" type="application/json">{"enable_chat":false,"unavailable_message":"${DEFAULT_UNAVAILABLE_MESSAGE}"}</script>`,
+      `<script id="runtime-config" type="application/json">{"enable_chat":false,"unavailable_title":"${DEFAULT_UNAVAILABLE_TITLE}","unavailable_message":"${DEFAULT_UNAVAILABLE_MESSAGE}"}</script>`,
     );
   });
 });

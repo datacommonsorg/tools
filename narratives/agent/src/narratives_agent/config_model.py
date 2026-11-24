@@ -55,6 +55,11 @@ DEFAULT_GEMINI_CLASSIFY_MODEL = "gemini-3.5-flash-lite"
 # `"default"` that `schemas/agent-config.schema.json` declares for both keys.
 DEFAULT_THINKING_LEVEL = types.ThinkingLevel.MEDIUM
 
+# Heading of the unavailable note when `chat.unavailable_title` is absent,
+# blank, or not a string. It matches the `"default"` that
+# `schemas/agent-config.schema.json` declares for the key.
+DEFAULT_UNAVAILABLE_TITLE = "High demand right now"
+
 # Message of a disabled chat turn when `chat.unavailable_message` is absent,
 # blank, or not a string. It matches the `"default"` that
 # `schemas/agent-config.schema.json` declares for the key.
@@ -217,11 +222,14 @@ class ChatConfig:
     """Holds the `chat` section: chat availability settings.
 
     `enabled` set to `False` ends every chat turn with a `chat_disabled`
-    error carrying `unavailable_message`. `get_chat_config` in `config.py`
-    applies the environment overrides to these values.
+    error carrying `unavailable_message`, and the HTML shell stamps
+    `unavailable_title` and `unavailable_message` for the unavailable view.
+    `get_chat_config` in `config.py` applies the environment overrides to
+    these values.
     """
 
     enabled: bool = True
+    unavailable_title: str = DEFAULT_UNAVAILABLE_TITLE
     unavailable_message: str = DEFAULT_UNAVAILABLE_MESSAGE
 
 
@@ -421,24 +429,24 @@ def _read_chat_enabled(chat: Mapping[str, Any]) -> bool:
     return False
 
 
-def _read_unavailable_message(chat: Mapping[str, Any]) -> str:
-    """Returns `chat.unavailable_message`, stripped, or the default message.
+def _read_non_blank_chat_string(
+    chat: Mapping[str, Any], key: str, default: str
+) -> str:
+    """Returns `chat.<key>`, stripped, or `default` when absent or unusable.
 
-    A blank message is reported and replaced by
-    `DEFAULT_UNAVAILABLE_MESSAGE`, like a message of the wrong type, because
-    a disabled turn always carries text for the reader.
+    A blank string is reported and replaced by `default`, like a value of the
+    wrong type, because the unavailable view and disabled turns always carry
+    text for the reader.
     """
-    message = _read_string(
-        chat, "chat", "unavailable_message", DEFAULT_UNAVAILABLE_MESSAGE
-    ).strip()
-    if message:
-        return message
+    value = _read_string(chat, "chat", key, default).strip()
+    if value:
+        return value
     logger.warning(
         "Agent configuration key %r is blank; using %r",
-        "chat.unavailable_message",
-        DEFAULT_UNAVAILABLE_MESSAGE,
+        f"chat.{key}",
+        default,
     )
-    return DEFAULT_UNAVAILABLE_MESSAGE
+    return default
 
 
 def _read_chat_config(document: Mapping[str, Any]) -> ChatConfig:
@@ -458,7 +466,12 @@ def _read_chat_config(document: Mapping[str, Any]) -> ChatConfig:
         return ChatConfig(enabled=False)
     return ChatConfig(
         enabled=_read_chat_enabled(chat),
-        unavailable_message=_read_unavailable_message(chat),
+        unavailable_title=_read_non_blank_chat_string(
+            chat, "unavailable_title", DEFAULT_UNAVAILABLE_TITLE
+        ),
+        unavailable_message=_read_non_blank_chat_string(
+            chat, "unavailable_message", DEFAULT_UNAVAILABLE_MESSAGE
+        ),
     )
 
 

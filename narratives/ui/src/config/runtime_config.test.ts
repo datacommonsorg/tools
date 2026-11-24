@@ -23,6 +23,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   DEFAULT_RUNTIME_CONFIG,
   DEFAULT_UNAVAILABLE_MESSAGE,
+  DEFAULT_UNAVAILABLE_TITLE,
   getRuntimeConfig,
   resetRuntimeConfigForTests,
 } from '@/src/config/runtime_config';
@@ -78,18 +79,23 @@ describe('getRuntimeConfig', () => {
     expect(warn).not.toHaveBeenCalled();
   });
 
-  it('reads the stamped availability and message', () => {
+  it('reads the stamped availability, title, and message', () => {
     // Test: Payload stamped by the agent server with chat disabled.
-    // Situation: The element holds `enable_chat: false` and a custom message
-    //   with surrounding whitespace.
-    // Expectation: Chat is disabled, the message is trimmed, and nothing is
-    //   logged.
+    // Situation: The element holds `enable_chat: false`, a custom title, and
+    //   a custom message with surrounding whitespace.
+    // Expectation: Chat is disabled, the title and message are trimmed, and
+    //   nothing is logged.
     const warn = spyOnWarn();
     writeRuntimeConfigSlot(
-      JSON.stringify({ enable_chat: false, unavailable_message: ' Custom ' }),
+      JSON.stringify({
+        enable_chat: false,
+        unavailable_title: ' Scheduled maintenance ',
+        unavailable_message: ' Custom ',
+      }),
     );
     expect(getRuntimeConfig()).toEqual({
       isChatEnabled: false,
+      unavailableTitle: 'Scheduled maintenance',
       unavailableMessage: 'Custom',
       ...EMPTY_OPTIONAL_SETTINGS,
     });
@@ -99,8 +105,8 @@ describe('getRuntimeConfig', () => {
   it('applies the defaults to omitted fields', () => {
     // Test: Payload that is an empty JSON object.
     // Situation: The element holds `{}`.
-    // Expectation: Chat is enabled with the default message and empty chart
-    //   hosts, without a warning.
+    // Expectation: Chat is enabled with the default title and message and
+    //   empty chart hosts, without a warning.
     const warn = spyOnWarn();
     writeRuntimeConfigSlot('{}');
     expect(getRuntimeConfig()).toEqual(DEFAULT_RUNTIME_CONFIG);
@@ -110,12 +116,13 @@ describe('getRuntimeConfig', () => {
   it('fails closed and warns on malformed JSON', () => {
     // Test: Malformed JSON in the runtime-config element.
     // Situation: The element holds invalid JSON syntax.
-    // Expectation: Chat is disabled with the default message, chart hosts
-    //   remain empty, and one warning is logged.
+    // Expectation: Chat is disabled with the default title and message, chart
+    //   hosts remain empty, and one warning is logged.
     const warn = spyOnWarn();
     writeRuntimeConfigSlot('{"enable_chat": ');
     expect(getRuntimeConfig()).toEqual({
       isChatEnabled: false,
+      unavailableTitle: DEFAULT_UNAVAILABLE_TITLE,
       unavailableMessage: DEFAULT_UNAVAILABLE_MESSAGE,
       ...EMPTY_OPTIONAL_SETTINGS,
     });
@@ -130,12 +137,13 @@ describe('getRuntimeConfig', () => {
   ])('fails closed and warns when the JSON %s is not an object', (text) => {
     // Test: Valid JSON that is not an object.
     // Situation: The element holds an array, a string, a boolean, or null.
-    // Expectation: Chat is disabled with the default message, chart hosts
-    //   remain empty, and one warning is logged.
+    // Expectation: Chat is disabled with the default title and message, chart
+    //   hosts remain empty, and one warning is logged.
     const warn = spyOnWarn();
     writeRuntimeConfigSlot(text);
     expect(getRuntimeConfig()).toEqual({
       isChatEnabled: false,
+      unavailableTitle: DEFAULT_UNAVAILABLE_TITLE,
       unavailableMessage: DEFAULT_UNAVAILABLE_MESSAGE,
       ...EMPTY_OPTIONAL_SETTINGS,
     });
@@ -165,6 +173,30 @@ describe('getRuntimeConfig', () => {
     '   ',
     42,
     null,
+  ])('falls back to the default title and names the key when unavailable_title is %j', (value) => {
+    // Test: An `unavailable_title` that is blank or not a string.
+    // Situation: The element holds chat disabled and an unusable title.
+    // Expectation: The default title applies, chat stays disabled, and one
+    //   warning names "unavailable_title".
+    const warn = spyOnWarn();
+    writeRuntimeConfigSlot(
+      JSON.stringify({ enable_chat: false, unavailable_title: value }),
+    );
+    expect(getRuntimeConfig()).toEqual({
+      isChatEnabled: false,
+      unavailableTitle: DEFAULT_UNAVAILABLE_TITLE,
+      unavailableMessage: DEFAULT_UNAVAILABLE_MESSAGE,
+      ...EMPTY_OPTIONAL_SETTINGS,
+    });
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(String(warn.mock.calls[0][0])).toContain('"unavailable_title"');
+  });
+
+  it.each([
+    '',
+    '   ',
+    42,
+    null,
   ])('falls back to the default message and names the key when unavailable_message is %j', (value) => {
     // Test: An `unavailable_message` that is blank or not a string.
     // Situation: The element holds chat disabled and an unusable message.
@@ -176,6 +208,7 @@ describe('getRuntimeConfig', () => {
     );
     expect(getRuntimeConfig()).toEqual({
       isChatEnabled: false,
+      unavailableTitle: DEFAULT_UNAVAILABLE_TITLE,
       unavailableMessage: DEFAULT_UNAVAILABLE_MESSAGE,
       ...EMPTY_OPTIONAL_SETTINGS,
     });

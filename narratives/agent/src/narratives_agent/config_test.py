@@ -36,8 +36,9 @@ Covers eight configuration behaviors in `config`:
 6. The `YYYY-MM-DD` date `get_current_date` returns in the `TIMEZONE` zone,
    its fallback to `UTC` when `TIMEZONE` cannot be resolved, and the date
    `pin_current_date` pins for its context.
-7. `get_chat_config` applying `ENABLE_CHAT` and `UNAVAILABLE_MESSAGE` to the
-   loaded `chat` section, or to the defaults when none is loaded.
+7. `get_chat_config` applying `ENABLE_CHAT`, `UNAVAILABLE_TITLE`, and
+   `UNAVAILABLE_MESSAGE` to the loaded `chat` section, or to the defaults
+   when none is loaded.
 8. `get_debug_report_mode` applying `DEBUG_REPORT` to the loaded `debug`
    section, or to the defaults when none is loaded.
 """
@@ -69,6 +70,7 @@ from narratives_agent.settings import (
     ENABLE_CHAT_ENV,
     GEMINI_API_KEY_SECRET_ENV,
     UNAVAILABLE_MESSAGE_ENV,
+    UNAVAILABLE_TITLE_ENV,
 )
 
 
@@ -975,7 +977,11 @@ def test_load_config_reports_a_value_of_the_wrong_type_once(
 
 
 _CLOSED_CONFIG = AgentConfig(
-    chat=ChatConfig(enabled=False, unavailable_message="Closed.")
+    chat=ChatConfig(
+        enabled=False,
+        unavailable_title="Maintenance",
+        unavailable_message="Closed.",
+    )
 )
 
 
@@ -985,13 +991,21 @@ _CLOSED_CONFIG = AgentConfig(
         pytest.param(
             _CLOSED_CONFIG,
             {},
-            ChatConfig(enabled=False, unavailable_message="Closed."),
+            ChatConfig(
+                enabled=False,
+                unavailable_title="Maintenance",
+                unavailable_message="Closed.",
+            ),
             id="unset keeps configuration",
         ),
         pytest.param(
             _CLOSED_CONFIG,
             {ENABLE_CHAT_ENV: "true"},
-            ChatConfig(enabled=True, unavailable_message="Closed."),
+            ChatConfig(
+                enabled=True,
+                unavailable_title="Maintenance",
+                unavailable_message="Closed.",
+            ),
             id="ENABLE_CHAT=true overrides disabled configuration",
         ),
         pytest.param(
@@ -1002,14 +1016,42 @@ _CLOSED_CONFIG = AgentConfig(
         ),
         pytest.param(
             _CLOSED_CONFIG,
+            {UNAVAILABLE_TITLE_ENV: " Paused "},
+            ChatConfig(
+                enabled=False,
+                unavailable_title="Paused",
+                unavailable_message="Closed.",
+            ),
+            id="UNAVAILABLE_TITLE overrides configuration",
+        ),
+        pytest.param(
+            _CLOSED_CONFIG,
+            {UNAVAILABLE_TITLE_ENV: "   "},
+            ChatConfig(
+                enabled=False,
+                unavailable_title="Maintenance",
+                unavailable_message="Closed.",
+            ),
+            id="blank UNAVAILABLE_TITLE keeps configuration",
+        ),
+        pytest.param(
+            _CLOSED_CONFIG,
             {UNAVAILABLE_MESSAGE_ENV: " Back soon. "},
-            ChatConfig(enabled=False, unavailable_message="Back soon."),
+            ChatConfig(
+                enabled=False,
+                unavailable_title="Maintenance",
+                unavailable_message="Back soon.",
+            ),
             id="UNAVAILABLE_MESSAGE overrides configuration",
         ),
         pytest.param(
             _CLOSED_CONFIG,
             {UNAVAILABLE_MESSAGE_ENV: "   "},
-            ChatConfig(enabled=False, unavailable_message="Closed."),
+            ChatConfig(
+                enabled=False,
+                unavailable_title="Maintenance",
+                unavailable_message="Closed.",
+            ),
             id="blank UNAVAILABLE_MESSAGE keeps configuration",
         ),
         pytest.param(
@@ -1020,8 +1062,16 @@ _CLOSED_CONFIG = AgentConfig(
         ),
         pytest.param(
             None,
-            {ENABLE_CHAT_ENV: "false", UNAVAILABLE_MESSAGE_ENV: "Back soon."},
-            ChatConfig(enabled=False, unavailable_message="Back soon."),
+            {
+                ENABLE_CHAT_ENV: "false",
+                UNAVAILABLE_TITLE_ENV: "Maintenance",
+                UNAVAILABLE_MESSAGE_ENV: "Back soon.",
+            },
+            ChatConfig(
+                enabled=False,
+                unavailable_title="Maintenance",
+                unavailable_message="Back soon.",
+            ),
             id="no configuration with overrides",
         ),
     ],
@@ -1034,12 +1084,12 @@ def test_get_chat_config_applies_the_environment_to_the_loaded_config(
 ) -> None:
     # Test: Override precedence in `get_chat_config`.
     # Situation: The loaded configuration enables or disables chat, or no
-    #   configuration is loaded, and `ENABLE_CHAT` and `UNAVAILABLE_MESSAGE`
-    #   are unset, blank, or set.
+    #   configuration is loaded, and `ENABLE_CHAT`, `UNAVAILABLE_TITLE`, and
+    #   `UNAVAILABLE_MESSAGE` are unset, blank, or set.
     # Expectation: An explicit `ENABLE_CHAT` replaces `chat.enabled` in
-    #   either direction and an unset one keeps it; a non-blank message
-    #   replaces `chat.unavailable_message` after stripping and a blank one
-    #   keeps it; without a configuration the overrides apply to
+    #   either direction and an unset one keeps it; non-blank title and
+    #   message overrides replace their config values after stripping and
+    #   blank ones keep them; without a configuration the overrides apply to
     #   `ChatConfig()`.
     _with_config(monkeypatch, loaded)
     for name, value in env.items():

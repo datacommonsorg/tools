@@ -16,14 +16,14 @@
 
 /**
  * @fileoverview Renders the Data Agent route while chat is disabled: the
- * landing heading and the configured unavailable message, with no prompt.
+ * landing heading and the configured unavailable title and message, with no
+ * prompt.
  */
 
 import { domAnimation, LazyMotion, m, useReducedMotion } from 'motion/react';
 import { useId } from 'react';
 import { createPortal } from 'react-dom';
 import { MessageText } from '@/src/components/text_message';
-import { UNAVAILABLE_TITLE } from '@/src/config/copy_chat';
 import { getInstanceConfig } from '@/src/config/instance_config';
 import {
   INTRO_CASCADE_VARIANTS,
@@ -33,14 +33,14 @@ import { getRuntimeConfig } from '@/src/config/runtime_config';
 
 /**
  * Unavailable view: the landing view's heading and tagline under a scrim,
- * with the configured unavailable message centered over it like a modal
- * window. It sends no requests; its only controls are links in the
+ * with the configured unavailable title and message centered over it like a
+ * modal window. It sends no requests; its only controls are links in the
  * message. The app shell is `inert` while this view shows, so the layer is
  * portaled to `<body>`.
  */
 export function UnavailableView() {
   const { headline, tagline } = getInstanceConfig();
-  const { unavailableMessage } = getRuntimeConfig();
+  const { unavailableTitle, unavailableMessage } = getRuntimeConfig();
   const shouldReduceMotion = useReducedMotion();
   const titleId = useId();
 
@@ -84,7 +84,7 @@ export function UnavailableView() {
                   id={titleId}
                   className="text-headline-large-emphasized text-headline"
                 >
-                  {UNAVAILABLE_TITLE}
+                  {unavailableTitle}
                 </h2>
                 <p className="text-headline-small text-on-surface-variant">
                   <MessageText message={unavailableMessage} />

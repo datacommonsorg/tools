@@ -32,7 +32,7 @@ styles.
   `<script id="instance-config" type="application/json">` and falls back to the
   Base Data Commons defaults when the tag is empty.
 - **Runtime settings come from `#runtime-config`** in `index.html`.
-  Components read the chat availability (`isChatEnabled`,
+  Components read the chat availability (`isChatEnabled`, `unavailableTitle`,
   `unavailableMessage`), chart hosts (`webComponentUrl`,
   `webComponentApiRoot`), and optional reCAPTCHA Enterprise site keys
   (`recaptchaSessionSiteKey`, `recaptchaCheckboxSiteKey`) synchronously via
