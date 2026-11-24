@@ -25,14 +25,11 @@ Verifies that `DailyTokenBudget` and its process accessor:
    reset cleanly via `reset_daily_token_budget`.
 """
 
-import json
-import logging
-from collections.abc import Iterator
 from datetime import date
 
 import pytest
 
-from narratives_agent import telemetry
+from narratives_agent import token_budget
 from narratives_agent.settings import (
     DAILY_TOKEN_BUDGET_PER_INSTANCE_ENV,
     get_settings,
@@ -47,29 +44,27 @@ from narratives_agent.token_budget import (
 _DAY_ONE = date(2026, 11, 20)
 _DAY_TWO = date(2026, 11, 21)
 
-
-class _RecordCollector(logging.Handler):
-    """Collects JSON lines emitted on the telemetry logger."""
-
-    def __init__(self) -> None:
-        super().__init__()
-        self.records: list[dict[str, object]] = []
-
-    def emit(self, record: logging.LogRecord) -> None:
-        self.records.append(json.loads(record.getMessage()))
+type _BudgetEvent = tuple[BudgetEventState, int, int, str]
 
 
 @pytest.fixture
-def budget_records() -> Iterator[list[dict[str, object]]]:
-    """Captures structured `daily_token_budget` events emitted to stdout."""
-    collector = _RecordCollector()
-    logger = telemetry._turn_logger
-    previous_level = logger.level
-    logger.addHandler(collector)
-    logger.setLevel(logging.INFO)
-    yield collector.records
-    logger.removeHandler(collector)
-    logger.setLevel(previous_level)
+def budget_events(
+    monkeypatch: pytest.MonkeyPatch,
+) -> list[_BudgetEvent]:
+    """Captures `(state, used_tokens, limit_tokens, utc_day)` events."""
+    events: list[_BudgetEvent] = []
+
+    def capture(
+        state: BudgetEventState,
+        *,
+        used_tokens: int,
+        limit_tokens: int,
+        utc_day: str,
+    ) -> None:
+        events.append((state, used_tokens, limit_tokens, utc_day))
+
+    monkeypatch.setattr(token_budget, "record_budget_event", capture)
+    return events
 
 
 @pytest.mark.parametrize("limit", [0, -1, -100])
@@ -83,7 +78,7 @@ def test_non_positive_limit_is_rejected(limit: int) -> None:
 
 
 def test_budget_exhausts_at_exact_limit_and_emits_each_threshold_once(
-    budget_records: list[dict[str, object]],
+    budget_events: list[_BudgetEvent],
 ) -> None:
     # Test: Token accumulation, boundary exhaustion, and once-per-day events.
     # Situation: A 100-token budget records 79 tokens (below warning), 1 token
@@ -95,48 +90,30 @@ def test_budget_exhausts_at_exact_limit_and_emits_each_threshold_once(
 
     budget.record(79)
     assert not budget.is_exhausted()
-    assert budget_records == []
+    assert budget_events == []
 
     budget.record(1)
     assert not budget.is_exhausted()
-    assert budget_records == [
-        {
-            "severity": "WARNING",
-            "message": "daily token budget warning",
-            "event": "daily_token_budget",
-            "state": BudgetEventState.WARNING,
-            "used_tokens": 80,
-            "limit_tokens": 100,
-            "utc_day": "2026-11-20",
-        }
-    ]
+    assert budget_events == [(BudgetEventState.WARNING, 80, 100, "2026-11-20")]
 
     budget.record(19)
     assert not budget.is_exhausted()
-    assert len(budget_records) == 1
+    assert len(budget_events) == 1
 
     budget.record(1)
     assert budget.is_exhausted()
-    assert budget_records == [
-        budget_records[0],
-        {
-            "severity": "ERROR",
-            "message": "daily token budget exhausted",
-            "event": "daily_token_budget",
-            "state": BudgetEventState.EXHAUSTED,
-            "used_tokens": 100,
-            "limit_tokens": 100,
-            "utc_day": "2026-11-20",
-        },
+    assert budget_events == [
+        (BudgetEventState.WARNING, 80, 100, "2026-11-20"),
+        (BudgetEventState.EXHAUSTED, 100, 100, "2026-11-20"),
     ]
 
     budget.record(50)
     assert budget.is_exhausted()
-    assert len(budget_records) == 2
+    assert len(budget_events) == 2
 
 
 def test_single_turn_crossing_both_thresholds_emits_warning_and_exhausted(
-    budget_records: list[dict[str, object]],
+    budget_events: list[_BudgetEvent],
 ) -> None:
     # Test: Single turn jumping from 0% past 100%.
     # Situation: A 1-token budget records a 250-token turn.
@@ -147,17 +124,16 @@ def test_single_turn_crossing_both_thresholds_emits_warning_and_exhausted(
     budget.record(250)
 
     assert budget.is_exhausted()
-    assert [r["state"] for r in budget_records] == [
-        BudgetEventState.WARNING,
-        BudgetEventState.EXHAUSTED,
+    assert budget_events == [
+        (BudgetEventState.WARNING, 250, 1, "2026-11-20"),
+        (BudgetEventState.EXHAUSTED, 250, 1, "2026-11-20"),
     ]
-    assert all(r["used_tokens"] == 250 for r in budget_records)
 
 
 @pytest.mark.parametrize("tokens", [0, -1, -500])
 def test_non_positive_recorded_tokens_are_ignored(
     tokens: int,
-    budget_records: list[dict[str, object]],
+    budget_events: list[_BudgetEvent],
 ) -> None:
     # Test: Non-positive token counts passed to `record()`.
     # Situation: A budget with 10-token cap records 0 or a negative count.
@@ -167,11 +143,11 @@ def test_non_positive_recorded_tokens_are_ignored(
     budget.record(tokens)
 
     assert not budget.is_exhausted()
-    assert budget_records == []
+    assert budget_events == []
 
 
 def test_budget_resets_when_utc_day_advances_and_ignores_backward_skew(
-    budget_records: list[dict[str, object]],
+    budget_events: list[_BudgetEvent],
 ) -> None:
     # Test: UTC midnight rollover and monotonicity under clock skew.
     # Situation: A 100-token budget is exhausted on day 1, the clock advances
@@ -184,7 +160,7 @@ def test_budget_resets_when_utc_day_advances_and_ignores_backward_skew(
 
     budget.record(100)
     assert budget.is_exhausted()
-    assert len(budget_records) == 2
+    assert len(budget_events) == 2
 
     current_day = _DAY_TWO
     assert not budget.is_exhausted()
@@ -196,13 +172,11 @@ def test_budget_resets_when_utc_day_advances_and_ignores_backward_skew(
     current_day = _DAY_ONE
     budget.record(40)
     assert budget.is_exhausted()
-    assert [
-        (r["state"], r["utc_day"], r["used_tokens"]) for r in budget_records
-    ] == [
-        (BudgetEventState.WARNING, "2026-11-20", 100),
-        (BudgetEventState.EXHAUSTED, "2026-11-20", 100),
-        (BudgetEventState.WARNING, "2026-11-21", 100),
-        (BudgetEventState.EXHAUSTED, "2026-11-21", 100),
+    assert budget_events == [
+        (BudgetEventState.WARNING, 100, 100, "2026-11-20"),
+        (BudgetEventState.EXHAUSTED, 100, 100, "2026-11-20"),
+        (BudgetEventState.WARNING, 100, 100, "2026-11-21"),
+        (BudgetEventState.EXHAUSTED, 100, 100, "2026-11-21"),
     ]
 
 

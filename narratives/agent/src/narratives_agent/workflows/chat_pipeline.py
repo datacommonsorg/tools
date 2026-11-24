@@ -1089,25 +1089,18 @@ async def run_turn(
         # configuration is required, so `ENABLE_CHAT=false` or an exhausted
         # budget ends the turn even when no configuration is loaded.
         chat = get_chat_config()
+        pre_turn_reason: ErrorType | None = None
         if not chat.enabled:
-            state, error_type = TerminalState.REFUSED, ErrorType.CHAT_DISABLED
+            pre_turn_reason = ErrorType.CHAT_DISABLED
+        elif budget is not None and budget.is_exhausted():
+            pre_turn_reason = ErrorType.DAILY_TOKEN_BUDGET_EXHAUSTED
+        if pre_turn_reason is not None:
+            state, error_type = TerminalState.REFUSED, pre_turn_reason
             emit(
                 TerminalErrorFrame(
                     idempotency_key=idempotency_key,
                     error=chat.unavailable_message,
-                    reason=ErrorType.CHAT_DISABLED,
-                    is_retryable=False,
-                )
-            )
-            return
-        if budget is not None and budget.is_exhausted():
-            state = TerminalState.REFUSED
-            error_type = ErrorType.DAILY_TOKEN_BUDGET_EXHAUSTED
-            emit(
-                TerminalErrorFrame(
-                    idempotency_key=idempotency_key,
-                    error=chat.unavailable_message,
-                    reason=ErrorType.DAILY_TOKEN_BUDGET_EXHAUSTED,
+                    reason=pre_turn_reason,
                     is_retryable=False,
                 )
             )
@@ -1217,6 +1210,9 @@ async def run_turn(
         final_state = state or TerminalState.ERROR
         telemetry.finish(final_state, error_type)
         if budget is not None:
+            # Counts only Gemini calls that returned `usage_metadata`; streams
+            # canceled before their final chunk and timed-out calls are omitted
+            # by the SDK even though Gemini may bill them.
             budget.record(telemetry.tokens.total_token_count)
         if (
             not canceled

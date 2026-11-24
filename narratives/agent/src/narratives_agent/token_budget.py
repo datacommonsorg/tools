@@ -67,8 +67,8 @@ class DailyTokenBudget:
         self._clock = clock
         self._utc_day = clock()
         self._used_tokens = 0
-        self._warned = False
-        self._exhausted_logged = False
+        self._has_emitted_warning = False
+        self._has_emitted_exhausted = False
 
     @property
     def limit_tokens(self) -> int:
@@ -83,8 +83,8 @@ class DailyTokenBudget:
         if today > self._utc_day:
             self._utc_day = today
             self._used_tokens = 0
-            self._warned = False
-            self._exhausted_logged = False
+            self._has_emitted_warning = False
+            self._has_emitted_exhausted = False
 
     def is_exhausted(self) -> bool:
         """Returns whether today's token budget has reached its cap."""
@@ -107,11 +107,11 @@ class DailyTokenBudget:
         self._used_tokens += tokens
         utc_day = self._utc_day.isoformat()
         if (
-            not self._warned
+            not self._has_emitted_warning
             and self._used_tokens * _PERCENT_BASE
             >= self._limit_tokens * WARNING_THRESHOLD_PERCENT
         ):
-            self._warned = True
+            self._has_emitted_warning = True
             record_budget_event(
                 BudgetEventState.WARNING,
                 used_tokens=self._used_tokens,
@@ -119,10 +119,10 @@ class DailyTokenBudget:
                 utc_day=utc_day,
             )
         if (
-            not self._exhausted_logged
+            not self._has_emitted_exhausted
             and self._used_tokens >= self._limit_tokens
         ):
-            self._exhausted_logged = True
+            self._has_emitted_exhausted = True
             record_budget_event(
                 BudgetEventState.EXHAUSTED,
                 used_tokens=self._used_tokens,
@@ -144,14 +144,14 @@ _STATE = _BudgetState()
 def get_daily_token_budget() -> DailyTokenBudget | None:
     """Returns the configured per-instance daily token budget, or `None`.
 
-    Reads `DAILY_TOKEN_BUDGET_PER_INSTANCE` via `get_settings()` and reuses one
-    `DailyTokenBudget` instance while the configured limit is unchanged.
+    Reads `DAILY_TOKEN_BUDGET_PER_INSTANCE` via `get_settings()` and caches one
+    `DailyTokenBudget` instance for the lifetime of the process (cleared by
+    `reset_daily_token_budget()`).
     """
     limit = get_settings().daily_token_budget_per_instance
     if limit is None:
-        _STATE.budget = None
         return None
-    if _STATE.budget is None or _STATE.budget.limit_tokens != limit:
+    if _STATE.budget is None:
         _STATE.budget = DailyTokenBudget(limit)
     return _STATE.budget
 

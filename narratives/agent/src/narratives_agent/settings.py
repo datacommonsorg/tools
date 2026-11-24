@@ -393,7 +393,8 @@ class Settings(BaseSettings):
     enable_chat: _OptionalEnvBool = None
 
     # When set, overrides `chat.unavailable_message` in agent-config.json,
-    # the message of a turn while chat is disabled.
+    # the message returned when chat is disabled or an instance's daily Gemini
+    # token budget is exhausted.
     unavailable_message: str = ""
 
     # Optional per-instance daily Gemini token limit, resetting at UTC midnight.
