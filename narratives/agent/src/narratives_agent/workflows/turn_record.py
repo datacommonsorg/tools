@@ -97,6 +97,10 @@ class TurnRecord:
             not open.
         is_clarification: Whether the turn was answered with a clarification
             question.
+        is_signed: Whether the server signed the turn into the conversation.
+            It is `False` for a turn that did not reach signing.
+        was_compacted: Whether signing the turn compacted older turns into a
+            summary. It is `False` for a turn that was not signed.
         terminal_state: The state the turn ended in, or `None` while the
             turn is running.
         terminal_reason: The machine-readable reason of a turn that ended
@@ -123,6 +127,8 @@ class TurnRecord:
     synthesis_prompt: str | None = field(default=None, init=False)
     synthesis_raw_output: str | None = field(default=None, init=False)
     is_clarification: bool = field(default=False, init=False)
+    is_signed: bool = field(default=False, init=False)
+    was_compacted: bool = field(default=False, init=False)
     terminal_state: TerminalState | None = field(default=None, init=False)
     terminal_reason: ErrorType | RefusedReason | None = field(
         default=None, init=False

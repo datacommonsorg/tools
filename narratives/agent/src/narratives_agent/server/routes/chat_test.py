@@ -22,7 +22,10 @@ Verifies that:
    a server-generated one.
 3. Invalid request bodies are rejected with 422, transcripts that fail
    their schema, caps, or verification with 400, and bodies over
-   `MAX_REQUEST_BYTES` with 413, before the turn runs.
+   `MAX_REQUEST_BYTES` with 413, before the turn runs. When the server
+   rejects a transcript, it writes one `transcript_rejected` record. The
+   record holds the reason code and does not hold any value from the
+   request.
 4. A heartbeat frame is sent while the turn is idle.
 5. A client disconnect cancels the turn before the response ends, under ASGI
    spec 2.3 and 2.4, without relying on the garbage collector.
@@ -370,6 +373,78 @@ def test_an_unverifiable_transcript_returns_400(
     assert response.headers["content-type"] == "application/json"
     assert response.json()["detail"]["reason"] == "transcript_invalid"
     assert turn.calls == []
+
+
+@pytest.mark.parametrize(
+    ("change", "reason"),
+    [
+        ("forged-turn", "signature_mismatch"),
+        ("malformed-window", "invalid_window"),
+    ],
+)
+def test_a_rejected_transcript_writes_one_record_and_keeps_its_response(
+    change: str,
+    reason: str,
+    turn: _Turn,
+    client: TestClient,
+    structured_lines: list[str],
+) -> None:
+    # Test: The `transcript_rejected` record and the HTTP response of a
+    #   rejected request.
+    # Situation: The message and the idempotency key of a request are
+    #   marker strings. The request carries a signed turn in which markers
+    #   replace the query and the answer, or a window outside its schema
+    #   whose turn, summary, and conversation ID are markers.
+    # Expectation: The route returns HTTP 400 with the same JSON body as for
+    #   any transcript that cannot be verified, and the turn never runs.
+    #   The server writes exactly one line, with exactly the five keys of
+    #   the record and the reason's code. The raw line does not contain any
+    #   marker or the conversation ID.
+    marker = "zzmarker_"
+    signed = _signed_turn()
+    bodies: dict[str, dict[str, Any]] = {
+        "forged-turn": {
+            "turns": [
+                {
+                    **signed,
+                    "user_query": f"{marker}query",
+                    "model_response": f"{marker}answer",
+                }
+            ],
+            "conversation_id": _CONVERSATION_ID,
+        },
+        "malformed-window": {
+            "turns": [{"turn_index": 0, "user_query": f"{marker}query"}],
+            "compacted_summary": f"{marker}summary",
+            "conversation_id": f"{marker}conversation_id",
+        },
+    }
+
+    response = client.post(
+        "/agent/chat/stream",
+        json={
+            "message": f"{marker}message",
+            "idempotency_key": f"{marker}key",
+            **bodies[change],
+        },
+    )
+
+    assert response.status_code == 400
+    assert response.json() == {
+        "detail": {
+            "reason": "transcript_invalid",
+            "message": "The conversation history could not be verified.",
+        }
+    }
+    assert turn.calls == []
+    (line,) = structured_lines
+    assert line == (
+        '{"severity":"WARNING","message":"transcript rejected",'
+        '"event":"transcript_rejected","schema_version":1,'
+        f'"reason":"{reason}"}}'
+    )
+    assert marker not in line
+    assert _CONVERSATION_ID not in line
 
 
 def test_an_oversized_body_returns_413(

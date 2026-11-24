@@ -100,6 +100,7 @@ def _make_window(compacted_summary: str | None) -> SignedWindow:
         ],
         compacted_summary=compacted_summary,
         conversation_id=_CONVERSATION_ID,
+        was_compacted=False,
     )
 
 

@@ -77,8 +77,10 @@ process and PR expectations: [`CONTRIBUTING.md`](../CONTRIBUTING.md).
       `ProcessingDiagnostic` (`processing.py`), the best-effort request,
       before a specification runs, for the variable metadata of the fetched
       tables it reads (`metadata_backfill.py`), the turn record that collects
-      each turn's results (`turn_record.py`), the turn debug report builder
-      (`debug_report.py`), the chart grammar, resolver, and wire serializer
+      each turn's results (`turn_record.py`), the builder of the `chat_turn`
+      record that the server logs for each turn (`usage_record.py`), the turn
+      debug report builder (`debug_report.py`), the chart grammar, resolver,
+      and wire serializer
       (`charts.py`), the default chart floor (`chart_defaults.py`), the
       synthesis prompt builder (`synthesis.py`), the streaming block splitter
       (`blocks.py`), the parser of the answer's closing Data gaps block
