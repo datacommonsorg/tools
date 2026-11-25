@@ -879,8 +879,15 @@ Every string in an entry is a code that the server defines, an identifier that
 the server creates, a configured model name, the build SHA, the ID of an
 analysis step (`s1`, `s2`, and so on), or a verified Data Commons identifier
 (DCID), facet ID, place type, or observation date from a fetched table that
-returned rows. Each structured record is kept within 14 KiB so that container
-runtimes do not split the JSON line across multiple log entries.
+returned rows.
+
+A container runtime splits a line that is longer than 16 KiB across multiple
+log entries, and Cloud Logging cannot parse a split line as one JSON entry.
+The server therefore drops tables from the end of `tables` until a
+`chat_turn` record is at most 14 KiB. A record whose other lists are long can
+still be larger than 14 KiB after the server has dropped every table. The
+server writes that record anyway, and it logs a warning with the name of the
+record and the size of the line.
 
 #### The `chat_turn` record
 
