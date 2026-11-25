@@ -169,6 +169,7 @@ from narratives_agent.workflows.transcript import (
 from narratives_agent.workflows.turn_cache import CachedTable, TurnCache
 from narratives_agent.workflows.turn_record import (
     SpecificationOrigin,
+    TurnChart,
     TurnRecord,
     TurnThought,
 )
@@ -347,7 +348,9 @@ async def _run_default_specification(
     and each refusal is appended to `notes`. When a retry leaves no table,
     or processing times out, the digest holds the results completed before
     the last failure and carries the failure in `notes`. The diagnostic of
-    each failed run is recorded on the turn's record.
+    each failed run is recorded on the turn's record. When the last run
+    fails, this function also sets the record's `specification_diagnostic`
+    to the diagnostic of that run.
 
     Args:
         ctx: The turn context holding the classification, cache, telemetry,
@@ -414,6 +417,7 @@ async def _run_default_specification(
             replace(outcome, missing_notes=(*outcome.missing_notes, *notes)),
             specification,
         )
+    ctx.record.specification_diagnostic = outcome
     notes.append(f"{_DEFAULT_FAILED_NOTE_PREFIX}{outcome.message}")
     return (
         AnalysisDigest.from_results(
@@ -665,8 +669,9 @@ async def run_synthesis_phase(
     primary result is appended. Opening the stream and reading each chunk
     are bounded by `SYNTHESIS_CHUNK_TIMEOUT_SECONDS`, so a stalled stream
     ends the turn rather than holding it open for the whole HTTP timeout.
-    The rendered user message and the raw output are recorded on the turn's
-    record, including when the phase aborts.
+    The rendered user message, the raw output, and the emitted charts with
+    their origins are recorded on the turn's record, including when the
+    phase aborts.
 
     Args:
         ctx: The turn context holding the transcript, config, telemetry, and
@@ -758,6 +763,9 @@ async def run_synthesis_phase(
         on_title=lambda title: ctx.emit(TitleFrame(title=title)),
         accept=discovery.has_data,
     )
+    # The value stays `None` when the phase exits before the stream has
+    # ended, in which case the model wrote every emitted chart.
+    model_chart_count: int | None = None
     try:
         await _consume_synthesis_stream(
             ctx, stream, extractor, splitter, raw_chunks
@@ -771,6 +779,7 @@ async def run_synthesis_phase(
                 SYNTHESIS_TRANSIENT_ERROR,
                 is_retryable=True,
             )
+        model_chart_count = len(splitter.charts)
         if discovery.has_data and not splitter.charts:
             for default in build_default_charts(
                 discovery.digest, discovery.spec, ctx.cache
@@ -782,6 +791,19 @@ async def run_synthesis_phase(
         ctx.telemetry.title_outcome = _resolve_title_outcome(extractor)
         raw_output = "".join(raw_chunks)
         ctx.record.synthesis_raw_output = raw_output
+        # The phase appends its default charts after the stream has ended,
+        # so they follow every chart block that the model wrote.
+        ctx.record.charts = tuple(
+            TurnChart(
+                chart=chart,
+                origin=(
+                    "model"
+                    if model_chart_count is None or index < model_chart_count
+                    else "default"
+                ),
+            )
+            for index, chart in enumerate(splitter.charts)
+        )
     return SynthesisPhaseResult(
         splitter.text,
         tuple(splitter.charts),

@@ -808,11 +808,12 @@ def test_specification_origin_resolution() -> None:
     # Test: Specification origin resolution.
     # Situation: build_debug_report reads a record that holds:
     #   1. no specification, with an origin recorded.
-    #   2. a specification with no origin recorded (defaults to "model").
-    #   3. a specification with the explicit origin "default".
-    # Expectation: specification_origin resolves to None when specification is
-    #   None, defaults to "model" when specification is present, and honors
-    #   explicit origin settings.
+    #   2. a specification whose origin was not recorded.
+    #   3. a specification with the explicit origin "model".
+    #   4. a specification with the explicit origin "default".
+    # Expectation: specification_origin is None when the record does not
+    #   hold a specification. Otherwise it is the origin that the record
+    #   holds, which is None when an origin was not recorded.
     telemetry = _make_telemetry()
     spec = AnalysisSpecification(
         steps=[
@@ -829,14 +830,22 @@ def test_specification_origin_resolution() -> None:
     assert report_none.specification_origin is None
     assert report_none.to_dict()["specification_origin"] is None
 
-    # 2. specification is set, origin is omitted/None
-    record_default = _make_record(telemetry)
-    record_default.specification = spec
-    report_default = build_debug_report(record_default)
-    assert report_default.specification_origin == "model"
-    assert report_default.to_dict()["specification_origin"] == "model"
+    # 2. specification is set, origin is not recorded
+    record_unrecorded = _make_record(telemetry)
+    record_unrecorded.specification = spec
+    report_unrecorded = build_debug_report(record_unrecorded)
+    assert report_unrecorded.specification_origin is None
+    assert report_unrecorded.to_dict()["specification_origin"] is None
 
-    # 3. specification is set, origin is explicitly "default"
+    # 3. specification is set, origin is explicitly "model"
+    record_model = _make_record(telemetry)
+    record_model.specification = spec
+    record_model.specification_origin = "model"
+    report_model = build_debug_report(record_model)
+    assert report_model.specification_origin == "model"
+    assert report_model.to_dict()["specification_origin"] == "model"
+
+    # 4. specification is set, origin is explicitly "default"
     record_fallback = _make_record(telemetry)
     record_fallback.specification = spec
     record_fallback.specification_origin = "default"

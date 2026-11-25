@@ -37,9 +37,21 @@ Verifies that:
 7. `highlighted_places` records up to 25 deduplicated places grounded in
    non-empty fetched tables across all 10 metric sources, with focal entries
    taking precedence on ranking and distribution steps.
-8. `build_usage_record` raises `ValueError` for a turn that has not ended.
-   A record with every list at its bound stays under the size limit of one
-   line.
+8. `specification_origin` and `script_steps` describe the turn's
+   specification. Every step that ran is listed with its outcome, the list
+   ends at a refused step, and it is empty after a run that timed out. A
+   failed earlier run of the default specification does not change the
+   steps of the final run. A refused step that the specification does not
+   hold fails the build.
+9. `rejected_submissions` records up to three rejected specifications by
+   their reason, scripts, refused step, and timeout, without their error
+   text.
+10. `charts` records up to four charts of each of the six kinds with their
+    origin, per-capita flag, and grounded variables, facets, places, or
+    cohort. An identifier that a fetched table does not hold is left out.
+11. `build_usage_record` raises `ValueError` for a turn that has not ended.
+    A record with every list at its bound stays under the size limit of one
+    line.
 """
 
 import dataclasses
@@ -47,6 +59,7 @@ import json
 import logging
 import time
 from collections.abc import Sequence
+from dataclasses import replace
 
 import pytest
 
@@ -55,6 +68,7 @@ from narratives_agent.analytics.composition import compute_composition
 from narratives_agent.analytics.derived import derive_observation_table
 from narratives_agent.analytics.digest import (
     AnalysisDigest,
+    RefusalReason,
     RefusedScriptResult,
 )
 from narratives_agent.analytics.distribution import summarize_distribution
@@ -80,11 +94,33 @@ from narratives_agent.telemetry import (
     TurnTelemetry,
     write_structured_record,
 )
+from narratives_agent.workflows.charts import (
+    ChartKind,
+    ChildCohort,
+    PlaceList,
+    ResolvedBarChart,
+    ResolvedChart,
+    ResolvedHighlightChart,
+    ResolvedLineChart,
+    ResolvedMapChart,
+    ResolvedRankingChart,
+    ResolvedScatterChart,
+)
 from narratives_agent.workflows.classify import RefusedReason
 from narratives_agent.workflows.mcp_loop import (
     DISCOVERY_TOOL_NAMES,
     MAX_ITERATIONS,
+    MAX_PROCESSING_RETRIES,
     SERVER_FUNCTION_NAMES,
+    RejectedSubmission,
+)
+from narratives_agent.workflows.processing import (
+    StepRefusalDiagnostic,
+    TimeoutDiagnostic,
+)
+from narratives_agent.workflows.specification import (
+    AnalysisSpecification,
+    RankCohortStep,
 )
 from narratives_agent.workflows.transcript import (
     MAX_PLACE_TYPE_CHARS,
@@ -94,12 +130,24 @@ from narratives_agent.workflows.transcript import (
     Turn,
 )
 from narratives_agent.workflows.turn_cache import CachedTable
-from narratives_agent.workflows.turn_record import TurnRecord
+from narratives_agent.workflows.turn_record import (
+    ChartOrigin,
+    SpecificationOrigin,
+    TurnChart,
+    TurnRecord,
+)
 from narratives_agent.workflows.usage_record import (
+    MAX_CHART_VARIABLES,
     MAX_HIGHLIGHTED_PLACES,
+    MAX_LOGGED_CHARTS,
+    MAX_LOGGED_REJECTED_SUBMISSIONS,
     MAX_LOGGED_TABLES,
     MAX_TABLE_PLACE_DCIDS,
+    ChartVariable,
     HighlightedPlace,
+    LoggedChart,
+    LoggedRejectedSubmission,
+    LoggedScriptStep,
     LoggedTable,
     PlaceHighlightSource,
     RefusalStage,
@@ -147,14 +195,52 @@ _KEYS = [
     "tables_truncated",
     "tables",
     "highlighted_places",
+    "specification_origin",
     "scripts",
+    "script_steps",
     "processing_retries",
+    "rejected_submissions",
     "charts_emitted",
     "charts_rejected",
+    "charts",
 ]
 # `_TOOL_LABELS` holds the two labels that the discovery loop records in
 # place of a tool name.
 _TOOL_LABELS = ("unknown", "server_report_unavailable")
+# `_COHORT_SPECIFICATION` aligns one table, reduces another, and ranks both
+# cohorts.
+_COHORT_SPECIFICATION = AnalysisSpecification.model_validate(
+    {
+        "steps": [
+            {"step_id": "s1", "script": "align_cohort", "table": "t1"},
+            {
+                "step_id": "s2",
+                "script": "reduce_series",
+                "table": "t2",
+                "metric": "percent_change",
+            },
+            {"step_id": "s3", "script": "rank_cohort", "table": "s1"},
+            {"step_id": "s4", "script": "rank_cohort", "table": "s2"},
+        ],
+        "findings": ["Free text that the model wrote about its choice."],
+    }
+)
+# `_RANKING_SPECIFICATION` aligns one table and ranks the cohort.
+_RANKING_SPECIFICATION = AnalysisSpecification.model_validate(
+    {
+        "steps": [
+            {"step_id": "s1", "script": "align_cohort", "table": "t1"},
+            {"step_id": "s2", "script": "rank_cohort", "table": "s1"},
+        ]
+    }
+)
+_TIMEOUT = TimeoutDiagnostic(
+    timeout_seconds=5.0,
+    message="The analysis did not finish within 5 seconds.",
+)
+_COUNTIES = ChildCohort("geoId/06", "County")
+_CHART_TITLE = "Free text that the model wrote as a chart title"
+_CHART_UNIT = "Free text that the model wrote as a chart unit"
 
 
 def _make_transcript(*turn_indexes: int) -> Transcript:
@@ -271,6 +357,108 @@ def _make_digest(*, has_data: bool) -> AnalysisDigest:
     )
 
 
+def _make_step_refusal(
+    step_id: str = "s2",
+    script: ScriptName = "rank_cohort",
+    refusal_reason: RefusalReason = "insufficient_coverage",
+) -> StepRefusalDiagnostic:
+    """Builds the diagnostic of a refused step, with a free-text message."""
+    return StepRefusalDiagnostic(
+        refusal_reason=refusal_reason,
+        message="Only 1 of 4 places have a value.",
+        step_id=step_id,
+        script=script,
+        input_table_ids=("t1",),
+        coverage=None,
+        alternative_sources=(),
+        completed_results=(),
+    )
+
+
+def _store_chart_tables(record: TurnRecord) -> None:
+    """Stores a named-place table and two county cohort tables on `record`.
+
+    `t1` holds `Count_Person` for France and Germany. `t2` and `t3` hold two
+    other variables for two counties of the cohort `_COUNTIES`.
+    """
+    counties = ("geoId/06001", "geoId/06085")
+    record.cache.store_fetched(
+        _make_cached_table("t1", places=("country/FRA", "country/DEU"))
+    )
+    record.cache.store_fetched(
+        _make_cached_table(
+            "t2",
+            variable_dcid="Median_Income_Household",
+            places=counties,
+            dates=("2023",),
+            facet_id="f2",
+            parent_place_dcid=_COUNTIES.parent_place,
+            child_place_type=_COUNTIES.child_place_type,
+        )
+    )
+    record.cache.store_fetched(
+        _make_cached_table(
+            "t3",
+            variable_dcid="Percent_Person_WithDiabetes",
+            places=counties,
+            dates=("2023",),
+            facet_id="f3",
+            parent_place_dcid=_COUNTIES.parent_place,
+            child_place_type=_COUNTIES.child_place_type,
+        )
+    )
+
+
+def _make_line_chart(
+    *place_dcids: str,
+    variable_dcid: str = "Count_Person",
+    facet_id: str = "f1",
+) -> ResolvedLineChart:
+    """Builds a line chart of one variable over `place_dcids`."""
+    return ResolvedLineChart(
+        title=_CHART_TITLE,
+        unit=_CHART_UNIT,
+        variable_dcids=(variable_dcid,),
+        facet_ids=((variable_dcid, facet_id),),
+        scope=PlaceList(place_dcids),
+    )
+
+
+def _make_turn_charts(
+    *charts: ResolvedChart, origin: ChartOrigin = "model"
+) -> tuple[TurnChart, ...]:
+    """Pairs each chart with `origin`, as the synthesis phase records it."""
+    return tuple(TurnChart(chart=chart, origin=origin) for chart in charts)
+
+
+def _make_logged_chart(
+    kind: ChartKind,
+    *,
+    index: int = 0,
+    origin: ChartOrigin = "model",
+    variable_dcid: str = "Count_Person",
+    facet_id: str = "f1",
+    cohort: ChildCohort | None = None,
+    place_dcids: tuple[str, ...] = (),
+    per_capita: bool = False,
+) -> LoggedChart:
+    """Builds the expected logged form of a chart of one variable."""
+    return LoggedChart(
+        index=index,
+        kind=kind,
+        origin=origin,
+        variables=(
+            ChartVariable(variable_dcid=variable_dcid, facet_id=facet_id),
+        ),
+        parent_place_dcid=cohort.parent_place if cohort is not None else None,
+        child_place_type=(
+            cohort.child_place_type if cohort is not None else None
+        ),
+        place_dcids=place_dcids,
+        per_capita=per_capita,
+    )
+
+
 def _build_record(
     record: TurnRecord, transcript: Transcript | None = None
 ) -> UsageRecord:
@@ -289,6 +477,15 @@ def _write_record(record: UsageRecord, lines: list[str]) -> JsonObject:
     return parsed
 
 
+def _list_first_item_keys(written: JsonObject, key: str) -> list[str]:
+    """Returns the keys of the first item of the list that `key` holds."""
+    items = written[key]
+    assert isinstance(items, list)
+    first = items[0]
+    assert isinstance(first, dict)
+    return list(first)
+
+
 def test_a_turn_that_ran_every_phase_writes_every_key_with_its_value(
     monkeypatch: pytest.MonkeyPatch, structured_lines: list[str]
 ) -> None:
@@ -297,11 +494,14 @@ def test_a_turn_that_ran_every_phase_writes_every_key_with_its_value(
     #   data after 604.75 ms. The telemetry holds a duration for all six
     #   phases, in the order in which the phases end. The turn fetched two
     #   tables, used the first in the answer, called three tools, made two
-    #   model calls, ran two scripts, was truncated, and was signed with
-    #   compaction.
+    #   model calls, ran the two scripts of a specification from the model
+    #   after the server rejected one specification, drew one chart, was
+    #   truncated, and was signed with compaction.
     # Expectation: The line holds the schema's keys in order, each with the
     #   value that the turn recorded. The phases are in the fixed order with
-    #   only `processing` nested, and the tools are sorted by name.
+    #   only `processing` nested, and the tools are sorted by name. Each
+    #   script step, rejected submission, and chart holds its keys in the
+    #   declared order.
     record = TurnRecord(telemetry=TurnTelemetry(turn_id=_TURN_ID))
     telemetry = record.telemetry
     telemetry.pattern = "top_n_ranking"
@@ -355,6 +555,18 @@ def test_a_turn_that_ran_every_phase_writes_every_key_with_its_value(
     )
     record.used_table_ids = frozenset({"t1"})
     record.digest = _make_digest(has_data=True)
+    record.specification = _RANKING_SPECIFICATION
+    record.specification_origin = "model"
+    record.loop_result.rejected_submissions.append(
+        RejectedSubmission(
+            round_number=2,
+            reason="processing_failed",
+            errors=("Only 1 of 4 places have a value.",),
+            specification=_RANKING_SPECIFICATION,
+            diagnostic=_make_step_refusal(),
+        )
+    )
+    record.charts = _make_turn_charts(_make_line_chart("country/FRA"))
     record.loop_result.truncated = True
     record.is_signed = True
     record.was_compacted = True
@@ -462,10 +674,84 @@ def test_a_turn_that_ran_every_phase_writes_every_key_with_its_value(
         "highlighted_places": [
             {"place_dcid": "country/FRA", "source": "timeseries"}
         ],
+        "specification_origin": "model",
         "scripts": ["align_cohort", "rank_cohort"],
+        "script_steps": [
+            {
+                "step_index": 0,
+                "step_id": "s1",
+                "script": "align_cohort",
+                "status": "ok",
+                "refusal_reason": None,
+            },
+            {
+                "step_index": 1,
+                "step_id": "s2",
+                "script": "rank_cohort",
+                "status": "ok",
+                "refusal_reason": None,
+            },
+        ],
         "processing_retries": 1,
+        "rejected_submissions": [
+            {
+                "round_number": 2,
+                "reason": "processing_failed",
+                "scripts": ["align_cohort", "rank_cohort"],
+                "failed_step_id": "s2",
+                "failed_script": "rank_cohort",
+                "refusal_reason": "insufficient_coverage",
+                "timed_out": False,
+            }
+        ],
         "charts_emitted": 4,
         "charts_rejected": 5,
+        "charts": [
+            {
+                "index": 0,
+                "kind": "line",
+                "origin": "model",
+                "variables": [
+                    {"variable_dcid": "Count_Person", "facet_id": "f1"}
+                ],
+                "parent_place_dcid": None,
+                "child_place_type": None,
+                "place_dcids": ["country/FRA"],
+                "per_capita": False,
+            }
+        ],
+    }
+    nested_keys = {
+        key: _list_first_item_keys(written, key)
+        for key in ("script_steps", "rejected_submissions", "charts")
+    }
+    assert nested_keys == {
+        "script_steps": [
+            "step_index",
+            "step_id",
+            "script",
+            "status",
+            "refusal_reason",
+        ],
+        "rejected_submissions": [
+            "round_number",
+            "reason",
+            "scripts",
+            "failed_step_id",
+            "failed_script",
+            "refusal_reason",
+            "timed_out",
+        ],
+        "charts": [
+            "index",
+            "kind",
+            "origin",
+            "variables",
+            "parent_place_dcid",
+            "child_place_type",
+            "place_dcids",
+            "per_capita",
+        ],
     }
 
 
@@ -494,6 +780,10 @@ def test_a_turn_that_ran_no_phase_writes_every_key_with_its_empty_value(
     assert usage.tables_truncated is False
     assert usage.tables == ()
     assert usage.highlighted_places == ()
+    assert usage.specification_origin is None
+    assert usage.script_steps == ()
+    assert usage.rejected_submissions == ()
+    assert usage.charts == ()
     assert list(written) == _KEYS
     assert written == {
         "severity": "INFO",
@@ -533,10 +823,14 @@ def test_a_turn_that_ran_no_phase_writes_every_key_with_its_empty_value(
         "tables_truncated": False,
         "tables": [],
         "highlighted_places": [],
+        "specification_origin": None,
         "scripts": [],
+        "script_steps": [],
         "processing_retries": 0,
+        "rejected_submissions": [],
         "charts_emitted": 0,
         "charts_rejected": 0,
+        "charts": [],
     }
 
 
@@ -1697,6 +1991,838 @@ def test_highlighted_places_require_grounding_in_a_fetched_table() -> None:
     )
 
 
+@pytest.mark.parametrize("origin", ["model", "default"])
+def test_a_specification_whose_run_succeeded_logs_every_step_as_ok(
+    origin: SpecificationOrigin,
+) -> None:
+    # Test: `specification_origin` and `script_steps` after a run that
+    #   succeeded.
+    # Situation: The turn's specification has four steps. Its first
+    #   two steps are `align_cohort` and `reduce_series`, which produce a
+    #   cohort and not a result. The model wrote the specification, or the
+    #   server built it as the default. The record does not hold a
+    #   diagnostic for its run.
+    # Expectation: The record holds the origin. `script_steps` lists all
+    #   four steps in order, each with its index, its ID, its script, the
+    #   status `ok`, and without a refusal reason.
+    record = _make_record()
+    record.specification = _COHORT_SPECIFICATION
+    record.specification_origin = origin
+
+    usage = _build_record(record)
+
+    assert usage.specification_origin == origin
+    assert usage.script_steps == (
+        LoggedScriptStep(
+            step_index=0,
+            step_id="s1",
+            script="align_cohort",
+            status="ok",
+            refusal_reason=None,
+        ),
+        LoggedScriptStep(
+            step_index=1,
+            step_id="s2",
+            script="reduce_series",
+            status="ok",
+            refusal_reason=None,
+        ),
+        LoggedScriptStep(
+            step_index=2,
+            step_id="s3",
+            script="rank_cohort",
+            status="ok",
+            refusal_reason=None,
+        ),
+        LoggedScriptStep(
+            step_index=3,
+            step_id="s4",
+            script="rank_cohort",
+            status="ok",
+            refusal_reason=None,
+        ),
+    )
+
+
+def test_an_earlier_failed_default_run_does_not_change_the_steps() -> None:
+    # Test: `script_steps` when a retry of the default specification
+    #   succeeded.
+    # Situation: The first run of the default specification refused at `s1`,
+    #   a `relate_cohorts` step, and the server kept that diagnostic with
+    #   the diagnostics of the default runs. The retry, whose `s1` is an
+    #   `align_cohort` step, succeeded, so the record does not hold a
+    #   diagnostic for the turn's specification.
+    # Expectation: The origin is `default`, and both steps of the retry have
+    #   the status `ok`. The refusal of the first run does not appear.
+    record = _make_record()
+    record.default_diagnostics.append(
+        _make_step_refusal("s1", "relate_cohorts", "insufficient_coverage")
+    )
+    record.specification = _RANKING_SPECIFICATION
+    record.specification_origin = "default"
+
+    usage = _build_record(record)
+
+    assert usage.specification_origin == "default"
+    assert [
+        (step.step_id, step.script, step.status, step.refusal_reason)
+        for step in usage.script_steps
+    ] == [
+        ("s1", "align_cohort", "ok", None),
+        ("s2", "rank_cohort", "ok", None),
+    ]
+
+
+def test_a_refused_step_ends_the_script_steps() -> None:
+    # Test: `script_steps` when the run of the turn's specification
+    #   stopped at a refused step.
+    # Situation: The last run of a default specification of four steps
+    #   refused at its second step, `s2`, with the reason
+    #   `no_observations`. Its diagnostic holds a free-text message.
+    # Expectation: The first step has the status `ok`. The second step has
+    #   the status `refused` and the reason code. The third and fourth
+    #   steps, which did not run, are left out, while `scripts` in the
+    #   telemetry is not read for this list.
+    record = _make_record()
+    record.specification = _COHORT_SPECIFICATION
+    record.specification_origin = "default"
+    record.specification_diagnostic = _make_step_refusal(
+        "s2", "reduce_series", "no_observations"
+    )
+
+    usage = _build_record(record)
+
+    assert usage.specification_origin == "default"
+    assert usage.script_steps == (
+        LoggedScriptStep(
+            step_index=0,
+            step_id="s1",
+            script="align_cohort",
+            status="ok",
+            refusal_reason=None,
+        ),
+        LoggedScriptStep(
+            step_index=1,
+            step_id="s2",
+            script="reduce_series",
+            status="refused",
+            refusal_reason="no_observations",
+        ),
+    )
+
+
+def test_a_run_that_timed_out_does_not_list_script_steps() -> None:
+    # Test: `script_steps` when the run of the turn's specification
+    #   exceeded its time limit.
+    # Situation: The last run of a default specification ended in a
+    #   `TimeoutDiagnostic`, which does not say which steps finished. The
+    #   telemetry lists the two scripts of the specification.
+    # Expectation: The origin is `default`, `script_steps` is empty, and
+    #   `scripts` still lists both scripts.
+    record = _make_record()
+    record.telemetry.scripts = _RANKING_SPECIFICATION.list_script_names()
+    record.specification = _RANKING_SPECIFICATION
+    record.specification_origin = "default"
+    record.specification_diagnostic = _TIMEOUT
+
+    usage = _build_record(record)
+
+    assert usage.specification_origin == "default"
+    assert usage.script_steps == ()
+    assert usage.scripts == ("align_cohort", "rank_cohort")
+
+
+def test_a_turn_without_a_specification_does_not_have_an_origin() -> None:
+    # Test: `specification_origin` and `script_steps` without a
+    #   specification.
+    # Situation: The record holds an origin and a diagnostic, but it does
+    #   not hold a specification.
+    # Expectation: The origin is `None` and `script_steps` is empty, as in
+    #   the debug report.
+    record = _make_record()
+    record.specification_origin = "model"
+    record.specification_diagnostic = _make_step_refusal()
+
+    usage = _build_record(record)
+
+    assert usage.specification_origin is None
+    assert usage.script_steps == ()
+
+
+def test_a_refused_step_outside_the_specification_fails_the_build() -> None:
+    # Test: Building a record whose diagnostic and specification disagree.
+    # Situation: The turn's specification has the steps `s1` and `s2`, and
+    #   the record's diagnostic names a refused step `s5`.
+    # Expectation: `build_usage_record` raises `ValueError`, so the record
+    #   never reports every step as `ok` beside a refusal.
+    record = _make_record()
+    record.specification = _RANKING_SPECIFICATION
+    record.specification_origin = "default"
+    record.specification_diagnostic = _make_step_refusal("s5")
+
+    with pytest.raises(ValueError, match="does not hold the refused step"):
+        _build_record(record)
+
+
+def test_a_step_with_a_malformed_id_is_left_out_of_script_steps() -> None:
+    # Test: The pattern check on the step IDs of `script_steps`.
+    # Situation: The turn's specification holds three steps that were
+    #   built without validation. The ID of the second step is free text.
+    # Expectation: `script_steps` lists the first and the third step with
+    #   their own indexes, and the free text does not appear.
+    steps = [
+        RankCohortStep.model_construct(
+            step_id=step_id, script="rank_cohort", table="t1"
+        )
+        for step_id in ("s1", "free text", "s3")
+    ]
+    record = _make_record()
+    record.specification = AnalysisSpecification.model_construct(steps=steps)
+    record.specification_origin = "model"
+
+    usage = _build_record(record)
+
+    assert [(step.step_index, step.step_id) for step in usage.script_steps] == [
+        (0, "s1"),
+        (2, "s3"),
+    ]
+
+
+@pytest.mark.parametrize(
+    ("submission", "expected"),
+    [
+        pytest.param(
+            RejectedSubmission(
+                round_number=1,
+                reason="schema_invalid",
+                errors=("- steps.0: free text of a validation error",),
+            ),
+            LoggedRejectedSubmission(
+                round_number=1,
+                reason="schema_invalid",
+                scripts=(),
+                failed_step_id=None,
+                failed_script=None,
+                refusal_reason=None,
+                timed_out=False,
+            ),
+            id="schema_invalid",
+        ),
+        pytest.param(
+            RejectedSubmission(
+                round_number=2,
+                reason="reference_invalid",
+                errors=("s1.table references t99, free text",),
+                specification=_COHORT_SPECIFICATION,
+            ),
+            LoggedRejectedSubmission(
+                round_number=2,
+                reason="reference_invalid",
+                scripts=(
+                    "align_cohort",
+                    "reduce_series",
+                    "rank_cohort",
+                    "rank_cohort",
+                ),
+                failed_step_id=None,
+                failed_script=None,
+                refusal_reason=None,
+                timed_out=False,
+            ),
+            id="reference_invalid",
+        ),
+        pytest.param(
+            RejectedSubmission(
+                round_number=3,
+                reason="processing_failed",
+                errors=("Only 1 of 4 places have a value.",),
+                specification=_RANKING_SPECIFICATION,
+                diagnostic=_make_step_refusal(
+                    "s2", "rank_cohort", "unit_mismatch"
+                ),
+            ),
+            LoggedRejectedSubmission(
+                round_number=3,
+                reason="processing_failed",
+                scripts=("align_cohort", "rank_cohort"),
+                failed_step_id="s2",
+                failed_script="rank_cohort",
+                refusal_reason="unit_mismatch",
+                timed_out=False,
+            ),
+            id="processing_failed at a refused step",
+        ),
+        pytest.param(
+            RejectedSubmission(
+                round_number=4,
+                reason="processing_failed",
+                errors=(_TIMEOUT.message,),
+                specification=_RANKING_SPECIFICATION,
+                diagnostic=_TIMEOUT,
+            ),
+            LoggedRejectedSubmission(
+                round_number=4,
+                reason="processing_failed",
+                scripts=("align_cohort", "rank_cohort"),
+                failed_step_id=None,
+                failed_script=None,
+                refusal_reason=None,
+                timed_out=True,
+            ),
+            id="processing_failed at the time limit",
+        ),
+        pytest.param(
+            RejectedSubmission(
+                round_number=5,
+                reason="processing_failed",
+                errors=("Only 1 of 4 places have a value.",),
+                specification=_RANKING_SPECIFICATION,
+                diagnostic=_make_step_refusal("free text", "rank_cohort"),
+            ),
+            LoggedRejectedSubmission(
+                round_number=5,
+                reason="processing_failed",
+                scripts=("align_cohort", "rank_cohort"),
+                failed_step_id=None,
+                failed_script="rank_cohort",
+                refusal_reason="insufficient_coverage",
+                timed_out=False,
+            ),
+            id="refused step with a malformed ID",
+        ),
+    ],
+)
+def test_a_rejected_submission_is_logged_by_its_codes(
+    submission: RejectedSubmission, expected: LoggedRejectedSubmission
+) -> None:
+    # Test: The logged form of each kind of rejected specification.
+    # Situation: The discovery loop rejected one specification. It did not
+    #   parse, it did not match the fetched tables, it refused at a step, it
+    #   exceeded its time limit, or it refused at a step whose ID is free
+    #   text. Each submission holds free-text errors.
+    # Expectation: The record holds the round, the reason, and the scripts
+    #   of a specification that parsed. Only a refused step fills the three
+    #   step fields, and a step ID that is not `s<n>` is `None`. Only a run
+    #   that exceeded its time limit has `timed_out` set.
+    record = _make_record()
+    record.loop_result.rejected_submissions.append(submission)
+
+    assert _build_record(record).rejected_submissions == (expected,)
+
+
+def test_rejected_submissions_are_capped_at_the_bound_of_the_loop() -> None:
+    # Test: The cap on `rejected_submissions`.
+    # Situation: The loop result holds five rejected specifications, in
+    #   rounds 1 through 5, which is more than the discovery loop records.
+    # Expectation: The record holds the first
+    #   `MAX_LOGGED_REJECTED_SUBMISSIONS`, in submission order. The cap is
+    #   one more than `MAX_PROCESSING_RETRIES`, which is three.
+    record = _make_record()
+    record.loop_result.rejected_submissions.extend(
+        RejectedSubmission(
+            round_number=round_number,
+            reason="schema_invalid",
+            errors=("free text",),
+        )
+        for round_number in range(1, 6)
+    )
+
+    logged = _build_record(record).rejected_submissions
+
+    assert MAX_LOGGED_REJECTED_SUBMISSIONS == MAX_PROCESSING_RETRIES + 1 == 3
+    assert [item.round_number for item in logged] == [1, 2, 3]
+
+
+@pytest.mark.parametrize(
+    ("chart", "expected"),
+    [
+        pytest.param(
+            replace(
+                _make_line_chart("country/FRA", "country/DEU"), per_capita=True
+            ),
+            _make_logged_chart(
+                "line",
+                place_dcids=("country/FRA", "country/DEU"),
+                per_capita=True,
+            ),
+            id="line of named places, per capita",
+        ),
+        pytest.param(
+            ResolvedLineChart(
+                title=_CHART_TITLE,
+                variable_dcids=("Median_Income_Household",),
+                facet_ids=(("Median_Income_Household", "f2"),),
+                scope=_COUNTIES,
+            ),
+            _make_logged_chart(
+                "line",
+                variable_dcid="Median_Income_Household",
+                facet_id="f2",
+                cohort=_COUNTIES,
+            ),
+            id="line of a cohort",
+        ),
+        pytest.param(
+            ResolvedBarChart(
+                title=_CHART_TITLE,
+                unit=_CHART_UNIT,
+                variable_dcids=("Count_Person",),
+                facet_ids=(("Count_Person", "f1"),),
+                scope=PlaceList(("country/DEU", "country/FRA")),
+            ),
+            _make_logged_chart(
+                "bar", place_dcids=("country/DEU", "country/FRA")
+            ),
+            id="bar of named places",
+        ),
+        pytest.param(
+            ResolvedBarChart(
+                title=_CHART_TITLE,
+                variable_dcids=("Median_Income_Household",),
+                facet_ids=(("Median_Income_Household", "f2"),),
+                scope=_COUNTIES,
+            ),
+            _make_logged_chart(
+                "bar",
+                variable_dcid="Median_Income_Household",
+                facet_id="f2",
+                cohort=_COUNTIES,
+            ),
+            id="bar of a cohort",
+        ),
+        pytest.param(
+            ResolvedRankingChart(
+                title=_CHART_TITLE,
+                variable_dcids=("Median_Income_Household",),
+                facet_ids=(("Median_Income_Household", "f2"),),
+                cohort=_COUNTIES,
+            ),
+            _make_logged_chart(
+                "ranking",
+                variable_dcid="Median_Income_Household",
+                facet_id="f2",
+                cohort=_COUNTIES,
+            ),
+            id="ranking",
+        ),
+        pytest.param(
+            ResolvedMapChart(
+                title=_CHART_TITLE,
+                variable_dcids=("Median_Income_Household",),
+                facet_ids=(("Median_Income_Household", "f2"),),
+                cohort=_COUNTIES,
+                per_capita=True,
+            ),
+            _make_logged_chart(
+                "map",
+                variable_dcid="Median_Income_Household",
+                facet_id="f2",
+                cohort=_COUNTIES,
+                per_capita=True,
+            ),
+            id="map, per capita",
+        ),
+        pytest.param(
+            ResolvedScatterChart(
+                title=_CHART_TITLE,
+                variable_dcids=(
+                    "Percent_Person_WithDiabetes",
+                    "Median_Income_Household",
+                ),
+                facet_ids=(
+                    ("Percent_Person_WithDiabetes", "f3"),
+                    ("Median_Income_Household", "f2"),
+                ),
+                cohort=_COUNTIES,
+            ),
+            LoggedChart(
+                index=0,
+                kind="scatter",
+                origin="model",
+                variables=(
+                    ChartVariable(
+                        variable_dcid="Percent_Person_WithDiabetes",
+                        facet_id="f3",
+                    ),
+                    ChartVariable(
+                        variable_dcid="Median_Income_Household", facet_id="f2"
+                    ),
+                ),
+                parent_place_dcid="geoId/06",
+                child_place_type="County",
+                place_dcids=(),
+                per_capita=False,
+            ),
+            id="scatter",
+        ),
+        pytest.param(
+            ResolvedHighlightChart(
+                title=_CHART_TITLE,
+                unit=_CHART_UNIT,
+                variable_dcids=("Count_Person",),
+                facet_ids=(("Count_Person", "f1"),),
+                place_dcid="country/DEU",
+            ),
+            _make_logged_chart("highlight", place_dcids=("country/DEU",)),
+            id="highlight",
+        ),
+    ],
+)
+def test_a_chart_of_each_kind_is_logged_by_its_identifiers(
+    chart: ResolvedChart, expected: LoggedChart
+) -> None:
+    # Test: The logged form of a chart of each of the six kinds.
+    # Situation: The turn fetched a named-place table and two county cohort
+    #   tables, and the model wrote one chart with a free-text title. The
+    #   chart is a line or a bar of named places or of the cohort, a
+    #   ranking, a map, a scatter of two variables, or a highlight of one
+    #   place. Two of the charts are per capita.
+    # Expectation: The record holds the kind, the origin `model`, the
+    #   variables, the facet of each variable, and the per-capita
+    #   flag. A chart of named places lists them in the chart's order and
+    #   does not have a parent place. A chart of the cohort has the parent
+    #   place and the child place type, and its `place_dcids` is empty.
+    record = _make_record()
+    _store_chart_tables(record)
+    record.charts = _make_turn_charts(chart)
+
+    assert _build_record(record).charts == (expected,)
+
+
+def test_a_chart_lists_up_to_twenty_five_places_in_its_own_order() -> None:
+    # Test: The order and the cap of `place_dcids` on a chart.
+    # Situation: A fetched table has rows for 30 places, and a line chart
+    #   lists all 30 from the last to the first.
+    # Expectation: The chart's `place_dcids` holds the first
+    #   `MAX_TABLE_PLACE_DCIDS` (25) places in the chart's order, which is
+    #   not the sorted order that `tables` uses.
+    places = [f"geoId/{index:02d}" for index in range(1, 31)]
+    record = _make_record()
+    record.cache.store_fetched(
+        _make_cached_table("t1", places=places, dates=("2023",))
+    )
+    record.charts = _make_turn_charts(_make_line_chart(*reversed(places)))
+
+    (logged,) = _build_record(record).charts
+
+    assert len(logged.place_dcids) == MAX_TABLE_PLACE_DCIDS
+    assert logged.place_dcids == tuple(
+        f"geoId/{index:02d}" for index in range(30, 5, -1)
+    )
+
+
+def test_a_chart_lists_up_to_ten_variables_with_their_facets() -> None:
+    # Test: The cap on `variables` of a chart.
+    # Situation: The turn fetched 12 tables of 12 variables for France, each
+    #   from its own facet. A bar chart draws all 12 variables and pins each
+    #   to its facet.
+    # Expectation: The chart's `variables` holds the first
+    #   `MAX_CHART_VARIABLES` (10) variables in the chart's order, each with
+    #   its facet.
+    variables = [f"Count_Person_{index:02d}" for index in range(1, 13)]
+    record = _make_record()
+    for index, variable_dcid in enumerate(variables, start=1):
+        record.cache.store_fetched(
+            _make_cached_table(
+                f"t{index}",
+                variable_dcid=variable_dcid,
+                facet_id=f"f{index}",
+            )
+        )
+    record.charts = _make_turn_charts(
+        ResolvedBarChart(
+            title=_CHART_TITLE,
+            variable_dcids=(variables[0], *variables[1:]),
+            facet_ids=tuple(
+                (variable_dcid, f"f{index}")
+                for index, variable_dcid in enumerate(variables, start=1)
+            ),
+            scope=PlaceList(("country/FRA",)),
+        ),
+    )
+
+    (logged,) = _build_record(record).charts
+
+    assert MAX_CHART_VARIABLES == 10
+    assert logged.variables == tuple(
+        ChartVariable(variable_dcid=variable_dcid, facet_id=f"f{index}")
+        for index, variable_dcid in enumerate(variables[:10], start=1)
+    )
+
+
+def test_a_chart_keeps_only_identifiers_that_a_fetched_table_holds() -> None:
+    # Test: The grounding of the variables, facets, and places of a chart.
+    # Situation: The turn fetched `t1` with rows for France, fetched an
+    #   empty `t2` for another variable and place, and derived `s1`, whose
+    #   variable ID the model wrote. A bar chart names the variable of each
+    #   of the three tables, pins the first to a facet ID that is free text
+    #   and the other two to valid facet IDs, and lists France, the place of
+    #   the empty table, the place of the derived table, and a place that
+    #   the turn did not fetch. A highlight chart shows that last place.
+    # Expectation: The bar chart keeps the variable of `t1` without a facet
+    #   and keeps France. The highlight chart does not keep a variable or a
+    #   place. The record holds both charts.
+    record = _make_record()
+    record.cache.store_fetched(_make_cached_table("t1"))
+    record.cache.store_fetched(
+        _make_cached_table(
+            "t2",
+            variable_dcid="Count_Empty_Indicator",
+            places=("country/EMPTY",),
+            dates=(),
+        )
+    )
+    record.cache.store_derived(
+        _make_cached_table(
+            "s1",
+            variable_dcid="model_written_derived_variable",
+            places=("country/DERIVED",),
+        )
+    )
+    record.charts = _make_turn_charts(
+        ResolvedBarChart(
+            title=_CHART_TITLE,
+            variable_dcids=(
+                "Count_Person",
+                "Count_Empty_Indicator",
+                "model_written_derived_variable",
+            ),
+            facet_ids=(
+                ("Count_Person", "free text"),
+                ("Count_Empty_Indicator", "f1"),
+                ("model_written_derived_variable", "f1"),
+            ),
+            scope=PlaceList(
+                (
+                    "country/FRA",
+                    "country/EMPTY",
+                    "country/DERIVED",
+                    "country/UNFETCHED",
+                )
+            ),
+        ),
+        ResolvedHighlightChart(
+            title=_CHART_TITLE,
+            variable_dcids=("model_written_derived_variable",),
+            place_dcid="country/UNFETCHED",
+        ),
+    )
+
+    assert _build_record(record).charts == (
+        LoggedChart(
+            index=0,
+            kind="bar",
+            origin="model",
+            variables=(
+                ChartVariable(variable_dcid="Count_Person", facet_id=None),
+            ),
+            parent_place_dcid=None,
+            child_place_type=None,
+            place_dcids=("country/FRA",),
+            per_capita=False,
+        ),
+        LoggedChart(
+            index=1,
+            kind="highlight",
+            origin="model",
+            variables=(),
+            parent_place_dcid=None,
+            child_place_type=None,
+            place_dcids=(),
+            per_capita=False,
+        ),
+    )
+
+
+@pytest.mark.parametrize(
+    ("cohort", "is_kept"),
+    [
+        pytest.param(_COUNTIES, True, id="cohort of a fetched table"),
+        pytest.param(
+            ChildCohort("country/FRA", "AdministrativeArea1"),
+            False,
+            id="parent that has rows in a table of named places",
+        ),
+        pytest.param(
+            ChildCohort("geoId/48", "County"),
+            False,
+            id="parent that the turn did not fetch",
+        ),
+        pytest.param(
+            ChildCohort("geoId/06", "City"),
+            False,
+            id="fetched parent with a child place type that was not fetched",
+        ),
+        pytest.param(
+            ChildCohort("geoId/06", "County Name"),
+            False,
+            id="child place type that is free text",
+        ),
+    ],
+)
+def test_a_chart_keeps_a_cohort_that_a_fetched_table_covers(
+    cohort: ChildCohort, is_kept: bool
+) -> None:
+    # Test: The grounding of the cohort of a chart.
+    # Situation: The turn fetched a named-place table with rows for France
+    #   and a county cohort table of `geoId/06`, whose rows hold only the
+    #   counties. A map draws one of five cohorts: the fetched cohort, the
+    #   children of France, the counties of a parent that the turn did not
+    #   fetch, the cities of the fetched parent, or the fetched parent with
+    #   a child place type that is free text.
+    # Expectation: The record keeps the parent place and the child place
+    #   type of the fetched cohort, although `geoId/06` does not have a row
+    #   of its own. Both are `None` for the other four, because a fetched
+    #   table does not cover that parent place with that child place type.
+    #   `place_dcids` is always empty.
+    record = _make_record()
+    _store_chart_tables(record)
+    record.charts = _make_turn_charts(
+        ResolvedMapChart(
+            title=_CHART_TITLE,
+            variable_dcids=("Median_Income_Household",),
+            cohort=cohort,
+        ),
+    )
+
+    (logged,) = _build_record(record).charts
+
+    assert logged.place_dcids == ()
+    if is_kept:
+        assert logged.parent_place_dcid == cohort.parent_place
+        assert logged.child_place_type == cohort.child_place_type
+    else:
+        assert logged.parent_place_dcid is None
+        assert logged.child_place_type is None
+
+
+def test_a_chart_keeps_the_identifiers_of_a_table_past_the_table_cap() -> None:
+    # Test: The grounding of a chart in a fetched table that `tables` leaves
+    #   out.
+    # Situation: The turn fetched 20 named-place tables for France and then
+    #   `t21`, a county cohort table of another variable from its own facet.
+    #   A map draws the variable, the facet, and the cohort of `t21`.
+    # Expectation: `tables` holds the first `MAX_LOGGED_TABLES` (20) tables
+    #   and does not hold `t21`. The chart still keeps the variable with its
+    #   facet, the parent place, and the child place type.
+    record = _make_record()
+    for index in range(1, MAX_LOGGED_TABLES + 1):
+        record.cache.store_fetched(_make_cached_table(f"t{index}"))
+    record.cache.store_fetched(
+        _make_cached_table(
+            f"t{MAX_LOGGED_TABLES + 1}",
+            variable_dcid="Median_Income_Household",
+            places=("geoId/06001", "geoId/06085"),
+            facet_id="f2",
+            parent_place_dcid=_COUNTIES.parent_place,
+            child_place_type=_COUNTIES.child_place_type,
+        )
+    )
+    record.charts = _make_turn_charts(
+        ResolvedMapChart(
+            title=_CHART_TITLE,
+            variable_dcids=("Median_Income_Household",),
+            facet_ids=(("Median_Income_Household", "f2"),),
+            cohort=_COUNTIES,
+        )
+    )
+
+    usage = _build_record(record)
+
+    assert len(usage.tables) == MAX_LOGGED_TABLES
+    assert usage.tables_truncated
+    assert usage.charts == (
+        _make_logged_chart(
+            "map",
+            variable_dcid="Median_Income_Household",
+            facet_id="f2",
+            cohort=_COUNTIES,
+        ),
+    )
+
+
+@pytest.mark.parametrize(
+    ("facet_id", "logged_facet_id"),
+    [
+        pytest.param("f1", "f1", id="facet of a fetched table of the variable"),
+        pytest.param(
+            "f2", None, id="facet of a fetched table of another variable"
+        ),
+        pytest.param("f9", None, id="facet that the turn did not fetch"),
+        pytest.param("free text", None, id="facet that is free text"),
+        pytest.param(None, None, id="variable that the chart does not pin"),
+    ],
+)
+def test_a_chart_variable_keeps_a_facet_that_a_fetched_table_reports_for_it(
+    facet_id: str | None, logged_facet_id: str | None
+) -> None:
+    # Test: The grounding of the facet of a chart's variable.
+    # Situation: The turn fetched `Count_Person` for France from the facet
+    #   `f1`, and another variable from the facet `f2`. A line chart draws
+    #   `Count_Person` for France. It pins the variable to `f1`, to `f2`, to
+    #   a facet that the turn did not fetch, or to free text, or it does not
+    #   pin the variable.
+    # Expectation: The record keeps the variable in every case. Its
+    #   `facet_id` is `f1` for the pin to `f1`. It is `None` for the other
+    #   three pins, because a fetched table does not report that facet for
+    #   `Count_Person`, and for the variable that the chart does not pin.
+    record = _make_record()
+    _store_chart_tables(record)
+    record.charts = _make_turn_charts(
+        ResolvedLineChart(
+            title=_CHART_TITLE,
+            variable_dcids=("Count_Person",),
+            facet_ids=(
+                () if facet_id is None else (("Count_Person", facet_id),)
+            ),
+            scope=PlaceList(("country/FRA",)),
+        )
+    )
+
+    (logged,) = _build_record(record).charts
+
+    assert logged.variables == (
+        ChartVariable(variable_dcid="Count_Person", facet_id=logged_facet_id),
+    )
+
+
+def test_each_chart_is_logged_with_its_recorded_origin() -> None:
+    # Test: `origin` and `index` on the charts of the record.
+    # Situation: The turn's record holds two charts. The first has the
+    #   origin `model` and the second has the origin `default`.
+    # Expectation: Each logged chart has the origin that the record holds
+    #   for it and its position as `index`.
+    record = _make_record()
+    _store_chart_tables(record)
+    record.charts = (
+        TurnChart(chart=_make_line_chart("country/FRA"), origin="model"),
+        TurnChart(chart=_make_line_chart("country/DEU"), origin="default"),
+    )
+
+    assert [
+        (chart.index, chart.origin, chart.place_dcids)
+        for chart in _build_record(record).charts
+    ] == [
+        (0, "model", ("country/FRA",)),
+        (1, "default", ("country/DEU",)),
+    ]
+
+
+def test_charts_are_capped_at_four() -> None:
+    # Test: The cap on `charts`.
+    # Situation: The turn's record holds five charts.
+    # Expectation: The record holds the first `MAX_LOGGED_CHARTS` (4), with
+    #   the indexes 0 through 3.
+    record = _make_record()
+    _store_chart_tables(record)
+    record.charts = _make_turn_charts(_make_line_chart("country/FRA")) * 5
+
+    logged = _build_record(record).charts
+
+    assert MAX_LOGGED_CHARTS == 4
+    assert [chart.index for chart in logged] == [0, 1, 2, 3]
+
+
 def test_a_turn_that_has_not_ended_does_not_have_a_record() -> None:
     # Test: Building a record before the turn has a terminal state.
     # Situation: The turn's record does not have a terminal state yet.
@@ -1718,16 +2844,22 @@ def test_the_largest_record_fits_in_one_line(
     #   that the discovery loop can record, a token call for every
     #   discovery round and for each of the other four roles, 20 cohort
     #   tables, 25 highlighted places carrying the longest source literal,
-    #   and six scripts. Every count and the duration have nine digits. The
-    #   script, the reason, and the pattern are the longest of their
-    #   literals. The code does not bound the model name or the build SHA, so
-    #   the test assumes a model name of 64 characters and a SHA of 40
-    #   characters.
-    # Expectation: The record holds all 20 cohort tables without truncation,
-    #   all 25 highlighted places, one token call for each of the
-    #   `MAX_ITERATIONS` discovery rounds and four more, one count for each
-    #   tool name, and the duration of 999,999,999.25 ms. The written line
-    #   is at most `MAX_RECORD_LINE_BYTES` and does not log an oversized-line
+    #   six scripts, six script steps that end in a refused step, three
+    #   rejected specifications, and four charts that each list 25 places.
+    #   Every count and the duration have nine digits. The script, the
+    #   reasons, and the pattern are the longest of their literals. The code
+    #   does not bound the model name or the build SHA, so the test assumes
+    #   a model name of 64 characters and a SHA of 40 characters. The server
+    #   trims only `tables`, and four charts with `MAX_CHART_VARIABLES`
+    #   variables each do not fit in the line, so the test assumes five
+    #   variables on each chart.
+    # Expectation: The record holds all 25 highlighted places, all six
+    #   script steps, the three rejected specifications, all four charts,
+    #   one token call for each of the `MAX_ITERATIONS` discovery rounds and
+    #   four more, one count for each tool name, and the duration of
+    #   999,999,999.25 ms. The server drops tables from the end of `tables`
+    #   to make the line fit, and keeps at least one. The written line is at
+    #   most `MAX_RECORD_LINE_BYTES` and does not log an oversized-line
     #   warning.
     large = 999_999_999
     counts = TokenCounts(
@@ -1773,6 +2905,56 @@ def test_the_largest_record_fits_in_one_line(
             )
         )
     record.used_table_ids = frozenset(f"t{index}" for index in range(1, 7))
+    specification = AnalysisSpecification.model_validate(
+        {
+            "steps": [
+                {
+                    "step_id": f"s{index}",
+                    "script": longest_script,
+                    "left": "t1",
+                    "right": "t2",
+                }
+                for index in range(1, 7)
+            ]
+        }
+    )
+    refusal = _make_step_refusal(
+        "s6", longest_script, "components_exceed_total"
+    )
+    record.specification = specification
+    record.specification_origin = "default"
+    record.specification_diagnostic = refusal
+    record.loop_result.rejected_submissions.extend(
+        RejectedSubmission(
+            round_number=large,
+            reason="processing_failed",
+            errors=(refusal.message,),
+            specification=specification,
+            diagnostic=refusal,
+        )
+        for _ in range(MAX_LOGGED_REJECTED_SUBMISSIONS)
+    )
+    chart_variables = [
+        f"Median_Income_Household_{index:02d}" for index in range(1, 6)
+    ]
+    record.charts = (
+        _make_turn_charts(
+            ResolvedLineChart(
+                title=_CHART_TITLE,
+                variable_dcids=(chart_variables[0], *chart_variables[1:]),
+                facet_ids=tuple(
+                    (variable_dcid, f"facet_{index:04d}")
+                    for index, variable_dcid in enumerate(
+                        chart_variables, start=1
+                    )
+                ),
+                scope=PlaceList(places),
+                per_capita=True,
+            ),
+            origin="default",
+        )
+        * MAX_LOGGED_CHARTS
+    )
     first_table = record.cache.get("t1")
     assert first_table is not None
     record.digest = AnalysisDigest.from_results(
@@ -1802,9 +2984,17 @@ def test_the_largest_record_fits_in_one_line(
         write_structured_record(usage)
 
     (line,) = structured_lines
-    assert len(usage.tables) == MAX_LOGGED_TABLES
-    assert usage.tables_truncated is False
+    assert 0 < len(usage.tables) < MAX_LOGGED_TABLES
+    assert usage.tables_truncated is True
     assert len(usage.highlighted_places) == MAX_HIGHLIGHTED_PLACES
+    assert [step.status for step in usage.script_steps] == [
+        *["ok"] * 5,
+        "refused",
+    ]
+    assert len(usage.rejected_submissions) == MAX_LOGGED_REJECTED_SUBMISSIONS
+    assert [len(chart.place_dcids) for chart in usage.charts] == (
+        [MAX_TABLE_PLACE_DCIDS] * MAX_LOGGED_CHARTS
+    )
     assert len(usage.token_calls) == MAX_ITERATIONS + 4
     assert usage.duration_ms == 999_999_999.25
     assert len(usage.tool_call_counts) == len(tools)

@@ -75,6 +75,11 @@ Verifies that:
     A failure to build or write the record does not change what the browser
     receives.
 14. The `chat_turn` record does not contain any text from the conversation.
+15. The agent loop records the diagnostic of a default specification whose
+    last run failed, and the charts of the answer with the origin of each.
+    The `chat_turn` record holds the origin and the steps of the turn's
+    specification, the rejected specifications, and the charts as codes and
+    verified identifiers.
 """
 
 import asyncio
@@ -135,12 +140,14 @@ from narratives_agent.token_budget import get_daily_token_budget
 from narratives_agent.workflows import chat_pipeline
 from narratives_agent.workflows import follow_up as follow_up_module
 from narratives_agent.workflows import transcript as transcript_module
-from narratives_agent.workflows.blocks import BlockSplitter
+from narratives_agent.workflows.blocks import BlockSplitter, ChartBlock
 from narratives_agent.workflows.charts import (
     ChartRejection,
     ChartRejectionReason,
     LineChartSpecification,
     PlaceList,
+    ResolvedBarChart,
+    ResolvedChart,
     ResolvedLineChart,
 )
 from narratives_agent.workflows.classify import (
@@ -175,14 +182,17 @@ from narratives_agent.workflows.pattern_guidance import build_pattern_directive
 from narratives_agent.workflows.processing import (
     ProcessingDiagnostic,
     StepRefusalDiagnostic,
+    TimeoutDiagnostic,
     execute_specification,
 )
 from narratives_agent.workflows.prompt_contracts import load_prompt_contract
 from narratives_agent.workflows.specification import (
     AnalysisSpecification,
     UnavailableReport,
+    list_step_inputs,
 )
 from narratives_agent.workflows.sse_frames import (
+    BlockContentFrame,
     EventName,
     SseFrame,
     serialize_source,
@@ -199,7 +209,11 @@ from narratives_agent.workflows.transcript import (
     load_transcript,
 )
 from narratives_agent.workflows.turn_cache import CachedTable, TurnCache
-from narratives_agent.workflows.turn_record import TurnRecord
+from narratives_agent.workflows.turn_record import (
+    ChartOrigin,
+    TurnChart,
+    TurnRecord,
+)
 
 _QUESTION = "What is the population of France?"
 _IDEMPOTENCY_KEY = "test-idempotency-key"
@@ -1184,6 +1198,83 @@ async def test_run_discovery_phase_records_the_results_it_returns(
     result_table_ids = {table.table_id for table in result.tables}
     assert result_table_ids == {"t1"}
     assert ctx.record.used_table_ids == result_table_ids
+
+
+def _make_sparse_state_cohort(table_id: str, variable_dcid: str) -> CachedTable:
+    """Builds a cohort table of four states that has a value for one."""
+    entry = _make_state_cohort(table_id, variable_dcid, "01 02 03 04")
+    return replace(entry, table=replace(entry.table, rows=entry.table.rows[:1]))
+
+
+def _classify_as(
+    monkeypatch: pytest.MonkeyPatch, pattern: str
+) -> QueryClassification:
+    """Makes the classify phase admit the query with `pattern` across a cohort.
+
+    Returns:
+        The classification that the classify phase returns.
+    """
+    classification = QueryClassification.model_validate(
+        {
+            "serviceable": True,
+            "pattern": pattern,
+            "geographic_shape": "child_places",
+            "requires_computation": True,
+        }
+    )
+
+    async def classify(*args: object, **_: object) -> Admitted:
+        return Admitted(classification)
+
+    monkeypatch.setattr(chat_pipeline, "classify_query", classify)
+    return classification
+
+
+@pytest.mark.asyncio
+async def test_run_discovery_phase_records_the_diagnostic_of_the_last_run(
+    monkeypatch: pytest.MonkeyPatch, turn: _Turn
+) -> None:
+    # Test: Recording of the diagnostic of the turn's specification in
+    #   `run_discovery_phase`.
+    # Situation: A top-N turn ends at a bound with two state cohort tables,
+    #   each with a value for one of four states. The first run of the
+    #   default specification stops at a refused step over `t1`. Its retry
+    #   over `t2` alone stops at a refused step too, so the server does not
+    #   have another table to retry with.
+    # Expectation: The turn's record holds the specification of the last
+    #   run, which ranks `t2` alone, with the origin `default`. Its
+    #   specification diagnostic is the diagnostic of that last run, which
+    #   is also the last of the two diagnostics of the default runs.
+    ranking = _classify_as(monkeypatch, "top_n_ranking")
+    _install_loop(
+        monkeypatch,
+        DiscoveryResult(truncated=True),
+        _make_sparse_state_cohort("t1", "Median_Income"),
+        _make_sparse_state_cohort("t2", "Percent_Diabetes"),
+    )
+    ctx = chat_pipeline.TurnContext(
+        transcript=_TRANSCRIPT,
+        config=AgentConfig(),
+        record=TurnRecord(telemetry=TurnTelemetry("test-turn-id")),
+        emit=turn.emit,
+        classification=ranking,
+    )
+
+    await chat_pipeline.run_discovery_phase(ctx)
+
+    record = ctx.record
+    assert record.specification_origin == "default"
+    assert record.specification is not None
+    assert [
+        (step.script, list_step_inputs(step))
+        for step in record.specification.steps
+    ] == [("rank_cohort", (("table", "t2"),))]
+    first, last = record.default_diagnostics
+    assert isinstance(first, StepRefusalDiagnostic)
+    assert first.input_table_ids == ("t1",)
+    assert isinstance(last, StepRefusalDiagnostic)
+    assert last.input_table_ids == ("t2",)
+    assert record.specification_diagnostic is last
 
 
 def test_tables_used_skips_a_stale_derived_table() -> None:
@@ -3450,6 +3541,153 @@ async def test_run_synthesis_phase_records_on_abort_and_stream_failure(
     assert "What is the population of France?" in record_error.synthesis_prompt
 
 
+# The line chart of `t1` for France as the `chat_turn` record holds it when
+# the server supplies it as the default chart.
+_LOGGED_FRANCE_CHART: JsonObject = {
+    "index": 0,
+    "kind": "line",
+    "origin": "default",
+    "variables": [{"variable_dcid": "Count_Person", "facet_id": "f1"}],
+    "parent_place_dcid": None,
+    "child_place_type": None,
+    "place_dcids": ["country/FRA"],
+    "per_capita": False,
+}
+
+
+def _log_step(
+    step_index: int,
+    script: str,
+    status: str = "ok",
+    refusal_reason: str | None = None,
+) -> JsonObject:
+    """Returns one item of `script_steps` as the `chat_turn` record holds it."""
+    return {
+        "step_index": step_index,
+        "step_id": f"s{step_index + 1}",
+        "script": script,
+        "status": status,
+        "refusal_reason": refusal_reason,
+    }
+
+
+_MODEL_CHART_ANSWER = (
+    "France is growing.\n\n"
+    '```chart\n{"kind": "line", "tables": ["t1"], '
+    '"places": ["country/FRA"], "title": "Population of France"}\n```\n'
+)
+
+
+def _make_series_discovery(
+    ctx: chat_pipeline.TurnContext,
+) -> chat_pipeline.DiscoveryPhaseResult:
+    """Stores `t1` in the cache of `ctx` and returns its series analysis."""
+    table = _make_table("t1")
+    ctx.cache.store_fetched(table)
+    return chat_pipeline.DiscoveryPhaseResult(
+        digest=AnalysisDigest.from_results(
+            (analyze_timeseries(table.table, step_id="s1"),)
+        ),
+        spec=_SERIES_SPECIFICATION,
+        has_data=True,
+        tables=(table,),
+        sources=[_INSEE],
+    )
+
+
+@pytest.mark.parametrize(
+    ("answer", "origin"),
+    [
+        pytest.param(_MODEL_CHART_ANSWER, "model", id="chart block"),
+        pytest.param("France is growing.", "default", id="default chart"),
+    ],
+)
+@pytest.mark.asyncio
+async def test_run_synthesis_phase_records_each_chart_with_its_origin(
+    monkeypatch: pytest.MonkeyPatch,
+    turn: _Turn,
+    answer: str,
+    origin: ChartOrigin,
+) -> None:
+    # Test: Recording of the emitted charts and their origins in
+    #   `run_synthesis_phase`.
+    # Situation: The digest has data from a series analysis of `t1`. The
+    #   answer holds a line chart block over `t1`, or it does not hold a
+    #   chart block, in which case the server appends its default chart.
+    # Expectation: The turn's record holds the one chart that the phase
+    #   returns. Its origin is `model` for the chart block and `default`
+    #   for the chart that the server appended.
+    ctx, _ = _make_synthesis_context(monkeypatch, turn, answer)
+    discovery = _make_series_discovery(ctx)
+
+    result = await chat_pipeline.run_synthesis_phase(ctx, discovery)
+
+    (chart,) = result.charts
+    assert isinstance(chart, ResolvedLineChart)
+    assert ctx.record.charts == (TurnChart(chart=chart, origin=origin),)
+
+
+@pytest.mark.asyncio
+async def test_run_synthesis_phase_records_the_charts_of_a_broken_stream(
+    monkeypatch: pytest.MonkeyPatch, turn: _Turn
+) -> None:
+    # Test: The charts on the turn's record when the synthesis phase aborts.
+    # Situation: The synthesis stream yields a paragraph and a line chart
+    #   block over `t1`, which the server resolves and emits, and then
+    #   raises `GeminiStreamError`.
+    # Expectation: The phase aborts with `SYNTHESIS_STREAM_ERROR`, and the
+    #   turn's record still holds the emitted chart with the origin `model`.
+    #   The server does not append a default chart.
+    async def stream_broken() -> AsyncGenerator[StreamChunk]:
+        yield StreamChunk("text", _MODEL_CHART_ANSWER)
+        raise GeminiStreamError("HTTP 503", is_retryable=True)
+
+    async def start_synthesis(**_: object) -> AsyncGenerator[StreamChunk]:
+        return stream_broken()
+
+    ctx, _ = _make_synthesis_context(monkeypatch, turn, "")
+    monkeypatch.setattr(chat_pipeline, "async_gemini_stream", start_synthesis)
+    discovery = _make_series_discovery(ctx)
+
+    with pytest.raises(chat_pipeline.TurnAbortedError) as exc_info:
+        await chat_pipeline.run_synthesis_phase(ctx, discovery)
+
+    assert exc_info.value.error_type == ErrorType.SYNTHESIS_STREAM_ERROR
+    (recorded,) = ctx.record.charts
+    assert recorded.chart.viz_type == "line"
+    assert recorded.origin == "model"
+
+
+@pytest.mark.asyncio
+async def test_run_synthesis_phase_records_a_default_chart_that_fails_to_emit(
+    monkeypatch: pytest.MonkeyPatch, turn: _Turn
+) -> None:
+    # Test: The origin on the turn's record when the phase aborts while it
+    #   emits the default chart.
+    # Situation: The answer does not hold a chart block, so the server
+    #   appends its default chart. The callback that emits frames raises
+    #   when it receives the block of that chart.
+    # Expectation: The error leaves the phase, and the turn's record holds
+    #   the default chart with the origin `default`.
+    def emit_until_the_default_chart(frame: SseFrame) -> None:
+        if isinstance(frame, BlockContentFrame) and isinstance(
+            frame.block, ChartBlock
+        ):
+            raise RuntimeError("The stream is closed")
+        turn.emit(frame)
+
+    ctx, _ = _make_synthesis_context(monkeypatch, turn, "France is growing.")
+    ctx = replace(ctx, emit=emit_until_the_default_chart)
+    discovery = _make_series_discovery(ctx)
+
+    with pytest.raises(RuntimeError, match="The stream is closed"):
+        await chat_pipeline.run_synthesis_phase(ctx, discovery)
+
+    (recorded,) = ctx.record.charts
+    assert recorded.chart.viz_type == "line"
+    assert recorded.origin == "default"
+
+
 def _get_chat_turn_record(lines: list[str]) -> JsonObject:
     """Returns the one `chat_turn` record that the turn wrote, parsed."""
     (line,) = lines
@@ -3488,7 +3726,10 @@ async def test_a_complete_turn_writes_one_chat_turn_record(
     #   SHA, the turn ID, a non-negative duration, the transcript's
     #   conversation ID, index 0, the outcome `answered_with_data`, the
     #   classified pattern, the counts of the analysis, and the five phases
-    #   that ran. It also marks the turn as signed and not compacted.
+    #   that ran. It also marks the turn as signed and not compacted. The
+    #   specification has the origin `model` and one step with the status
+    #   `ok`, the turn does not have a rejected specification, and the one
+    #   chart is the server's default line chart of France.
     monkeypatch.setenv("BUILD_SHA", "test-build-sha-1234")
 
     await chat_pipeline.run_turn(_TRANSCRIPT, turn.emit)
@@ -3519,6 +3760,120 @@ async def test_a_complete_turn_writes_one_chat_turn_record(
     assert [
         item["phase"] for item in phase_durations if isinstance(item, dict)
     ] == ["classify", "discovery", "synthesis", "finalize", "follow_ups"]
+    assert record["specification_origin"] == "model"
+    assert record["script_steps"] == [_log_step(0, "analyze_timeseries")]
+    assert record["rejected_submissions"] == []
+    assert record["charts"] == [_LOGGED_FRANCE_CHART]
+
+
+@pytest.mark.asyncio
+async def test_a_chart_block_is_recorded_with_the_origin_model(
+    turn: _Turn, structured_lines: list[str]
+) -> None:
+    # Test: The `chat_turn` record of a turn whose answer holds a chart
+    #   block.
+    # Situation: The model writes a line chart block over `t1` for France,
+    #   with a title.
+    # Expectation: The record holds the same chart as a turn with the
+    #   default chart, with the origin `model`.
+    turn.answer = _MODEL_CHART_ANSWER
+
+    await chat_pipeline.run_turn(_TRANSCRIPT, turn.emit)
+
+    record = _get_chat_turn_record(structured_lines)
+    assert record["charts"] == [{**_LOGGED_FRANCE_CHART, "origin": "model"}]
+
+
+@pytest.mark.asyncio
+async def test_a_default_retry_that_succeeds_is_recorded_with_its_own_steps(
+    monkeypatch: pytest.MonkeyPatch, turn: _Turn, structured_lines: list[str]
+) -> None:
+    # Test: `specification_origin` and `script_steps` in the `chat_turn`
+    #   record when a retry of the default specification answers the turn.
+    # Situation: A correlation turn ends at a bound with two state cohort
+    #   tables that share two of their five states. The first run of the
+    #   default specification refuses at `s1`, its `relate_cohorts` step.
+    #   The retry does not have that step, so its `s1` is a `rank_cohort`
+    #   step, and it succeeds.
+    # Expectation: The record has the origin `default` and lists the two
+    #   steps of the retry, both with the status `ok`. The refusal of the
+    #   first run does not appear in `script_steps`.
+    _classify_as(monkeypatch, "correlation")
+    _install_loop(
+        monkeypatch,
+        DiscoveryResult(truncated=True),
+        _make_state_cohort("t1", "Median_Income", "01 02 03 04 05"),
+        _make_state_cohort("t2", "Percent_Diabetes", "04 05 06 07 08"),
+    )
+
+    await chat_pipeline.run_turn(_TRANSCRIPT, turn.emit)
+
+    record = _get_chat_turn_record(structured_lines)
+    assert record["outcome"] == "answered_with_data"
+    assert record["specification_origin"] == "default"
+    assert record["scripts"] == ["rank_cohort", "rank_cohort"]
+    assert record["script_steps"] == [
+        _log_step(0, "rank_cohort"),
+        _log_step(1, "rank_cohort"),
+    ]
+
+
+@pytest.mark.asyncio
+async def test_a_default_whose_last_run_refuses_is_recorded_as_refused(
+    monkeypatch: pytest.MonkeyPatch, turn: _Turn, structured_lines: list[str]
+) -> None:
+    # Test: `script_steps` in the `chat_turn` record when the last run of
+    #   the default specification refuses.
+    # Situation: A top-N turn ends at a bound with two state cohort tables,
+    #   each with a value for one of four states. The default specification
+    #   refuses over `t1`, and its retry over `t2` alone refuses too.
+    # Expectation: The turn is answered without data. The record has the
+    #   origin `default` and the one step of the last run, with the status
+    #   `refused` and the reason `insufficient_coverage`.
+    _classify_as(monkeypatch, "top_n_ranking")
+    _install_loop(
+        monkeypatch,
+        DiscoveryResult(truncated=True),
+        _make_sparse_state_cohort("t1", "Median_Income"),
+        _make_sparse_state_cohort("t2", "Percent_Diabetes"),
+    )
+
+    await chat_pipeline.run_turn(_TRANSCRIPT, turn.emit)
+
+    record = _get_chat_turn_record(structured_lines)
+    assert record["outcome"] == "answered_without_data"
+    assert record["specification_origin"] == "default"
+    assert record["scripts"] == ["rank_cohort"]
+    assert record["script_steps"] == [
+        _log_step(0, "rank_cohort", "refused", "insufficient_coverage")
+    ]
+
+
+@pytest.mark.asyncio
+async def test_a_default_that_times_out_is_recorded_without_script_steps(
+    monkeypatch: pytest.MonkeyPatch, turn: _Turn, structured_lines: list[str]
+) -> None:
+    # Test: `script_steps` in the `chat_turn` record when the default
+    #   specification exceeds its time limit.
+    # Situation: The loop ends at a bound with one table cached, and the run
+    #   of the default specification ends in a `TimeoutDiagnostic`.
+    # Expectation: The record has the origin `default` and the script of
+    #   the specification, and `script_steps` is empty.
+    async def time_out(
+        specification: AnalysisSpecification, cache: TurnCache
+    ) -> ProcessingDiagnostic:
+        return TimeoutDiagnostic(timeout_seconds=5.0, message="Timed out.")
+
+    monkeypatch.setattr(chat_pipeline, "execute_specification", time_out)
+    _install_loop(monkeypatch, DiscoveryResult(truncated=True), _make_table())
+
+    await chat_pipeline.run_turn(_TRANSCRIPT, turn.emit)
+
+    record = _get_chat_turn_record(structured_lines)
+    assert record["outcome"] == "answered_without_data"
+    assert record["specification_origin"] == "default"
+    assert record["scripts"] == ["analyze_timeseries"]
+    assert record["script_steps"] == []
 
 
 @pytest.mark.asyncio
@@ -3867,8 +4222,10 @@ async def test_a_failure_to_write_the_record_does_not_fail_the_turn(
 
 
 # Each piece of free text of a marked turn starts with this prefix, so one
-# search of the `chat_turn` line finds any of them.
-_MARKER_PREFIX = "zzmarker_"
+# search of the `chat_turn` line finds any of them. A hyphen separates the
+# prefix from the name so `TitleExtractor` does not strip a Markdown emphasis
+# underscore from the marked title.
+_MARKER_PREFIX = "zzmarker-"
 # `_TABLE_MARKERS`, `_SOURCE_MARKERS`, `_ALT_SOURCE_MARKERS`, and
 # `_UNUSED_AND_DERIVED_MARKERS` name the pieces of free text that the marked
 # tables, their sources and alternative sources, and the digest hold and that
@@ -3913,17 +4270,18 @@ _UNUSED_AND_DERIVED_MARKERS = (
     "derived_unit",
     "caveat",
 )
-# `_SYNTHESIS_MARKERS` names the pieces of free text that a marked turn
-# produces once it reaches synthesis. The debug report holds the title and
-# the chart title in the raw synthesis output, even when the answer does not
-# show them.
-_SYNTHESIS_MARKERS = (
+# `_ANSWER_MARKERS` names the pieces of free text that a marked turn produces
+# once it reaches synthesis. `_SYNTHESIS_MARKERS` adds the title and the unit
+# of the chart block that the model writes. The debug report holds the title
+# and the chart block in the raw synthesis output, even when the answer does
+# not show them.
+_ANSWER_MARKERS = (
     "synthesis_thought",
     "title",
     "answer",
-    "chart_title",
     "follow_up",
 )
+_SYNTHESIS_MARKERS = (*_ANSWER_MARKERS, "chart_title", "chart_unit")
 
 
 def _mark(name: str) -> str:
@@ -4100,6 +4458,30 @@ def _make_marked_derived_table(table_id: str = "s9") -> CachedTable:
     )
 
 
+def _make_marked_addend_table(table_id: str = "t5") -> CachedTable:
+    """Builds a marked table that a derived step adds to table `t1`.
+
+    The table shares the place, the dates, and the unit of `t1`.
+    """
+    return CachedTable(
+        table_id=table_id,
+        table=ObservationTable(
+            variable_dcid="Count_Person_Urban",
+            variable_name=_mark("addend_variable"),
+            unit=_mark("unit"),
+            scaling_factor=None,
+            provenance=Provenance(),
+            rows=(
+                ObservationRow("country/FRA", _mark("row_place"), "2022", 1.0),
+                ObservationRow("country/FRA", _mark("row_place"), "2023", 2.0),
+            ),
+            requested_places=("country/FRA",),
+            place_names={"country/FRA": _mark("place")},
+            facet_id="f5",
+        ),
+    )
+
+
 def _make_marked_diagnostic() -> StepRefusalDiagnostic:
     """Builds a step refusal with a marked message and alternative sources."""
     return StepRefusalDiagnostic(
@@ -4114,24 +4496,32 @@ def _make_marked_diagnostic() -> StepRefusalDiagnostic:
     )
 
 
-def _plant_synthesis_markers(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Makes synthesis and follow-up generation produce marked text."""
+def _plant_synthesis_markers(
+    monkeypatch: pytest.MonkeyPatch, *, has_chart_block: bool = True
+) -> None:
+    """Makes synthesis and follow-up generation produce marked text.
+
+    Args:
+        monkeypatch: The fixture that replaces the two model calls.
+        has_chart_block: Whether the answer ends with a chart block of `t1`
+            that has a marked title and a marked unit.
+    """
     chart = json.dumps(
         {
             "kind": "line",
             "tables": ["t1"],
             "places": ["country/FRA"],
             "title": _mark("chart_title"),
+            "unit": _mark("chart_unit"),
         }
     )
+    answer = f"# {_mark('title')}\n\n{_mark('answer')}"
+    if has_chart_block:
+        answer += f"\n\n```chart\n{chart}\n```"
 
     async def stream_marked_answer() -> AsyncGenerator[StreamChunk]:
         yield StreamChunk("thought", _mark("synthesis_thought"))
-        yield StreamChunk(
-            "text",
-            f"# {_mark('title')}\n\n{_mark('answer')}\n\n"
-            f"```chart\n{chart}\n```",
-        )
+        yield StreamChunk("text", answer)
 
     async def start_synthesis(**_: object) -> AsyncGenerator[StreamChunk]:
         return stream_marked_answer()
@@ -4150,6 +4540,12 @@ def _plant_model_specification_markers(
 ) -> tuple[str, ...]:
     """Makes the turn complete with a marked specification from the model.
 
+    The specification derives a table whose variable ID, name, and unit the
+    model wrote. Before it, the server rejected three specifications, one
+    for each rejection reason. Each rejection holds marked errors, the two
+    that parsed hold the marked text of a specification, and the one that
+    ran holds a diagnostic with a marked message.
+
     Returns:
         The names of the markers that the turn holds.
     """
@@ -4167,13 +4563,42 @@ def _plant_model_specification_markers(
                     "table": "t2",
                     "n": 1,
                 },
+                {
+                    "step_id": "s3",
+                    "script": "compute_derived_metric",
+                    "left": "t5",
+                    "right": "t1",
+                    "operation": "sum",
+                    "derived_variable_dcid": _mark("derived_dcid"),
+                    "derived_variable_name": _mark("derived_name"),
+                    "derived_unit": _mark("derived_step_unit"),
+                },
             ],
             "findings": [_mark("finding")],
             "missing": [_mark("missing")],
             "related": [_mark("related")],
         }
     )
-    diagnostic = _make_marked_diagnostic()
+    rejected = AnalysisSpecification.model_validate(
+        {
+            "steps": [
+                {
+                    "step_id": "s1",
+                    "script": "compute_derived_metric",
+                    "left": "t1",
+                    "right": "t2",
+                    "derived_variable_dcid": _mark("rejected_dcid"),
+                    "derived_variable_name": _mark("rejected_name"),
+                    "derived_unit": _mark("rejected_unit"),
+                },
+                {"step_id": "s2", "script": "rank_cohort", "table": "s1"},
+            ],
+            "findings": [_mark("rejected_finding")],
+            "missing": [_mark("rejected_missing")],
+            "related": [_mark("rejected_related")],
+        }
+    )
+    diagnostic = replace(_make_marked_diagnostic(), step_id="s2")
 
     async def run_loop(
         transcript: Transcript,
@@ -4190,6 +4615,7 @@ def _plant_model_specification_markers(
         cache.store_fetched(_make_marked_cohort_table("t2"))
         cache.store_fetched(_make_marked_unused_table("t3"))
         cache.store_fetched(_make_marked_empty_table("t4"))
+        cache.store_fetched(_make_marked_addend_table("t5"))
         executed = await execute_specification(specification, cache)
         assert isinstance(executed, AnalysisDigest)
         derived_entry = _make_marked_derived_table("s9")
@@ -4210,14 +4636,27 @@ def _plant_model_specification_markers(
             rejected_submissions=[
                 RejectedSubmission(
                     round_number=1,
+                    reason="schema_invalid",
+                    errors=(_mark("schema_error"),),
+                ),
+                RejectedSubmission(
+                    round_number=2,
+                    reason="reference_invalid",
+                    errors=(_mark("reference_error"),),
+                    specification=rejected,
+                ),
+                RejectedSubmission(
+                    round_number=3,
                     reason="processing_failed",
                     errors=(
                         _mark("rejection_error"),
                         diagnostic.format_for_retry(),
                     ),
-                )
+                    specification=rejected,
+                    diagnostic=diagnostic,
+                ),
             ],
-            diagnostics=[(1, diagnostic)],
+            diagnostics=[(3, diagnostic)],
         )
 
     monkeypatch.setattr(chat_pipeline, "execute_discovery_loop", run_loop)
@@ -4225,11 +4664,23 @@ def _plant_model_specification_markers(
         "discovery_thought",
         "tool_argument",
         "tool_result",
+        "schema_error",
+        "reference_error",
         "rejection_error",
         "diagnostic",
         "finding",
         "missing",
         "related",
+        "derived_dcid",
+        "derived_name",
+        "derived_step_unit",
+        "rejected_dcid",
+        "rejected_name",
+        "rejected_unit",
+        "rejected_finding",
+        "rejected_missing",
+        "rejected_related",
+        "addend_variable",
         *_TABLE_MARKERS,
         *_SOURCE_MARKERS,
         *_ALT_SOURCE_MARKERS,
@@ -4249,6 +4700,11 @@ def _plant_default_specification_markers(
     also receives marked variable metadata before the first run. The frames
     of this turn hold the source that the metadata names, and they do not
     hold the table's own source.
+
+    The answer does not hold a chart block, so the server appends a default
+    chart. The test replaces that chart with a bar chart that has a marked
+    title and a marked unit, and that names a variable and a place that the
+    turn did not fetch beside the variable and the place of `t1`.
 
     Returns:
         The names of the markers that the turn holds.
@@ -4287,6 +4743,24 @@ def _plant_default_specification_markers(
     async def describe_variable(name: str, arguments: JsonObject) -> JsonObject:
         return {"content": [{"type": "text", "text": json.dumps(metadata)}]}
 
+    def build_marked_default_charts(*args: object) -> tuple[ResolvedChart, ...]:
+        return (
+            ResolvedBarChart(
+                title=_mark("default_chart_title"),
+                unit=_mark("default_chart_unit"),
+                variable_dcids=("Count_Person", _mark("chart_variable")),
+                facet_ids=(
+                    ("Count_Person", "f1"),
+                    (_mark("chart_variable"), "f1"),
+                ),
+                scope=PlaceList(("country/FRA", _mark("chart_place"))),
+            ),
+        )
+
+    _plant_synthesis_markers(monkeypatch, has_chart_block=False)
+    monkeypatch.setattr(
+        chat_pipeline, "build_default_charts", build_marked_default_charts
+    )
     monkeypatch.setattr(
         chat_pipeline, "execute_specification", refuse_first_run
     )
@@ -4309,7 +4783,56 @@ def _plant_default_specification_markers(
         "diagnostic",
         "default_diagnostic",
         "metadata_provider",
+        "default_chart_title",
+        "default_chart_unit",
+        "chart_variable",
+        "chart_place",
         *_TABLE_MARKERS,
+        *_ANSWER_MARKERS,
+    )
+
+
+def _plant_failed_default_specification_markers(
+    monkeypatch: pytest.MonkeyPatch,
+) -> tuple[str, ...]:
+    """Makes the turn complete after every run of the default specification
+    refused.
+
+    The loop ends at a bound with two tables. Each run of the default
+    specification is refused with a marked diagnostic that names `t1`, so
+    the retry leaves `t1` out, and the server does not try a third time.
+
+    Returns:
+        The names of the markers that the turn holds.
+    """
+    diagnostic = replace(
+        _make_marked_diagnostic(), message=_mark("failed_default_diagnostic")
+    )
+
+    async def refuse_every_run(
+        specification: AnalysisSpecification, cache: TurnCache
+    ) -> ProcessingDiagnostic:
+        return diagnostic
+
+    monkeypatch.setattr(
+        chat_pipeline, "execute_specification", refuse_every_run
+    )
+    _install_loop(
+        monkeypatch,
+        DiscoveryResult(tool_calls=[dict(_MARKED_TOOL_CALL)], truncated=True),
+        _make_marked_table(),
+        _make_marked_cohort_table("t2"),
+    )
+    return (
+        "tool_argument",
+        "tool_result",
+        "failed_default_diagnostic",
+        "variable",
+        "place",
+        "unit",
+        "cohort_variable",
+        "cohort_place",
+        "cohort_unit",
         *_SYNTHESIS_MARKERS,
     )
 
@@ -4408,19 +4931,180 @@ def _plant_failure_markers(monkeypatch: pytest.MonkeyPatch) -> tuple[str, ...]:
     )
 
 
+# The tables of a marked turn as the `chat_turn` record holds them.
+_LOGGED_MARKED_T1: JsonObject = {
+    "table_id": "t1",
+    "used_in_answer": True,
+    "variable_dcid": "Count_Person",
+    "facet_id": "f1",
+    "row_count": 2,
+    "parent_place_dcid": None,
+    "child_place_type": None,
+    "places_with_data_count": 1,
+    "place_dcids": ["country/FRA"],
+    "earliest_date": "2022",
+    "latest_date": "2023",
+}
+_LOGGED_MARKED_T2: JsonObject = {
+    "table_id": "t2",
+    "used_in_answer": True,
+    "variable_dcid": "Median_Income_Household",
+    "facet_id": "f2",
+    "row_count": 2,
+    "parent_place_dcid": "geoId/06",
+    "child_place_type": "County",
+    "places_with_data_count": 2,
+    "place_dcids": [],
+    "earliest_date": "2023",
+    "latest_date": "2023",
+}
+_LOGGED_MARKED_T3: JsonObject = {
+    "table_id": "t3",
+    "used_in_answer": False,
+    "variable_dcid": "Count_Household",
+    "facet_id": "f3",
+    "row_count": 1,
+    "parent_place_dcid": None,
+    "child_place_type": None,
+    "places_with_data_count": 1,
+    "place_dcids": ["country/DEU"],
+    "earliest_date": "2023",
+    "latest_date": "2023",
+}
+_LOGGED_MARKED_T5: JsonObject = {
+    **_LOGGED_MARKED_T1,
+    "table_id": "t5",
+    "variable_dcid": "Count_Person_Urban",
+    "facet_id": "f5",
+}
+# The scripts of the specification that the server rejects on a marked turn.
+_REJECTED_SCRIPTS: list[JsonValue] = ["compute_derived_metric", "rank_cohort"]
+# `_MODEL_SPECIFICATION_RECORD`, `_DEFAULT_SPECIFICATION_RECORD`, and
+# `_FAILED_DEFAULT_SPECIFICATION_RECORD` hold the keys of the `chat_turn`
+# record that describe the data and the analysis of a marked turn.
+# `_RECORD_WITHOUT_ANALYSIS` holds them for a turn that ended without
+# fetching a table.
+_MODEL_SPECIFICATION_RECORD: JsonObject = {
+    "tables": [
+        _LOGGED_MARKED_T1,
+        _LOGGED_MARKED_T2,
+        _LOGGED_MARKED_T3,
+        _LOGGED_MARKED_T5,
+    ],
+    "highlighted_places": [
+        {"place_dcid": "country/FRA", "source": "timeseries"},
+        {"place_dcid": "geoId/06085", "source": "ranked_top"},
+        {"place_dcid": "geoId/06001", "source": "ranked_bottom"},
+    ],
+    "specification_origin": "model",
+    "script_steps": [
+        _log_step(0, "analyze_timeseries"),
+        _log_step(1, "rank_cohort"),
+        _log_step(2, "compute_derived_metric"),
+    ],
+    "rejected_submissions": [
+        {
+            "round_number": 1,
+            "reason": "schema_invalid",
+            "scripts": [],
+            "failed_step_id": None,
+            "failed_script": None,
+            "refusal_reason": None,
+            "timed_out": False,
+        },
+        {
+            "round_number": 2,
+            "reason": "reference_invalid",
+            "scripts": _REJECTED_SCRIPTS,
+            "failed_step_id": None,
+            "failed_script": None,
+            "refusal_reason": None,
+            "timed_out": False,
+        },
+        {
+            "round_number": 3,
+            "reason": "processing_failed",
+            "scripts": _REJECTED_SCRIPTS,
+            "failed_step_id": "s2",
+            "failed_script": "rank_cohort",
+            "refusal_reason": "insufficient_coverage",
+            "timed_out": False,
+        },
+    ],
+    "charts": [{**_LOGGED_FRANCE_CHART, "origin": "model"}],
+}
+_DEFAULT_SPECIFICATION_RECORD: JsonObject = {
+    "tables": [_LOGGED_MARKED_T1, _LOGGED_MARKED_T2],
+    "highlighted_places": [
+        {"place_dcid": "country/FRA", "source": "timeseries"},
+        {"place_dcid": "geoId/06085", "source": "ranked_top"},
+        {"place_dcid": "geoId/06001", "source": "ranked_top"},
+    ],
+    "specification_origin": "default",
+    "script_steps": [
+        _log_step(0, "analyze_timeseries"),
+        _log_step(1, "rank_cohort"),
+    ],
+    "rejected_submissions": [],
+    "charts": [{**_LOGGED_FRANCE_CHART, "kind": "bar"}],
+}
+_FAILED_DEFAULT_SPECIFICATION_RECORD: JsonObject = {
+    "tables": [
+        {**_LOGGED_MARKED_T1, "used_in_answer": False},
+        _LOGGED_MARKED_T2,
+    ],
+    "highlighted_places": [],
+    "specification_origin": "default",
+    "script_steps": [
+        _log_step(0, "rank_cohort", "refused", "insufficient_coverage")
+    ],
+    "rejected_submissions": [],
+    "charts": [],
+}
+_RECORD_WITHOUT_ANALYSIS: JsonObject = {
+    "tables": [],
+    "highlighted_places": [],
+    "specification_origin": None,
+    "script_steps": [],
+    "rejected_submissions": [],
+    "charts": [],
+}
+
+
 @pytest.mark.parametrize(
-    "plant_markers",
+    ("plant_markers", "expected"),
     [
         pytest.param(
-            _plant_model_specification_markers, id="model specification"
+            _plant_model_specification_markers,
+            _MODEL_SPECIFICATION_RECORD,
+            id="model specification",
         ),
         pytest.param(
-            _plant_default_specification_markers, id="default specification"
+            _plant_default_specification_markers,
+            _DEFAULT_SPECIFICATION_RECORD,
+            id="default specification",
         ),
-        pytest.param(_plant_unavailable_report_markers, id="unavailable"),
-        pytest.param(_plant_clarification_markers, id="clarification"),
-        pytest.param(_plant_refusal_markers, id="refused"),
-        pytest.param(_plant_failure_markers, id="failed"),
+        pytest.param(
+            _plant_failed_default_specification_markers,
+            _FAILED_DEFAULT_SPECIFICATION_RECORD,
+            id="failed default specification",
+        ),
+        pytest.param(
+            _plant_unavailable_report_markers,
+            _RECORD_WITHOUT_ANALYSIS,
+            id="unavailable",
+        ),
+        pytest.param(
+            _plant_clarification_markers,
+            _RECORD_WITHOUT_ANALYSIS,
+            id="clarification",
+        ),
+        pytest.param(
+            _plant_refusal_markers, _RECORD_WITHOUT_ANALYSIS, id="refused"
+        ),
+        pytest.param(
+            _plant_failure_markers, _RECORD_WITHOUT_ANALYSIS, id="failed"
+        ),
     ],
 )
 @pytest.mark.asyncio
@@ -4429,26 +5113,37 @@ async def test_the_chat_turn_record_does_not_contain_conversation_text(
     turn: _Turn,
     structured_lines: list[str],
     plant_markers: Callable[[pytest.MonkeyPatch], tuple[str, ...]],
+    expected: JsonObject,
 ) -> None:
     # Test: The `chat_turn` line does not contain any text from the
-    #   conversation, and records verified table and place DCIDs on data
-    #   turns without leaking empty fetches or derived tables.
+    #   conversation. It describes the data and the analysis of the turn in
+    #   codes and verified DCIDs, without leaking empty fetches or derived
+    #   tables.
     # Situation: Every piece of free text of a turn is a marker string. The
     #   transcript marks the query, the idempotency keys, the summary, and
     #   the query, the answer, and the data scope names of an earlier turn.
-    #   Synthesis marks a thought, the title, the text, a chart title, and
-    #   a follow-up question. Each case then marks the text of one kind of
-    #   turn: a specification from the model (with named-place, cohort,
-    #   unused, empty 0-row, and derived tables, plus marked caveats and
-    #   missing notes), the default specification after a refusal, a report
-    #   that data is unavailable, a clarification, a refused turn, or a
-    #   failed turn. The debug report is on.
+    #   Synthesis marks a thought, the title, the text, the title and the
+    #   unit of a chart block, and a follow-up question. Each case then
+    #   marks the text of one kind of turn. The first is a specification
+    #   from the model, with named-place, cohort, unused, empty 0-row, and
+    #   derived tables, marked caveats and missing notes, a derived step
+    #   whose variable ID, name, and unit the model wrote, and three
+    #   rejected specifications with marked errors, a marked diagnostic, and
+    #   marked specification text. The second is the default specification
+    #   after a refusal, whose default chart has a marked title and unit and
+    #   names a variable and a place that the turn did not fetch. The third
+    #   is a default specification whose every run refuses with a marked
+    #   message. The others are a report that data is unavailable, a
+    #   clarification, a refused turn, and a failed turn. The debug report
+    #   is on.
     # Expectation: Each marker that the case plants appears in a frame of
     #   the turn, which shows that the turn held it. The server writes
     #   exactly one line, and the raw line does not contain any marker or
-    #   any DCID from an empty fetch or a derived table. On the two
-    #   `answered_with_data` paths, `tables` and `highlighted_places` hold
-    #   the expected verified DCIDs.
+    #   any DCID from an empty fetch or a derived table. `tables`,
+    #   `highlighted_places`, `specification_origin`, `script_steps`,
+    #   `rejected_submissions`, and `charts` hold the expected codes and
+    #   verified DCIDs. Each chart keeps only the variable and the place of
+    #   `t1`.
     monkeypatch.setenv(DEBUG_REPORT_ENV, "on")
     _plant_synthesis_markers(monkeypatch)
     planted = plant_markers(monkeypatch)
@@ -4473,63 +5168,7 @@ async def test_the_chat_turn_record_does_not_contain_conversation_text(
     assert isinstance(parsed, dict)
     assert parsed["event"] == "chat_turn"
     assert parsed["tables_truncated"] is False
-    if parsed["outcome"] == "answered_with_data":
-        expected_tables: list[JsonObject] = [
-            {
-                "table_id": "t1",
-                "used_in_answer": True,
-                "variable_dcid": "Count_Person",
-                "facet_id": "f1",
-                "row_count": 2,
-                "parent_place_dcid": None,
-                "child_place_type": None,
-                "places_with_data_count": 1,
-                "place_dcids": ["country/FRA"],
-                "earliest_date": "2022",
-                "latest_date": "2023",
-            },
-            {
-                "table_id": "t2",
-                "used_in_answer": True,
-                "variable_dcid": "Median_Income_Household",
-                "facet_id": "f2",
-                "row_count": 2,
-                "parent_place_dcid": "geoId/06",
-                "child_place_type": "County",
-                "places_with_data_count": 2,
-                "place_dcids": [],
-                "earliest_date": "2023",
-                "latest_date": "2023",
-            },
-        ]
-        if plant_markers is _plant_model_specification_markers:
-            expected_tables.append(
-                {
-                    "table_id": "t3",
-                    "used_in_answer": False,
-                    "variable_dcid": "Count_Household",
-                    "facet_id": "f3",
-                    "row_count": 1,
-                    "parent_place_dcid": None,
-                    "child_place_type": None,
-                    "places_with_data_count": 1,
-                    "place_dcids": ["country/DEU"],
-                    "earliest_date": "2023",
-                    "latest_date": "2023",
-                }
-            )
-            expected_second_source = "ranked_bottom"
-        else:
-            expected_second_source = "ranked_top"
-        assert parsed["tables"] == expected_tables
-        assert parsed["highlighted_places"] == [
-            {"place_dcid": "country/FRA", "source": "timeseries"},
-            {"place_dcid": "geoId/06085", "source": "ranked_top"},
-            {"place_dcid": "geoId/06001", "source": expected_second_source},
-        ]
-    else:
-        assert parsed["tables"] == []
-        assert parsed["highlighted_places"] == []
+    assert {key: parsed[key] for key in expected} == expected
 
 
 @pytest.mark.asyncio
