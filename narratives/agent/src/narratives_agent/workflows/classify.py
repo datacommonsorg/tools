@@ -220,7 +220,7 @@ async def _attempt_classification(
                 thinking_level=role.thinking_level,
                 response_schema=QueryClassification,
                 token_usage=telemetry.tokens,
-                token_phase=GeminiRole.CLASSIFY.value,
+                token_role=GeminiRole.CLASSIFY,
             )
     except TimeoutError as error:
         logger.warning(

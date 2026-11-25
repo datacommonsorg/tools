@@ -60,7 +60,7 @@ from google.genai import types
 from pydantic import ValidationError
 
 from narratives_agent import config
-from narratives_agent.config_model import AgentConfig
+from narratives_agent.config_model import AgentConfig, GeminiRole
 from narratives_agent.gemini.client import GeminiBlockedError, GeminiError
 from narratives_agent.gemini.response import GeminiResponse
 from narratives_agent.settings import (
@@ -272,7 +272,7 @@ async def test_compaction_extends_the_previous_summary(
     assert call["thinking_level"] is types.ThinkingLevel.LOW
     assert call["temperature"] <= 0.2
     assert call["token_usage"] is tokens
-    assert call["token_phase"] == "compaction"
+    assert call["token_role"] is GeminiRole.COMPACTION
 
 
 @pytest.mark.asyncio

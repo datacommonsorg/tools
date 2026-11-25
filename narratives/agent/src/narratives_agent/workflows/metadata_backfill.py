@@ -17,8 +17,10 @@ When no `get_variable_metadata` call has described a fetched table's facet,
 the table cites the inline observation source, which names no provider,
 dataset, date range, or license. Before a specification runs, the server
 requests that metadata for the tables it references, best effort, and
-records it in `TurnCache`. These requests are not model tool calls: they
-produce no tool-call record.
+records it in `TurnCache`. The model does not ask for these requests, so
+they do not produce a tool-call record for the UI. The turn's telemetry
+counts each request that the server sends as a `get_variable_metadata` call
+that the server made.
 """
 
 import asyncio
@@ -33,6 +35,7 @@ from narratives_agent.mcp.capabilities import (
     TOOL_GET_VARIABLE_METADATA,
     Capabilities,
 )
+from narratives_agent.telemetry import TurnTelemetry
 from narratives_agent.workflows.specification import AnalysisSpecification
 from narratives_agent.workflows.turn_cache import TurnCache
 
@@ -93,6 +96,7 @@ async def backfill_variable_metadata(
     specification: AnalysisSpecification,
     cache: TurnCache,
     capabilities: Capabilities,
+    telemetry: TurnTelemetry,
 ) -> None:
     """Records variable metadata for the fetched tables a specification reads.
 
@@ -110,6 +114,9 @@ async def backfill_variable_metadata(
             which variables and facets were requested.
         capabilities: The MCP server's tools; nothing is requested when it
             does not provide `get_variable_metadata`.
+        telemetry: The turn's telemetry, which counts each request that the
+            server sends, whether the request succeeds, fails, or is
+            canceled by the timeout.
     """
     if not capabilities.supports_source_attribution:
         return
@@ -124,7 +131,7 @@ async def backfill_variable_metadata(
         len(targets),
         len(requests),
     )
-    await _run_requests(requests, cache)
+    await _run_requests(requests, cache, telemetry)
 
 
 def _select_targets(
@@ -191,7 +198,9 @@ def _batch_requests(
 
 
 async def _run_requests(
-    requests: Sequence[_MetadataRequest], cache: TurnCache
+    requests: Sequence[_MetadataRequest],
+    cache: TurnCache,
+    telemetry: TurnTelemetry,
 ) -> None:
     """Runs the calls concurrently under one shared timeout.
 
@@ -205,7 +214,9 @@ async def _run_requests(
             asyncio.TaskGroup() as group,
         ):
             for request in requests:
-                group.create_task(_run_request(request, cache, limit))
+                group.create_task(
+                    _run_request(request, cache, limit, telemetry)
+                )
     except TimeoutError as error:
         logger.warning(
             "Variable metadata backfill for %s did not finish within %.0f "
@@ -217,14 +228,20 @@ async def _run_requests(
 
 
 async def _run_request(
-    request: _MetadataRequest, cache: TurnCache, limit: asyncio.Semaphore
+    request: _MetadataRequest,
+    cache: TurnCache,
+    limit: asyncio.Semaphore,
+    telemetry: TurnTelemetry,
 ) -> None:
     """Runs one call and records its response, or logs its failure.
 
-    A failure is handled here, so it does not cancel the sibling calls.
+    A failure is handled here, so it does not cancel the sibling calls. The
+    call is counted when the server sends it, so a call that fails or that
+    the timeout cancels is counted too.
     """
     try:
         async with limit:
+            telemetry.record_tool_call("get_variable_metadata", "server")
             result = await mcp_client.async_call_tool(
                 TOOL_GET_VARIABLE_METADATA, request.build_arguments()
             )

@@ -240,7 +240,8 @@ Otherwise, the request runs through the agent loop in five steps:
    at most once per variable and facet in a turn, so citations can provide
    the provider, dataset, date range, and license even when the model did
    not call `get_variable_metadata`. These requests are not model tool calls
-   and stream no `tool_call` frame.
+   and stream no `tool_call` frame. The `chat_turn` record counts them as
+   tool calls that the server made.
    A specification holds at most six steps. `analyze_timeseries` and
    `compute_composition` report every place they cover, so without `places`
    their input may cover at most ten places, and a ranking or relation

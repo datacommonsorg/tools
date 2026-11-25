@@ -26,15 +26,9 @@ from pydantic import ValidationError
 
 from narratives_agent.analytics.tables import ObservationTable
 from narratives_agent.workflows.charts import (
-    ChildCohort,
-    PlaceList,
-    ResolvedBarChart,
     ResolvedChart,
-    ResolvedHighlightChart,
     ResolvedLineChart,
-    ResolvedMapChart,
-    ResolvedRankingChart,
-    ResolvedScatterChart,
+    read_chart_places,
 )
 from narratives_agent.workflows.transcript import (
     DATE_PATTERN,
@@ -244,33 +238,6 @@ def _build_table_scope(
     )
 
 
-def _read_chart_places(
-    chart: ResolvedChart,
-) -> tuple[tuple[str, ...], ChildCohort | None]:
-    """Returns the places a resolved chart draws, or the cohort it draws.
-
-    Args:
-        chart: A resolved chart of any kind.
-
-    Returns:
-        The chart's explicit place DCIDs and None, or no places and the
-        cohort it draws.
-    """
-    match chart:
-        case ResolvedLineChart(scope=scope) | ResolvedBarChart(scope=scope):
-            if isinstance(scope, PlaceList):
-                return scope.place_dcids, None
-            return (), scope
-        case ResolvedHighlightChart(place_dcid=place_dcid):
-            return (place_dcid,), None
-        case (
-            ResolvedRankingChart(cohort=cohort)
-            | ResolvedMapChart(cohort=cohort)
-            | ResolvedScatterChart(cohort=cohort)
-        ):
-            return (), cohort
-
-
 def _resolve_chart_date_range(
     chart: ResolvedChart,
     grounded_variables: Sequence[str],
@@ -345,7 +312,7 @@ def _iter_chart_scopes(
         grounded variable and place or cohort.
     """
     for chart in charts:
-        places, cohort = _read_chart_places(chart)
+        places, cohort = read_chart_places(chart)
         parent = cohort.parent_place if cohort is not None else None
         variables = [dcid for dcid in chart.variable_dcids if dcid in known]
         grounded_places = [dcid for dcid in places if dcid in known]

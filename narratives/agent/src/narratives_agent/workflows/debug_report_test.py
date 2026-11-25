@@ -196,7 +196,8 @@ def test_build_debug_report_complete_turn_with_tokens_and_phases() -> None:
     #   and synthesis phases, along with token call records.
     # Expectation: `pattern` is preserved, duration matches elapsed_ms(),
     #   `nested_phases` maps processing to discovery, and tokens and to_dict()
-    #   serialize accurately.
+    #   serialize accurately. Each token call keeps the key `phase`, and its
+    #   value is the plain string of the call's role.
     telemetry = _make_telemetry(
         turn_id="turn-complete-1",
         pattern="trend_delta",
@@ -208,13 +209,13 @@ def test_build_debug_report_complete_turn_with_tokens_and_phases() -> None:
     )
     telemetry.tokens.add(
         TokenCounts(prompt=100, candidates=50, thoughts=20, total=170),
-        phase="discovery",
+        role=GeminiRole.DISCOVERY,
         model="gemini-2.5-flash",
         round_number=1,
     )
     telemetry.tokens.add(
         TokenCounts(prompt=60, candidates=40, thoughts=0, total=100),
-        phase="synthesis",
+        role=GeminiRole.SYNTHESIS,
         model="gemini-2.5-flash",
     )
     telemetry.finish(TerminalState.COMPLETE)
@@ -247,8 +248,35 @@ def test_build_debug_report_complete_turn_with_tokens_and_phases() -> None:
     assert report.tokens.calls[0].round_number == 1
     assert report.tokens.calls[1].phase == "synthesis"
     assert report.tokens.calls[1].round_number is None
+    assert [type(call.phase) for call in report.tokens.calls] == [str, str]
 
     payload = report.to_dict()
+    assert payload["tokens"] == {
+        "prompt_token_count": 160,
+        "candidates_token_count": 90,
+        "thoughts_token_count": 20,
+        "total_token_count": 270,
+        "calls": [
+            {
+                "phase": "discovery",
+                "model": "gemini-2.5-flash",
+                "round": 1,
+                "prompt_token_count": 100,
+                "candidates_token_count": 50,
+                "thoughts_token_count": 20,
+                "total_token_count": 170,
+            },
+            {
+                "phase": "synthesis",
+                "model": "gemini-2.5-flash",
+                "round": None,
+                "prompt_token_count": 60,
+                "candidates_token_count": 40,
+                "thoughts_token_count": 0,
+                "total_token_count": 100,
+            },
+        ],
+    }
     assert payload["turn_id"] == "turn-complete-1"
     assert payload["nested_phases"] == {"processing": "discovery"}
     assert payload["tables"] == []

@@ -23,7 +23,7 @@ from typing import Literal
 
 from narratives_agent.analytics.digest import AnalysisDigest
 from narratives_agent.telemetry import ErrorType, TerminalState, TurnTelemetry
-from narratives_agent.workflows.charts import ResolvedChart
+from narratives_agent.workflows.charts import ChartRejection, ResolvedChart
 from narratives_agent.workflows.classify import RefusedReason
 from narratives_agent.workflows.mcp_loop import DiscoveryResult
 from narratives_agent.workflows.processing import ProcessingDiagnostic
@@ -84,14 +84,16 @@ class TurnRecord:
 
     Some fields hold text from the conversation or the model. `thoughts`,
     `synthesis_prompt`, and `synthesis_raw_output` hold only text and are
-    only used by the debug report. `loop_result`, `default_diagnostics`,
-    `specification`, `specification_diagnostic`, `digest`, `cache`, and
-    `charts` hold text alongside identifiers, codes, and counts. For
-    example, a tool's name and its arguments and result are next to each
-    other in a tool call record, and a chart's title is next to its kind.
-    The `chat_turn` log line must not contain any text from the
-    conversation, so anything written to it from these fields has to be an
-    identifier, a code, or a count.
+    only used by the debug report. `follow_up_questions` also holds only
+    text, and the `chat_turn` record reads only how many questions it
+    holds. `loop_result`, `default_diagnostics`, `specification`,
+    `specification_diagnostic`, `digest`, `cache`, and `charts` hold text
+    alongside identifiers, codes, and counts. For example, a tool's name
+    and its arguments and result are next to each other in a tool call
+    record, and a chart's title is next to its kind. The `chat_turn` log
+    line must not contain any text from the conversation, so anything
+    written to it from these fields has to be an identifier, a code, or a
+    count.
 
     Attributes:
         telemetry: The turn's timings, token counts, and counters.
@@ -121,6 +123,13 @@ class TurnRecord:
             not open.
         charts: The charts emitted in the answer (including any default
             chart), each with its origin, in emission order.
+        chart_rejections: The chart blocks of the answer that the server
+            dropped, in the order in which it dropped them. A rejection
+            does not hold any text.
+        follow_up_questions: The follow-up questions that the server sent to
+            the browser, or an empty tuple when it did not send any.
+        has_canceled_follow_ups: Whether the turn was canceled while the
+            follow-up phase was running.
         is_clarification: Whether the turn was answered with a clarification
             question.
         is_signed: Whether the server signed the turn into the conversation.
@@ -156,6 +165,9 @@ class TurnRecord:
     synthesis_prompt: str | None = field(default=None, init=False)
     synthesis_raw_output: str | None = field(default=None, init=False)
     charts: tuple[TurnChart, ...] = field(default=(), init=False)
+    chart_rejections: tuple[ChartRejection, ...] = field(default=(), init=False)
+    follow_up_questions: tuple[str, ...] = field(default=(), init=False)
+    has_canceled_follow_ups: bool = field(default=False, init=False)
     is_clarification: bool = field(default=False, init=False)
     is_signed: bool = field(default=False, init=False)
     was_compacted: bool = field(default=False, init=False)
