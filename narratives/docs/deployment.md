@@ -923,7 +923,7 @@ Every record has every key. A value that does not apply is `null`, `false`,
 | `is_clarification` | boolean | Whether the answer is a clarification question |
 | `is_truncated` | boolean | Whether the search for data stopped at a limit |
 | `title_outcome` | string | `emitted`, `omitted`, or `not_requested` |
-| `follow_ups_emitted` | integer | Number of follow-up questions sent, 0 to 3 |
+| `follow_ups_emitted` | integer | Number of follow-up questions emitted, 0 to 3 |
 | `follow_ups_canceled` | boolean | Whether the client disconnected during follow-ups |
 | `pattern` | string or null | Analytical pattern from the `classify` phase |
 | `duration_ms` | number | Duration of the turn |
@@ -985,15 +985,17 @@ More detail on some keys:
   `complete` turns. When synthesis fails part-way, the server records the
   outcome that it had reached.
 - **`follow_ups_emitted` and `follow_ups_canceled`:** `follow_ups_emitted`
-  is the number of follow-up questions that the server sent to the browser.
-  It is `0` when the turn did not reach the follow-up phase, and when the
-  follow-up call failed, timed out, or did not return a question.
-  `follow_ups_canceled` is `true` only when the client disconnected while
-  the server was generating the follow-up questions. Such a turn has
-  already delivered its answer, so its `terminal_state` is `complete` and
-  its `outcome` does not change. A turn that the client cancels earlier has
-  the `terminal_state` `canceled` and `follow_ups_canceled` `false`. The
-  record does not hold the text of a question.
+  is the number of follow-up questions that the `follow_ups` phase emitted
+  in its `follow_ups` SSE frame (queued for delivery, matching
+  `charts_emitted` and `title_outcome`). It is `0` when the turn did not
+  reach the follow-up phase, and when the follow-up call failed, timed out,
+  or did not return a question. `follow_ups_canceled` is `true` only when
+  the turn task was canceled while the `follow_ups` phase was generating
+  questions, before emitting that frame. Such a turn has already emitted its
+  `terminal` frame, so its `terminal_state` is `complete` and its `outcome`
+  does not change. A turn that the client cancels earlier has the
+  `terminal_state` `canceled` and `follow_ups_canceled` `false`. The record
+  does not hold the text of a question.
 - **`pattern`:** The value is `null` on a `refused` turn and on a turn that
   ended before the `classify` phase assigned a pattern (including
   `model_armor_unavailable` and `classifier_unavailable`).
@@ -1030,14 +1032,19 @@ More detail on some keys:
   item for each pair of a tool and an actor that occurred, with `tool`,
   `actor`, and `count`, sorted by tool name and then by actor. `actor` is
   `model` when the model asked for the call, and `server` when the server
-  made the call on its own. The server makes two kinds of calls:
-  `get_variable_metadata`, when it requests variable metadata before a
-  specification runs, and `report_unavailable`, when it files the no-data
-  report itself after the search for data did not find any. `tool` is one
-  of the three MCP discovery tools, the three fetch functions,
-  `submit_specification`, `report_unavailable`, or `unknown` for a name
-  that the server did not declare to the model. `tool_call_count` is the
-  sum over all items, for both actors.
+  made the call on its own. For `model`, the server counts each call that
+  finished with a tool response or a tool-level error record, and it does
+  not count a call that an MCP transport failure or a cancellation stopped
+  before it produced a record (or a terminal call in the same round after
+  such a failure). The server makes two kinds of calls on its own:
+  `get_variable_metadata`, where it counts each request that it dispatches
+  before a specification runs (including requests that fail or time out),
+  and `report_unavailable`, when it files the no-data report itself after
+  the search for data did not find any. `tool` is one of the three MCP
+  discovery tools, the three fetch functions, `submit_specification`,
+  `report_unavailable`, or `unknown` for a name that the server did not
+  declare to the model. `tool_call_count` is the sum over all items, for
+  both actors.
 - **`tables` and `tables_truncated`:** `tables` lists up to 20 fetched
   observation tables that returned at least one row, in fetch order. Derived
   tables and empty fetches are left out, while `tables_fetched` still counts
@@ -1130,11 +1137,14 @@ More detail on some keys:
   `no_value_for_place`, `empty_ranked_slice`, `date_not_shared`,
   `variable_count_mismatch`, `empty_title`, `window_date_required`,
   `chart_limit_reached`, `invalid_specification` (the block is not valid
-  JSON or does not match the chart grammar), `unclosed_block` (the answer
-  ended inside the block), `turn_without_data`, or `table_not_in_answer`.
-  A default chart that the server builds and cannot draw is not a chart
-  block of the answer, so it does not add an item. The record does not hold
-  any text of a dropped block.
+  JSON or does not match the chart grammar), `unclosed_block` (a completed
+  answer ended inside the block), `turn_without_data`, or
+  `table_not_in_answer`. When a synthesis stream fails or is canceled
+  part-way, the record includes only chart blocks that closed and were
+  rejected before the stream stopped, and it does not count a fence that
+  was still open at that moment. A default chart that the server builds and
+  cannot draw is not a chart block of the answer, so it does not add an
+  item. The record does not hold any text of a dropped block.
 - **`truncated_lists`:** The list is empty for a record that fits in 14 KiB.
   Otherwise the server drops whole items from the ends of eight lists until
   the record fits, and `truncated_lists` names the lists that lost an item,
@@ -1190,7 +1200,6 @@ attributes: `narratives.terminal_state`, `narratives.pattern`,
 calls by the model and by the server, as `tool_call_count` in the record,
 and `narratives.tool_names` lists each tool name once, sorted. The span does
 not say which actor made a call. The span does not carry the turn ID. It
-shares a
-trace ID with the HTTP request span, and a load balancer log can hold that
-trace ID next to the client's address. With the turn ID on the span, someone
-could join a `chat_turn` record to a client address.
+shares a trace ID with the HTTP request span, and a load balancer log can
+hold that trace ID next to the client's address. With the turn ID on the
+span, someone could join a `chat_turn` record to a client address.

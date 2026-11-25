@@ -23,9 +23,11 @@ chunk.
 
 import asyncio
 import base64
+import contextlib
 import json
 import logging
 import threading
+import warnings
 from collections.abc import AsyncIterator, Callable, Iterator
 from dataclasses import dataclass, field
 from types import SimpleNamespace
@@ -2000,16 +2002,33 @@ async def _run_scripted_call(
     chunks = _patch_sdk_stream(monkeypatch, steps)
     usage = TokenUsage()
     task = asyncio.create_task(_read_streamed_call(mode, usage))
-    if has_wait:
-        await chunks.is_waiting.wait()
-        task.cancel()
-        with pytest.raises(asyncio.CancelledError):
+    wait_task: asyncio.Task[bool] | None = None
+    try:
+        if has_wait:
+            wait_task = asyncio.create_task(chunks.is_waiting.wait())
+            async with asyncio.timeout(5):
+                done, _ = await asyncio.wait(
+                    {task, wait_task}, return_when=asyncio.FIRST_COMPLETED
+                )
+            if task in done:
+                await task
+                pytest.fail(
+                    "Streamed call returned before reaching the scripted wait."
+                )
+            task.cancel()
+            with pytest.raises(asyncio.CancelledError):
+                await task
+        elif has_error:
+            with pytest.raises(client.GeminiError):
+                await task
+        else:
             await task
-    elif has_error:
-        with pytest.raises(client.GeminiError):
-            await task
-    else:
-        await task
+    finally:
+        for pending in (wait_task, task):
+            if pending is not None and not pending.done():
+                pending.cancel()
+                with contextlib.suppress(BaseException):
+                    await pending
     return usage
 
 
@@ -2358,3 +2377,175 @@ async def test_a_stream_that_gemini_blocks_is_not_counted_as_interrupted(
             pass
 
     assert usage == TokenUsage()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "form",
+    ["bare_type", "type_and_message", "instance"],
+)
+async def test_athrow_on_an_unstarted_stream_propagates_and_cleans_up(
+    monkeypatch: pytest.MonkeyPatch, form: str
+) -> None:
+    # Test: Throwing an exception into a synthesis stream before reading its
+    #   first item.
+    # Situation: `async_gemini_stream` fetches a first chunk without token
+    #   counts, and a second chunk with counts remains unread. With
+    #   `DeprecationWarning` promoted to an error, the caller calls `athrow`
+    #   with a bare exception class, an exception class and a message, or an
+    #   exception instance, and then calls `aclose`.
+    # Expectation: `athrow` raises the thrown exception without emitting a
+    #   deprecation warning, closes the SDK chunk iterator, and counts the
+    #   call once as an interrupted stream.
+    chunks = _patch_sdk_stream(
+        monkeypatch, [_make_chunk(has_usage=False), _make_chunk(has_usage=True)]
+    )
+    usage = TokenUsage()
+    stream = await client.async_gemini_stream(
+        messages=[],
+        system_instruction="",
+        model=_MODEL,
+        token_usage=usage,
+        token_role=GeminiRole.SYNTHESIS,
+    )
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", DeprecationWarning)
+        if form == "bare_type":
+            with pytest.raises(RuntimeError):
+                await stream.athrow(RuntimeError)
+        elif form == "type_and_message":
+            with pytest.raises(ValueError, match="bad value"):
+                await stream.athrow(ValueError, "bad value")
+        else:
+            with pytest.raises(ValueError, match="boom"):
+                await stream.athrow(ValueError("boom"))
+    await stream.aclose()
+
+    assert chunks.was_closed
+    assert usage == TokenUsage(interrupted_stream_calls=1)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("form", ["bare_type", "instance"])
+async def test_athrow_on_a_started_stream_wraps_the_error_and_cleans_up(
+    monkeypatch: pytest.MonkeyPatch, form: str
+) -> None:
+    # Test: Throwing an exception into a synthesis stream after reading its
+    #   first item.
+    # Situation: The caller reads the first item from `async_gemini_stream`
+    #   and then calls `athrow` with a bare exception class or an exception
+    #   instance while `DeprecationWarning` is promoted to an error.
+    # Expectation: The inner generator catches the exception and raises
+    #   `GeminiStreamError` chained from it without a deprecation warning,
+    #   closes the SDK chunk iterator, and counts the call once as an
+    #   interrupted stream.
+    chunks = _patch_sdk_stream(
+        monkeypatch, [_make_chunk(has_usage=False), _make_chunk(has_usage=True)]
+    )
+    usage = TokenUsage()
+    stream = await client.async_gemini_stream(
+        messages=[],
+        system_instruction="",
+        model=_MODEL,
+        token_usage=usage,
+        token_role=GeminiRole.SYNTHESIS,
+    )
+    await anext(stream)
+
+    with (
+        warnings.catch_warnings(),
+        pytest.raises(client.GeminiStreamError) as raised,
+    ):
+        warnings.simplefilter("error", DeprecationWarning)
+        if form == "bare_type":
+            await stream.athrow(RuntimeError)
+        else:
+            await stream.athrow(ValueError("boom"))
+
+    expected_cause = RuntimeError if form == "bare_type" else ValueError
+    assert isinstance(raised.value.__cause__, expected_cause)
+    assert chunks.was_closed
+    assert usage == TokenUsage(interrupted_stream_calls=1)
+
+
+@pytest.mark.asyncio
+async def test_a_concurrent_aclose_raises_and_leaves_the_stream_usable(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Test: Calling `aclose` while `anext` is awaiting the next chunk.
+    # Situation: The caller reads the first item from `async_gemini_stream`
+    #   and starts reading the second item, which waits on a gate before
+    #   returning the final chunk with token counts. While that read is in
+    #   flight, another coroutine calls `await stream.aclose()`.
+    # Expectation: The concurrent `aclose` raises `RuntimeError`, and once
+    #   the gate opens, the in-flight read returns the second item and the
+    #   stream finishes normally with its token counts recorded.
+    in_flight = asyncio.Event()
+    gate = asyncio.Event()
+    closed = False
+
+    class _GatedChunks:
+        def __init__(self) -> None:
+            self._index = 0
+
+        def __aiter__(self) -> _GatedChunks:
+            return self
+
+        async def __anext__(self) -> types.GenerateContentResponse:
+            self._index += 1
+            if self._index == 1:
+                return _make_chunk(has_usage=False)
+            if self._index == 2:
+                in_flight.set()
+                await gate.wait()
+                return _make_chunk(has_usage=True)
+            raise StopAsyncIteration
+
+        async def aclose(self) -> None:
+            nonlocal closed
+            closed = True
+
+    async def generate_content_stream(
+        **kwargs: Any,
+    ) -> AsyncIterator[types.GenerateContentResponse]:
+        return _GatedChunks()
+
+    sdk = SimpleNamespace(
+        aio=SimpleNamespace(
+            models=SimpleNamespace(
+                generate_content_stream=generate_content_stream
+            )
+        )
+    )
+
+    async def prepare_call(*args: Any, **kwargs: Any) -> Any:
+        return SimpleNamespace(client=sdk, contents=[], config=None)
+
+    monkeypatch.setattr(client, "_prepare_call", prepare_call)
+    usage = TokenUsage()
+    stream = await client.async_gemini_stream(
+        messages=[],
+        system_instruction="",
+        model=_MODEL,
+        token_usage=usage,
+        token_role=GeminiRole.SYNTHESIS,
+    )
+    first_item = await anext(stream)
+    second_read = asyncio.create_task(anext(stream))
+    async with asyncio.timeout(5):
+        await in_flight.wait()
+
+    with pytest.raises(RuntimeError):
+        await stream.aclose()
+
+    gate.set()
+    second_item = await second_read
+    remaining = [item async for item in stream]
+
+    assert first_item == StreamChunk("text", "Some text.")
+    assert second_item == StreamChunk("text", "Some text.")
+    assert remaining == []
+    assert closed
+    assert usage.interrupted_stream_calls == 0
+    assert len(usage.calls) == 1

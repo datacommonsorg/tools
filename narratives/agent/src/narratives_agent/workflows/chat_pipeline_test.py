@@ -6173,6 +6173,45 @@ async def test_a_turn_that_fails_in_synthesis_records_the_blocks_dropped_before(
 
 
 @pytest.mark.asyncio
+async def test_a_turn_aborting_mid_chart_fence_omits_the_open_fence(
+    monkeypatch: pytest.MonkeyPatch, turn: _Turn, structured_lines: list[str]
+) -> None:
+    # Test: `chart_rejections` when synthesis aborts inside an open chart
+    #   fence.
+    # Situation: The synthesis stream yields one closed block that names `t9`,
+    #   which the turn did not fetch, then opens a second `chart` fence with a
+    #   partial JSON body and raises `GeminiStreamError` before closing it.
+    # Expectation: The turn ends as an error with the reason
+    #   `synthesis_stream_error`. The record lists only the block that closed
+    #   before the failure and does not add an `unclosed_block` rejection for
+    #   the cut-off fence, so `charts_rejected` stays 1.
+    async def stream_broken_mid_fence() -> AsyncGenerator[StreamChunk]:
+        yield StreamChunk(
+            "text",
+            "France is growing.\n\n"
+            '```chart\n{"kind": "line", "tables": ["t9"], "title": "Ghost"}'
+            "\n```\n\n"
+            '```chart\n{"kind": "bar", "tables": ["t1"]',
+        )
+        raise GeminiStreamError("HTTP 503", is_retryable=True)
+
+    async def start_synthesis(**_: object) -> AsyncGenerator[StreamChunk]:
+        return stream_broken_mid_fence()
+
+    monkeypatch.setattr(chat_pipeline, "async_gemini_stream", start_synthesis)
+
+    await chat_pipeline.run_turn(_TRANSCRIPT, turn.emit)
+
+    record = _get_chat_turn_record(structured_lines)
+    assert record["terminal_state"] == "error"
+    assert record["outcome_reason"] == "synthesis_stream_error"
+    assert record["chart_rejections"] == [
+        {"index": 0, "kind": "line", "reason": "unknown_table"}
+    ]
+    assert record["charts_rejected"] == 1
+
+
+@pytest.mark.asyncio
 async def test_more_than_ten_dropped_chart_blocks_are_capped_in_the_record(
     turn: _Turn, structured_lines: list[str]
 ) -> None:
@@ -6236,9 +6275,9 @@ async def test_run_synthesis_phase_records_the_dropped_blocks_on_abort(
 async def test_a_turn_that_sends_three_follow_ups_records_their_number(
     monkeypatch: pytest.MonkeyPatch, turn: _Turn, structured_lines: list[str]
 ) -> None:
-    # Test: `follow_ups_emitted` of a turn that sends follow-up questions.
-    # Situation: Follow-up generation returns three questions, and the
-    #   server sends them to the browser.
+    # Test: `follow_ups_emitted` of a turn that emits follow-up questions.
+    # Situation: Follow-up generation returns three questions, and
+    #   `run_followups` emits them in a `FollowUpsFrame`.
     # Expectation: The record has `follow_ups_emitted` 3 and
     #   `follow_ups_canceled` false, and the line does not hold the text of
     #   a question.
@@ -6339,15 +6378,16 @@ async def test_a_follow_up_call_without_questions_is_not_a_cancellation(
 
 
 @pytest.mark.asyncio
-async def test_questions_that_the_server_fails_to_send_are_not_counted(
+async def test_questions_are_not_recorded_when_emit_raises(
     monkeypatch: pytest.MonkeyPatch, turn: _Turn, structured_lines: list[str]
 ) -> None:
-    # Test: `follow_ups_emitted` when the server cannot send the questions.
+    # Test: `follow_ups_emitted` when the `emit` callback raises on
+    #   `FollowUpsFrame`.
     # Situation: Follow-up generation returns one question, and the callback
-    #   that emits frames raises when it receives the `follow_ups` frame.
-    # Expectation: The turn stays complete, and the record has
-    #   `follow_ups_emitted` 0, because the browser did not receive the
-    #   question.
+    #   passed to `run_turn` raises before accepting the `follow_ups` frame.
+    # Expectation: `run_followups` catches the failure so the turn stays
+    #   complete, and the record has `follow_ups_emitted` 0 and
+    #   `follow_ups_canceled` false.
     def emit_until_the_follow_ups(frame: SseFrame) -> None:
         if frame.event == "follow_ups":
             raise RuntimeError("The stream is closed")

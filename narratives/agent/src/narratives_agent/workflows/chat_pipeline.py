@@ -672,8 +672,10 @@ async def run_synthesis_phase(
     are bounded by `SYNTHESIS_CHUNK_TIMEOUT_SECONDS`, so a stalled stream
     ends the turn rather than holding it open for the whole HTTP timeout.
     The rendered user message, the raw output, the emitted charts with
-    their origins, and the chart blocks that the server dropped are recorded
-    on the turn's record, including when the phase aborts.
+    their origins, and the chart blocks that closed and were rejected are
+    recorded on the turn's record, including when the phase aborts. If the
+    stream aborts while a chart fence is still open, that incomplete fence
+    is not recorded as a rejection.
 
     Args:
         ctx: The turn context holding the transcript, config, telemetry, and
@@ -1023,8 +1025,8 @@ async def run_followups(
     This phase runs after the terminal event so the UI can display the
     answer and charts immediately and show the follow-up questions when they
     arrive. If there are no topics or generation fails, nothing is emitted.
-    The questions that the phase sent are recorded on the turn's record, and
-    so is a cancellation of the turn while the phase runs.
+    The questions emitted in `FollowUpsFrame` are recorded on the turn's
+    record, and so is a cancellation of the turn task while the phase runs.
 
     Args:
         ctx: The turn context holding the transcript, config, telemetry, and

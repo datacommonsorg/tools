@@ -944,23 +944,32 @@ class _StartedStream(AsyncGenerator[StreamChunk]):
         /,
     ) -> StreamChunk:
         """Closes an unstarted stream if needed and forwards the exception."""
+        if isinstance(typ, BaseException):
+            exc = typ
+        elif val is None:
+            exc = typ()
+        elif isinstance(val, BaseException):
+            exc = val
+        else:
+            exc = typ(val)
+        if tb is not None and exc.__traceback__ is not tb:
+            exc = exc.with_traceback(tb)
         if not self._has_started and not self._is_closed:
             self._is_closed = True
-            await self._inner.aclose()
             await self._close_unstarted()
-        if isinstance(typ, BaseException):
-            return await self._inner.athrow(typ)
-        return await self._inner.athrow(typ, val, tb)
+        return await self._inner.athrow(exc)
 
     async def aclose(self) -> None:
         """Closes the stream and runs cleanup when iteration has not started."""
         if not self._has_started and not self._is_closed:
             self._is_closed = True
-            await self._inner.aclose()
-            await self._close_unstarted()
+            try:
+                await self._inner.aclose()
+            finally:
+                await self._close_unstarted()
             return
-        self._is_closed = True
         await self._inner.aclose()
+        self._is_closed = True
 
 
 async def async_gemini_request(

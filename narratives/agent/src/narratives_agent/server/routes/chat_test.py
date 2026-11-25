@@ -35,7 +35,7 @@ import asyncio
 import gc
 import json
 import re
-from collections.abc import Iterator
+from collections.abc import Awaitable, Callable, Iterator
 from typing import Any
 
 import pytest
@@ -45,10 +45,21 @@ from sse_starlette import ServerSentEvent
 from starlette.types import Message
 
 from narratives_agent.config_model import AgentConfig
+from narratives_agent.gemini.schemas import QueryClassification
 from narratives_agent.server.routes import chat
-from narratives_agent.workflows import transcript as transcript_module
+from narratives_agent.workflows import (
+    chat_pipeline,
+)
+from narratives_agent.workflows import (
+    transcript as transcript_module,
+)
 from narratives_agent.workflows.blocks import TextBlock
-from narratives_agent.workflows.chat_pipeline import Emit
+from narratives_agent.workflows.chat_pipeline import (
+    DiscoveryPhaseResult,
+    Emit,
+    SynthesisPhaseResult,
+)
+from narratives_agent.workflows.classify import Admitted
 from narratives_agent.workflows.messages import DISCOVERY_STATUS
 from narratives_agent.workflows.sse_frames import (
     BlockContentFrame,
@@ -661,3 +672,146 @@ def test_invalid_debug_flag_returns_422_before_running_turn(
 
     assert response.status_code == 422
     assert turn.calls == []
+
+
+def _make_transcript() -> Transcript:
+    """Returns a single-turn transcript for driving `_turn_events` directly."""
+    return Transcript(
+        turns=[],
+        compacted_summary=None,
+        conversation_id=_CONVERSATION_ID,
+        current_query="What is the population of France?",
+        current_idempotency_key=_IDEMPOTENCY_KEY,
+    )
+
+
+def _patch_pipeline_to_follow_ups(
+    monkeypatch: pytest.MonkeyPatch,
+    generate_follow_ups: Callable[..., Awaitable[list[str]]],
+) -> None:
+    """Stubs earlier phases of `run_turn` so `run_followups` runs directly."""
+    monkeypatch.setattr(chat_pipeline, "load_config", AgentConfig)
+
+    async def admit(*args: object, **kwargs: object) -> Admitted:
+        return Admitted(
+            classification=QueryClassification(
+                serviceable=True, pattern="single_point"
+            )
+        )
+
+    async def discover(*args: object, **kwargs: object) -> DiscoveryPhaseResult:
+        return DiscoveryPhaseResult()
+
+    async def synthesize(
+        *args: object, **kwargs: object
+    ) -> SynthesisPhaseResult:
+        return SynthesisPhaseResult(
+            "About 68 million.",
+            (),
+            rendered_prompt="prompt",
+            raw_output="About 68 million.",
+        )
+
+    monkeypatch.setattr(chat_pipeline, "_run_classify_phase", admit)
+    monkeypatch.setattr(chat_pipeline, "run_discovery_phase", discover)
+    monkeypatch.setattr(chat_pipeline, "run_synthesis_phase", synthesize)
+    monkeypatch.setattr(
+        chat_pipeline, "generate_follow_up_questions", generate_follow_ups
+    )
+
+
+@pytest.mark.asyncio
+async def test_closing_turn_events_during_follow_ups_logs_canceled(
+    monkeypatch: pytest.MonkeyPatch, structured_lines: list[str]
+) -> None:
+    # Test: Closing `_turn_events` while follow-up generation is in flight.
+    # Situation: `_turn_events` runs the real `run_turn` up to `run_followups`,
+    #   where `generate_follow_up_questions` waits after setting an event. Once
+    #   the stream yields the `terminal` event and enters `run_followups`, the
+    #   caller closes `_turn_events`.
+    # Expectation: Closing `_turn_events` cancels the producer task before any
+    #   `follow_ups` frame is queued, and the `chat_turn` record logs
+    #   `terminal_state` `"complete"`, `follow_ups_emitted` `0`, and
+    #   `follow_ups_canceled` `True`.
+    in_follow_ups = asyncio.Event()
+
+    async def hang_follow_ups(*args: object) -> list[str]:
+        in_follow_ups.set()
+        await asyncio.Event().wait()
+        raise AssertionError("unreachable")
+
+    _patch_pipeline_to_follow_ups(monkeypatch, hang_follow_ups)
+    events = chat._turn_events(_make_transcript())
+    seen_events: list[str] = []
+
+    async for event in events:
+        assert event.event is not None
+        seen_events.append(event.event)
+        if event.event == "terminal":
+            break
+    async with asyncio.timeout(5):
+        await in_follow_ups.wait()
+    await events.aclose()
+
+    assert "follow_ups" not in seen_events
+    (line,) = structured_lines
+    record = json.loads(line)
+    assert record["terminal_state"] == "complete"
+    assert record["follow_ups_emitted"] == 0
+    assert record["follow_ups_canceled"] is True
+
+
+@pytest.mark.asyncio
+async def test_closing_turn_events_after_follow_ups_are_queued_logs_emitted(
+    monkeypatch: pytest.MonkeyPatch, structured_lines: list[str]
+) -> None:
+    # Test: Closing `_turn_events` after `run_followups` queued its frame and
+    #   before `_turn_events` yielded it.
+    # Situation: `generate_follow_up_questions` returns two questions once the
+    #   caller has read the `terminal` event. After `run_turn` finishes and
+    #   queues `FollowUpsFrame`, the caller closes `_turn_events` without
+    #   reading the queued `follow_ups` event.
+    # Expectation: The caller does not receive a `follow_ups` event, and the
+    #   `chat_turn` record logs `follow_ups_emitted` `2` and
+    #   `follow_ups_canceled` `False` because `follow_ups_emitted` counts
+    #   questions emitted into the SSE queue by `run_followups`.
+    terminal_read = asyncio.Event()
+    turn_finished = asyncio.Event()
+    real_run_turn = chat_pipeline.run_turn
+
+    async def generate_two(*args: object) -> list[str]:
+        await terminal_read.wait()
+        return ["And Spain?", "How did Germany change?"]
+
+    async def tracked_run_turn(
+        transcript: Transcript,
+        emit: Emit,
+        *,
+        request_debug: bool = False,
+    ) -> None:
+        try:
+            await real_run_turn(transcript, emit, request_debug=request_debug)
+        finally:
+            turn_finished.set()
+
+    _patch_pipeline_to_follow_ups(monkeypatch, generate_two)
+    monkeypatch.setattr(chat, "run_turn", tracked_run_turn)
+    events = chat._turn_events(_make_transcript())
+    seen_events: list[str] = []
+
+    async for event in events:
+        assert event.event is not None
+        seen_events.append(event.event)
+        if event.event == "terminal":
+            terminal_read.set()
+            break
+    async with asyncio.timeout(5):
+        await turn_finished.wait()
+    await events.aclose()
+
+    assert "follow_ups" not in seen_events
+    (line,) = structured_lines
+    record = json.loads(line)
+    assert record["terminal_state"] == "complete"
+    assert record["follow_ups_emitted"] == 2
+    assert record["follow_ups_canceled"] is False

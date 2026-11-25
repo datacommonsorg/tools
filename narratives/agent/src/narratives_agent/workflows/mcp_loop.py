@@ -991,9 +991,10 @@ class _Loop:
 
         Non-terminal calls run concurrently first so any fetch in the same
         turn populates `cache` before `submit_specification` validates against
-        it. Only the first terminal call is handled if the model emits more
-        than one. The turn's telemetry counts every terminal call, including
-        one that is not handled, as a call that the model made.
+        it. Once the non-terminal batch finishes, only the first terminal call
+        is handled if the model emits more than one, while every terminal call
+        in the batch (including any extra call that receives an ignored-call
+        record) is recorded and counted as a call that the model made.
 
         Args:
             function_calls: All function calls returned by the model turn.
