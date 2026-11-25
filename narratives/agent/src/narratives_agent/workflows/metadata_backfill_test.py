@@ -11,7 +11,11 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-"""Tests for `backfill_variable_metadata`."""
+"""Tests for `backfill_variable_metadata`.
+
+The tests also check that the turn's telemetry counts each request that the
+server sends as a `get_variable_metadata` call that the server made.
+"""
 
 import asyncio
 import json
@@ -27,6 +31,7 @@ from narratives_agent.analytics.tables import ObservationRow, ObservationTable
 from narratives_agent.json_value import JsonObject, JsonValue
 from narratives_agent.mcp import client as mcp_client
 from narratives_agent.mcp.capabilities import Capabilities
+from narratives_agent.telemetry import ToolActor, ToolName, TurnTelemetry
 from narratives_agent.workflows import metadata_backfill
 from narratives_agent.workflows.metadata_backfill import (
     backfill_variable_metadata,
@@ -39,6 +44,12 @@ _WDI_URL = "https://datatopics.worldbank.org/world-development-indicators/"
 _FACET = "f1"
 _CAPABILITIES = Capabilities(tool_names=frozenset({"get_variable_metadata"}))
 _INLINE_SOURCE = Source(name="datatopics.worldbank.org", url=_WDI_URL)
+
+# The key under which the telemetry counts a request of the backfill.
+_SERVER_METADATA_CALL: tuple[ToolName, ToolActor] = (
+    "get_variable_metadata",
+    "server",
+)
 
 type _Answer = Callable[[JsonObject], JsonObject]
 
@@ -175,8 +186,10 @@ async def test_a_table_without_metadata_is_cited_with_the_backfilled_source(
     # Expectation: One `get_variable_metadata` call asks about the table's
     #   variable and place, and the digest of the specification, run
     #   afterward, cites the provider, the dataset, and the date range for
-    #   the table's variable.
+    #   the table's variable. The telemetry counts the request once, as a
+    #   `get_variable_metadata` call that the server made.
     calls = _install_tool(monkeypatch)
+    telemetry = TurnTelemetry()
     cache = _build_cache(_build_table("t1", "Count_Person"))
     specification = AnalysisSpecification.model_validate(
         {
@@ -186,9 +199,12 @@ async def test_a_table_without_metadata_is_cited_with_the_backfilled_source(
         }
     )
 
-    await backfill_variable_metadata(specification, cache, _CAPABILITIES)
+    await backfill_variable_metadata(
+        specification, cache, _CAPABILITIES, telemetry
+    )
     digest = await execute_specification(specification, cache)
 
+    assert telemetry.tool_calls == {_SERVER_METADATA_CALL: 1}
     assert calls == [
         (
             "get_variable_metadata",
@@ -228,7 +244,10 @@ async def test_only_referenced_tables_that_lack_metadata_are_requested(
     cache.record_variable_metadata(_build_metadata_payload("Described"))
 
     await backfill_variable_metadata(
-        _build_specification("t1", "t3", "t4", "t5"), cache, _CAPABILITIES
+        _build_specification("t1", "t3", "t4", "t5"),
+        cache,
+        _CAPABILITIES,
+        TurnTelemetry(),
     )
 
     assert _list_requested_variables(calls) == [["Needed"]]
@@ -248,7 +267,7 @@ async def test_a_facet_described_only_for_another_variable_is_requested(
     cache.record_variable_metadata(_build_metadata_payload("Other"))
 
     await backfill_variable_metadata(
-        _build_specification("t1"), cache, _CAPABILITIES
+        _build_specification("t1"), cache, _CAPABILITIES, TurnTelemetry()
     )
 
     assert _list_requested_variables(calls) == [["Needed"]]
@@ -266,7 +285,7 @@ async def test_a_cohort_is_sampled_to_its_first_ten_places(
     cache = _build_cache(_build_table("t1", "Count_Person", places))
 
     await backfill_variable_metadata(
-        _build_specification("t1"), cache, _CAPABILITIES
+        _build_specification("t1"), cache, _CAPABILITIES, TurnTelemetry()
     )
 
     ((_, arguments),) = calls
@@ -280,8 +299,9 @@ async def test_variables_sampled_over_the_same_places_share_bounded_calls(
     # Test: The variable limit of `get_variable_metadata`.
     # Situation: Eleven tables of different variables cover France.
     # Expectation: Two calls ask about the first ten variables and then the
-    #   eleventh, each naming France.
+    #   eleventh, each naming France. The telemetry counts two requests.
     calls = _install_tool(monkeypatch)
+    telemetry = TurnTelemetry()
     variables = [f"Variable_{index:02d}" for index in range(1, 12)]
     table_ids = [f"t{index}" for index in range(1, 12)]
     cache = _build_cache(
@@ -292,9 +312,10 @@ async def test_variables_sampled_over_the_same_places_share_bounded_calls(
     )
 
     await backfill_variable_metadata(
-        _build_specification(*table_ids), cache, _CAPABILITIES
+        _build_specification(*table_ids), cache, _CAPABILITIES, telemetry
     )
 
+    assert telemetry.tool_calls == {_SERVER_METADATA_CALL: 2}
     assert _list_requested_variables(calls) == [variables[:10], variables[10:]]
     assert [arguments["entity_dcids"] for _, arguments in calls] == [
         ["country/FRA"],
@@ -317,7 +338,7 @@ async def test_variables_sampled_over_different_places_are_requested_apart(
     )
 
     await backfill_variable_metadata(
-        _build_specification("t1", "t2"), cache, _CAPABILITIES
+        _build_specification("t1", "t2"), cache, _CAPABILITIES, TurnTelemetry()
     )
 
     assert sorted(
@@ -335,17 +356,21 @@ async def test_a_server_without_the_metadata_tool_is_not_asked(
 ) -> None:
     # Test: The capability gate.
     # Situation: The MCP server does not list `get_variable_metadata`.
-    # Expectation: No call is made and the table keeps the inline source.
+    # Expectation: The backfill does not make a call, the telemetry does
+    #   not count a tool call, and the table keeps the inline source.
     calls = _install_tool(monkeypatch)
+    telemetry = TurnTelemetry()
     cache = _build_cache(_build_table("t1", "Count_Person"))
 
     await backfill_variable_metadata(
         _build_specification("t1"),
         cache,
         Capabilities(tool_names=frozenset({"search_indicators"})),
+        telemetry,
     )
 
     assert calls == []
+    assert telemetry.tool_calls == {}
     entry = cache.get("t1")
     assert entry is not None
     assert entry.table.source is not None
@@ -382,15 +407,18 @@ async def test_a_failed_call_keeps_the_inline_source_and_logs_a_warning(
     # Situation: The metadata call raises `McpToolError` or
     #   `McpTransportError`.
     # Expectation: The backfill returns normally, the table keeps the inline
-    #   source, and one warning names the variable and the error class.
+    #   source, and one warning names the variable and the error class. The
+    #   telemetry counts the failed request once.
     _install_tool(monkeypatch, answer)
+    telemetry = TurnTelemetry()
     cache = _build_cache(_build_table("t1", "Count_Person"))
 
     with caplog.at_level(logging.WARNING, logger=metadata_backfill.logger.name):
         await backfill_variable_metadata(
-            _build_specification("t1"), cache, _CAPABILITIES
+            _build_specification("t1"), cache, _CAPABILITIES, telemetry
         )
 
+    assert telemetry.tool_calls == {_SERVER_METADATA_CALL: 1}
     entry = cache.get("t1")
     assert entry is not None
     assert entry.table.source is not None
@@ -410,8 +438,10 @@ async def test_a_slow_call_times_out_and_keeps_the_inline_source(
     #   never returns.
     # Expectation: The backfill returns normally, the hung call is
     #   canceled, the table keeps the inline source, and a warning names
-    #   the variable and `TimeoutError`.
+    #   the variable and `TimeoutError`. The telemetry counts the canceled
+    #   request once.
     canceled = asyncio.Event()
+    telemetry = TurnTelemetry()
 
     async def hang(name: str, arguments: JsonObject) -> JsonObject:
         try:
@@ -427,10 +457,11 @@ async def test_a_slow_call_times_out_and_keeps_the_inline_source(
 
     with caplog.at_level(logging.WARNING, logger=metadata_backfill.logger.name):
         await backfill_variable_metadata(
-            _build_specification("t1"), cache, _CAPABILITIES
+            _build_specification("t1"), cache, _CAPABILITIES, telemetry
         )
 
     assert canceled.is_set()
+    assert telemetry.tool_calls == {_SERVER_METADATA_CALL: 1}
     entry = cache.get("t1")
     assert entry is not None
     assert entry.table.source is not None
@@ -467,7 +498,7 @@ async def test_a_failed_call_does_not_discard_a_sibling_response(
     )
 
     await backfill_variable_metadata(
-        _build_specification("t1", "t2"), cache, _CAPABILITIES
+        _build_specification("t1", "t2"), cache, _CAPABILITIES, TurnTelemetry()
     )
 
     france, germany = cache.get("t1"), cache.get("t2")
@@ -492,12 +523,19 @@ async def test_a_pair_is_requested_at_most_once_per_turn(
     #   request succeeded or failed.
     # Situation: The backfill runs twice over one cache for the same table;
     #   the first request succeeds or fails.
-    # Expectation: Only the first backfill makes a call.
+    # Expectation: Only the first backfill makes a call, and the telemetry
+    #   counts one request.
     calls = _install_tool(monkeypatch, answer)
+    telemetry = TurnTelemetry()
     cache = _build_cache(_build_table("t1", "Count_Person"))
     specification = _build_specification("t1")
 
-    await backfill_variable_metadata(specification, cache, _CAPABILITIES)
-    await backfill_variable_metadata(specification, cache, _CAPABILITIES)
+    await backfill_variable_metadata(
+        specification, cache, _CAPABILITIES, telemetry
+    )
+    await backfill_variable_metadata(
+        specification, cache, _CAPABILITIES, telemetry
+    )
 
     assert len(calls) == 1
+    assert telemetry.tool_calls == {_SERVER_METADATA_CALL: 1}

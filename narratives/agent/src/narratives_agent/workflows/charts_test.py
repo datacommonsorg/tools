@@ -14,7 +14,7 @@
 """Tests for `workflows.charts`.
 
 Covers `parse_chart_specification`, `resolve_chart_specification`,
-`serialize_resolved_chart`, and the construction
+`serialize_resolved_chart`, `read_chart_places`, and the construction
 invariants of `PlaceList`, `RankingSlice`, and the resolved charts' facets
 and line date bounds.
 """
@@ -64,6 +64,7 @@ from narratives_agent.workflows.charts import (
     ScatterChartSpecification,
     find_chart_entry,
     parse_chart_specification,
+    read_chart_places,
     resolve_chart_specification,
     serialize_resolved_chart,
 )
@@ -2833,3 +2834,89 @@ def test_a_chart_without_a_variable_gives_the_variable_count_reason() -> None:
         charts._require_variables(())
 
     assert raised.value.reason is ChartRejectionReason.VARIABLE_COUNT_MISMATCH
+
+
+@pytest.mark.parametrize(
+    ("chart", "places", "cohort"),
+    [
+        pytest.param(
+            ResolvedLineChart(
+                title="x",
+                variable_dcids=("v",),
+                scope=PlaceList(("geoId/01", "geoId/02")),
+            ),
+            ("geoId/01", "geoId/02"),
+            None,
+            id="line of places",
+        ),
+        pytest.param(
+            ResolvedLineChart(
+                title="x", variable_dcids=("v",), scope=_STATE_COHORT
+            ),
+            (),
+            _STATE_COHORT,
+            id="line of a cohort",
+        ),
+        pytest.param(
+            ResolvedBarChart(
+                title="x",
+                variable_dcids=("v",),
+                scope=PlaceList(("geoId/02", "geoId/01")),
+            ),
+            ("geoId/02", "geoId/01"),
+            None,
+            id="bar of places",
+        ),
+        pytest.param(
+            ResolvedBarChart(
+                title="x", variable_dcids=("v",), scope=_STATE_COHORT
+            ),
+            (),
+            _STATE_COHORT,
+            id="bar of a cohort",
+        ),
+        pytest.param(
+            ResolvedHighlightChart(
+                title="x", variable_dcids=("v",), place_dcid="geoId/06"
+            ),
+            ("geoId/06",),
+            None,
+            id="highlight",
+        ),
+        pytest.param(
+            ResolvedRankingChart(
+                title="x", variable_dcids=("v",), cohort=_STATE_COHORT
+            ),
+            (),
+            _STATE_COHORT,
+            id="ranking",
+        ),
+        pytest.param(
+            ResolvedMapChart(
+                title="x", variable_dcids=("v",), cohort=_STATE_COHORT
+            ),
+            (),
+            _STATE_COHORT,
+            id="map",
+        ),
+        pytest.param(
+            ResolvedScatterChart(
+                title="x", variable_dcids=("v", "w"), cohort=_STATE_COHORT
+            ),
+            (),
+            _STATE_COHORT,
+            id="scatter",
+        ),
+    ],
+)
+def test_read_chart_places_returns_the_places_or_the_cohort_of_each_kind(
+    chart: ResolvedChart, places: tuple[str, ...], cohort: ChildCohort | None
+) -> None:
+    # Test: `read_chart_places` over the six kinds of resolved chart.
+    # Situation: A line or a bar chart lists places or draws a cohort, a
+    #   highlight chart shows one place, and a ranking, a map, or a scatter
+    #   chart draws a cohort.
+    # Expectation: The function returns the listed places in the chart's
+    #   order without a cohort, or an empty tuple with the cohort that the
+    #   chart draws.
+    assert read_chart_places(chart) == (places, cohort)

@@ -17,14 +17,16 @@ Each record describes one turn in identifiers, codes, dates, and counts, so
 that operators can measure usage from the logs. It does not contain any text
 from the conversation. `build_usage_record` reads the turn's `TurnRecord`, and
 the agent loop writes the result with `telemetry.write_structured_record`.
+`build_usage_record` also keeps the line of every record within
+`MAX_RECORD_LINE_BYTES`, by dropping items from the ends of the record's
+lists when the line would be longer.
 """
 
-import json
 import re
-from collections.abc import Iterator
+from collections.abc import Iterator, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from enum import StrEnum
-from typing import assert_never
+from typing import Literal, assert_never, get_args
 
 from narratives_agent.analytics.digest import (
     AnalysisDigest,
@@ -45,8 +47,8 @@ from narratives_agent.analytics.tables import (
     is_valid_dcid,
     is_valid_observation_date,
 )
+from narratives_agent.config_model import GeminiRole
 from narratives_agent.gemini.schemas import QueryPattern
-from narratives_agent.json_value import json_safe
 from narratives_agent.telemetry import (
     MAX_RECORD_LINE_BYTES,
     NESTED_PHASES,
@@ -57,21 +59,18 @@ from narratives_agent.telemetry import (
     TerminalState,
     TitleOutcome,
     TokenUsage,
+    ToolActor,
+    ToolName,
     TurnPhase,
     TurnTelemetry,
+    serialize_record_json,
 )
 from narratives_agent.workflows.charts import (
     MAX_CHARTS_PER_TURN,
     ChartKind,
-    ChildCohort,
-    PlaceList,
-    ResolvedBarChart,
+    ChartRejectionReason,
     ResolvedChart,
-    ResolvedHighlightChart,
-    ResolvedLineChart,
-    ResolvedMapChart,
-    ResolvedRankingChart,
-    ResolvedScatterChart,
+    read_chart_places,
 )
 from narratives_agent.workflows.classify import RefusedReason
 from narratives_agent.workflows.mcp_loop import (
@@ -103,15 +102,18 @@ from narratives_agent.workflows.turn_record import (
 __all__ = [
     "CHAT_TURN_EVENT",
     "CHAT_TURN_SCHEMA_VERSION",
+    "MAX_BUILD_SHA_CHARS",
     "MAX_CHART_VARIABLES",
     "MAX_HIGHLIGHTED_PLACES",
     "MAX_LOGGED_CHARTS",
+    "MAX_LOGGED_CHART_REJECTIONS",
     "MAX_LOGGED_REJECTED_SUBMISSIONS",
     "MAX_LOGGED_TABLES",
     "MAX_TABLE_PLACE_DCIDS",
     "ChartVariable",
     "HighlightedPlace",
     "LoggedChart",
+    "LoggedChartRejection",
     "LoggedRejectedSubmission",
     "LoggedScriptStep",
     "LoggedTable",
@@ -121,6 +123,7 @@ __all__ = [
     "TokenCall",
     "TokenTotals",
     "ToolCallCount",
+    "TruncatableList",
     "TurnOutcome",
     "UsageRecord",
     "build_usage_record",
@@ -140,6 +143,46 @@ MAX_HIGHLIGHTED_PLACES = 25
 MAX_LOGGED_REJECTED_SUBMISSIONS = MAX_PROCESSING_RETRIES + 1
 MAX_LOGGED_CHARTS = MAX_CHARTS_PER_TURN
 MAX_CHART_VARIABLES = 10
+# A model can write any number of chart blocks, so the record lists at most
+# this many of the blocks that the server dropped.
+MAX_LOGGED_CHART_REJECTIONS = 10
+# `BUILD_SHA` is a deployment setting without a length limit. The record
+# holds at most this many characters of it, so that the part of a line that
+# is not a list always fits within `MAX_RECORD_LINE_BYTES`.
+MAX_BUILD_SHA_CHARS = 256
+
+# `TruncatableList` names the lists that `_fit_line_limit` can shorten, in
+# the order of the record's keys.
+type TruncatableList = Literal[
+    "token_calls",
+    "tool_call_counts",
+    "tables",
+    "highlighted_places",
+    "script_steps",
+    "rejected_submissions",
+    "charts",
+    "chart_rejections",
+]
+_TRUNCATABLE_LISTS: tuple[TruncatableList, ...] = get_args(
+    TruncatableList.__value__
+)
+# `_TRUNCATION_GROUPS` gives the order in which `_fit_line_limit` shortens
+# the lists. It empties every list of a group before it shortens a list of
+# the next group. The lists of the first group hold the Data Commons
+# identifiers, which make up most of a long line. The lists of the second
+# group say how the turn ran, and they are small. `token_calls` comes last,
+# because token use for each model and role is the first purpose of the
+# record.
+_TRUNCATION_GROUPS: tuple[tuple[TruncatableList, ...], ...] = (
+    ("tables", "charts", "highlighted_places"),
+    (
+        "chart_rejections",
+        "rejected_submissions",
+        "script_steps",
+        "tool_call_counts",
+    ),
+    ("token_calls",),
+)
 
 _FETCHED_TABLE_ID_PATTERN = re.compile(
     rf"{FETCHED_TABLE_PREFIX}{TABLE_ID_NUMBER_PATTERN}"
@@ -206,6 +249,9 @@ class TokenTotals:
         thoughts_token_count: The number of reasoning tokens.
         total_token_count: The total that the model reported.
         call_count: The number of model calls that reported token counts.
+        interrupted_stream_calls: The number of streamed model calls that
+            stopped before their end and before any token counts arrived.
+            The other counts do not include these calls.
     """
 
     prompt_token_count: int
@@ -213,6 +259,7 @@ class TokenTotals:
     thoughts_token_count: int
     total_token_count: int
     call_count: int
+    interrupted_stream_calls: int
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -220,8 +267,8 @@ class TokenCall:
     """Holds the token counts of one model call.
 
     Attributes:
-        role: The role that the call ran in, such as `discovery`. Each
-            caller passes its own role name to the Gemini client.
+        role: The role that the call ran in, such as `discovery`. The
+            record writes the role's value.
         model: The configured name of the model that answered the call.
         round_number: The 1-based discovery round of the call, or `None`
             for a call outside the discovery loop.
@@ -231,7 +278,7 @@ class TokenCall:
         total_token_count: The total that the model reported.
     """
 
-    role: str
+    role: GeminiRole
     model: str
     round_number: int | None
     prompt_token_count: int
@@ -242,14 +289,18 @@ class TokenCall:
 
 @dataclass(frozen=True, kw_only=True)
 class ToolCallCount:
-    """Holds how many times a turn called one tool.
+    """Holds how many times one actor called one tool in a turn.
 
     Attributes:
-        tool: The name of the tool or server function.
-        count: The number of calls of that tool.
+        tool: The name of the tool or server function, or `unknown` for a
+            name that the server did not declare to the model.
+        actor: Whether the model asked for the calls or the server made them
+            on its own.
+        count: The number of calls of that tool by that actor.
     """
 
-    tool: str
+    tool: ToolName
+    actor: ToolActor
     count: int
 
 
@@ -419,6 +470,23 @@ class LoggedChart:
 
 
 @dataclass(frozen=True, kw_only=True)
+class LoggedChartRejection:
+    """Holds why the server dropped one chart block of an answer.
+
+    Attributes:
+        index: The 0-based position of the block among the chart blocks that
+            the server dropped in the turn.
+        kind: The chart kind of the block, or `None` when the server dropped
+            the block before it parsed it.
+        reason: The reason code of the rejection.
+    """
+
+    index: int
+    kind: ChartKind | None
+    reason: ChartRejectionReason
+
+
+@dataclass(frozen=True, kw_only=True)
 class UsageRecord(StructuredRecord):
     """Holds the `chat_turn` record of one turn.
 
@@ -432,8 +500,9 @@ class UsageRecord(StructuredRecord):
     because the record derives both from `terminal_state`.
 
     Attributes:
-        build_sha: The build or commit SHA of the running image, or `None`
-            when the deployment does not set one.
+        build_sha: Up to `MAX_BUILD_SHA_CHARS` characters of the build or
+            commit SHA of the running image, or `None` when the deployment
+            does not set one.
         turn_id: The ID that the server created for the turn.
         conversation_id: The ID of the conversation that the turn belongs
             to, which the server created on the conversation's first turn.
@@ -455,6 +524,10 @@ class UsageRecord(StructuredRecord):
         is_truncated: Whether the search for data stopped at its round
             limit or time limit.
         title_outcome: Whether the answer has a title.
+        follow_ups_emitted: The number of follow-up questions that the
+            server sent to the browser.
+        follow_ups_canceled: Whether the client disconnected while the
+            server was generating the follow-up questions.
         pattern: The analytical pattern of the question, or `None` when the
             turn was refused or ended before it was classified.
         duration_ms: The duration of the turn, in milliseconds.
@@ -463,9 +536,10 @@ class UsageRecord(StructuredRecord):
         tokens: The token counts of the turn.
         token_calls: The token counts of each model call, in call order.
         mcp_iterations: The number of discovery rounds.
-        tool_call_count: The number of tool calls.
-        tool_call_counts: The number of calls of each tool, sorted by tool
-            name.
+        tool_call_count: The number of tool calls, by the model and by the
+            server.
+        tool_call_counts: The number of calls for each pair of a tool and
+            an actor, sorted by tool name and then by actor.
         tables_fetched: The number of observation tables that the turn
             fetched.
         total_rows_fetched: The number of observation rows in those tables.
@@ -489,6 +563,12 @@ class UsageRecord(StructuredRecord):
         charts_rejected: The number of charts that the server dropped.
         charts: Up to `MAX_LOGGED_CHARTS` charts of the answer, in the
             order in which the server emitted them.
+        chart_rejections: Up to `MAX_LOGGED_CHART_REJECTIONS` chart blocks
+            that the server dropped, in the order in which it dropped them.
+        truncated_lists: The names of the lists from which the server
+            dropped items to keep the line within `MAX_RECORD_LINE_BYTES`,
+            in the order of the record's keys. It is empty for a record
+            that fit.
     """
 
     severity: Severity = field(init=False)
@@ -509,6 +589,8 @@ class UsageRecord(StructuredRecord):
     is_clarification: bool
     is_truncated: bool
     title_outcome: TitleOutcome
+    follow_ups_emitted: int
+    follow_ups_canceled: bool
     pattern: QueryPattern | None
     duration_ms: float
     # The list has at most one item for each phase in `TURN_PHASES`.
@@ -520,10 +602,8 @@ class UsageRecord(StructuredRecord):
     token_calls: tuple[TokenCall, ...]
     mcp_iterations: int
     tool_call_count: int
-    # The list has one item for each tool name. A name is a tool or a server
-    # function that the discovery loop declares to the model, or one of two
-    # labels. The loop records `unknown` for an undeclared tool, and
-    # `server_report_unavailable` for a report that the server files itself.
+    # The list has at most one item for each pair of a `ToolName` and a
+    # `ToolActor`.
     tool_call_counts: tuple[ToolCallCount, ...]
     tables_fetched: int
     total_rows_fetched: int
@@ -541,6 +621,8 @@ class UsageRecord(StructuredRecord):
     charts_emitted: int
     charts_rejected: int
     charts: tuple[LoggedChart, ...]
+    chart_rejections: tuple[LoggedChartRejection, ...]
+    truncated_lists: tuple[TruncatableList, ...]
 
     def __post_init__(self) -> None:
         """Sets `severity` and `message` from the terminal state."""
@@ -612,6 +694,7 @@ def _build_token_totals(tokens: TokenUsage) -> TokenTotals:
         thoughts_token_count=tokens.thoughts_token_count,
         total_token_count=tokens.total_token_count,
         call_count=len(tokens.calls),
+        interrupted_stream_calls=tokens.interrupted_stream_calls,
     )
 
 
@@ -619,7 +702,7 @@ def _build_token_calls(tokens: TokenUsage) -> tuple[TokenCall, ...]:
     """Returns the token counts of each model call, in call order."""
     return tuple(
         TokenCall(
-            role=call.phase,
+            role=call.role,
             model=call.model,
             round_number=call.round_number,
             prompt_token_count=call.counts.prompt,
@@ -634,10 +717,10 @@ def _build_token_calls(tokens: TokenUsage) -> tuple[TokenCall, ...]:
 def _build_tool_call_counts(
     telemetry: TurnTelemetry,
 ) -> tuple[ToolCallCount, ...]:
-    """Returns the number of calls of each tool, sorted by tool name."""
+    """Returns the number of calls of each tool by each actor, sorted."""
     return tuple(
-        ToolCallCount(tool=tool, count=count)
-        for tool, count in sorted(telemetry.tool_calls.items())
+        ToolCallCount(tool=tool, actor=actor, count=count)
+        for (tool, actor), count in sorted(telemetry.tool_calls.items())
     )
 
 
@@ -906,27 +989,6 @@ def _build_rejected_submission(
     )
 
 
-def _read_chart_scope(
-    chart: ResolvedChart,
-) -> tuple[tuple[str, ...], ChildCohort | None]:
-    """Returns the places that a chart lists, or the cohort that it draws."""
-    match chart:
-        case ResolvedLineChart(scope=scope) | ResolvedBarChart(scope=scope):
-            if isinstance(scope, PlaceList):
-                return scope.place_dcids, None
-            return (), scope
-        case ResolvedHighlightChart(place_dcid=place_dcid):
-            return (place_dcid,), None
-        case (
-            ResolvedRankingChart(cohort=cohort)
-            | ResolvedMapChart(cohort=cohort)
-            | ResolvedScatterChart(cohort=cohort)
-        ):
-            return (), cohort
-        case _ as unreachable:
-            assert_never(unreachable)
-
-
 def _build_logged_chart(
     index: int,
     chart: ResolvedChart,
@@ -942,7 +1004,7 @@ def _build_logged_chart(
     wrote is therefore left out. The function does not read the chart's
     title or unit.
     """
-    places, cohort = _read_chart_scope(chart)
+    places, cohort = read_chart_places(chart)
     # A chart pins each variable to at most one facet.
     grounded_facets = {
         variable_dcid: facet_id
@@ -997,25 +1059,156 @@ def _build_logged_charts(
     )
 
 
-def _measure_record_bytes(record: UsageRecord) -> int:
-    """Returns the UTF-8 byte length of `record` serialized as compact JSON."""
-    serialized = json.dumps(
-        json_safe(record), separators=(",", ":"), allow_nan=False
-    )
-    return len(serialized.encode("utf-8"))
+def _build_chart_rejections(
+    record: TurnRecord,
+) -> tuple[LoggedChartRejection, ...]:
+    """Builds up to `MAX_LOGGED_CHART_REJECTIONS` dropped chart blocks.
 
-
-def _fit_tables_to_line_budget(record: UsageRecord) -> UsageRecord:
-    """Drops trailing `tables` entries when `record` exceeds the line limit."""
-    while (
-        record.tables and _measure_record_bytes(record) > MAX_RECORD_LINE_BYTES
-    ):
-        record = replace(
-            record,
-            tables=record.tables[:-1],
-            tables_truncated=True,
+    A rejection holds a reason code and a chart kind, and it does not hold
+    any text of the block.
+    """
+    return tuple(
+        LoggedChartRejection(
+            index=index, kind=rejection.kind, reason=rejection.reason
         )
-    return record
+        for index, rejection in enumerate(
+            record.chart_rejections[:MAX_LOGGED_CHART_REJECTIONS]
+        )
+    )
+
+
+def _measure_bytes(value: object) -> int:
+    """Returns the UTF-8 size of `value` in the line that the server writes."""
+    return len(serialize_record_json(value).encode("utf-8"))
+
+
+def _measure_items_bytes(item_sizes: Sequence[int]) -> int:
+    """Returns the size of a list's items and the commas between them."""
+    return sum(item_sizes) + max(0, len(item_sizes) - 1)
+
+
+def _read_truncatable_lists(
+    record: UsageRecord,
+) -> Mapping[TruncatableList, Sequence[object]]:
+    """Returns the lists of `record` that `_fit_line_limit` can shorten."""
+    return {
+        "token_calls": record.token_calls,
+        "tool_call_counts": record.tool_call_counts,
+        "tables": record.tables,
+        "highlighted_places": record.highlighted_places,
+        "script_steps": record.script_steps,
+        "rejected_submissions": record.rejected_submissions,
+        "charts": record.charts,
+        "chart_rejections": record.chart_rejections,
+    }
+
+
+def _keep_list_items(
+    record: UsageRecord,
+    kept_counts: Mapping[TruncatableList, int],
+    truncated_lists: tuple[TruncatableList, ...],
+) -> UsageRecord:
+    """Returns `record` with each list cut to its first `kept_counts` items.
+
+    The result names `truncated_lists`, and it sets `tables_truncated` when
+    `tables` is one of them.
+    """
+    return replace(
+        record,
+        token_calls=record.token_calls[: kept_counts["token_calls"]],
+        tool_call_counts=record.tool_call_counts[
+            : kept_counts["tool_call_counts"]
+        ],
+        tables=record.tables[: kept_counts["tables"]],
+        highlighted_places=record.highlighted_places[
+            : kept_counts["highlighted_places"]
+        ],
+        script_steps=record.script_steps[: kept_counts["script_steps"]],
+        rejected_submissions=record.rejected_submissions[
+            : kept_counts["rejected_submissions"]
+        ],
+        charts=record.charts[: kept_counts["charts"]],
+        chart_rejections=record.chart_rejections[
+            : kept_counts["chart_rejections"]
+        ],
+        tables_truncated=record.tables_truncated or "tables" in truncated_lists,
+        truncated_lists=truncated_lists,
+    )
+
+
+def _select_list_to_shorten(
+    item_sizes: Mapping[TruncatableList, Sequence[int]],
+) -> TruncatableList | None:
+    """Returns the list that loses its last item next, or `None`.
+
+    The list is in the first group of `_TRUNCATION_GROUPS` that still has a
+    list with items. Within that group it is the list whose items are the
+    largest in total, and the first such list of the group on a tie.
+    """
+    for group in _TRUNCATION_GROUPS:
+        candidates = [name for name in group if item_sizes[name]]
+        if candidates:
+            # `max` returns the first of several largest lists.
+            return max(
+                candidates,
+                key=lambda name: _measure_items_bytes(item_sizes[name]),
+            )
+    return None
+
+
+def _fit_line_limit(record: UsageRecord) -> UsageRecord:
+    """Shortens the lists of `record` until its line fits the size limit.
+
+    A record whose line is within `MAX_RECORD_LINE_BYTES` is returned as it
+    is. Otherwise the function drops whole items from the ends of the lists,
+    in the order of `_TRUNCATION_GROUPS`, until the line fits. It names the
+    lists that lost an item in `truncated_lists`, and it does not change any
+    count. This function is the only code that shortens a record because of
+    its size.
+
+    The function measures each item and the part of the record outside the
+    lists once, and it adds those sizes up for each step. When shortening
+    `tables` changes `tables_truncated` from `false` to `true`, it subtracts
+    one byte so that the computed size equals the byte length of the
+    serialized line.
+
+    Args:
+        record: The complete record of a turn.
+
+    Returns:
+        The record, with shorter lists when its line was over the limit.
+    """
+    if _measure_bytes(record) <= MAX_RECORD_LINE_BYTES:
+        return record
+    item_sizes: dict[TruncatableList, list[int]] = {
+        name: [_measure_bytes(item) for item in items]
+        for name, items in _read_truncatable_lists(record).items()
+    }
+    fixed_bytes = _measure_bytes(
+        _keep_list_items(record, dict.fromkeys(_TRUNCATABLE_LISTS, 0), ())
+    )
+    # The sizes of the names in `truncated_lists`, which the line also holds.
+    name_sizes: dict[TruncatableList, int] = {}
+    while (
+        fixed_bytes
+        + sum(_measure_items_bytes(sizes) for sizes in item_sizes.values())
+        + _measure_items_bytes(list(name_sizes.values()))
+        - (1 if "tables" in name_sizes and not record.tables_truncated else 0)
+        > MAX_RECORD_LINE_BYTES
+    ):
+        name = _select_list_to_shorten(item_sizes)
+        if name is None:
+            # Every list is empty. The part of a record outside the lists
+            # is far below the limit, so a real record does not get here.
+            break
+        item_sizes[name].pop()
+        if name not in name_sizes:
+            name_sizes[name] = _measure_bytes(name)
+    return _keep_list_items(
+        record,
+        {name: len(sizes) for name, sizes in item_sizes.items()},
+        tuple(name for name in _TRUNCATABLE_LISTS if name in name_sizes),
+    )
 
 
 def build_usage_record(
@@ -1029,9 +1222,11 @@ def build_usage_record(
         transcript: The verified transcript that the turn ran with. The
             record takes the conversation ID and the turn's index from it.
         build_sha: The build or commit SHA of the running image, or `None`.
+            The record holds its first `MAX_BUILD_SHA_CHARS` characters.
 
     Returns:
-        The record, which `telemetry.write_structured_record` writes.
+        The record, which `telemetry.write_structured_record` writes. Its
+        line is within `MAX_RECORD_LINE_BYTES`.
 
     Raises:
         ValueError: If the turn does not have a terminal state yet, or if
@@ -1045,7 +1240,9 @@ def build_usage_record(
     has_data = record.digest is not None and record.digest.has_data
     fetched = _collect_fetched_tables(record)
     usage = UsageRecord(
-        build_sha=build_sha,
+        build_sha=(
+            build_sha[:MAX_BUILD_SHA_CHARS] if build_sha is not None else None
+        ),
         turn_id=telemetry.turn_id,
         conversation_id=transcript.conversation_id,
         turn_index=transcript.next_turn_index,
@@ -1063,6 +1260,9 @@ def build_usage_record(
         is_clarification=record.is_clarification,
         is_truncated=record.loop_result.truncated,
         title_outcome=telemetry.title_outcome,
+        # The record holds the number of the questions and not their text.
+        follow_ups_emitted=len(record.follow_up_questions),
+        follow_ups_canceled=record.has_canceled_follow_ups,
         # The record does not hold the pattern of a turn that the server
         # refused, even when the classifier assigned one before the refusal.
         pattern=None if state == TerminalState.REFUSED else telemetry.pattern,
@@ -1097,5 +1297,7 @@ def build_usage_record(
         charts_emitted=telemetry.charts_emitted,
         charts_rejected=telemetry.charts_rejected,
         charts=_build_logged_charts(record, fetched),
+        chart_rejections=_build_chart_rejections(record),
+        truncated_lists=(),
     )
-    return _fit_tables_to_line_budget(usage)
+    return _fit_line_limit(usage)

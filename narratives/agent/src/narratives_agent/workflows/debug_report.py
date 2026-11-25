@@ -735,7 +735,7 @@ def build_debug_report(
         total_token_count=telemetry.tokens.total_token_count,
         calls=tuple(
             DebugTokenCall(
-                phase=call.phase,
+                phase=call.role.value,
                 model=call.model,
                 round_number=call.round_number,
                 prompt_token_count=call.counts.prompt,

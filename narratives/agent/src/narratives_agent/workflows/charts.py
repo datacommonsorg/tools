@@ -109,6 +109,7 @@ __all__ = [
     "find_chart_entry",
     "get_chart_cohort",
     "parse_chart_specification",
+    "read_chart_places",
     "resolve_chart_specification",
     "serialize_resolved_chart",
 ]
@@ -688,6 +689,35 @@ type ResolvedChart = (
     | ResolvedScatterChart
     | ResolvedHighlightChart
 )
+
+
+def read_chart_places(
+    chart: ResolvedChart,
+) -> tuple[tuple[str, ...], ChildCohort | None]:
+    """Returns the places that a chart lists, or the cohort that it draws.
+
+    Args:
+        chart: A resolved chart of any kind.
+
+    Returns:
+        The chart's explicit place DCIDs and `None`, or an empty tuple and
+        the cohort that the chart draws.
+    """
+    match chart:
+        case ResolvedLineChart(scope=scope) | ResolvedBarChart(scope=scope):
+            if isinstance(scope, PlaceList):
+                return scope.place_dcids, None
+            return (), scope
+        case ResolvedHighlightChart(place_dcid=place_dcid):
+            return (place_dcid,), None
+        case (
+            ResolvedRankingChart(cohort=cohort)
+            | ResolvedMapChart(cohort=cohort)
+            | ResolvedScatterChart(cohort=cohort)
+        ):
+            return (), cohort
+        case _ as unreachable:
+            assert_never(unreachable)
 
 
 def _serialize_cohort(cohort: ChildCohort) -> dict[str, JsonValue]:

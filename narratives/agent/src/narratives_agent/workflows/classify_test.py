@@ -28,6 +28,7 @@ from narratives_agent.config_model import (
     DEFAULT_GEMINI_CLASSIFY_MODEL,
     AgentConfig,
     GeminiConfig,
+    GeminiRole,
     Prompts,
 )
 from narratives_agent.gemini.client import GeminiBlockedError, GeminiError
@@ -340,7 +341,7 @@ async def test_a_serviceable_verdict_is_admitted_with_its_classification(
     assert request["response_schema"] is QueryClassification
     assert request.get("tools") is None
     assert request["token_usage"] is telemetry.tokens
-    assert request["token_phase"] == "classify"
+    assert request["token_role"] is GeminiRole.CLASSIFY
     assert request["messages"][-1]["parts"][-1] == {"text": _QUESTION}
 
 

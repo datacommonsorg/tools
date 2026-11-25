@@ -979,7 +979,7 @@ async def _compact(
                 temperature=role.temperature,
                 thinking_level=role.thinking_level,
                 token_usage=token_usage,
-                token_phase=GeminiRole.COMPACTION.value,
+                token_role=GeminiRole.COMPACTION,
             )
     except TimeoutError:
         logger.warning(

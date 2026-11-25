@@ -16,17 +16,22 @@
 Every test drives a real `genai.Client` whose HTTP traffic is served by an
 `httpx.MockTransport`, so request serialization, SSE parsing, and the SDK's
 `APIError` mapping all run as they do in production; only the network is
-replaced.
+replaced. The tests of streamed calls that stop early replace the SDK's
+chunk iterator instead, because they have to stop a stream at a chosen
+chunk.
 """
 
+import asyncio
 import base64
+import contextlib
 import json
 import logging
 import threading
+import warnings
 from collections.abc import AsyncIterator, Callable, Iterator
 from dataclasses import dataclass, field
 from types import SimpleNamespace
-from typing import Any
+from typing import Any, Literal
 
 import google.auth.exceptions
 import httpx
@@ -35,6 +40,7 @@ from google import genai
 from google.genai import types
 from pydantic import BaseModel
 
+from narratives_agent.config_model import GeminiRole
 from narratives_agent.gemini import client
 from narratives_agent.gemini.response import (
     FunctionCall,
@@ -1656,10 +1662,10 @@ async def test_async_gemini_request_records_token_call_record(
     gemini: _FakeGemini,
 ) -> None:
     # Test: Per-call token record on async_gemini_request.
-    # Situation: A request completes with usage metadata, passing token_phase
+    # Situation: A request completes with usage metadata, passing token_role
     #   and token_round.
     # Expectation: TokenUsage.calls carries a TokenCallRecord with the
-    #   specified phase, model, round, and TokenCounts.
+    #   specified role, model, round, and TokenCounts.
     gemini.respond(_answer(200, json=_response_json([{"text": "ok"}], _USAGE)))
     usage = TokenUsage()
 
@@ -1668,7 +1674,7 @@ async def test_async_gemini_request_records_token_call_record(
         "",
         _MODEL,
         token_usage=usage,
-        token_phase="classify",
+        token_role=GeminiRole.CLASSIFY,
         token_round=1,
     )
 
@@ -1680,7 +1686,7 @@ async def test_async_gemini_request_records_token_call_record(
     ) == (11, 7, 5, 23)
     assert usage.calls == [
         TokenCallRecord(
-            phase="classify",
+            role=GeminiRole.CLASSIFY,
             model=_MODEL,
             round_number=1,
             counts=TokenCounts(prompt=11, candidates=7, thoughts=5, total=23),
@@ -1694,9 +1700,9 @@ async def test_async_gemini_stream_records_token_call_record(
 ) -> None:
     # Test: Per-call token record on completed async_gemini_stream.
     # Situation: A stream completes with usage metadata on its final chunk,
-    #   passing token_phase="synthesis".
+    #   passing the role `synthesis`.
     # Expectation: TokenUsage.calls carries a TokenCallRecord with the
-    #   specified phase, model, round_number=None, and TokenCounts.
+    #   specified role, model, round_number=None, and TokenCounts.
     gemini.respond(_answer(200, content=_STREAM_BODY))
     usage = TokenUsage()
 
@@ -1705,7 +1711,7 @@ async def test_async_gemini_stream_records_token_call_record(
         "",
         _MODEL,
         token_usage=usage,
-        token_phase="synthesis",
+        token_role=GeminiRole.SYNTHESIS,
     )
     _ = [item async for item in stream]
 
@@ -1717,7 +1723,7 @@ async def test_async_gemini_stream_records_token_call_record(
     ) == (11, 7, 5, 23)
     assert usage.calls == [
         TokenCallRecord(
-            phase="synthesis",
+            role=GeminiRole.SYNTHESIS,
             model=_MODEL,
             round_number=None,
             counts=TokenCounts(prompt=11, candidates=7, thoughts=5, total=23),
@@ -1733,7 +1739,8 @@ async def test_async_gemini_stream_early_close_records_token_call_record(
     # Situation: A stream receives a first chunk carrying usage metadata, and
     #   the consumer closes the stream after reading only that chunk.
     # Expectation: The finally block in _async_iterate_stream records the
-    #   TokenCallRecord before closing the SDK stream.
+    #   TokenCallRecord before closing the SDK stream. The call is not
+    #   counted as an interrupted stream, because its token counts arrived.
     first_chunk = _response_json([{"text": "Early chunk"}], _USAGE)
     gemini.respond(_answer(200, content=_sse(first_chunk, first_chunk)))
     usage = TokenUsage()
@@ -1743,12 +1750,13 @@ async def test_async_gemini_stream_early_close_records_token_call_record(
         "",
         _MODEL,
         token_usage=usage,
-        token_phase="synthesis",
+        token_role=GeminiRole.SYNTHESIS,
     )
     async for _ in stream:
         break
     await stream.aclose()
 
+    assert usage.interrupted_stream_calls == 0
     assert (
         usage.prompt_token_count,
         usage.candidates_token_count,
@@ -1757,7 +1765,7 @@ async def test_async_gemini_stream_early_close_records_token_call_record(
     ) == (11, 7, 5, 23)
     assert usage.calls == [
         TokenCallRecord(
-            phase="synthesis",
+            role=GeminiRole.SYNTHESIS,
             model=_MODEL,
             round_number=None,
             counts=TokenCounts(prompt=11, candidates=7, thoughts=5, total=23),
@@ -1773,7 +1781,7 @@ async def test_stream_first_chunk_blocked_records_token_call_record(
     # Situation: The first chunk carries a candidate safety block and usage
     #   metadata.
     # Expectation: GeminiBlockedError is raised and TokenUsage.calls carries
-    #   a TokenCallRecord with the specified phase and model.
+    #   a TokenCallRecord with the specified role and model.
     blocked_chunk = {
         "candidates": [
             {
@@ -1792,7 +1800,7 @@ async def test_stream_first_chunk_blocked_records_token_call_record(
             "",
             _MODEL,
             token_usage=usage,
-            token_phase="synthesis",
+            token_role=GeminiRole.SYNTHESIS,
         )
 
     assert (
@@ -1803,7 +1811,7 @@ async def test_stream_first_chunk_blocked_records_token_call_record(
     ) == (11, 7, 5, 23)
     assert usage.calls == [
         TokenCallRecord(
-            phase="synthesis",
+            role=GeminiRole.SYNTHESIS,
             model=_MODEL,
             round_number=None,
             counts=TokenCounts(prompt=11, candidates=7, thoughts=5, total=23),
@@ -1817,8 +1825,8 @@ async def test_async_gemini_thought_streaming_records_token_call_record(
 ) -> None:
     # Test: Per-call token record on thought-streaming request.
     # Situation: A thought-streaming request completes with usage metadata,
-    #   passing token_phase="discovery" and token_round=2.
-    # Expectation: TokenUsage.calls carries a TokenCallRecord with phase, model,
+    #   passing the role `discovery` and token_round=2.
+    # Expectation: TokenUsage.calls carries a TokenCallRecord with role, model,
     #   round, and TokenCounts.
     gemini.respond(_answer(200, content=_STREAM_BODY))
     usage = TokenUsage()
@@ -1828,7 +1836,7 @@ async def test_async_gemini_thought_streaming_records_token_call_record(
         "",
         _MODEL,
         token_usage=usage,
-        token_phase="discovery",
+        token_role=GeminiRole.DISCOVERY,
         token_round=2,
     )
 
@@ -1840,9 +1848,704 @@ async def test_async_gemini_thought_streaming_records_token_call_record(
     ) == (11, 7, 5, 23)
     assert usage.calls == [
         TokenCallRecord(
-            phase="discovery",
+            role=GeminiRole.DISCOVERY,
             model=_MODEL,
             round_number=2,
             counts=TokenCounts(prompt=11, candidates=7, thoughts=5, total=23),
         )
     ]
+
+
+type _StreamStep = types.GenerateContentResponse | Exception | Literal["wait"]
+
+_USAGE_COUNTS = TokenCounts(prompt=11, candidates=7, thoughts=5, total=23)
+
+
+def _make_chunk(*, has_usage: bool) -> types.GenerateContentResponse:
+    """Returns one streamed text chunk, with or without token counts."""
+    return types.GenerateContentResponse(
+        candidates=[
+            types.Candidate(
+                content=types.Content(parts=[types.Part(text="Some text.")])
+            )
+        ],
+        usage_metadata=(
+            types.GenerateContentResponseUsageMetadata(
+                prompt_token_count=11,
+                candidates_token_count=7,
+                thoughts_token_count=5,
+                total_token_count=23,
+            )
+            if has_usage
+            else None
+        ),
+    )
+
+
+def _make_chunk_without_counts() -> types.GenerateContentResponse:
+    """Returns one streamed text chunk whose usage object lacks token counts.
+
+    Vertex AI sends such a chunk before the last chunk of a stream: its
+    usage object holds the traffic type and does not hold any of the four
+    token counts.
+    """
+    return types.GenerateContentResponse(
+        candidates=[
+            types.Candidate(
+                content=types.Content(parts=[types.Part(text="Some text.")])
+            )
+        ],
+        usage_metadata=types.GenerateContentResponseUsageMetadata(
+            traffic_type=types.TrafficType.ON_DEMAND
+        ),
+    )
+
+
+@dataclass
+class _ScriptedChunks:
+    """An SDK chunk iterator that follows a script, one step for each read.
+
+    A chunk is returned and an exception is raised. At `wait` the iterator
+    sets `is_waiting` and then does not return, as a stream does when Gemini
+    has not sent its next chunk. The stream ends after the last step.
+    """
+
+    steps: list[_StreamStep]
+    is_waiting: asyncio.Event = field(default_factory=asyncio.Event)
+    was_closed: bool = False
+
+    def __aiter__(self) -> _ScriptedChunks:
+        return self
+
+    async def __anext__(self) -> types.GenerateContentResponse:
+        if not self.steps:
+            raise StopAsyncIteration
+        step = self.steps.pop(0)
+        if step == "wait":
+            self.is_waiting.set()
+            await asyncio.Event().wait()
+        if isinstance(step, types.GenerateContentResponse):
+            return step
+        assert isinstance(step, Exception)
+        raise step
+
+    async def aclose(self) -> None:
+        """Records that the client closed the chunk iterator."""
+        self.was_closed = True
+
+
+def _patch_sdk_stream(
+    monkeypatch: pytest.MonkeyPatch, steps: list[_StreamStep]
+) -> _ScriptedChunks:
+    """Makes every streamed call read a `_ScriptedChunks` of `steps`."""
+    chunks = _ScriptedChunks(steps)
+
+    async def generate_content_stream(
+        **kwargs: Any,
+    ) -> AsyncIterator[types.GenerateContentResponse]:
+        return chunks
+
+    sdk = SimpleNamespace(
+        aio=SimpleNamespace(
+            models=SimpleNamespace(
+                generate_content_stream=generate_content_stream
+            )
+        )
+    )
+
+    async def prepare_call(*args: Any, **kwargs: Any) -> Any:
+        return SimpleNamespace(client=sdk, contents=[], config=None)
+
+    monkeypatch.setattr(client, "_prepare_call", prepare_call)
+    return chunks
+
+
+_STREAMED_MODES = ["async_stream", "async_thought_streaming"]
+_STREAMED_ROLES = {
+    "async_stream": GeminiRole.SYNTHESIS,
+    "async_thought_streaming": GeminiRole.DISCOVERY,
+}
+
+
+async def _read_streamed_call(mode: str, usage: TokenUsage) -> None:
+    """Runs one streamed call of `mode` and reads its stream to the end."""
+    if mode == "async_stream":
+        stream = await client.async_gemini_stream(
+            messages=[],
+            system_instruction="",
+            model=_MODEL,
+            token_usage=usage,
+            token_role=_STREAMED_ROLES[mode],
+        )
+        async for _ in stream:
+            pass
+        return
+    await client.async_gemini_request_with_thought_streaming(
+        messages=[],
+        system_instruction="",
+        model=_MODEL,
+        token_usage=usage,
+        token_role=_STREAMED_ROLES[mode],
+    )
+
+
+async def _run_scripted_call(
+    monkeypatch: pytest.MonkeyPatch, mode: str, steps: list[_StreamStep]
+) -> TokenUsage:
+    """Runs a streamed call over `steps` and returns the usage it recorded.
+
+    A call whose script waits is canceled once it waits. A call whose script
+    raises is expected to raise `GeminiError`.
+    """
+    has_wait = "wait" in steps
+    has_error = any(isinstance(step, Exception) for step in steps)
+    chunks = _patch_sdk_stream(monkeypatch, steps)
+    usage = TokenUsage()
+    task = asyncio.create_task(_read_streamed_call(mode, usage))
+    wait_task: asyncio.Task[bool] | None = None
+    try:
+        if has_wait:
+            wait_task = asyncio.create_task(chunks.is_waiting.wait())
+            async with asyncio.timeout(5):
+                done, _ = await asyncio.wait(
+                    {task, wait_task}, return_when=asyncio.FIRST_COMPLETED
+                )
+            if task in done:
+                await task
+                pytest.fail(
+                    "Streamed call returned before reaching the scripted wait."
+                )
+            task.cancel()
+            with pytest.raises(asyncio.CancelledError):
+                await task
+        elif has_error:
+            with pytest.raises(client.GeminiError):
+                await task
+        else:
+            await task
+    finally:
+        for pending in (wait_task, task):
+            if pending is not None and not pending.done():
+                pending.cancel()
+                with contextlib.suppress(BaseException):
+                    await pending
+    return usage
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("mode", _STREAMED_MODES)
+@pytest.mark.parametrize(
+    "steps",
+    [
+        pytest.param(
+            [_make_chunk(has_usage=False), RuntimeError("connection reset")],
+            id="error_after_the_first_chunk",
+        ),
+        pytest.param(["wait"], id="canceled_before_the_first_chunk"),
+        pytest.param(
+            [_make_chunk(has_usage=False), "wait"],
+            id="canceled_between_chunks",
+        ),
+        pytest.param(
+            [_make_chunk_without_counts(), RuntimeError("connection reset")],
+            id="error_after_a_usage_object_without_counts",
+        ),
+        pytest.param(
+            [
+                _make_chunk_without_counts(),
+                _make_chunk_without_counts(),
+                "wait",
+            ],
+            id="canceled_after_usage_objects_without_counts",
+        ),
+    ],
+)
+async def test_a_stream_cut_off_before_its_counts_is_counted_as_interrupted(
+    monkeypatch: pytest.MonkeyPatch, mode: str, steps: list[_StreamStep]
+) -> None:
+    # Test: A streamed call that stops before its token counts arrive.
+    # Situation: On the discovery path and on the synthesis path, the stream
+    #   fails after a first chunk without token counts, or the caller is
+    #   canceled while it waits for the first chunk or for a later chunk. In
+    #   the last two cases each chunk carries a usage object that holds the
+    #   traffic type and does not hold any of the four counts, as on Vertex AI.
+    # Expectation: The call is counted once as an interrupted stream. It
+    #   does not add to the token totals, and it is not listed in `calls`.
+    usage = await _run_scripted_call(monkeypatch, mode, list(steps))
+
+    assert usage == TokenUsage(interrupted_stream_calls=1)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("mode", _STREAMED_MODES)
+@pytest.mark.parametrize(
+    "steps",
+    [
+        pytest.param(
+            [RuntimeError("request rejected")],
+            id="request_fails_before_the_first_chunk",
+        ),
+        pytest.param(
+            [_make_chunk(has_usage=False)], id="stream_ends_without_counts"
+        ),
+        pytest.param(
+            [_make_chunk_without_counts()],
+            id="stream_ends_with_a_usage_object_without_counts",
+        ),
+    ],
+)
+async def test_a_stream_that_was_not_cut_off_is_not_counted_as_interrupted(
+    monkeypatch: pytest.MonkeyPatch, mode: str, steps: list[_StreamStep]
+) -> None:
+    # Test: Streamed calls without token counts that were not cut off.
+    # Situation: On the discovery path and on the synthesis path, the
+    #   request fails before its first chunk arrives, or the stream runs to
+    #   its end and never reports token counts. In the last case its only
+    #   chunk carries a usage object that does not hold any of the four counts.
+    # Expectation: The call is not counted as an interrupted stream, and it
+    #   is not counted anywhere else.
+    usage = await _run_scripted_call(monkeypatch, mode, list(steps))
+
+    assert usage == TokenUsage()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("mode", _STREAMED_MODES)
+@pytest.mark.parametrize(
+    "steps",
+    [
+        pytest.param([_make_chunk(has_usage=True)], id="stream_ends"),
+        pytest.param(
+            [_make_chunk(has_usage=True), "wait"],
+            id="canceled_after_the_counts",
+        ),
+        pytest.param(
+            [_make_chunk(has_usage=True), RuntimeError("connection reset")],
+            id="error_after_the_counts",
+        ),
+        pytest.param(
+            [_make_chunk_without_counts(), _make_chunk(has_usage=True)],
+            id="counts_after_a_usage_object_without_counts",
+        ),
+        pytest.param(
+            [
+                _make_chunk_without_counts(),
+                _make_chunk(has_usage=True),
+                "wait",
+            ],
+            id="canceled_after_counts_that_followed_an_empty_usage_object",
+        ),
+    ],
+)
+async def test_a_stream_whose_token_counts_arrived_is_a_normal_token_call(
+    monkeypatch: pytest.MonkeyPatch, mode: str, steps: list[_StreamStep]
+) -> None:
+    # Test: A streamed call whose token counts arrived.
+    # Situation: On the discovery path and on the synthesis path, a chunk
+    #   reports token counts. The stream then ends, the caller is canceled
+    #   while it waits for another chunk, or the stream fails. In the last
+    #   two cases a chunk whose usage object does not hold any of the four
+    #   counts comes before the chunk with the counts.
+    # Expectation: The call is listed once in `calls` with its role and its
+    #   counts, and it is not counted as an interrupted stream.
+    usage = await _run_scripted_call(monkeypatch, mode, list(steps))
+
+    assert usage.interrupted_stream_calls == 0
+    assert usage.total_token_count == 23
+    assert usage.calls == [
+        TokenCallRecord(
+            role=_STREAMED_ROLES[mode],
+            model=_MODEL,
+            round_number=None,
+            counts=_USAGE_COUNTS,
+        )
+    ]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("mode", _STREAMED_MODES)
+async def test_a_count_that_gemini_reports_as_zero_is_a_reported_count(
+    monkeypatch: pytest.MonkeyPatch, mode: str
+) -> None:
+    # Test: A streamed call whose only reported token count is `0`.
+    # Situation: On the discovery path and on the synthesis path, the first
+    #   chunk carries a usage object whose total is `0` and whose other
+    #   three counts are absent. The caller is canceled while it waits for
+    #   the second chunk.
+    # Expectation: The call is listed once in `calls` with four zero counts,
+    #   and it is not counted as an interrupted stream.
+    chunk = _make_chunk_without_counts()
+    chunk.usage_metadata = types.GenerateContentResponseUsageMetadata(
+        total_token_count=0
+    )
+
+    usage = await _run_scripted_call(monkeypatch, mode, [chunk, "wait"])
+
+    assert usage.interrupted_stream_calls == 0
+    assert usage.calls == [
+        TokenCallRecord(
+            role=_STREAMED_ROLES[mode],
+            model=_MODEL,
+            round_number=None,
+            counts=TokenCounts(prompt=0, candidates=0, thoughts=0, total=0),
+        )
+    ]
+
+
+@pytest.mark.asyncio
+async def test_a_response_whose_usage_object_holds_no_counts_is_not_listed(
+    gemini: _FakeGemini,
+) -> None:
+    # Test: A call that is not streamed and does not report token counts.
+    # Situation: A request with a role completes. The usage object of its
+    #   response holds the traffic type and does not hold any of the four
+    #   counts.
+    # Expectation: The call is not listed in `calls`, it does not add to the
+    #   totals, and it is not counted as an interrupted stream.
+    body = _response_json([{"text": "ok"}])
+    body["usageMetadata"] = {"trafficType": "ON_DEMAND"}
+    gemini.respond(_answer(200, json=body))
+    usage = TokenUsage()
+
+    await client.async_gemini_request(
+        _MESSAGES,
+        "",
+        _MODEL,
+        token_usage=usage,
+        token_role=GeminiRole.CLASSIFY,
+    )
+
+    assert usage == TokenUsage()
+
+
+@pytest.mark.asyncio
+async def test_a_stream_that_its_consumer_closes_is_counted_as_interrupted(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Test: A synthesis stream that its consumer stops reading.
+    # Situation: The stream yields one chunk without token counts and has a
+    #   second chunk. The consumer reads the first item and closes the
+    #   stream.
+    # Expectation: The call is counted once as an interrupted stream, and it
+    #   is not listed in `calls`.
+    _patch_sdk_stream(
+        monkeypatch,
+        [_make_chunk(has_usage=False), _make_chunk(has_usage=True)],
+    )
+    usage = TokenUsage()
+    stream = await client.async_gemini_stream(
+        messages=[],
+        system_instruction="",
+        model=_MODEL,
+        token_usage=usage,
+        token_role=GeminiRole.SYNTHESIS,
+    )
+
+    await anext(stream)
+    await stream.aclose()
+
+    assert usage == TokenUsage(interrupted_stream_calls=1)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "first_chunk",
+    [
+        pytest.param(_make_chunk(has_usage=False), id="without_usage_metadata"),
+        pytest.param(
+            _make_chunk_without_counts(), id="with_empty_usage_object"
+        ),
+    ],
+)
+async def test_closing_an_unstarted_stream_without_counts_counts_interrupted(
+    monkeypatch: pytest.MonkeyPatch,
+    first_chunk: types.GenerateContentResponse,
+) -> None:
+    # Test: Closing a synthesis stream before reading its first item when
+    #   the first chunk did not report token counts.
+    # Situation: `async_gemini_stream` fetches a first chunk that does not
+    #   report token counts, and a second chunk with counts remains unread.
+    #   The caller closes the stream twice without iterating it.
+    # Expectation: The client closes the SDK chunk iterator, counts the
+    #   call once as an interrupted stream, and does not list it in `calls`.
+    chunks = _patch_sdk_stream(
+        monkeypatch, [first_chunk, _make_chunk(has_usage=True)]
+    )
+    usage = TokenUsage()
+    stream = await client.async_gemini_stream(
+        messages=[],
+        system_instruction="",
+        model=_MODEL,
+        token_usage=usage,
+        token_role=GeminiRole.SYNTHESIS,
+    )
+
+    await stream.aclose()
+    await stream.aclose()
+
+    assert chunks.was_closed
+    assert usage == TokenUsage(interrupted_stream_calls=1)
+
+
+@pytest.mark.asyncio
+async def test_closing_an_unstarted_stream_with_counts_records_the_call(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Test: Closing a synthesis stream before reading its first item when
+    #   the first chunk already reported token counts.
+    # Situation: `async_gemini_stream` fetches a first chunk that reports
+    #   token counts, and the caller closes the stream without iterating it.
+    # Expectation: The client closes the SDK chunk iterator, lists the call
+    #   once in `calls` with its counts, and does not count it as an
+    #   interrupted stream.
+    chunks = _patch_sdk_stream(monkeypatch, [_make_chunk(has_usage=True)])
+    usage = TokenUsage()
+    stream = await client.async_gemini_stream(
+        messages=[],
+        system_instruction="",
+        model=_MODEL,
+        token_usage=usage,
+        token_role=GeminiRole.SYNTHESIS,
+    )
+
+    await stream.aclose()
+
+    assert chunks.was_closed
+    assert usage.interrupted_stream_calls == 0
+    assert usage.calls == [
+        TokenCallRecord(
+            role=GeminiRole.SYNTHESIS,
+            model=_MODEL,
+            round_number=None,
+            counts=_USAGE_COUNTS,
+        )
+    ]
+
+
+@pytest.mark.asyncio
+async def test_closing_an_unstarted_empty_stream_does_not_count_the_call(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Test: Closing an empty synthesis stream before reading its first item.
+    # Situation: The SDK chunk iterator ends before returning a first chunk,
+    #   and the caller closes the returned stream without iterating it.
+    # Expectation: The client closes the SDK chunk iterator and does not
+    #   count the call in `calls` or in `interrupted_stream_calls`.
+    chunks = _patch_sdk_stream(monkeypatch, [])
+    usage = TokenUsage()
+    stream = await client.async_gemini_stream(
+        messages=[],
+        system_instruction="",
+        model=_MODEL,
+        token_usage=usage,
+        token_role=GeminiRole.SYNTHESIS,
+    )
+
+    await stream.aclose()
+
+    assert chunks.was_closed
+    assert usage == TokenUsage()
+
+
+@pytest.mark.asyncio
+async def test_a_stream_that_gemini_blocks_is_not_counted_as_interrupted(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Test: A synthesis stream that Gemini blocks without token counts.
+    # Situation: The stream yields one text chunk and then a chunk that
+    #   holds a safety block. The two chunks do not report token counts.
+    # Expectation: Reading the stream raises `GeminiBlockedError`. Gemini
+    #   ended the stream, so the call is not counted as an interrupted
+    #   stream.
+    blocked = types.GenerateContentResponse(
+        prompt_feedback=types.GenerateContentResponsePromptFeedback(
+            block_reason=types.BlockedReason.SAFETY
+        )
+    )
+    _patch_sdk_stream(monkeypatch, [_make_chunk(has_usage=False), blocked])
+    usage = TokenUsage()
+    stream = await client.async_gemini_stream(
+        messages=[],
+        system_instruction="",
+        model=_MODEL,
+        token_usage=usage,
+        token_role=GeminiRole.SYNTHESIS,
+    )
+
+    with pytest.raises(client.GeminiBlockedError):
+        async for _ in stream:
+            pass
+
+    assert usage == TokenUsage()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "form",
+    ["bare_type", "type_and_message", "instance"],
+)
+async def test_athrow_on_an_unstarted_stream_propagates_and_cleans_up(
+    monkeypatch: pytest.MonkeyPatch, form: str
+) -> None:
+    # Test: Throwing an exception into a synthesis stream before reading its
+    #   first item.
+    # Situation: `async_gemini_stream` fetches a first chunk without token
+    #   counts, and a second chunk with counts remains unread. With
+    #   `DeprecationWarning` promoted to an error, the caller calls `athrow`
+    #   with a bare exception class, an exception class and a message, or an
+    #   exception instance, and then calls `aclose`.
+    # Expectation: `athrow` raises the thrown exception without emitting a
+    #   deprecation warning, closes the SDK chunk iterator, and counts the
+    #   call once as an interrupted stream.
+    chunks = _patch_sdk_stream(
+        monkeypatch, [_make_chunk(has_usage=False), _make_chunk(has_usage=True)]
+    )
+    usage = TokenUsage()
+    stream = await client.async_gemini_stream(
+        messages=[],
+        system_instruction="",
+        model=_MODEL,
+        token_usage=usage,
+        token_role=GeminiRole.SYNTHESIS,
+    )
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", DeprecationWarning)
+        if form == "bare_type":
+            with pytest.raises(RuntimeError):
+                await stream.athrow(RuntimeError)
+        elif form == "type_and_message":
+            with pytest.raises(ValueError, match="bad value"):
+                await stream.athrow(ValueError, "bad value")
+        else:
+            with pytest.raises(ValueError, match="boom"):
+                await stream.athrow(ValueError("boom"))
+    await stream.aclose()
+
+    assert chunks.was_closed
+    assert usage == TokenUsage(interrupted_stream_calls=1)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("form", ["bare_type", "instance"])
+async def test_athrow_on_a_started_stream_wraps_the_error_and_cleans_up(
+    monkeypatch: pytest.MonkeyPatch, form: str
+) -> None:
+    # Test: Throwing an exception into a synthesis stream after reading its
+    #   first item.
+    # Situation: The caller reads the first item from `async_gemini_stream`
+    #   and then calls `athrow` with a bare exception class or an exception
+    #   instance while `DeprecationWarning` is promoted to an error.
+    # Expectation: The inner generator catches the exception and raises
+    #   `GeminiStreamError` chained from it without a deprecation warning,
+    #   closes the SDK chunk iterator, and counts the call once as an
+    #   interrupted stream.
+    chunks = _patch_sdk_stream(
+        monkeypatch, [_make_chunk(has_usage=False), _make_chunk(has_usage=True)]
+    )
+    usage = TokenUsage()
+    stream = await client.async_gemini_stream(
+        messages=[],
+        system_instruction="",
+        model=_MODEL,
+        token_usage=usage,
+        token_role=GeminiRole.SYNTHESIS,
+    )
+    await anext(stream)
+
+    with (
+        warnings.catch_warnings(),
+        pytest.raises(client.GeminiStreamError) as raised,
+    ):
+        warnings.simplefilter("error", DeprecationWarning)
+        if form == "bare_type":
+            await stream.athrow(RuntimeError)
+        else:
+            await stream.athrow(ValueError("boom"))
+
+    expected_cause = RuntimeError if form == "bare_type" else ValueError
+    assert isinstance(raised.value.__cause__, expected_cause)
+    assert chunks.was_closed
+    assert usage == TokenUsage(interrupted_stream_calls=1)
+
+
+@pytest.mark.asyncio
+async def test_a_concurrent_aclose_raises_and_leaves_the_stream_usable(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Test: Calling `aclose` while `anext` is awaiting the next chunk.
+    # Situation: The caller reads the first item from `async_gemini_stream`
+    #   and starts reading the second item, which waits on a gate before
+    #   returning the final chunk with token counts. While that read is in
+    #   flight, another coroutine calls `await stream.aclose()`.
+    # Expectation: The concurrent `aclose` raises `RuntimeError`, and once
+    #   the gate opens, the in-flight read returns the second item and the
+    #   stream finishes normally with its token counts recorded.
+    in_flight = asyncio.Event()
+    gate = asyncio.Event()
+    closed = False
+
+    class _GatedChunks:
+        def __init__(self) -> None:
+            self._index = 0
+
+        def __aiter__(self) -> _GatedChunks:
+            return self
+
+        async def __anext__(self) -> types.GenerateContentResponse:
+            self._index += 1
+            if self._index == 1:
+                return _make_chunk(has_usage=False)
+            if self._index == 2:
+                in_flight.set()
+                await gate.wait()
+                return _make_chunk(has_usage=True)
+            raise StopAsyncIteration
+
+        async def aclose(self) -> None:
+            nonlocal closed
+            closed = True
+
+    async def generate_content_stream(
+        **kwargs: Any,
+    ) -> AsyncIterator[types.GenerateContentResponse]:
+        return _GatedChunks()
+
+    sdk = SimpleNamespace(
+        aio=SimpleNamespace(
+            models=SimpleNamespace(
+                generate_content_stream=generate_content_stream
+            )
+        )
+    )
+
+    async def prepare_call(*args: Any, **kwargs: Any) -> Any:
+        return SimpleNamespace(client=sdk, contents=[], config=None)
+
+    monkeypatch.setattr(client, "_prepare_call", prepare_call)
+    usage = TokenUsage()
+    stream = await client.async_gemini_stream(
+        messages=[],
+        system_instruction="",
+        model=_MODEL,
+        token_usage=usage,
+        token_role=GeminiRole.SYNTHESIS,
+    )
+    first_item = await anext(stream)
+    second_read = asyncio.create_task(anext(stream))
+    async with asyncio.timeout(5):
+        await in_flight.wait()
+
+    with pytest.raises(RuntimeError):
+        await stream.aclose()
+
+    gate.set()
+    second_item = await second_read
+    remaining = [item async for item in stream]
+
+    assert first_item == StreamChunk("text", "Some text.")
+    assert second_item == StreamChunk("text", "Some text.")
+    assert remaining == []
+    assert closed
+    assert usage.interrupted_stream_calls == 0
+    assert len(usage.calls) == 1

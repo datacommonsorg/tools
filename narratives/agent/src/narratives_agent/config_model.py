@@ -35,7 +35,7 @@ does no I/O and does not import `config.py`.
 import logging
 from collections.abc import Mapping
 from dataclasses import dataclass, field, fields
-from enum import Enum
+from enum import StrEnum
 from types import MappingProxyType
 from typing import Any
 
@@ -72,8 +72,12 @@ DEFAULT_UNAVAILABLE_MESSAGE = (
 )
 
 
-class GeminiRole(Enum):
-    """Reasoning roles across the agent loop."""
+class GeminiRole(StrEnum):
+    """Reasoning roles across the agent loop.
+
+    The `chat_turn` record logs the value of a member as the role of a model
+    call.
+    """
 
     CLASSIFY = "classify"
     DISCOVERY = "discovery"
