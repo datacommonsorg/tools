@@ -2646,16 +2646,21 @@ def test_a_chart_keeps_only_identifiers_that_a_fetched_table_holds() -> None:
 @pytest.mark.parametrize(
     ("cohort", "is_kept"),
     [
-        pytest.param(_COUNTIES, True, id="parent of a fetched cohort table"),
+        pytest.param(_COUNTIES, True, id="cohort of a fetched table"),
         pytest.param(
             ChildCohort("country/FRA", "AdministrativeArea1"),
-            True,
-            id="parent that has rows in a fetched table",
+            False,
+            id="parent that has rows in a table of named places",
         ),
         pytest.param(
             ChildCohort("geoId/48", "County"),
             False,
             id="parent that the turn did not fetch",
+        ),
+        pytest.param(
+            ChildCohort("geoId/06", "City"),
+            False,
+            id="fetched parent with a child place type that was not fetched",
         ),
         pytest.param(
             ChildCohort("geoId/06", "County Name"),
@@ -2664,20 +2669,21 @@ def test_a_chart_keeps_only_identifiers_that_a_fetched_table_holds() -> None:
         ),
     ],
 )
-def test_a_chart_keeps_a_cohort_whose_parent_a_fetched_table_holds(
+def test_a_chart_keeps_a_cohort_that_a_fetched_table_covers(
     cohort: ChildCohort, is_kept: bool
 ) -> None:
     # Test: The grounding of the cohort of a chart.
     # Situation: The turn fetched a named-place table with rows for France
     #   and a county cohort table of `geoId/06`, whose rows hold only the
-    #   counties. A map draws one of four cohorts: the fetched cohort, the
+    #   counties. A map draws one of five cohorts: the fetched cohort, the
     #   children of France, the counties of a parent that the turn did not
-    #   fetch, or the fetched parent with a child place type that is free
-    #   text.
+    #   fetch, the cities of the fetched parent, or the fetched parent with
+    #   a child place type that is free text.
     # Expectation: The record keeps the parent place and the child place
-    #   type of the first two cohorts, although `geoId/06` does not have a
-    #   row of its own. Both are `None` for the other two. `place_dcids` is
-    #   always empty.
+    #   type of the fetched cohort, although `geoId/06` does not have a row
+    #   of its own. Both are `None` for the other four, because a fetched
+    #   table does not cover that parent place with that child place type.
+    #   `place_dcids` is always empty.
     record = _make_record()
     _store_chart_tables(record)
     record.charts = _make_turn_charts(
@@ -2697,6 +2703,44 @@ def test_a_chart_keeps_a_cohort_whose_parent_a_fetched_table_holds(
     else:
         assert logged.parent_place_dcid is None
         assert logged.child_place_type is None
+
+
+@pytest.mark.parametrize(
+    ("facet_id", "is_kept"),
+    [
+        pytest.param("f1", True, id="facet of a fetched table of the variable"),
+        pytest.param(
+            "f2", False, id="facet of a fetched table of another variable"
+        ),
+        pytest.param("f9", False, id="facet that the turn did not fetch"),
+        pytest.param("free text", False, id="facet that is free text"),
+    ],
+)
+def test_a_chart_keeps_a_facet_that_a_fetched_table_reports_for_the_variable(
+    facet_id: str, is_kept: bool
+) -> None:
+    # Test: The grounding of the facet pin of a chart.
+    # Situation: The turn fetched `Count_Person` for France from the facet
+    #   `f1`, and another variable from the facet `f2`. A line chart draws
+    #   `Count_Person` for France and pins it to one of four facets: `f1`,
+    #   `f2`, a facet that the turn did not fetch, or free text.
+    # Expectation: The record keeps the pin to `f1`. It does not keep any of
+    #   the other three, because a fetched table does not report that facet
+    #   for `Count_Person`. The chart keeps its variable in every case.
+    record = _make_record()
+    _store_chart_tables(record)
+    record.charts = _make_turn_charts(
+        _make_line_chart("country/FRA", facet_id=facet_id)
+    )
+
+    (logged,) = _build_record(record).charts
+
+    assert logged.variable_dcids == ("Count_Person",)
+    assert logged.facet_pins == (
+        (ChartFacetPin(variable_dcid="Count_Person", facet_id="f1"),)
+        if is_kept
+        else ()
+    )
 
 
 def test_each_chart_is_logged_with_its_recorded_origin() -> None:

@@ -707,7 +707,7 @@ def _build_logged_table(
 class _FetchedTables:
     """Holds the logged tables of a turn and the identifiers that they ground.
 
-    Every qualifying fetched table contributes to the three identifier sets
+    Every qualifying fetched table contributes to the four identifier sets
     before the `MAX_LOGGED_TABLES` cap is applied, so an identifier from
     `t21` still counts as grounded in a fetched table.
 
@@ -715,18 +715,22 @@ class _FetchedTables:
         tables: Up to `MAX_LOGGED_TABLES` qualifying tables, in fetch order.
         is_truncated: Whether the cap left qualifying tables out of `tables`.
         variable_dcids: The variable DCIDs of the qualifying tables.
+        variable_facets: The `(variable DCID, facet ID)` pair of each
+            qualifying table that reports a valid facet ID.
         place_dcids: The valid place DCIDs that have rows in a qualifying
             table.
-        parent_place_dcids: The parent place DCIDs of the qualifying tables
-            that cover a complete child-place cohort. The rows of such a
-            table hold the child places and do not hold the parent place.
+        cohorts: The `(parent place DCID, child place type)` pair of each
+            qualifying table that covers a complete child-place cohort. The
+            rows of such a table hold the child places and do not hold the
+            parent place.
     """
 
     tables: tuple[LoggedTable, ...]
     is_truncated: bool
     variable_dcids: frozenset[str]
+    variable_facets: frozenset[tuple[str, str]]
     place_dcids: frozenset[str]
-    parent_place_dcids: frozenset[str]
+    cohorts: frozenset[tuple[str, str]]
 
 
 def _collect_fetched_tables(record: TurnRecord) -> _FetchedTables:
@@ -744,11 +748,17 @@ def _collect_fetched_tables(record: TurnRecord) -> _FetchedTables:
         tables=tuple(qualifying[:MAX_LOGGED_TABLES]),
         is_truncated=len(qualifying) > MAX_LOGGED_TABLES,
         variable_dcids=frozenset(table.variable_dcid for table in qualifying),
+        variable_facets=frozenset(
+            (table.variable_dcid, table.facet_id)
+            for table in qualifying
+            if table.facet_id is not None
+        ),
         place_dcids=frozenset(place_dcids),
-        parent_place_dcids=frozenset(
-            table.parent_place_dcid
+        cohorts=frozenset(
+            (table.parent_place_dcid, table.child_place_type)
             for table in qualifying
             if table.parent_place_dcid is not None
+            and table.child_place_type is not None
         ),
     )
 
@@ -926,10 +936,12 @@ def _build_logged_chart(
 ) -> LoggedChart:
     """Builds the logged form of one chart from grounded identifiers.
 
-    A variable, a place, or a parent place is logged only when a qualifying
-    fetched table of the turn holds it, so an identifier that the model
-    wrote is left out. The function does not read the chart's title or
-    unit.
+    A variable or a place is logged only when a qualifying fetched table of
+    the turn holds it. A facet is logged only when one such table reports it
+    for the same variable, and a cohort only when one such table covers the
+    same parent place and child place type. An identifier that the model
+    wrote is therefore left out. The function does not read the chart's
+    title or unit.
     """
     places, cohort = _read_chart_scope(chart)
     variable_dcids = tuple(
@@ -940,11 +952,7 @@ def _build_logged_chart(
     grounded_cohort = (
         cohort
         if cohort is not None
-        and (
-            cohort.parent_place in fetched.parent_place_dcids
-            or cohort.parent_place in fetched.place_dcids
-        )
-        and _is_valid_place_type(cohort.child_place_type)
+        and (cohort.parent_place, cohort.child_place_type) in fetched.cohorts
         else None
     )
     return LoggedChart(
@@ -957,7 +965,8 @@ def _build_logged_chart(
         facet_pins=tuple(
             ChartFacetPin(variable_dcid=variable_dcid, facet_id=facet_id)
             for variable_dcid, facet_id in chart.facet_ids
-            if variable_dcid in variable_dcids and is_valid_dcid(facet_id)
+            if variable_dcid in variable_dcids
+            and (variable_dcid, facet_id) in fetched.variable_facets
         ),
         parent_place_dcid=(
             grounded_cohort.parent_place
