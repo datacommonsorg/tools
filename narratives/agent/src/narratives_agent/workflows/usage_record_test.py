@@ -2696,6 +2696,51 @@ def test_a_chart_keeps_a_cohort_that_a_fetched_table_covers(
         assert logged.child_place_type is None
 
 
+def test_a_chart_keeps_the_identifiers_of_a_table_past_the_table_cap() -> None:
+    # Test: The grounding of a chart in a fetched table that `tables` leaves
+    #   out.
+    # Situation: The turn fetched 20 named-place tables for France and then
+    #   `t21`, a county cohort table of another variable from its own facet.
+    #   A map draws the variable, the facet, and the cohort of `t21`.
+    # Expectation: `tables` holds the first `MAX_LOGGED_TABLES` (20) tables
+    #   and does not hold `t21`. The chart still keeps the variable with its
+    #   facet, the parent place, and the child place type.
+    record = _make_record()
+    for index in range(1, MAX_LOGGED_TABLES + 1):
+        record.cache.store_fetched(_make_cached_table(f"t{index}"))
+    record.cache.store_fetched(
+        _make_cached_table(
+            f"t{MAX_LOGGED_TABLES + 1}",
+            variable_dcid="Median_Income_Household",
+            places=("geoId/06001", "geoId/06085"),
+            facet_id="f2",
+            parent_place_dcid=_COUNTIES.parent_place,
+            child_place_type=_COUNTIES.child_place_type,
+        )
+    )
+    record.charts = _make_turn_charts(
+        ResolvedMapChart(
+            title=_CHART_TITLE,
+            variable_dcids=("Median_Income_Household",),
+            facet_ids=(("Median_Income_Household", "f2"),),
+            cohort=_COUNTIES,
+        )
+    )
+
+    usage = _build_record(record)
+
+    assert len(usage.tables) == MAX_LOGGED_TABLES
+    assert usage.tables_truncated
+    assert usage.charts == (
+        _make_logged_chart(
+            "map",
+            variable_dcid="Median_Income_Household",
+            facet_id="f2",
+            cohort=_COUNTIES,
+        ),
+    )
+
+
 @pytest.mark.parametrize(
     ("facet_id", "logged_facet_id"),
     [
