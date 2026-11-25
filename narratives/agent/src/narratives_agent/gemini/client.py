@@ -24,7 +24,8 @@ requests, parses responses, counts tokens, and reports errors:
 `async_gemini_request`, `async_gemini_stream`, and
 `async_gemini_request_with_thought_streaming`. Each accepts an optional
 `TokenUsage` to which the call's token counts are added, for the turn's
-telemetry record.
+telemetry record. A streamed call that stops before its end and before its
+token counts arrive is counted on the `TokenUsage` as an interrupted call.
 
 Every function reduces the SDK's response to a `GeminiResponse`, or to a
 stream of `StreamChunk` values in the case of `async_gemini_stream`, so the
@@ -65,12 +66,15 @@ import threading
 from collections.abc import (
     AsyncGenerator,
     AsyncIterator,
+    Awaitable,
     Callable,
+    Coroutine,
     Sequence,
 )
 from dataclasses import dataclass, field
 from http import HTTPStatus
-from typing import Any, NamedTuple
+from types import TracebackType
+from typing import Any, NamedTuple, overload
 
 import httpx
 from google import genai
@@ -78,6 +82,7 @@ from google.genai import errors, types
 from pydantic import BaseModel, ValidationError
 
 from narratives_agent.config import get_gemini_api_key, render_prompt
+from narratives_agent.config_model import GeminiRole
 from narratives_agent.gemini.response import (
     FunctionCall,
     GeminiResponse,
@@ -628,8 +633,21 @@ def _function_call(part: types.Part) -> FunctionCall | None:
 def _token_counts(
     usage: types.GenerateContentResponseUsageMetadata | None,
 ) -> TokenCounts | None:
-    """Returns one call's token counts, or `None` when none were reported."""
+    """Returns token counts for a call, or `None` when it did not report any.
+
+    On Vertex AI, every chunk of a stream before the last carries a usage
+    object that does not hold any of the four counts. Such an object is not
+    a report. A count that Gemini reports as `0` is a report.
+    """
     if usage is None:
+        return None
+    reported = (
+        usage.prompt_token_count,
+        usage.candidates_token_count,
+        usage.thoughts_token_count,
+        usage.total_token_count,
+    )
+    if all(count is None for count in reported):
         return None
     return TokenCounts(
         prompt=usage.prompt_token_count or 0,
@@ -667,15 +685,49 @@ def _record_usage(
     token_usage: TokenUsage | None,
     counts: TokenCounts | None,
     *,
-    phase: str = "",
-    model: str = "",
-    round_number: int | None = None,
+    role: GeminiRole | None,
+    model: str,
+    round_number: int | None,
 ) -> None:
     """Adds one call's token counts to the turn's totals, if tracked."""
     if token_usage is not None:
         token_usage.add(
-            counts, phase=phase, model=model, round_number=round_number
+            counts, role=role, model=model, round_number=round_number
         )
+
+
+def _record_stream_usage(
+    token_usage: TokenUsage | None,
+    counts: TokenCounts | None,
+    *,
+    is_cut_off: bool,
+    role: GeminiRole | None,
+    model: str,
+    round_number: int | None,
+) -> None:
+    """Records how one streamed call ended, if the turn tracks its usage.
+
+    Gemini reports the token counts of a streamed call on its last chunk. A
+    call whose counts arrived is recorded as any other call, including when
+    it stopped afterward. A call that stopped before its end and before any
+    counts arrived is counted as interrupted instead, because Gemini may
+    bill it and the turn's totals cannot include it.
+
+    Args:
+        token_usage: The turn's totals, or `None` when the caller does not
+            track usage.
+        counts: The token counts that the stream reported, or `None`.
+        is_cut_off: Whether the call stopped before Gemini ended the stream.
+        role: The role that the call ran in, or `None`.
+        model: The model name of the call.
+        round_number: The 1-based discovery round of the call, or `None`.
+    """
+    if token_usage is None:
+        return
+    if counts is None and is_cut_off:
+        token_usage.record_interrupted_stream()
+        return
+    token_usage.add(counts, role=role, model=model, round_number=round_number)
 
 
 @dataclass
@@ -774,14 +826,16 @@ async def _async_iterate_stream(
     model: str,
     token_usage: TokenUsage | None,
     *,
-    token_phase: str = "",
+    token_role: GeminiRole | None = None,
     token_round: int | None = None,
 ) -> AsyncGenerator[StreamChunk]:
     """Yields items from a stream whose first chunk was already fetched.
 
     Token usage is recorded when the stream ends, whether it completes,
     fails, or is closed early by the consumer, so a canceled turn still
-    accounts for the tokens it spent. The SDK's chunk iterator is closed at
+    accounts for the tokens that Gemini reported. A stream that fails, or
+    that the consumer stops reading, before any token counts arrived is
+    counted as an interrupted call. The SDK's chunk iterator is closed at
     the same point.
 
     Args:
@@ -790,9 +844,13 @@ async def _async_iterate_stream(
         stream: Stream processor extracting text and tracking usage.
         model: Model name for error reporting and token attribution.
         token_usage: Optional `TokenUsage` accumulating turn token counts.
-        token_phase: Optional phase or role name attributing the call.
+        token_role: The role that the call runs in, or `None` for a call
+            that is not listed among the turn's token calls.
         token_round: Optional 1-based discovery round number.
     """
+    # The call is cut off unless Gemini ends the stream. Gemini ends it when
+    # the SDK's iterator is exhausted, and when it blocks the response.
+    is_cut_off = True
     try:
         if first is not None:
             for item in stream.items(first):
@@ -805,12 +863,14 @@ async def _async_iterate_stream(
                 stream.usage = (
                     _token_counts(chunk.usage_metadata) or stream.usage
                 )
+                is_cut_off = False
                 raise _report_blocked(block_reason, model)
             withheld = _withheld_reason(chunk)
             if withheld is not None:
                 _report_withheld(withheld, model)
             for item in stream.items(chunk):
                 yield item
+        is_cut_off = False
     except GeminiBlockedError:
         raise
     except Exception as error:
@@ -819,14 +879,88 @@ async def _async_iterate_stream(
             is_retryable=_is_retryable_error(error),
         ) from error
     finally:
-        _record_usage(
+        _record_stream_usage(
             token_usage,
             stream.usage,
-            phase=token_phase,
+            is_cut_off=is_cut_off,
+            role=token_role,
             model=model,
             round_number=token_round,
         )
         await _close_chunks(chunks)
+
+
+class _StartedStream(AsyncGenerator[StreamChunk]):
+    """Wraps a stream generator whose SDK request is already in flight.
+
+    `async_gemini_stream` opens the SDK stream and fetches its first chunk
+    before returning. If the caller closes the returned generator before
+    reading its first item, Python closes the unstarted inner generator
+    without running its `finally` block. In that case, this wrapper runs
+    `close_unstarted`, which records the call's usage and closes the SDK
+    chunk iterator.
+    """
+
+    def __init__(
+        self,
+        inner: AsyncGenerator[StreamChunk],
+        close_unstarted: Callable[[], Awaitable[None]],
+    ) -> None:
+        self._inner = inner
+        self._close_unstarted = close_unstarted
+        self._has_started = False
+        self._is_closed = False
+
+    async def asend(self, value: None) -> StreamChunk:
+        """Advances the inner generator by one item."""
+        if self._is_closed:
+            raise StopAsyncIteration
+        self._has_started = True
+        return await self._inner.asend(value)
+
+    @overload
+    def athrow(
+        self,
+        typ: type[BaseException],
+        val: BaseException | object = ...,
+        tb: TracebackType | None = ...,
+        /,
+    ) -> Coroutine[Any, Any, StreamChunk]: ...
+
+    @overload
+    def athrow(
+        self,
+        typ: BaseException,
+        val: None = ...,
+        tb: TracebackType | None = ...,
+        /,
+    ) -> Coroutine[Any, Any, StreamChunk]: ...
+
+    async def athrow(
+        self,
+        typ: type[BaseException] | BaseException,
+        val: object = None,
+        tb: TracebackType | None = None,
+        /,
+    ) -> StreamChunk:
+        """Closes an unstarted stream if needed and forwards the exception."""
+        if not self._has_started and not self._is_closed:
+            self._is_closed = True
+            await self._inner.aclose()
+            await self._close_unstarted()
+        if isinstance(typ, BaseException):
+            return await self._inner.athrow(typ)
+        return await self._inner.athrow(typ, val, tb)
+
+    async def aclose(self) -> None:
+        """Closes the stream and runs cleanup when iteration has not started."""
+        if not self._has_started and not self._is_closed:
+            self._is_closed = True
+            await self._inner.aclose()
+            await self._close_unstarted()
+            return
+        self._is_closed = True
+        await self._inner.aclose()
 
 
 async def async_gemini_request(
@@ -839,7 +973,7 @@ async def async_gemini_request(
     response_schema: ResponseSchema | None = None,
     token_usage: TokenUsage | None = None,
     *,
-    token_phase: str = "",
+    token_role: GeminiRole | None = None,
     token_round: int | None = None,
 ) -> GeminiResponse:
     """Sends a request to Gemini without blocking the event loop.
@@ -856,7 +990,8 @@ async def async_gemini_request(
             structured output.
         token_usage: Optional turn totals to which this call's token counts
             are added.
-        token_phase: Optional pipeline phase or role name attributing the call.
+        token_role: The role that the call runs in, or `None` for a call
+            that is not listed among the turn's token calls.
         token_round: Optional 1-based discovery round number.
 
     Returns:
@@ -890,7 +1025,7 @@ async def async_gemini_request(
     _record_usage(
         token_usage,
         _token_counts(response.usage_metadata),
-        phase=token_phase,
+        role=token_role,
         model=model,
         round_number=token_round,
     )
@@ -914,7 +1049,7 @@ async def async_gemini_stream(
     token_usage: TokenUsage | None = None,
     include_thoughts: bool = False,
     *,
-    token_phase: str = "",
+    token_role: GeminiRole | None = None,
     token_round: int | None = None,
 ) -> AsyncGenerator[StreamChunk]:
     """Starts a streamed request to Gemini without blocking the event loop.
@@ -934,9 +1069,12 @@ async def async_gemini_stream(
         response_schema: Optional Pydantic model or JSON schema for
             structured output.
         token_usage: Optional turn totals to which this call's token counts
-            are added when the stream ends.
+            are added when the stream ends. A call that is canceled while it
+            waits for its first chunk, or that stops later before any token
+            counts arrive, is counted there as an interrupted call.
         include_thoughts: Whether to yield thought summaries as well as text.
-        token_phase: Optional pipeline phase or role name attributing the call.
+        token_role: The role that the call runs in, or `None` for a call
+            that is not listed among the turn's token calls.
         token_round: Optional 1-based discovery round number.
 
     Returns:
@@ -971,6 +1109,18 @@ async def async_gemini_stream(
         # fetch it here to report a failed or blocked request before iteration.
         first = await anext(chunks, None)
     except BaseException as error:
+        if not isinstance(error, Exception):
+            # The caller canceled the call, or stopped waiting for it, after
+            # the request started. A request that fails before its first
+            # chunk is an `Exception`, and it is not counted.
+            _record_stream_usage(
+                token_usage,
+                None,
+                is_cut_off=True,
+                role=token_role,
+                model=model,
+                round_number=token_round,
+            )
         await _close_chunks(chunks)
         if isinstance(error, Exception):
             raise GeminiError(
@@ -984,7 +1134,7 @@ async def async_gemini_stream(
             _record_usage(
                 token_usage,
                 _token_counts(first.usage_metadata),
-                phase=token_phase,
+                role=token_role,
                 model=model,
                 round_number=token_round,
             )
@@ -993,14 +1143,29 @@ async def async_gemini_stream(
         withheld = _withheld_reason(first)
         if withheld is not None:
             _report_withheld(withheld, model)
-    return _async_iterate_stream(
-        first,
-        chunks,
-        _TextStream(include_thoughts=include_thoughts),
-        model,
-        token_usage,
-        token_phase=token_phase,
-        token_round=token_round,
+
+    async def close_unstarted() -> None:
+        _record_stream_usage(
+            token_usage,
+            _token_counts(first.usage_metadata) if first is not None else None,
+            is_cut_off=first is not None,
+            role=token_role,
+            model=model,
+            round_number=token_round,
+        )
+        await _close_chunks(chunks)
+
+    return _StartedStream(
+        _async_iterate_stream(
+            first,
+            chunks,
+            _TextStream(include_thoughts=include_thoughts),
+            model,
+            token_usage,
+            token_role=token_role,
+            token_round=token_round,
+        ),
+        close_unstarted,
     )
 
 
@@ -1015,7 +1180,7 @@ async def async_gemini_request_with_thought_streaming(
     token_usage: TokenUsage | None = None,
     thought_callback: Callable[[str], None] | None = None,
     *,
-    token_phase: str = "",
+    token_role: GeminiRole | None = None,
     token_round: int | None = None,
 ) -> GeminiResponse:
     """Streams a request without blocking, forwarding thoughts as they arrive.
@@ -1035,9 +1200,12 @@ async def async_gemini_request_with_thought_streaming(
         response_schema: Optional Pydantic model or JSON schema for
             structured output.
         token_usage: Optional turn totals to which this call's token counts
-            are added.
+            are added. A call that is canceled, or that fails after its
+            first chunk, before any token counts arrive is counted there as
+            an interrupted call.
         thought_callback: Optional callable invoked with each thought chunk.
-        token_phase: Optional pipeline phase or role name attributing the call.
+        token_role: The role that the call runs in, or `None` for a call
+            that is not listed among the turn's token calls.
         token_round: Optional 1-based discovery round number.
 
     Returns:
@@ -1065,22 +1233,30 @@ async def async_gemini_request_with_thought_streaming(
     )
     collector = _ThoughtStreamCollector(thought_callback)
     chunks: AsyncIterator[types.GenerateContentResponse] | None = None
+    # The call is cut off unless Gemini ends the stream, or the request fails
+    # before its first chunk arrives.
+    is_cut_off = True
+    has_first_chunk = False
     try:
         chunks = await call.client.aio.models.generate_content_stream(
             model=model, contents=call.contents, config=call.config
         )
         async for chunk in chunks:
+            has_first_chunk = True
             collector.add(chunk)
+        is_cut_off = False
     except Exception as error:
+        is_cut_off = has_first_chunk
         raise GeminiError(
             _report_failure(_describe_error(error), model),
             is_retryable=_is_retryable_error(error),
         ) from error
     finally:
-        _record_usage(
+        _record_stream_usage(
             token_usage,
             collector.usage,
-            phase=token_phase,
+            is_cut_off=is_cut_off,
+            role=token_role,
             model=model,
             round_number=token_round,
         )

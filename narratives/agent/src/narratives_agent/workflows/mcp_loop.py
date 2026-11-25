@@ -25,7 +25,7 @@ import logging
 import time
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
-from typing import Literal
+from typing import Literal, TypeGuard
 
 from google.genai import types
 from pydantic import ValidationError
@@ -52,7 +52,9 @@ from narratives_agent.mcp.capabilities import (
 )
 from narratives_agent.mcp.schema import transform_schema_for_gemini
 from narratives_agent.telemetry import (
+    TOOL_NAMES,
     ErrorType,
+    ToolName,
     TurnTelemetry,
     compute_elapsed_ms,
 )
@@ -122,8 +124,9 @@ _MAX_PROSE_REMINDERS = 2
 # at most this many times before the loop falls back to a default
 # specification.
 MAX_PROCESSING_RETRIES = 2
-# The server functions that end the discovery loop.
-_TERMINAL_FUNCTION_NAMES: frozenset[str] = frozenset(
+# The server functions that end the discovery loop. The intersection gives
+# the two names the type `ToolName`.
+_TERMINAL_FUNCTION_NAMES: frozenset[ToolName] = TOOL_NAMES.intersection(
     {SUBMIT_SPECIFICATION, REPORT_UNAVAILABLE}
 )
 # Every function the server runs itself rather than forwarding to MCP.
@@ -140,7 +143,7 @@ DISCOVERY_TOOL_NAMES: frozenset[str] = frozenset(
 )
 
 # Telemetry label recorded when the model invokes an undeclared tool name.
-_UNDECLARED_TOOL = "unknown"
+_UNDECLARED_TOOL: ToolName = "unknown"
 
 # Maximum characters of each earlier model answer quoted in the loop history.
 MCP_HISTORY_RESPONSE_CHARS = 2_000
@@ -168,7 +171,6 @@ _PROGRESS_REMINDER = (
 
 # Maximum search queries and candidate names a server-built report lists.
 _REPORT_LIST_CAP = 6
-_SERVER_REPORT = "server_report_unavailable"
 
 type StatusPhase = Literal["discovery", "processing"]
 type StatusCallback = Callable[[StatusPhase, str], None]
@@ -561,9 +563,26 @@ def _format_validation_errors(
     return formatted
 
 
+def _is_tool_name(name: str, names: frozenset[ToolName]) -> TypeGuard[ToolName]:
+    """Returns whether `name`, which the model wrote, is one of `names`.
+
+    The name of a function call is untrusted input. The discovery loop
+    compares it with names that the server declared to the model, and a
+    name that passes the comparison has the closed type `ToolName`.
+
+    Args:
+        name: The name of a function call from the model.
+        names: The declared names to compare it with.
+
+    Returns:
+        Whether `names` holds `name`.
+    """
+    return name in names
+
+
 async def _run_tool(
     function_call: FunctionCall,
-    declared: frozenset[str],
+    declared: frozenset[ToolName],
     limit: asyncio.Semaphore,
     fetch_lock: asyncio.Lock,
     telemetry: TurnTelemetry,
@@ -584,7 +603,9 @@ async def _run_tool(
         limit: Bounds how many tool calls run at once.
         fetch_lock: Held for the whole of each fetch, so that fetches never
             overlap on `cache`.
-        telemetry: The turn's telemetry, which receives the tool name.
+        telemetry: The turn's telemetry, which counts the call under the
+            tool's name, or under `unknown` for a name that was not
+            declared, as a call that the model made.
         cache: The turn's cache, which receives fetched tables and
             metadata payloads.
         round_number: 1-based discovery round number.
@@ -599,9 +620,9 @@ async def _run_tool(
     start = time.monotonic()
     name = function_call.name
     arguments: JsonObject = function_call.args
-    if name not in declared:
+    if not _is_tool_name(name, declared):
         logger.info("Refusing a call to the undeclared tool %r", name)
-        telemetry.record_tool_call(_UNDECLARED_TOOL)
+        telemetry.record_tool_call(_UNDECLARED_TOOL, "model")
         duration_ms = compute_elapsed_ms(start)
         return _build_tool_record(
             name,
@@ -647,7 +668,7 @@ async def _run_tool(
         raise McpLoopError(
             ErrorType.MCP_TRANSPORT_ERROR, MCP_UNAVAILABLE, is_retryable=True
         ) from error
-    telemetry.record_tool_call(name)
+    telemetry.record_tool_call(name, "model")
     duration_ms = compute_elapsed_ms(start)
     return _build_tool_record(
         name,
@@ -661,7 +682,7 @@ async def _run_tool(
 
 async def _run_tools(
     function_calls: Sequence[FunctionCall],
-    declared: frozenset[str],
+    declared: frozenset[ToolName],
     limit: asyncio.Semaphore,
     telemetry: TurnTelemetry,
     cache: TurnCache,
@@ -839,7 +860,7 @@ class _Loop:
         self.emit_status(PROCESSING_STATUS)
         with self.telemetry.phase("processing"):
             await backfill_variable_metadata(
-                specification, self.cache, self.capabilities
+                specification, self.cache, self.capabilities, self.telemetry
             )
             outcome = await execute_specification(specification, self.cache)
         if isinstance(outcome, ProcessingDiagnostic):
@@ -931,7 +952,9 @@ class _Loop:
         no fetch stored a table with rows and no earlier fetch did either.
         The report is recorded like a model's `report_unavailable` call, so
         the turn answers through the same no-data path, and it is streamed
-        to the UI as a tool-call record that says the server filed it.
+        to the UI as a tool-call record that says the server filed it. The
+        turn's telemetry counts it as a `report_unavailable` call that the
+        server made.
 
         Args:
             rounds: Number of discovery rounds executed before giving up.
@@ -943,7 +966,7 @@ class _Loop:
             rounds,
             report.reason,
         )
-        self.telemetry.record_tool_call(_SERVER_REPORT)
+        self.telemetry.record_tool_call("report_unavailable", "server")
         self.result.unavailable = report
         self.result.tool_calls.append(
             _build_tool_record(
@@ -959,7 +982,7 @@ class _Loop:
     async def execute_turn_calls(
         self,
         function_calls: Sequence[FunctionCall],
-        declared: frozenset[str],
+        declared: frozenset[ToolName],
         limit: asyncio.Semaphore,
         *,
         round_number: int,
@@ -969,7 +992,8 @@ class _Loop:
         Non-terminal calls run concurrently first so any fetch in the same
         turn populates `cache` before `submit_specification` validates against
         it. Only the first terminal call is handled if the model emits more
-        than one.
+        than one. The turn's telemetry counts every terminal call, including
+        one that is not handled, as a call that the model made.
 
         Args:
             function_calls: All function calls returned by the model turn.
@@ -982,10 +1006,12 @@ class _Loop:
             from this turn and `finished` is `True` when a terminal call ended
             the loop.
         """
+        # Each terminal call is paired with its name, which has the type
+        # `ToolName` once the comparison holds.
         terminal = [
-            call
+            (call, call.name)
             for call in function_calls
-            if call.name in _TERMINAL_FUNCTION_NAMES
+            if _is_tool_name(call.name, _TERMINAL_FUNCTION_NAMES)
         ]
         others = [
             call
@@ -1004,11 +1030,10 @@ class _Loop:
         self.result.tool_calls.extend(records)
         finished = False
         # Handle only the first terminal call if the model submits more than 1.
-        for index, call in enumerate(terminal):
+        for index, (call, name) in enumerate(terminal):
             start = time.monotonic()
-            name = call.name
             arguments: JsonObject = call.args
-            self.telemetry.record_tool_call(name)
+            self.telemetry.record_tool_call(name, "model")
             if index > 0:
                 text = "Ignored: only the first terminal call is handled."
                 failed = True
@@ -1079,7 +1104,7 @@ async def _request_discovery_turn(
             thinking_level=role.thinking_level,
             token_usage=telemetry.tokens,
             thought_callback=callback,
-            token_phase=GeminiRole.DISCOVERY.value,
+            token_role=GeminiRole.DISCOVERY,
             token_round=round_number,
         )
     except GeminiBlockedError:
@@ -1151,9 +1176,9 @@ async def _iterate(
         raise McpLoopError(
             ErrorType.MCP_MODEL_ERROR, MCP_MODEL_ERROR, is_retryable=False
         ) from error
-    declared = frozenset(
-        tool.name for tool in gemini_tools if tool.name is not None
-    )
+    # Every name that the loop declares is a `ToolName`, so the
+    # intersection holds all of them with that type.
+    declared = TOOL_NAMES.intersection(tool.name for tool in gemini_tools)
     limit = asyncio.Semaphore(MAX_CONCURRENT_TOOL_CALLS)
     result = loop.result
 

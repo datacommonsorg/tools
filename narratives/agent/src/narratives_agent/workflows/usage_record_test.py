@@ -28,12 +28,13 @@ Verifies that:
    ran.
 5. The record lists the phase durations in a fixed order and marks
    `processing` as nested. It lists the token counts of each model call
-   that reported its role and model, and it sorts the tool counts by tool
-   name.
+   that reported its role and model, with the role as the same string for
+   each of the five roles. It counts the streamed calls that were cut off
+   apart from those calls. It has one tool count for each pair of a tool
+   and an actor, sorted by tool name and then by actor.
 6. `tables` and `tables_truncated` record up to 20 non-empty fetched tables
    with validated identifiers, cohort or capped named-place scopes, and
-   date spans. Empty fetches and derived tables are excluded, and trailing
-   entries are dropped when a record would exceed `MAX_RECORD_LINE_BYTES`.
+   date spans. Empty fetches and derived tables are excluded.
 7. `highlighted_places` records up to 25 deduplicated places grounded in
    non-empty fetched tables across all 10 metric sources, with focal entries
    taking precedence on ranking and distribution steps.
@@ -50,8 +51,20 @@ Verifies that:
     origin, per-capita flag, and grounded variables, facets, places, or
     cohort. An identifier that a fetched table does not hold is left out.
 11. `build_usage_record` raises `ValueError` for a turn that has not ended.
-    A record with every list at its bound stays under the size limit of one
-    line.
+12. `follow_ups_emitted` is the number of follow-up questions that the
+    server sent, without their text, and `follow_ups_canceled` says whether
+    the turn was canceled during the follow-up phase.
+13. `chart_rejections` records up to ten dropped chart blocks by position,
+    kind, and reason code, while `charts_rejected` keeps the full count.
+14. The record holds at most 256 characters of the build SHA, and the part
+    of a line outside the eight lists is far below the size limit.
+15. A line is never longer than `MAX_RECORD_LINE_BYTES`. A record that fits
+    is not changed. Otherwise the server drops items from the ends of the
+    lists: first from the largest of `tables`, `charts`, and
+    `highlighted_places`, then from the four lists that say how the turn
+    ran, and from `token_calls` last. `truncated_lists` names the shortened
+    lists in the order of the record's keys, the counts keep their values,
+    and the server measures each part of the record once.
 """
 
 import dataclasses
@@ -82,6 +95,7 @@ from narratives_agent.analytics.tables import (
     ObservationTable,
 )
 from narratives_agent.analytics.timeseries import analyze_timeseries
+from narratives_agent.config_model import GeminiRole
 from narratives_agent.json_value import JsonObject
 from narratives_agent.telemetry import (
     MAX_RECORD_LINE_BYTES,
@@ -90,12 +104,17 @@ from narratives_agent.telemetry import (
     TerminalState,
     TitleOutcome,
     TokenCounts,
+    ToolName,
     TurnPhase,
     TurnTelemetry,
+    serialize_record_json,
     write_structured_record,
 )
+from narratives_agent.workflows import usage_record
 from narratives_agent.workflows.charts import (
     ChartKind,
+    ChartRejection,
+    ChartRejectionReason,
     ChildCohort,
     PlaceList,
     ResolvedBarChart,
@@ -108,10 +127,8 @@ from narratives_agent.workflows.charts import (
 )
 from narratives_agent.workflows.classify import RefusedReason
 from narratives_agent.workflows.mcp_loop import (
-    DISCOVERY_TOOL_NAMES,
     MAX_ITERATIONS,
     MAX_PROCESSING_RETRIES,
-    SERVER_FUNCTION_NAMES,
     RejectedSubmission,
 )
 from narratives_agent.workflows.processing import (
@@ -137,8 +154,10 @@ from narratives_agent.workflows.turn_record import (
     TurnRecord,
 )
 from narratives_agent.workflows.usage_record import (
+    MAX_BUILD_SHA_CHARS,
     MAX_CHART_VARIABLES,
     MAX_HIGHLIGHTED_PLACES,
+    MAX_LOGGED_CHART_REJECTIONS,
     MAX_LOGGED_CHARTS,
     MAX_LOGGED_REJECTED_SUBMISSIONS,
     MAX_LOGGED_TABLES,
@@ -146,6 +165,7 @@ from narratives_agent.workflows.usage_record import (
     ChartVariable,
     HighlightedPlace,
     LoggedChart,
+    LoggedChartRejection,
     LoggedRejectedSubmission,
     LoggedScriptStep,
     LoggedTable,
@@ -153,6 +173,8 @@ from narratives_agent.workflows.usage_record import (
     RefusalStage,
     TokenCall,
     TokenTotals,
+    ToolCallCount,
+    TruncatableList,
     TurnOutcome,
     UsageRecord,
     build_usage_record,
@@ -182,6 +204,8 @@ _KEYS = [
     "is_clarification",
     "is_truncated",
     "title_outcome",
+    "follow_ups_emitted",
+    "follow_ups_canceled",
     "pattern",
     "duration_ms",
     "phase_durations",
@@ -203,10 +227,22 @@ _KEYS = [
     "charts_emitted",
     "charts_rejected",
     "charts",
+    "chart_rejections",
+    "truncated_lists",
 ]
-# `_TOOL_LABELS` holds the two labels that the discovery loop records in
-# place of a tool name.
-_TOOL_LABELS = ("unknown", "server_report_unavailable")
+# `_TRUNCATABLE_LISTS` names the eight lists that the server can shorten, in
+# the order of the record's keys.
+_TRUNCATABLE_LISTS: tuple[TruncatableList, ...] = (
+    "token_calls",
+    "tool_call_counts",
+    "tables",
+    "highlighted_places",
+    "script_steps",
+    "rejected_submissions",
+    "charts",
+    "chart_rejections",
+)
+_FOLLOW_UP_TEXT = "Free text of a follow-up question that the model wrote"
 # `_COHORT_SPECIFICATION` aligns one table, reduces another, and ranks both
 # cohorts.
 _COHORT_SPECIFICATION = AnalysisSpecification.model_validate(
@@ -493,15 +529,19 @@ def test_a_turn_that_ran_every_phase_writes_every_key_with_its_value(
     # Situation: A follow-up turn after the turn with index 4 completes with
     #   data after 604.75 ms. The telemetry holds a duration for all six
     #   phases, in the order in which the phases end. The turn fetched two
-    #   tables, used the first in the answer, called three tools, made two
-    #   model calls, ran the two scripts of a specification from the model
-    #   after the server rejected one specification, drew one chart, was
-    #   truncated, and was signed with compaction.
+    #   tables, used the first in the answer, made two model calls and one
+    #   streamed call that was cut off, ran the two scripts of a
+    #   specification from the model after the server rejected one
+    #   specification, drew one chart, dropped two chart blocks, sent two
+    #   follow-up questions, was truncated, and was signed with compaction.
+    #   The model called three tools, and the server requested variable
+    #   metadata once.
     # Expectation: The line holds the schema's keys in order, each with the
     #   value that the turn recorded. The phases are in the fixed order with
-    #   only `processing` nested, and the tools are sorted by name. Each
-    #   script step, rejected submission, and chart holds its keys in the
-    #   declared order.
+    #   only `processing` nested, and the tool counts are sorted by tool
+    #   name and then by actor. Each item of a list holds its keys in the
+    #   declared order. The line does not hold the text of a follow-up
+    #   question.
     record = TurnRecord(telemetry=TurnTelemetry(turn_id=_TURN_ID))
     telemetry = record.telemetry
     telemetry.pattern = "top_n_ranking"
@@ -511,7 +551,7 @@ def test_a_turn_that_ran_every_phase_writes_every_key_with_its_value(
     telemetry.total_rows_fetched = 1_200
     telemetry.processing_retries = 1
     telemetry.charts_emitted = 4
-    telemetry.charts_rejected = 5
+    telemetry.charts_rejected = 2
     telemetry.title_outcome = TitleOutcome.EMITTED
     telemetry.phase_durations_ms.update(
         {
@@ -523,24 +563,27 @@ def test_a_turn_that_ran_every_phase_writes_every_key_with_its_value(
             "follow_ups": 70.0,
         }
     )
-    for tool in (
+    model_tools: tuple[ToolName, ...] = (
         "search_indicators",
         "fetch_observations",
         "search_indicators",
         "submit_specification",
-    ):
-        telemetry.record_tool_call(tool)
+    )
+    for tool in model_tools:
+        telemetry.record_tool_call(tool, "model")
+    telemetry.record_tool_call("get_variable_metadata", "server")
     telemetry.tokens.add(
         TokenCounts(prompt=100, candidates=10, thoughts=1, total=111),
-        phase="classify",
+        role=GeminiRole.CLASSIFY,
         model="model-lite",
     )
     telemetry.tokens.add(
         TokenCounts(prompt=200, candidates=20, thoughts=2, total=222),
-        phase="discovery",
+        role=GeminiRole.DISCOVERY,
         model="model-flash",
         round_number=1,
     )
+    telemetry.tokens.record_interrupted_stream()
     record.cache.store_fetched(_make_cached_table("t1"))
     record.cache.store_fetched(
         _make_cached_table(
@@ -567,6 +610,11 @@ def test_a_turn_that_ran_every_phase_writes_every_key_with_its_value(
         )
     )
     record.charts = _make_turn_charts(_make_line_chart("country/FRA"))
+    record.chart_rejections = (
+        ChartRejection(ChartRejectionReason.UNKNOWN_TABLE, "map"),
+        ChartRejection(ChartRejectionReason.INVALID_SPECIFICATION, None),
+    )
+    record.follow_up_questions = (_FOLLOW_UP_TEXT, f"{_FOLLOW_UP_TEXT} again")
     record.loop_result.truncated = True
     record.is_signed = True
     record.was_compacted = True
@@ -576,6 +624,7 @@ def test_a_turn_that_ran_every_phase_writes_every_key_with_its_value(
         _build_record(record, _make_transcript(3, 4)), structured_lines
     )
 
+    assert _FOLLOW_UP_TEXT not in structured_lines[0]
     assert list(written) == _KEYS
     assert written == {
         "severity": "INFO",
@@ -596,6 +645,8 @@ def test_a_turn_that_ran_every_phase_writes_every_key_with_its_value(
         "is_clarification": False,
         "is_truncated": True,
         "title_outcome": "emitted",
+        "follow_ups_emitted": 2,
+        "follow_ups_canceled": False,
         "pattern": "top_n_ranking",
         "duration_ms": 604.75,
         "phase_durations": [
@@ -612,6 +663,7 @@ def test_a_turn_that_ran_every_phase_writes_every_key_with_its_value(
             "thoughts_token_count": 3,
             "total_token_count": 333,
             "call_count": 2,
+            "interrupted_stream_calls": 1,
         },
         "token_calls": [
             {
@@ -634,11 +686,12 @@ def test_a_turn_that_ran_every_phase_writes_every_key_with_its_value(
             },
         ],
         "mcp_iterations": 3,
-        "tool_call_count": 4,
+        "tool_call_count": 5,
         "tool_call_counts": [
-            {"tool": "fetch_observations", "count": 1},
-            {"tool": "search_indicators", "count": 2},
-            {"tool": "submit_specification", "count": 1},
+            {"tool": "fetch_observations", "actor": "model", "count": 1},
+            {"tool": "get_variable_metadata", "actor": "server", "count": 1},
+            {"tool": "search_indicators", "actor": "model", "count": 2},
+            {"tool": "submit_specification", "actor": "model", "count": 1},
         ],
         "tables_fetched": 2,
         "total_rows_fetched": 1_200,
@@ -705,7 +758,7 @@ def test_a_turn_that_ran_every_phase_writes_every_key_with_its_value(
             }
         ],
         "charts_emitted": 4,
-        "charts_rejected": 5,
+        "charts_rejected": 2,
         "charts": [
             {
                 "index": 0,
@@ -720,12 +773,35 @@ def test_a_turn_that_ran_every_phase_writes_every_key_with_its_value(
                 "per_capita": False,
             }
         ],
+        "chart_rejections": [
+            {"index": 0, "kind": "map", "reason": "unknown_table"},
+            {"index": 1, "kind": None, "reason": "invalid_specification"},
+        ],
+        "truncated_lists": [],
     }
+    tokens = written["tokens"]
+    assert isinstance(tokens, dict)
+    assert list(tokens) == [
+        "prompt_token_count",
+        "candidates_token_count",
+        "thoughts_token_count",
+        "total_token_count",
+        "call_count",
+        "interrupted_stream_calls",
+    ]
     nested_keys = {
         key: _list_first_item_keys(written, key)
-        for key in ("script_steps", "rejected_submissions", "charts")
+        for key in (
+            "tool_call_counts",
+            "script_steps",
+            "rejected_submissions",
+            "charts",
+            "chart_rejections",
+        )
     }
     assert nested_keys == {
+        "tool_call_counts": ["tool", "actor", "count"],
+        "chart_rejections": ["index", "kind", "reason"],
         "script_steps": [
             "step_index",
             "step_id",
@@ -784,6 +860,8 @@ def test_a_turn_that_ran_no_phase_writes_every_key_with_its_empty_value(
     assert usage.script_steps == ()
     assert usage.rejected_submissions == ()
     assert usage.charts == ()
+    assert usage.chart_rejections == ()
+    assert usage.truncated_lists == ()
     assert list(written) == _KEYS
     assert written == {
         "severity": "INFO",
@@ -804,6 +882,8 @@ def test_a_turn_that_ran_no_phase_writes_every_key_with_its_empty_value(
         "is_clarification": False,
         "is_truncated": False,
         "title_outcome": "not_requested",
+        "follow_ups_emitted": 0,
+        "follow_ups_canceled": False,
         "pattern": None,
         "duration_ms": 12.5,
         "phase_durations": [],
@@ -813,6 +893,7 @@ def test_a_turn_that_ran_no_phase_writes_every_key_with_its_empty_value(
             "thoughts_token_count": 0,
             "total_token_count": 0,
             "call_count": 0,
+            "interrupted_stream_calls": 0,
         },
         "token_calls": [],
         "mcp_iterations": 0,
@@ -831,6 +912,8 @@ def test_a_turn_that_ran_no_phase_writes_every_key_with_its_empty_value(
         "charts_emitted": 0,
         "charts_rejected": 0,
         "charts": [],
+        "chart_rejections": [],
+        "truncated_lists": [],
     }
 
 
@@ -1120,23 +1203,28 @@ def test_the_token_calls_list_each_model_call_that_was_attributed() -> None:
     # Test: `tokens` and `token_calls`.
     # Situation: A turn made a discovery call in round 2, a synthesis call,
     #   and one call whose counts were added without a role or a model.
-    # Expectation: The totals sum all three calls. `token_calls` lists the
-    #   two attributed calls in call order, each with its role, model,
-    #   round, and four counts, and `call_count` is the length of that list.
+    #   Two streamed calls were cut off before their token counts arrived.
+    # Expectation: The totals sum the three calls that reported counts.
+    #   `token_calls` lists the two attributed calls in call order, each
+    #   with its role, model, round, and four counts, and `call_count` is
+    #   the length of that list. `interrupted_stream_calls` is 2, and the
+    #   two calls that were cut off are not counted anywhere else.
     record = _make_record()
     tokens = record.telemetry.tokens
     tokens.add(
         TokenCounts(prompt=100, candidates=10, thoughts=1, total=111),
-        phase="discovery",
+        role=GeminiRole.DISCOVERY,
         model="model-flash",
         round_number=2,
     )
     tokens.add(
         TokenCounts(prompt=200, candidates=20, thoughts=2, total=222),
-        phase="synthesis",
+        role=GeminiRole.SYNTHESIS,
         model="model-pro",
     )
     tokens.add(TokenCounts(prompt=400, candidates=40, thoughts=4, total=444))
+    tokens.record_interrupted_stream()
+    tokens.record_interrupted_stream()
 
     usage = _build_record(record)
 
@@ -1146,10 +1234,11 @@ def test_the_token_calls_list_each_model_call_that_was_attributed() -> None:
         thoughts_token_count=7,
         total_token_count=777,
         call_count=2,
+        interrupted_stream_calls=2,
     )
     assert usage.token_calls == (
         TokenCall(
-            role="discovery",
+            role=GeminiRole.DISCOVERY,
             model="model-flash",
             round_number=2,
             prompt_token_count=100,
@@ -1158,7 +1247,7 @@ def test_the_token_calls_list_each_model_call_that_was_attributed() -> None:
             total_token_count=111,
         ),
         TokenCall(
-            role="synthesis",
+            role=GeminiRole.SYNTHESIS,
             model="model-pro",
             round_number=None,
             prompt_token_count=200,
@@ -1559,11 +1648,12 @@ def test_tables_are_trimmed_from_the_end_to_stay_within_the_line_byte_limit(
     # Test: Byte-budget truncation of `tables` at `MAX_RECORD_LINE_BYTES`.
     # Situation: A turn fetched 20 named-place tables, and each table holds
     #   25 valid 256-character place DCIDs so the full 20-table list would
-    #   serialize well above `MAX_RECORD_LINE_BYTES` (14 KiB).
+    #   serialize well above `MAX_RECORD_LINE_BYTES` (14 KiB). The other
+    #   lists of the record are empty.
     # Expectation: Trailing tables are dropped until the serialized JSON line
     #   is at most `MAX_RECORD_LINE_BYTES` bytes, `tables_truncated` is
-    #   `True`, and `write_structured_record` does not log an oversized-line
-    #   warning.
+    #   `True`, `truncated_lists` names only `tables`, and
+    #   `write_structured_record` does not log an oversized-line warning.
     assert MAX_RECORD_LINE_BYTES == 14 * 1024
     record = _make_record()
     for table_index in range(1, MAX_LOGGED_TABLES + 1):
@@ -1588,6 +1678,7 @@ def test_tables_are_trimmed_from_the_end_to_stay_within_the_line_byte_limit(
         f"t{index}" for index in range(1, len(usage.tables) + 1)
     ]
     assert usage.tables_truncated is True
+    assert usage.truncated_lists == ("tables",)
     assert len(line.encode("utf-8")) <= MAX_RECORD_LINE_BYTES
     assert caplog.records == []
 
@@ -2833,75 +2924,820 @@ def test_a_turn_that_has_not_ended_does_not_have_a_record() -> None:
         _build_record(record)
 
 
-def test_the_largest_record_fits_in_one_line(
-    monkeypatch: pytest.MonkeyPatch,
-    caplog: pytest.LogCaptureFixture,
+def test_the_record_writes_each_role_as_its_own_string(
     structured_lines: list[str],
 ) -> None:
-    # Test: The size of the largest `chat_turn` line.
-    # Situation: A failed turn has every list of the record at its bound: a
-    #   duration for every phase, a count for every tool name and label
-    #   that the discovery loop can record, a token call for every
-    #   discovery round and for each of the other four roles, 20 cohort
-    #   tables, 25 highlighted places carrying the longest source literal,
-    #   six scripts, six script steps that end in a refused step, three
-    #   rejected specifications, and four charts that each list 25 places.
-    #   Every count and the duration have nine digits. The script, the
-    #   reasons, and the pattern are the longest of their literals. The code
-    #   does not bound the model name or the build SHA, so the test assumes
-    #   a model name of 64 characters and a SHA of 40 characters. The server
-    #   trims only `tables`, and four charts with `MAX_CHART_VARIABLES`
-    #   variables each do not fit in the line, so the test assumes five
-    #   variables on each chart.
-    # Expectation: The record holds all 25 highlighted places, all six
-    #   script steps, the three rejected specifications, all four charts,
-    #   one token call for each of the `MAX_ITERATIONS` discovery rounds and
-    #   four more, one count for each tool name, and the duration of
-    #   999,999,999.25 ms. The server drops tables from the end of `tables`
-    #   to make the line fit, and keeps at least one. The written line is at
-    #   most `MAX_RECORD_LINE_BYTES` and does not log an oversized-line
-    #   warning.
-    large = 999_999_999
-    counts = TokenCounts(
-        prompt=large, candidates=large, thoughts=large, total=large
+    # Test: The role of a token call in the written line, for every role.
+    # Situation: A turn made one attributed model call in each of the five
+    #   roles of `GeminiRole`, in the order of the enum.
+    # Expectation: The line names the roles `classify`, `discovery`,
+    #   `synthesis`, `follow_up`, and `compaction`, in call order.
+    record = _make_record()
+    counts = TokenCounts(prompt=1, candidates=1, thoughts=1, total=3)
+    for role in GeminiRole:
+        record.telemetry.tokens.add(counts, role=role, model="model-flash")
+
+    written = _write_record(_build_record(record), structured_lines)
+
+    token_calls = written["token_calls"]
+    assert isinstance(token_calls, list)
+    assert [call["role"] for call in token_calls if isinstance(call, dict)] == [
+        "classify",
+        "discovery",
+        "synthesis",
+        "follow_up",
+        "compaction",
+    ]
+
+
+def test_the_tool_counts_have_one_item_for_each_tool_and_actor() -> None:
+    # Test: `tool_call_counts` and `tool_call_count` with two actors.
+    # Situation: The model called `search_indicators` twice,
+    #   `get_variable_metadata` once, and `report_unavailable` once. The
+    #   server requested variable metadata three times and filed the
+    #   no-data report once. The calls were recorded out of order.
+    # Expectation: The list has one item for each pair of a tool and an
+    #   actor, sorted by tool name and then by actor, so a tool that both
+    #   actors called has two items with `model` first. `tool_call_count` is
+    #   8, the sum of all items.
+    record = _make_record()
+    telemetry = record.telemetry
+    telemetry.record_tool_call("report_unavailable", "server")
+    for _ in range(3):
+        telemetry.record_tool_call("get_variable_metadata", "server")
+    telemetry.record_tool_call("search_indicators", "model")
+    telemetry.record_tool_call("report_unavailable", "model")
+    telemetry.record_tool_call("get_variable_metadata", "model")
+    telemetry.record_tool_call("search_indicators", "model")
+
+    usage = _build_record(record)
+
+    assert usage.tool_call_counts == (
+        ToolCallCount(tool="get_variable_metadata", actor="model", count=1),
+        ToolCallCount(tool="get_variable_metadata", actor="server", count=3),
+        ToolCallCount(tool="report_unavailable", actor="model", count=1),
+        ToolCallCount(tool="report_unavailable", actor="server", count=1),
+        ToolCallCount(tool="search_indicators", actor="model", count=2),
     )
-    model = "m" * 64
+    assert usage.tool_call_count == 8
+
+
+@pytest.mark.parametrize("question_count", [0, 1, 3])
+def test_follow_ups_emitted_is_the_number_of_questions_that_were_sent(
+    structured_lines: list[str], question_count: int
+) -> None:
+    # Test: `follow_ups_emitted`.
+    # Situation: The turn's record holds zero, one, or three follow-up
+    #   questions that the server sent to the browser.
+    # Expectation: `follow_ups_emitted` is the number of questions, the turn
+    #   is not marked as canceled during the follow-up phase, and the
+    #   written line does not hold the text of a question.
+    record = _make_record()
+    record.follow_up_questions = (_FOLLOW_UP_TEXT,) * question_count
+
+    usage = _build_record(record)
+    write_structured_record(usage)
+
+    assert usage.follow_ups_emitted == question_count
+    assert usage.follow_ups_canceled is False
+    assert _FOLLOW_UP_TEXT not in structured_lines[0]
+
+
+def test_follow_ups_canceled_is_set_for_a_turn_canceled_in_that_phase() -> None:
+    # Test: `follow_ups_canceled`.
+    # Situation: The turn completed, and its record says that the turn was
+    #   canceled while the follow-up phase was running.
+    # Expectation: `follow_ups_canceled` is true, `follow_ups_emitted` is 0,
+    #   and the outcome is the outcome of a completed turn.
+    record = _make_record()
+    record.has_canceled_follow_ups = True
+
+    usage = _build_record(record)
+
+    assert usage.follow_ups_canceled is True
+    assert usage.follow_ups_emitted == 0
+    assert usage.terminal_state is TerminalState.COMPLETE
+    assert usage.outcome is TurnOutcome.ANSWERED_WITHOUT_DATA
+
+
+@pytest.mark.parametrize(
+    ("state", "reason", "phases", "is_clarification"),
+    [
+        pytest.param(
+            TerminalState.REFUSED,
+            RefusedReason.OFF_DOMAIN,
+            ("classify",),
+            False,
+            id="refused",
+        ),
+        pytest.param(
+            TerminalState.REFUSED,
+            ErrorType.CHAT_DISABLED,
+            (),
+            False,
+            id="chat_disabled",
+        ),
+        pytest.param(
+            TerminalState.COMPLETE,
+            None,
+            ("classify", "finalize"),
+            True,
+            id="clarification",
+        ),
+    ],
+)
+def test_a_turn_without_an_answer_from_data_writes_the_added_keys_empty(
+    structured_lines: list[str],
+    state: TerminalState,
+    reason: ErrorType | RefusedReason | None,
+    phases: tuple[TurnPhase, ...],
+    is_clarification: bool,
+) -> None:
+    # Test: The keys for follow-ups, cut-off calls, tool actors, dropped
+    #   chart blocks, and shortened lists on a turn that did not use them.
+    # Situation: The classifier refuses a turn, a turn ends because chat is
+    #   disabled, or the server answers with a clarification question.
+    # Expectation: The line has every key of the schema.
+    #   `follow_ups_emitted` is 0, `follow_ups_canceled` is false,
+    #   `tokens.interrupted_stream_calls` is 0, and `tool_call_counts`,
+    #   `chart_rejections`, and `truncated_lists` are empty.
+    record = _make_record(state, reason, phases=phases)
+    record.is_clarification = is_clarification
+
+    written = _write_record(_build_record(record), structured_lines)
+
+    assert list(written) == _KEYS
+    assert written["follow_ups_emitted"] == 0
+    assert written["follow_ups_canceled"] is False
+    tokens = written["tokens"]
+    assert isinstance(tokens, dict)
+    assert tokens["interrupted_stream_calls"] == 0
+    assert written["tool_call_counts"] == []
+    assert written["chart_rejections"] == []
+    assert written["truncated_lists"] == []
+
+
+def test_chart_rejections_are_logged_by_position_kind_and_reason() -> None:
+    # Test: `chart_rejections`.
+    # Situation: The server dropped three chart blocks of the answer: a bar
+    #   chart that named an unknown place, a block that was not valid JSON,
+    #   and a block that the answer did not close.
+    # Expectation: The record lists the three rejections in that order, with
+    #   the indexes 0 to 2, the chart kind of the block that was parsed and
+    #   `None` for the two others, and the reason code of each.
+    record = _make_record()
+    record.chart_rejections = (
+        ChartRejection(ChartRejectionReason.UNKNOWN_PLACE, "bar"),
+        ChartRejection(ChartRejectionReason.INVALID_SPECIFICATION, None),
+        ChartRejection(ChartRejectionReason.UNCLOSED_BLOCK, None),
+    )
+
+    usage = _build_record(record)
+
+    assert usage.chart_rejections == (
+        LoggedChartRejection(
+            index=0, kind="bar", reason=ChartRejectionReason.UNKNOWN_PLACE
+        ),
+        LoggedChartRejection(
+            index=1,
+            kind=None,
+            reason=ChartRejectionReason.INVALID_SPECIFICATION,
+        ),
+        LoggedChartRejection(
+            index=2, kind=None, reason=ChartRejectionReason.UNCLOSED_BLOCK
+        ),
+    )
+
+
+def test_chart_rejections_are_capped_at_ten_and_the_count_stays_full() -> None:
+    # Test: The cap on `chart_rejections`.
+    # Situation: The server dropped twelve chart blocks. The first ten are
+    #   maps of an unknown table, and the last two are scatter charts.
+    # Expectation: The record lists the first `MAX_LOGGED_CHART_REJECTIONS`
+    #   (10) rejections with the indexes 0 to 9, and `charts_rejected` is
+    #   12.
+    record = _make_record()
+    record.telemetry.charts_rejected = 12
+    record.chart_rejections = (
+        ChartRejection(ChartRejectionReason.UNKNOWN_TABLE, "map"),
+    ) * 10 + (
+        ChartRejection(ChartRejectionReason.COHORT_REQUIRED, "scatter"),
+    ) * 2
+
+    usage = _build_record(record)
+
+    assert MAX_LOGGED_CHART_REJECTIONS == 10
+    assert [rejection.index for rejection in usage.chart_rejections] == list(
+        range(10)
+    )
+    assert {rejection.kind for rejection in usage.chart_rejections} == {"map"}
+    assert usage.charts_rejected == 12
+
+
+@pytest.mark.parametrize(
+    ("build_sha", "expected"),
+    [
+        pytest.param(None, None, id="unset"),
+        pytest.param("0a1b2c3", "0a1b2c3", id="short"),
+        pytest.param("f" * 256, "f" * 256, id="at_the_limit"),
+        pytest.param("a" * 256 + "b" * 44, "a" * 256, id="over_the_limit"),
+    ],
+)
+def test_the_record_holds_at_most_256_characters_of_the_build_sha(
+    build_sha: str | None, expected: str | None
+) -> None:
+    # Test: The length limit on `build_sha`.
+    # Situation: The deployment does not set a build SHA, or sets one of 7,
+    #   256, or 300 characters.
+    # Expectation: The record holds a SHA of up to `MAX_BUILD_SHA_CHARS`
+    #   (256) characters as it is, and the first 256 characters of a longer
+    #   one.
+    usage = build_usage_record(
+        _make_record(), _make_transcript(), build_sha=build_sha
+    )
+
+    assert MAX_BUILD_SHA_CHARS == 256
+    assert usage.build_sha == expected
+
+
+# `_ITEM_BYTES` is the serialized size of each item that the sized builders
+# below make.
+_ITEM_BYTES = 1_000
+# `_TRUNCATION_GROUPS` repeats the order in which the server shortens the
+# lists: it empties the lists of a group before it shortens the next group.
+_TRUNCATION_GROUPS: tuple[tuple[TruncatableList, ...], ...] = (
+    ("tables", "charts", "highlighted_places"),
+    (
+        "chart_rejections",
+        "rejected_submissions",
+        "script_steps",
+        "tool_call_counts",
+    ),
+    ("token_calls",),
+)
+
+
+def _measure_line(value: object) -> int:
+    """Returns the size of `value` in the line that the server writes."""
+    return len(serialize_record_json(value).encode("utf-8"))
+
+
+def _make_sized_table(index: int) -> LoggedTable:
+    """Builds a logged table whose serialized form is `_ITEM_BYTES` long."""
+    table = LoggedTable(
+        table_id=f"t{index}",
+        used_in_answer=False,
+        variable_dcid="",
+        facet_id=None,
+        row_count=1,
+        parent_place_dcid=None,
+        child_place_type=None,
+        places_with_data_count=1,
+        place_dcids=(),
+        earliest_date=None,
+        latest_date=None,
+    )
+    return replace(
+        table, variable_dcid="v" * (_ITEM_BYTES - _measure_line(table))
+    )
+
+
+def _make_sized_place(index: int) -> HighlightedPlace:
+    """Builds a highlighted place of `_ITEM_BYTES` serialized bytes."""
+    place = HighlightedPlace(
+        place_dcid=f"{index}", source=PlaceHighlightSource.TIMESERIES
+    )
+    return replace(
+        place,
+        place_dcid=f"{index}" + "p" * (_ITEM_BYTES - _measure_line(place)),
+    )
+
+
+def _make_sized_chart(index: int, size: int = _ITEM_BYTES) -> LoggedChart:
+    """Builds a logged chart whose serialized form is `size` bytes long."""
+    chart = LoggedChart(
+        index=index,
+        kind="line",
+        origin="model",
+        variables=(),
+        parent_place_dcid=None,
+        child_place_type=None,
+        place_dcids=("",),
+        per_capita=False,
+    )
+    return replace(chart, place_dcids=("p" * (size - _measure_line(chart)),))
+
+
+def _make_sized_step(index: int) -> LoggedScriptStep:
+    """Builds a script step whose serialized form is `_ITEM_BYTES` long."""
+    step = LoggedScriptStep(
+        step_index=index,
+        step_id="",
+        script="rank_cohort",
+        status="ok",
+        refusal_reason=None,
+    )
+    return replace(step, step_id="s" * (_ITEM_BYTES - _measure_line(step)))
+
+
+def _make_sized_submission(index: int) -> LoggedRejectedSubmission:
+    """Builds a rejected submission of `_ITEM_BYTES` serialized bytes."""
+    submission = LoggedRejectedSubmission(
+        round_number=index,
+        reason="processing_failed",
+        scripts=(),
+        failed_step_id="",
+        failed_script=None,
+        refusal_reason=None,
+        timed_out=False,
+    )
+    return replace(
+        submission,
+        failed_step_id="s" * (_ITEM_BYTES - _measure_line(submission)),
+    )
+
+
+def _make_sized_token_call(index: int) -> TokenCall:
+    """Builds a token call whose serialized form is `_ITEM_BYTES` long."""
+    call = TokenCall(
+        role=GeminiRole.DISCOVERY,
+        model="",
+        round_number=index,
+        prompt_token_count=1,
+        candidates_token_count=1,
+        thoughts_token_count=1,
+        total_token_count=3,
+    )
+    return replace(call, model="m" * (_ITEM_BYTES - _measure_line(call)))
+
+
+def _make_usage_with_every_list() -> UsageRecord:
+    """Builds a usage record in which each of the eight lists has items.
+
+    `token_calls` has three items, and every other list has two. The items
+    are `_ITEM_BYTES` long, except the tool counts and the chart rejections,
+    which do not have a string that a test can lengthen. The counts that
+    describe the lists have values of their own, so that a test can tell
+    whether shortening a list changed them.
+    """
+    usage = _build_record(_make_record())
+    return replace(
+        usage,
+        tokens=replace(usage.tokens, call_count=3),
+        token_calls=tuple(_make_sized_token_call(i) for i in range(3)),
+        tool_call_count=7,
+        tool_call_counts=(
+            ToolCallCount(tool="search_indicators", actor="model", count=4),
+            ToolCallCount(tool="unknown", actor="model", count=3),
+        ),
+        tables_fetched=9,
+        tables=tuple(_make_sized_table(i) for i in range(2)),
+        highlighted_places=tuple(_make_sized_place(i) for i in range(2)),
+        script_steps=tuple(_make_sized_step(i) for i in range(2)),
+        processing_retries=2,
+        rejected_submissions=tuple(_make_sized_submission(i) for i in range(2)),
+        charts_emitted=2,
+        charts_rejected=5,
+        charts=tuple(_make_sized_chart(i) for i in range(2)),
+        chart_rejections=(
+            LoggedChartRejection(
+                index=0, kind="map", reason=ChartRejectionReason.UNKNOWN_TABLE
+            ),
+            LoggedChartRejection(
+                index=1, kind=None, reason=ChartRejectionReason.UNCLOSED_BLOCK
+            ),
+        ),
+    )
+
+
+def _resize_line(usage: UsageRecord, line_bytes: int) -> UsageRecord:
+    """Returns `usage` with a build SHA that makes its line `line_bytes`."""
+    padding = line_bytes - _measure_line(replace(usage, build_sha=""))
+    assert padding >= 0
+    return replace(usage, build_sha="f" * padding)
+
+
+def _measure_items(usage: UsageRecord, name: TruncatableList) -> int:
+    """Returns the size of the items of one list, with their commas."""
+    return _measure_line(getattr(usage, name)) - len("[]")
+
+
+def _list_shortened(
+    fitted: UsageRecord, original: UsageRecord
+) -> tuple[TruncatableList, ...]:
+    """Returns the lists that are shorter in `fitted`, in key order.
+
+    The function also checks that each list of `fitted` holds the first
+    items of the same list of `original`.
+    """
+    shortened: list[TruncatableList] = []
+    for name in _TRUNCATABLE_LISTS:
+        kept, items = getattr(fitted, name), getattr(original, name)
+        assert kept == items[: len(kept)]
+        if len(kept) < len(items):
+            shortened.append(name)
+    return tuple(shortened)
+
+
+def test_the_shortened_lists_are_the_lists_of_the_record_in_key_order() -> None:
+    # Test: The names and the order of the lists that the server can shorten.
+    # Situation: The test reads the fields of `UsageRecord` and the groups
+    #   in which `usage_record` shortens them.
+    # Expectation: The groups hold eight lists, each once. In the order of
+    #   the record's keys they are the values of `TruncatableList`, and each
+    #   is a tuple field of the record.
+    grouped = [
+        name for group in usage_record._TRUNCATION_GROUPS for name in group
+    ]
+    fields = [field.name for field in dataclasses.fields(UsageRecord)]
+
+    assert usage_record._TRUNCATION_GROUPS == _TRUNCATION_GROUPS
+    assert sorted(grouped) == sorted(_TRUNCATABLE_LISTS)
+    assert [name for name in fields if name in grouped] == list(
+        _TRUNCATABLE_LISTS
+    )
+    assert usage_record._TRUNCATABLE_LISTS == _TRUNCATABLE_LISTS
+
+
+def test_a_record_at_the_limit_is_kept_and_one_more_byte_drops_a_table() -> (
+    None
+):
+    # Test: The size at which the server starts to shorten a record.
+    # Situation: A record holds two tables, two tool counts, and three token
+    #   calls. Its line is exactly `MAX_RECORD_LINE_BYTES` long. A second
+    #   record is the same record with a line that is one byte longer.
+    # Expectation: The server returns the first record as it is, with an
+    #   empty `truncated_lists` and `tables_truncated` false. From the
+    #   second record it drops only the last table. It sets
+    #   `tables_truncated`, names `tables` in `truncated_lists`, and the
+    #   line of the result is within the limit.
+    full = _make_usage_with_every_list()
+    usage = replace(
+        full,
+        highlighted_places=(),
+        script_steps=(),
+        rejected_submissions=(),
+        charts=(),
+        chart_rejections=(),
+    )
+    at_limit = _resize_line(usage, MAX_RECORD_LINE_BYTES)
+    over_limit = _resize_line(usage, MAX_RECORD_LINE_BYTES + 1)
+
+    kept = usage_record._fit_line_limit(at_limit)
+    fitted = usage_record._fit_line_limit(over_limit)
+
+    assert kept is at_limit
+    assert kept.truncated_lists == ()
+    assert kept.tables_truncated is False
+    assert fitted.tables == over_limit.tables[:1]
+    assert fitted.tables_truncated is True
+    assert fitted.truncated_lists == ("tables",)
+    assert fitted.tool_call_counts == over_limit.tool_call_counts
+    assert fitted.token_calls == over_limit.token_calls
+    assert _measure_line(fitted) <= MAX_RECORD_LINE_BYTES
+
+
+def test_the_server_drops_exactly_as_many_items_as_the_line_needs() -> None:
+    # Test: The size that the server computes for a shortened record,
+    #   against the size of the line that it writes.
+    # Situation: A record holds four charts of 200 bytes each and three
+    #   token calls, and its other lists are empty. The test makes its line
+    #   too long by every number of bytes from 1 to 450, which takes one,
+    #   two, or three charts to remove.
+    # Expectation: For every size the line of the result is within
+    #   `MAX_RECORD_LINE_BYTES`, the server drops charts only, and the same
+    #   record with one more chart would be over the limit. The server
+    #   therefore counts every byte of the items, of the commas between
+    #   them, and of the name in `truncated_lists`.
+    usage = replace(
+        _build_record(_make_record()),
+        charts=tuple(_make_sized_chart(i, size=200) for i in range(4)),
+        token_calls=tuple(_make_sized_token_call(i) for i in range(3)),
+    )
+
+    for excess in range(1, 451):
+        over_limit = _resize_line(usage, MAX_RECORD_LINE_BYTES + excess)
+
+        fitted = usage_record._fit_line_limit(over_limit)
+
+        kept = len(fitted.charts)
+        one_more_chart = replace(
+            over_limit,
+            charts=over_limit.charts[: kept + 1],
+            truncated_lists=("charts",) if kept + 1 < 4 else (),
+        )
+        assert _measure_line(fitted) <= MAX_RECORD_LINE_BYTES, excess
+        assert _measure_line(one_more_chart) > MAX_RECORD_LINE_BYTES, excess
+        assert fitted.truncated_lists == ("charts",), excess
+        assert fitted.token_calls == over_limit.token_calls, excess
+        assert fitted.charts == over_limit.charts[:kept], excess
+
+
+@pytest.mark.parametrize(
+    ("dropped_items", "kept_counts", "truncated_lists"),
+    [
+        pytest.param((1), (2, 2, 3), ("charts",), id="one_item"),
+        pytest.param(
+            (2), (2, 2, 2), ("highlighted_places", "charts"), id="two_items"
+        ),
+        pytest.param(
+            (3),
+            (1, 2, 2),
+            ("tables", "highlighted_places", "charts"),
+            id="three_items",
+        ),
+    ],
+)
+def test_the_largest_list_of_the_first_group_loses_an_item_first(
+    dropped_items: int,
+    kept_counts: tuple[int, int, int],
+    truncated_lists: tuple[TruncatableList, ...],
+) -> None:
+    # Test: Which list of the first group the server shortens.
+    # Situation: A record holds two tables, three charts, and three
+    #   highlighted places, and every item is 1,000 bytes long. `charts` and
+    #   `highlighted_places` are therefore the largest lists, and they are
+    #   equal in size. The line is so long that the server has to drop one,
+    #   two, or three items.
+    # Expectation: The server drops the first item from `charts`, which is
+    #   larger than `tables` and comes before `highlighted_places` in the
+    #   group. It drops the second from `highlighted_places`, which is then
+    #   the largest list. The three lists are then equal in size, and it
+    #   drops the third from `tables`, the first list of the group.
+    #   `truncated_lists` names the shortened lists in the order of the
+    #   record's keys.
+    usage = replace(
+        _build_record(_make_record()),
+        tables=tuple(_make_sized_table(i) for i in range(2)),
+        charts=tuple(_make_sized_chart(i) for i in range(3)),
+        highlighted_places=tuple(_make_sized_place(i) for i in range(3)),
+    )
+    # Each dropped item removes the item and one comma. The last half item
+    # keeps the line over the limit until the last of the items is dropped.
+    over_limit = _resize_line(
+        usage,
+        MAX_RECORD_LINE_BYTES
+        + (dropped_items - 1) * (_ITEM_BYTES + 1)
+        + _ITEM_BYTES // 2,
+    )
+
+    fitted = usage_record._fit_line_limit(over_limit)
+
+    assert (
+        len(fitted.tables),
+        len(fitted.charts),
+        len(fitted.highlighted_places),
+    ) == kept_counts
+    assert fitted.truncated_lists == truncated_lists
+    assert _list_shortened(fitted, over_limit) == truncated_lists
+    assert fitted.tables_truncated is ("tables" in truncated_lists)
+    assert _measure_line(fitted) <= MAX_RECORD_LINE_BYTES
+
+
+@pytest.mark.parametrize("emptied_groups", [0, 1, 2])
+def test_a_group_keeps_its_items_until_the_groups_before_it_are_empty(
+    emptied_groups: int,
+) -> None:
+    # Test: The order of the three groups of lists.
+    # Situation: Each of the eight lists of a record has items. The line is
+    #   too long by 1,500 bytes, by the size of the first group and 1,500
+    #   bytes, or by the size of the first two groups and 1,500 bytes.
+    # Expectation: The server empties every list of the groups that the
+    #   excess covers. It shortens at least one list of the next group, and
+    #   it does not touch a list of a later group. So it does not shorten a
+    #   list that says how the turn ran while `tables`, `charts`, or
+    #   `highlighted_places` has items, and it does not shorten
+    #   `token_calls` while one of those four lists has items.
+    #   `truncated_lists` names exactly the shortened lists.
+    usage = _make_usage_with_every_list()
+    emptied_bytes = sum(
+        _measure_items(usage, name)
+        for group in _TRUNCATION_GROUPS[:emptied_groups]
+        for name in group
+    )
+    over_limit = _resize_line(
+        usage, MAX_RECORD_LINE_BYTES + emptied_bytes + 1_500
+    )
+
+    fitted = usage_record._fit_line_limit(over_limit)
+
+    shortened = _list_shortened(fitted, over_limit)
+    for group_index, group in enumerate(_TRUNCATION_GROUPS):
+        for name in group:
+            if group_index < emptied_groups:
+                assert getattr(fitted, name) == ()
+            elif group_index > emptied_groups:
+                assert name not in shortened
+    assert set(shortened) & set(_TRUNCATION_GROUPS[emptied_groups])
+    assert fitted.truncated_lists == shortened
+    assert _measure_line(fitted) <= MAX_RECORD_LINE_BYTES
+
+
+def test_every_list_can_be_shortened_and_the_counts_keep_their_values() -> None:
+    # Test: A record from which the server has to shorten all eight lists.
+    # Situation: Each of the eight lists of a record has items, and the
+    #   record's counts have values of their own. The line is too long by
+    #   the size of the first two groups and 1,500 bytes.
+    # Expectation: The server empties the seven lists of the first two
+    #   groups and drops two of the three token calls. `truncated_lists`
+    #   names all eight lists in the order of the record's keys.
+    #   `tokens.call_count`, `tool_call_count`, `tables_fetched`,
+    #   `processing_retries`, `charts_emitted`, and `charts_rejected` keep
+    #   their values, and so does every other key outside the lists.
+    usage = _make_usage_with_every_list()
+    emptied_bytes = sum(
+        _measure_items(usage, name)
+        for group in _TRUNCATION_GROUPS[:2]
+        for name in group
+    )
+    over_limit = _resize_line(
+        usage, MAX_RECORD_LINE_BYTES + emptied_bytes + 1_500
+    )
+
+    fitted = usage_record._fit_line_limit(over_limit)
+
+    assert fitted.truncated_lists == _TRUNCATABLE_LISTS
+    assert fitted.token_calls == over_limit.token_calls[:1]
+    assert fitted.tables_truncated is True
+    assert fitted.tokens.call_count == 3
+    assert fitted.tool_call_count == 7
+    assert fitted.tables_fetched == 9
+    assert fitted.processing_retries == 2
+    assert fitted.charts_emitted == 2
+    assert fitted.charts_rejected == 5
+    assert (
+        replace(
+            fitted,
+            token_calls=over_limit.token_calls,
+            tool_call_counts=over_limit.tool_call_counts,
+            tables=over_limit.tables,
+            highlighted_places=over_limit.highlighted_places,
+            script_steps=over_limit.script_steps,
+            rejected_submissions=over_limit.rejected_submissions,
+            charts=over_limit.charts,
+            chart_rejections=over_limit.chart_rejections,
+            tables_truncated=False,
+            truncated_lists=(),
+        )
+        == over_limit
+    )
+
+
+def test_the_server_measures_each_part_of_a_record_once(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Test: How often the server serializes a record that it shortens.
+    # Situation: Each of the eight lists of a record has items, 17 in all.
+    #   The line is so long that the server drops 16 of them. The test
+    #   counts the calls of the serializer that `usage_record` uses.
+    # Expectation: The server serializes the whole record once, to check
+    #   whether it is too long, and serializes the record without its list
+    #   items once. It serializes each of the 17 items once and each of the
+    #   eight list names once. It does not serialize the record again for an
+    #   item that it drops.
+    usage = _make_usage_with_every_list()
+    emptied_bytes = sum(
+        _measure_items(usage, name)
+        for group in _TRUNCATION_GROUPS[:2]
+        for name in group
+    )
+    over_limit = _resize_line(
+        usage, MAX_RECORD_LINE_BYTES + emptied_bytes + 1_500
+    )
+    serialized: list[object] = []
+
+    def serialize(value: object) -> str:
+        serialized.append(value)
+        return serialize_record_json(value)
+
+    monkeypatch.setattr(usage_record, "serialize_record_json", serialize)
+
+    fitted = usage_record._fit_line_limit(over_limit)
+
+    item_count = sum(
+        len(getattr(over_limit, name)) for name in _TRUNCATABLE_LISTS
+    )
+    dropped_count = item_count - sum(
+        len(getattr(fitted, name)) for name in _TRUNCATABLE_LISTS
+    )
+    records = [value for value in serialized if isinstance(value, UsageRecord)]
+    names = [value for value in serialized if isinstance(value, str)]
+    assert (item_count, dropped_count) == (17, 16)
+    assert len(records) == 2
+    assert sorted(names) == sorted(_TRUNCATABLE_LISTS)
+    assert len(serialized) == 2 + item_count + len(names)
+
+
+# `_LARGEST_LIST_LENGTHS` holds the number of items that each list of the
+# record of `_make_largest_turn` has before the server shortens it.
+_LARGEST_LIST_LENGTHS: dict[TruncatableList, int] = {
+    "token_calls": MAX_ITERATIONS + 4,
+    "tool_call_counts": 11,
+    "tables": MAX_LOGGED_TABLES,
+    "highlighted_places": MAX_HIGHLIGHTED_PLACES,
+    "script_steps": 6,
+    "rejected_submissions": MAX_LOGGED_REJECTED_SUBMISSIONS,
+    "charts": MAX_LOGGED_CHARTS,
+    "chart_rejections": MAX_LOGGED_CHART_REJECTIONS,
+}
+_LARGE_COUNT = 999_999_999
+
+
+def _make_largest_turn(
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    identifier_chars: int | None,
+    place_type: str,
+    model: str,
+) -> TurnRecord:
+    """Builds a failed turn that has every list of the record at its cap.
+
+    The turn has a duration for every phase, a count for every tool name
+    with the actor `model` and for the two tools that the server also
+    calls, a token call for every discovery round and for each of the other
+    four roles, 20 cohort tables, 25 highlighted places with the longest
+    source literal, six scripts, six script steps that end in a refused
+    step, three rejected specifications, four charts that each list ten
+    variables and 25 places, twelve dropped chart blocks with the longest
+    kind and reason, and three follow-up questions. Every count and the
+    duration have nine digits. The script, the reasons, and the pattern are
+    the longest of their literals.
+
+    Args:
+        monkeypatch: The fixture that sets the turn's duration.
+        identifier_chars: The length to which every DCID and facet ID is
+            padded, or `None` to leave the identifiers as they are.
+        place_type: The child place type of every table and chart cohort.
+        model: The model name of every token call.
+
+    Returns:
+        The turn's record, after the turn ended.
+    """
+
+    def pad(identifier: str) -> str:
+        if identifier_chars is None:
+            return identifier
+        return identifier.ljust(identifier_chars, "x")
+
+    counts = TokenCounts(
+        prompt=_LARGE_COUNT,
+        candidates=_LARGE_COUNT,
+        thoughts=_LARGE_COUNT,
+        total=_LARGE_COUNT,
+    )
     record = TurnRecord(telemetry=TurnTelemetry(turn_id=_TURN_ID))
     telemetry = record.telemetry
     telemetry.pattern = "sequential_stages"
     telemetry.mcp_iterations = MAX_ITERATIONS
     longest_script: ScriptName = "compute_derived_metric"
     telemetry.scripts = [longest_script] * 6
-    telemetry.tables_fetched = large
-    telemetry.total_rows_fetched = large
-    telemetry.processing_retries = large
-    telemetry.charts_emitted = large
-    telemetry.charts_rejected = large
+    telemetry.tables_fetched = _LARGE_COUNT
+    telemetry.total_rows_fetched = _LARGE_COUNT
+    telemetry.processing_retries = _LARGE_COUNT
+    telemetry.charts_emitted = _LARGE_COUNT
+    telemetry.charts_rejected = _LARGE_COUNT
     for phase in TURN_PHASES:
-        telemetry.phase_durations_ms[phase] = float(large) + 0.25
-    tools = (*DISCOVERY_TOOL_NAMES, *SERVER_FUNCTION_NAMES, *_TOOL_LABELS)
-    for tool in tools:
-        telemetry.tool_calls[tool] = large
-    telemetry.tokens.add(counts, phase="classify", model=model)
+        telemetry.phase_durations_ms[phase] = float(_LARGE_COUNT) + 0.25
+    for tool in telemetry_module.TOOL_NAMES:
+        telemetry.tool_calls[(tool, "model")] = _LARGE_COUNT
+    telemetry.tool_calls[("get_variable_metadata", "server")] = _LARGE_COUNT
+    telemetry.tool_calls[("report_unavailable", "server")] = _LARGE_COUNT
+    telemetry.tokens.add(counts, role=GeminiRole.CLASSIFY, model=model)
     for round_number in range(1, MAX_ITERATIONS + 1):
         telemetry.tokens.add(
-            counts, phase="discovery", model=model, round_number=round_number
+            counts,
+            role=GeminiRole.DISCOVERY,
+            model=model,
+            round_number=round_number,
         )
-    for role in ("synthesis", "compaction", "follow_up"):
-        telemetry.tokens.add(counts, phase=role, model=model)
+    for role in (
+        GeminiRole.SYNTHESIS,
+        GeminiRole.COMPACTION,
+        GeminiRole.FOLLOW_UP,
+    ):
+        telemetry.tokens.add(counts, role=role, model=model)
+    telemetry.tokens.interrupted_stream_calls = _LARGE_COUNT
     places = tuple(
-        f"geoId/06{index:03d}" for index in range(1, MAX_HIGHLIGHTED_PLACES + 1)
+        pad(f"geoId/06{index:03d}")
+        for index in range(1, MAX_HIGHLIGHTED_PLACES + 1)
     )
-    for table_index in range(1, MAX_LOGGED_TABLES + 1):
+    variables = [
+        pad(f"Median_Income_Household_{index:02d}")
+        for index in range(1, MAX_LOGGED_TABLES + 1)
+    ]
+    facets = [
+        pad(f"facet_{index:04d}") for index in range(1, MAX_LOGGED_TABLES + 1)
+    ]
+    for table_index in range(MAX_LOGGED_TABLES):
         record.cache.store_fetched(
             _make_cached_table(
-                f"t{table_index}",
-                variable_dcid=f"Median_Income_Household_{table_index:02d}",
+                f"t{table_index + 1}",
+                variable_dcid=variables[table_index],
                 places=places,
                 dates=("2022-01-01", "2023-12-31"),
-                facet_id=f"facet_{table_index:04d}",
-                parent_place_dcid="country/USA",
-                child_place_type="AdministrativeArea2",
+                facet_id=facets[table_index],
+                parent_place_dcid=pad("country/USA"),
+                child_place_type=place_type,
             )
         )
     record.used_table_ids = frozenset(f"t{index}" for index in range(1, 7))
@@ -2926,7 +3762,7 @@ def test_the_largest_record_fits_in_one_line(
     record.specification_diagnostic = refusal
     record.loop_result.rejected_submissions.extend(
         RejectedSubmission(
-            round_number=large,
+            round_number=_LARGE_COUNT,
             reason="processing_failed",
             errors=(refusal.message,),
             specification=specification,
@@ -2934,18 +3770,17 @@ def test_the_largest_record_fits_in_one_line(
         )
         for _ in range(MAX_LOGGED_REJECTED_SUBMISSIONS)
     )
-    chart_variables = [
-        f"Median_Income_Household_{index:02d}" for index in range(1, 6)
-    ]
+    chart_variables = variables[:MAX_CHART_VARIABLES]
     record.charts = (
         _make_turn_charts(
             ResolvedLineChart(
                 title=_CHART_TITLE,
                 variable_dcids=(chart_variables[0], *chart_variables[1:]),
                 facet_ids=tuple(
-                    (variable_dcid, f"facet_{index:04d}")
-                    for index, variable_dcid in enumerate(
-                        chart_variables, start=1
+                    zip(
+                        chart_variables,
+                        facets[:MAX_CHART_VARIABLES],
+                        strict=True,
                     )
                 ),
                 scope=PlaceList(places),
@@ -2955,6 +3790,12 @@ def test_the_largest_record_fits_in_one_line(
         )
         * MAX_LOGGED_CHARTS
     )
+    record.chart_rejections = (
+        ChartRejection(
+            ChartRejectionReason.DERIVED_TABLE_NOT_CHARTABLE, "highlight"
+        ),
+    ) * (MAX_LOGGED_CHART_REJECTIONS + 2)
+    record.follow_up_questions = (_FOLLOW_UP_TEXT,) * 3
     first_table = record.cache.get("t1")
     assert first_table is not None
     record.digest = AnalysisDigest.from_results(
@@ -2976,6 +3817,34 @@ def test_the_largest_record_fits_in_one_line(
         ErrorType.DAILY_TOKEN_BUDGET_EXHAUSTED,
         seconds=999_999.99925,
     )
+    return record
+
+
+def test_the_largest_record_with_realistic_identifiers_keeps_how_the_turn_ran(
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+    structured_lines: list[str],
+) -> None:
+    # Test: The largest `chat_turn` line with identifiers of realistic
+    #   length.
+    # Situation: A failed turn has every list of the record at its cap,
+    #   including ten variables on each of four charts, ten chart
+    #   rejections, and both actors for the two tools that both can call.
+    #   The DCIDs have 11 to 26 characters, the place type has 19, the model
+    #   name has 64, and the build SHA has 40.
+    # Expectation: The written line is at most `MAX_RECORD_LINE_BYTES` and
+    #   does not log an oversized-line warning. The server shortens only
+    #   `tables`, `charts`, or `highlighted_places`. The record keeps all 19
+    #   token calls, all 11 tool counts, all six script steps, the three
+    #   rejected specifications, and the ten chart rejections, and its
+    #   counts keep their values. The line does not hold the text of a
+    #   follow-up question.
+    record = _make_largest_turn(
+        monkeypatch,
+        identifier_chars=None,
+        place_type="AdministrativeArea2",
+        model="m" * 64,
+    )
     usage = build_usage_record(
         record, _make_transcript(MAX_TURN_INDEX), build_sha="f" * 40
     )
@@ -2984,19 +3853,125 @@ def test_the_largest_record_fits_in_one_line(
         write_structured_record(usage)
 
     (line,) = structured_lines
-    assert 0 < len(usage.tables) < MAX_LOGGED_TABLES
-    assert usage.tables_truncated is True
-    assert len(usage.highlighted_places) == MAX_HIGHLIGHTED_PLACES
+    assert len(line.encode("utf-8")) <= MAX_RECORD_LINE_BYTES
+    assert caplog.records == []
+    assert usage.truncated_lists != ()
+    assert set(usage.truncated_lists) <= set(_TRUNCATION_GROUPS[0])
+    assert usage.tables_truncated is ("tables" in usage.truncated_lists)
+    for name in (*_TRUNCATION_GROUPS[1], *_TRUNCATION_GROUPS[2]):
+        assert len(getattr(usage, name)) == _LARGEST_LIST_LENGTHS[name]
     assert [step.status for step in usage.script_steps] == [
         *["ok"] * 5,
         "refused",
     ]
-    assert len(usage.rejected_submissions) == MAX_LOGGED_REJECTED_SUBMISSIONS
-    assert [len(chart.place_dcids) for chart in usage.charts] == (
-        [MAX_TABLE_PLACE_DCIDS] * MAX_LOGGED_CHARTS
+    assert [len(chart.variables) for chart in usage.charts] == (
+        [MAX_CHART_VARIABLES] * len(usage.charts)
     )
-    assert len(usage.token_calls) == MAX_ITERATIONS + 4
+    assert usage.tokens.call_count == MAX_ITERATIONS + 4
+    assert usage.tokens.interrupted_stream_calls == _LARGE_COUNT
+    assert usage.tool_call_count == 11 * _LARGE_COUNT
+    assert usage.charts_rejected == _LARGE_COUNT
+    assert usage.follow_ups_emitted == 3
     assert usage.duration_ms == 999_999_999.25
-    assert len(usage.tool_call_counts) == len(tools)
+    assert _FOLLOW_UP_TEXT not in line
+
+
+def test_the_largest_record_with_the_longest_identifiers_fits_in_one_line(
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+    structured_lines: list[str],
+) -> None:
+    # Test: The largest `chat_turn` line with the longest identifiers that
+    #   the server accepts.
+    # Situation: The same turn has DCIDs and facet IDs of `MAX_DCID_CHARS`
+    #   (256) characters, a place type of `MAX_PLACE_TYPE_CHARS` (64)
+    #   characters, a model name of 512 characters, and a build SHA of 512
+    #   characters.
+    # Expectation: The written line is at most `MAX_RECORD_LINE_BYTES` and
+    #   does not log an oversized-line warning. The 19 token calls alone do
+    #   not fit, so the server empties the seven other lists and drops token
+    #   calls from the end. `truncated_lists` names every list that is
+    #   shorter than the turn made it, which is all eight. The record holds
+    #   256 characters of the build SHA, and its counts keep their values.
+    record = _make_largest_turn(
+        monkeypatch,
+        identifier_chars=MAX_DCID_CHARS,
+        place_type="A" * MAX_PLACE_TYPE_CHARS,
+        model="m" * 512,
+    )
+    usage = build_usage_record(
+        record, _make_transcript(MAX_TURN_INDEX), build_sha="f" * 512
+    )
+
+    with caplog.at_level(logging.WARNING, logger=telemetry_module.__name__):
+        write_structured_record(usage)
+
+    (line,) = structured_lines
     assert len(line.encode("utf-8")) <= MAX_RECORD_LINE_BYTES
     assert caplog.records == []
+    assert usage.truncated_lists == tuple(
+        name
+        for name in _TRUNCATABLE_LISTS
+        if len(getattr(usage, name)) < _LARGEST_LIST_LENGTHS[name]
+    )
+    assert usage.truncated_lists == _TRUNCATABLE_LISTS
+    for name in (*_TRUNCATION_GROUPS[0], *_TRUNCATION_GROUPS[1]):
+        assert getattr(usage, name) == ()
+    assert 0 < len(usage.token_calls) < MAX_ITERATIONS + 4
+    all_roles = [
+        GeminiRole.CLASSIFY,
+        *[GeminiRole.DISCOVERY] * MAX_ITERATIONS,
+        GeminiRole.SYNTHESIS,
+        GeminiRole.COMPACTION,
+        GeminiRole.FOLLOW_UP,
+    ]
+    assert [call.role for call in usage.token_calls] == (
+        all_roles[: len(usage.token_calls)]
+    )
+    assert usage.tables_truncated is True
+    assert usage.build_sha == "f" * MAX_BUILD_SHA_CHARS
+    assert usage.tokens.call_count == MAX_ITERATIONS + 4
+    assert usage.tool_call_count == 11 * _LARGE_COUNT
+    assert usage.tables_fetched == _LARGE_COUNT
+
+
+def test_the_part_of_a_line_outside_the_lists_is_far_below_the_limit(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Test: The size of the part of a line that the server cannot shorten.
+    # Situation: The largest turn has the longest identifiers and a build
+    #   SHA of 512 characters. The test empties the eight lists of its
+    #   record, names all eight in `truncated_lists`, and keeps every other
+    #   key, so the counts have nine to eleven digits, the six scripts and
+    #   the reason codes are the longest literals, and the build SHA has
+    #   256 characters.
+    # Expectation: The line is 2,166 bytes long, which is less than a
+    #   quarter of `MAX_RECORD_LINE_BYTES` (14,336).
+    record = _make_largest_turn(
+        monkeypatch,
+        identifier_chars=MAX_DCID_CHARS,
+        place_type="A" * MAX_PLACE_TYPE_CHARS,
+        model="m" * 512,
+    )
+    usage = build_usage_record(
+        record, _make_transcript(MAX_TURN_INDEX), build_sha="f" * 512
+    )
+
+    fixed_part = replace(
+        usage,
+        token_calls=(),
+        tool_call_counts=(),
+        tables=(),
+        highlighted_places=(),
+        script_steps=(),
+        rejected_submissions=(),
+        charts=(),
+        chart_rejections=(),
+        tables_truncated=False,
+        truncated_lists=_TRUNCATABLE_LISTS,
+    )
+
+    assert len(fixed_part.phase_durations) == len(TURN_PHASES)
+    assert len(fixed_part.scripts) == 6
+    assert _measure_line(fixed_part) == 2_166
+    assert _measure_line(fixed_part) < MAX_RECORD_LINE_BYTES // 4

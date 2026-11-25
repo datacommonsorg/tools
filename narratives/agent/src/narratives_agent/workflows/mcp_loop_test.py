@@ -11,13 +11,18 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-"""Tests for the discovery loop in `mcp_loop`."""
+"""Tests for the discovery loop in `mcp_loop`.
+
+The tests also check which tool name and which actor the turn's telemetry
+counts each tool call under, and that the `ToolName` type of `telemetry.py`
+lists exactly the names that the loop can count.
+"""
 
 import asyncio
 import json
 import logging
 from collections.abc import Callable, Iterator, Mapping, Sequence
-from typing import Any
+from typing import Any, get_args
 
 import pytest
 from google.genai import types
@@ -30,7 +35,7 @@ from narratives_agent.analytics.provenance import (
 )
 from narratives_agent.analytics.summarize import summarize_table
 from narratives_agent.analytics.tables import ObservationRow, ObservationTable
-from narratives_agent.config_model import AgentConfig, Prompts
+from narratives_agent.config_model import AgentConfig, GeminiRole, Prompts
 from narratives_agent.gemini.client import (
     GeminiBlockedError,
     GeminiError,
@@ -40,7 +45,13 @@ from narratives_agent.gemini.response import FunctionCall, GeminiResponse
 from narratives_agent.gemini.schemas import QueryClassification
 from narratives_agent.json_value import JsonObject, JsonValue
 from narratives_agent.mcp import client as mcp_client
-from narratives_agent.telemetry import ErrorType, TerminalState, TurnTelemetry
+from narratives_agent.telemetry import (
+    TOOL_NAMES,
+    ErrorType,
+    TerminalState,
+    ToolName,
+    TurnTelemetry,
+)
 from narratives_agent.workflows import mcp_loop
 from narratives_agent.workflows.fetch import FetchResult
 from narratives_agent.workflows.fetch_requests import (
@@ -350,8 +361,8 @@ async def test_a_fetch_function_runs_server_side(
     assert parsed_result["table_id"] == "t1"
     assert parsed_result["observation_count"] == 1
     assert telemetry.tool_calls == {
-        "fetch_observations": 1,
-        "report_unavailable": 1,
+        ("fetch_observations", "model"): 1,
+        ("report_unavailable", "model"): 1,
     }
 
 
@@ -382,8 +393,8 @@ async def test_invalid_fetch_arguments_are_returned_as_tool_error(
     assert fetch_record["status"] == "error"
     assert "place_dcids" in json.loads(str(fetch_record["result"]))["error"]
     assert telemetry.tool_calls == {
-        "fetch_observations": 1,
-        "report_unavailable": 1,
+        ("fetch_observations", "model"): 1,
+        ("report_unavailable", "model"): 1,
     }
 
 
@@ -442,7 +453,8 @@ async def test_a_valid_specification_is_processed_and_ends_the_loop(
     #   and a digest that has data; the `submit_specification` record is a
     #   success whose result reports acceptance and the script run; the
     #   loop reported the processing phase to the UI and timed it; and no
-    #   retry was counted.
+    #   retry was counted. The telemetry counts the model's submission and
+    #   the metadata request that the server sent before the run.
     _ = calls
     cache = TurnCache()
     cache.store_fetched(_make_table("t1", {"a": 1.0, "b": 2.0}))
@@ -471,7 +483,10 @@ async def test_a_valid_specification_is_processed_and_ends_the_loop(
     }
     assert statuses == [("processing", "Analyzing data...")]
     assert "processing" in telemetry.phase_durations_ms
-    assert telemetry.tool_calls == {"submit_specification": 1}
+    assert telemetry.tool_calls == {
+        ("get_variable_metadata", "server"): 1,
+        ("submit_specification", "model"): 1,
+    }
 
 
 def _install_metadata_server(
@@ -527,9 +542,10 @@ async def test_a_submission_cites_metadata_the_server_requested_itself(
     #   `get_variable_metadata`, and the server describes the facet as World
     #   Development Indicators by the World Bank.
     # Expectation: The server requests the table's variable and places once,
-    #   the digest cites the World Bank dataset and date range for the
-    #   variable, and the request adds no tool-call record and no tool-call
-    #   count.
+    #   and the digest cites the World Bank dataset and date range for the
+    #   variable. The request does not add a tool-call record. The telemetry
+    #   counts it as a `get_variable_metadata` call that the server made,
+    #   next to the submission that the model made.
     _ = calls
     requests = _install_metadata_server(monkeypatch)
     cache = TurnCache()
@@ -556,7 +572,10 @@ async def test_a_submission_cites_metadata_the_server_requested_itself(
     assert [record["name"] for record in result.tool_calls] == [
         "submit_specification"
     ]
-    assert telemetry.tool_calls == {"submit_specification": 1}
+    assert telemetry.tool_calls == {
+        ("get_variable_metadata", "server"): 1,
+        ("submit_specification", "model"): 1,
+    }
 
 
 @pytest.mark.asyncio
@@ -573,7 +592,7 @@ async def test_a_resubmission_does_not_request_metadata_again(
     #   which succeeds.
     # Expectation: Both submissions run, and the server requests the
     #   table's metadata only before the first, although that request
-    #   recorded nothing.
+    #   recorded nothing. The telemetry counts the failed request once.
     _ = calls
     requests: list[JsonObject] = []
 
@@ -600,6 +619,52 @@ async def test_a_resubmission_does_not_request_metadata_again(
     assert result.digest is not None
     assert result.processing_retries == 1
     assert len(requests) == 1
+    assert telemetry.tool_calls == {
+        ("get_variable_metadata", "server"): 1,
+        ("submit_specification", "model"): 2,
+    }
+
+
+@pytest.mark.asyncio
+async def test_metadata_calls_of_the_model_and_of_the_server_are_counted_apart(
+    monkeypatch: pytest.MonkeyPatch,
+    calls: list[str],
+    model_answers: Callable[..., list[list[Message]]],
+    telemetry: TurnTelemetry,
+) -> None:
+    # Test: One tool that the model and the server both call in a turn.
+    # Situation: The model calls `get_variable_metadata`, and the response
+    #   does not describe any variable. The model then submits a ranking
+    #   over `t1`, so the server requests the metadata of `t1` itself.
+    # Expectation: The telemetry counts one `get_variable_metadata` call for
+    #   the model and one for the server, under separate keys.
+    _ = calls
+    requested: list[str] = []
+
+    async def call_tool(name: str, arguments: JsonObject) -> JsonObject:
+        _ = arguments
+        requested.append(name)
+        return {"content": [{"type": "text", "text": "{}"}]}
+
+    monkeypatch.setattr(mcp_client, "async_call_tool", call_tool)
+    cache = TurnCache()
+    cache.store_fetched(_make_table("t1", {"a": 1.0, "b": 2.0}))
+    model_answers(
+        _make_tool_turn("get_variable_metadata"),
+        _make_submit_turn(
+            {"step_id": "s1", "script": "rank_cohort", "table": "t1"}
+        ),
+    )
+
+    result = await _run_loop(telemetry, cache)
+
+    assert result.digest is not None
+    assert requested == ["get_variable_metadata", "get_variable_metadata"]
+    assert telemetry.tool_calls == {
+        ("get_variable_metadata", "model"): 1,
+        ("get_variable_metadata", "server"): 1,
+        ("submit_specification", "model"): 1,
+    }
 
 
 @pytest.mark.asyncio
@@ -820,6 +885,7 @@ async def test_a_second_terminal_call_in_one_turn_is_ignored(
     #   specification in the same turn.
     # Expectation: The report is handled and ends the loop, and the
     #   submission is recorded as an ignored error without being processed.
+    #   The telemetry counts both calls as calls that the model made.
     _ = calls
     model_answers(
         _make_calls_turn(
@@ -836,6 +902,10 @@ async def test_a_second_terminal_call_in_one_turn_is_ignored(
     assert handled["status"] == "success"
     assert ignored["status"] == "error"
     assert str(ignored["result"]).startswith("Ignored")
+    assert telemetry.tool_calls == {
+        ("report_unavailable", "model"): 1,
+        ("submit_specification", "model"): 1,
+    }
 
 
 @pytest.mark.asyncio
@@ -910,9 +980,9 @@ async def test_tool_calls_of_one_turn_run_concurrently_in_the_scope(
         ("get_variable_metadata", "get_variable_metadata result"),
     ]
     assert telemetry.tool_calls == {
-        "search_indicators": 1,
-        "get_variable_metadata": 1,
-        "report_unavailable": 1,
+        ("search_indicators", "model"): 1,
+        ("get_variable_metadata", "model"): 1,
+        ("report_unavailable", "model"): 1,
     }
     assert not result.truncated
 
@@ -1283,7 +1353,8 @@ async def test_the_server_reports_no_data_when_every_fetch_is_empty(
     #   queries, the place, the empty variable by the name the search gave
     #   it, and the offered candidate;
     #   the report is streamed as a `report_unavailable` record filed by the
-    #   server, and telemetry counts it under its own name.
+    #   server, and the telemetry counts it as one `report_unavailable` call
+    #   that the server made, next to the model's six searches and one fetch.
     empty_t1 = _make_table("t1", {}, requested=("wd/Q1490",))
 
     async def run_fetch(request: FetchRequest, cache: TurnCache) -> FetchResult:
@@ -1353,7 +1424,11 @@ async def test_the_server_reports_no_data_when_every_fetch_is_empty(
         "status": "recorded",
         "filed_by": "server",
     }
-    assert telemetry.tool_calls["server_report_unavailable"] == 1
+    assert telemetry.tool_calls == {
+        ("search_indicators", "model"): 6,
+        ("fetch_observations", "model"): 1,
+        ("report_unavailable", "server"): 1,
+    }
 
 
 def test_the_server_report_only_counts_a_variable_no_search_named() -> None:
@@ -1545,7 +1620,8 @@ async def test_undeclared_tools_are_refused_without_reaching_mcp(
     # Expectation: Only the declared tool reaches MCP; the other two are
     #   recorded as failed calls whose result tells the model to use the
     #   declared tools, the model receives those errors as function
-    #   responses, and telemetry counts both refusals as "unknown".
+    #   responses, and telemetry counts both refusals as `unknown` calls
+    #   that the model made.
     sent = model_answers(
         _make_tool_turn(
             "search_indicators", "get_observations", "invented_tool"
@@ -1580,10 +1656,31 @@ async def test_undeclared_tools_are_refused_without_reaching_mcp(
         "invented_tool",
     ]
     assert telemetry.tool_calls == {
-        "search_indicators": 1,
-        "unknown": 2,
-        "report_unavailable": 1,
+        ("search_indicators", "model"): 1,
+        ("unknown", "model"): 2,
+        ("report_unavailable", "model"): 1,
     }
+
+
+def test_the_tool_name_type_lists_the_names_that_the_loop_can_count() -> None:
+    # Test: The closed type of tool names against the loop's own names.
+    # Situation: `telemetry.py` spells the names of `ToolName`, because it
+    #   cannot import the modules that define the tools and the functions.
+    # Expectation: The values of `ToolName`, and `TOOL_NAMES`, are exactly
+    #   the three discovery tools, the five server functions, and the label
+    #   of an undeclared tool. A tool that is added in one place only fails
+    #   this test.
+    countable = (
+        mcp_loop.DISCOVERY_TOOL_NAMES
+        | mcp_loop.SERVER_FUNCTION_NAMES
+        | {mcp_loop._UNDECLARED_TOOL}
+    )
+
+    assert len(mcp_loop.DISCOVERY_TOOL_NAMES) == 3
+    assert len(mcp_loop.SERVER_FUNCTION_NAMES) == 5
+    assert mcp_loop._UNDECLARED_TOOL == "unknown"
+    assert set(get_args(ToolName.__value__)) == countable
+    assert countable == TOOL_NAMES
 
 
 @pytest.mark.asyncio
@@ -2048,9 +2145,9 @@ async def test_tool_call_records_carry_one_based_round_and_duration(
 
     assert len(recorded_requests) == 2
     assert recorded_requests[0]["token_round"] == 1
-    assert recorded_requests[0]["token_phase"] == "discovery"
+    assert recorded_requests[0]["token_role"] is GeminiRole.DISCOVERY
     assert recorded_requests[1]["token_round"] == 2
-    assert recorded_requests[1]["token_phase"] == "discovery"
+    assert recorded_requests[1]["token_role"] is GeminiRole.DISCOVERY
 
     assert len(result.tool_calls) == 5
     mcp_rec = next(

@@ -80,17 +80,37 @@ Verifies that:
     The `chat_turn` record holds the origin and the steps of the turn's
     specification, the rejected specifications, and the charts as codes and
     verified identifiers.
+16. The agent loop records the chart blocks that the server dropped,
+    including on a turn that fails during synthesis, and the `chat_turn`
+    record lists up to ten of them by position, kind, and reason code.
+17. The `chat_turn` record counts the follow-up questions that the server
+    sent, and it says whether the turn was canceled during the follow-up
+    phase. A follow-up call that fails, times out, or does not return any
+    questions is not a cancellation.
+18. A synthesis stream that is cut off, by a cancellation of the turn or by
+    the stream timeout, is counted in `tokens.interrupted_stream_calls` of
+    the `chat_turn` record of that turn.
+19. The `chat_turn` record counts the metadata requests that the server
+    sends before a default specification runs as tool calls of the server.
 """
 
 import asyncio
 import json
 import logging
 import re
-from collections.abc import AsyncGenerator, Callable, Iterator, Sequence
+from collections.abc import (
+    AsyncGenerator,
+    AsyncIterator,
+    Callable,
+    Iterator,
+    Sequence,
+)
 from dataclasses import dataclass, field, replace
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
+from google.genai import types
 
 from narratives_agent import config
 from narratives_agent.analytics.digest import (
@@ -110,8 +130,10 @@ from narratives_agent.config_model import (
     AgentConfig,
     ChatConfig,
     DebugConfig,
+    GeminiRole,
     Prompts,
 )
+from narratives_agent.gemini import client as gemini_client
 from narratives_agent.gemini.client import (
     GeminiBlockedError,
     GeminiError,
@@ -369,7 +391,7 @@ class _Turn:
     synthesis_calls: int = 0
     synthesis_messages: list[list[JsonObject]] = field(default_factory=list)
     synthesis_instructions: list[str] = field(default_factory=list)
-    synthesis_phases: list[str] = field(default_factory=list)
+    synthesis_roles: list[GeminiRole | None] = field(default_factory=list)
     answer: str = _ANSWER
     follow_up_topics: list[FollowUpTopics] = field(default_factory=list)
     loop_classifications: list[QueryClassification | None] = field(
@@ -519,13 +541,13 @@ def turn(monkeypatch: pytest.MonkeyPatch) -> _Turn:
         *,
         messages: Sequence[JsonObject],
         system_instruction: str,
-        token_phase: str = "",
+        token_role: GeminiRole | None = None,
         **_: object,
     ) -> AsyncGenerator[StreamChunk]:
         stub.synthesis_calls += 1
         stub.synthesis_messages.append(list(messages))
         stub.synthesis_instructions.append(system_instruction)
-        stub.synthesis_phases.append(token_phase)
+        stub.synthesis_roles.append(token_role)
         return stream_answer()
 
     async def generate_follow_ups(
@@ -608,7 +630,7 @@ async def test_complete_turn_emits_the_answer_then_the_follow_ups(
     #   chart, and the turn is recorded as `complete`.
     await chat_pipeline.run_turn(_TRANSCRIPT, turn.emit)
 
-    assert turn.synthesis_phases == ["synthesis"]
+    assert turn.synthesis_roles == [GeminiRole.SYNTHESIS]
     assert turn.list_blocks() == [
         {"index": 0, "type": "text", "markdown": _ANSWER},
         {
@@ -1070,7 +1092,8 @@ async def test_a_default_requests_metadata_once_before_its_first_run(
     # Expectation: The server requests metadata for both tables before the
     #   first run and not before the retry, the streamed source of the
     #   second table names the World Bank, and no tool-call frame is
-    #   emitted for the requests.
+    #   emitted for the requests. The telemetry counts the two requests as
+    #   `get_variable_metadata` calls that the server made.
     ranking = QueryClassification.model_validate(
         {
             "serviceable": True,
@@ -1146,6 +1169,8 @@ async def test_a_default_requests_metadata_once_before_its_first_run(
     ]
     assert providers == ["World Bank"]
     assert turn.list_content_payloads("tool_call") == []
+    assert turn.telemetry is not None
+    assert turn.telemetry.tool_calls == {("get_variable_metadata", "server"): 2}
     assert turn.finished == [(TerminalState.COMPLETE, None)]
 
 
@@ -2875,7 +2900,7 @@ async def test_completed_turn_records_tokens_and_refuses_next_turn_at_cap(
         _ = (transcript, loaded_config)
         telemetry.tokens.add(
             TokenCounts(prompt=60, candidates=30, thoughts=10, total=100),
-            phase="classify",
+            role=GeminiRole.CLASSIFY,
             model="gemini-3.5-flash-lite",
         )
         return Admitted(_CLASSIFICATION)
@@ -3729,7 +3754,9 @@ async def test_a_complete_turn_writes_one_chat_turn_record(
     #   that ran. It also marks the turn as signed and not compacted. The
     #   specification has the origin `model` and one step with the status
     #   `ok`, the turn does not have a rejected specification, and the one
-    #   chart is the server's default line chart of France.
+    #   chart is the server's default line chart of France. The record
+    #   counts the one follow-up question that the server sent, and it does
+    #   not have a dropped chart block, a cut-off call, or a shortened list.
     monkeypatch.setenv("BUILD_SHA", "test-build-sha-1234")
 
     await chat_pipeline.run_turn(_TRANSCRIPT, turn.emit)
@@ -3764,6 +3791,14 @@ async def test_a_complete_turn_writes_one_chat_turn_record(
     assert record["script_steps"] == [_log_step(0, "analyze_timeseries")]
     assert record["rejected_submissions"] == []
     assert record["charts"] == [_LOGGED_FRANCE_CHART]
+    assert record["follow_ups_emitted"] == len(_FOLLOW_UPS) == 1
+    assert record["follow_ups_canceled"] is False
+    assert record["chart_rejections"] == []
+    assert record["truncated_lists"] == []
+    tokens = record["tokens"]
+    assert isinstance(tokens, dict)
+    assert tokens["interrupted_stream_calls"] == 0
+    assert _FOLLOW_UPS[0] not in structured_lines[0]
 
 
 @pytest.mark.asyncio
@@ -4050,7 +4085,8 @@ async def test_a_canceled_turn_writes_one_chat_turn_record(
     # Expectation: `run_turn` raises `CancelledError` to the caller, and
     #   the server still writes exactly one record, with the terminal state
     #   and the outcome `canceled`, a `null` reason, and the transcript's
-    #   conversation ID.
+    #   conversation ID. The turn did not reach the follow-up phase, so
+    #   `follow_ups_canceled` is false and `follow_ups_emitted` is 0.
     turn.synthesis_release.clear()
     task = await _start_and_wait_for(turn, "status")
     async with asyncio.timeout(1):
@@ -4067,6 +4103,8 @@ async def test_a_canceled_turn_writes_one_chat_turn_record(
     assert record["outcome_reason"] is None
     assert record["conversation_id"] == _CONVERSATION_ID
     assert record["is_signed"] is False
+    assert record["follow_ups_canceled"] is False
+    assert record["follow_ups_emitted"] == 0
 
 
 @pytest.mark.asyncio
@@ -4078,7 +4116,8 @@ async def test_a_turn_canceled_after_its_answer_is_recorded_as_answered(
     #   turn after the turn has emitted its terminal event.
     # Expectation: The server writes exactly one record, with the terminal
     #   state `complete`, the outcome `answered_with_data`, and `is_signed`
-    #   true, because the answer was already delivered.
+    #   true, because the answer was already delivered. `follow_ups_canceled`
+    #   is true, and `follow_ups_emitted` is 0.
     turn.follow_ups_release.clear()
     task = await _start_and_wait_for(turn, "terminal")
 
@@ -4090,6 +4129,8 @@ async def test_a_turn_canceled_after_its_answer_is_recorded_as_answered(
     assert record["terminal_state"] == "complete"
     assert record["outcome"] == "answered_with_data"
     assert record["is_signed"] is True
+    assert record["follow_ups_canceled"] is True
+    assert record["follow_ups_emitted"] == 0
 
 
 @pytest.mark.asyncio
@@ -4271,15 +4312,24 @@ _UNUSED_AND_DERIVED_MARKERS = (
     "caveat",
 )
 # `_ANSWER_MARKERS` names the pieces of free text that a marked turn produces
-# once it reaches synthesis. `_SYNTHESIS_MARKERS` adds the title and the unit
-# of the chart block that the model writes. The debug report holds the title
-# and the chart block in the raw synthesis output, even when the answer does
-# not show them.
+# once it reaches synthesis. Five of them are the text of three chart blocks
+# that the server drops: the title, the table ID, and the unit of a block
+# whose table ID the model invented, the text of a block that is not valid
+# JSON, and the title of a block that names a table the turn did not fetch.
+# `_SYNTHESIS_MARKERS` adds the title and the unit of the chart block that
+# the model writes over `t1`. The debug report holds the title and every
+# chart block in the raw synthesis output, even when the answer does not
+# show them.
 _ANSWER_MARKERS = (
     "synthesis_thought",
     "title",
     "answer",
     "follow_up",
+    "rejected_chart_title",
+    "rejected_chart_table",
+    "rejected_chart_unit",
+    "broken_chart_text",
+    "unfetched_chart_title",
 )
 _SYNTHESIS_MARKERS = (*_ANSWER_MARKERS, "chart_title", "chart_unit")
 
@@ -4503,8 +4553,13 @@ def _plant_synthesis_markers(
 
     Args:
         monkeypatch: The fixture that replaces the two model calls.
-        has_chart_block: Whether the answer ends with a chart block of `t1`
+        has_chart_block: Whether the answer holds a chart block of `t1`
             that has a marked title and a marked unit.
+
+    The answer always ends with three chart blocks that the server drops.
+    The first has a marked title, a marked table ID that the model invented,
+    and a marked unit. The second is not valid JSON and holds a marker. The
+    third has a marked title and names `t9`, which the turn did not fetch.
     """
     chart = json.dumps(
         {
@@ -4515,9 +4570,27 @@ def _plant_synthesis_markers(
             "unit": _mark("chart_unit"),
         }
     )
+    rejected_chart = json.dumps(
+        {
+            "kind": "line",
+            "tables": [_mark("rejected_chart_table")],
+            "title": _mark("rejected_chart_title"),
+            "unit": _mark("rejected_chart_unit"),
+        }
+    )
+    broken_chart = f'{{"kind": "map", "title": "{_mark("broken_chart_text")}"'
+    unfetched_chart = json.dumps(
+        {
+            "kind": "map",
+            "tables": ["t9"],
+            "title": _mark("unfetched_chart_title"),
+        }
+    )
     answer = f"# {_mark('title')}\n\n{_mark('answer')}"
     if has_chart_block:
         answer += f"\n\n```chart\n{chart}\n```"
+    for dropped in (rejected_chart, broken_chart, unfetched_chart):
+        answer += f"\n\n```chart\n{dropped}\n```"
 
     async def stream_marked_answer() -> AsyncGenerator[StreamChunk]:
         yield StreamChunk("thought", _mark("synthesis_thought"))
@@ -4979,11 +5052,28 @@ _LOGGED_MARKED_T5: JsonObject = {
 }
 # The scripts of the specification that the server rejects on a marked turn.
 _REJECTED_SCRIPTS: list[JsonValue] = ["compute_derived_metric", "rank_cohort"]
-# `_MODEL_SPECIFICATION_RECORD`, `_DEFAULT_SPECIFICATION_RECORD`, and
-# `_FAILED_DEFAULT_SPECIFICATION_RECORD` hold the keys of the `chat_turn`
-# record that describe the data and the analysis of a marked turn.
-# `_RECORD_WITHOUT_ANALYSIS` holds them for a turn that ended without
-# fetching a table.
+# The three chart blocks that the server drops from the answer of a marked
+# turn with data, as the `chat_turn` record holds them. The server drops the
+# first two before it parses them, so they do not have a kind.
+_LOGGED_MARKED_REJECTIONS: list[JsonValue] = [
+    {"index": 0, "kind": None, "reason": "invalid_specification"},
+    {"index": 1, "kind": None, "reason": "invalid_specification"},
+    {"index": 2, "kind": "map", "reason": "unknown_table"},
+]
+# The four chart blocks that the server drops from the answer of a marked
+# turn without data. The first is the chart block of `t1`.
+_LOGGED_MARKED_REJECTIONS_WITHOUT_DATA: list[JsonValue] = [
+    {"index": 0, "kind": "line", "reason": "turn_without_data"},
+    {"index": 1, "kind": None, "reason": "invalid_specification"},
+    {"index": 2, "kind": None, "reason": "invalid_specification"},
+    {"index": 3, "kind": "map", "reason": "turn_without_data"},
+]
+# `_MODEL_SPECIFICATION_RECORD`, `_DEFAULT_SPECIFICATION_RECORD`,
+# `_FAILED_DEFAULT_SPECIFICATION_RECORD`, and `_UNAVAILABLE_RECORD` hold the
+# keys of the `chat_turn` record that describe the data, the analysis, the
+# dropped chart blocks, the tool calls, and the follow-up questions of a
+# marked turn. `_RECORD_WITHOUT_ANALYSIS` holds them for a turn that ended
+# before synthesis.
 _MODEL_SPECIFICATION_RECORD: JsonObject = {
     "tables": [
         _LOGGED_MARKED_T1,
@@ -5032,6 +5122,13 @@ _MODEL_SPECIFICATION_RECORD: JsonObject = {
         },
     ],
     "charts": [{**_LOGGED_FRANCE_CHART, "origin": "model"}],
+    "charts_rejected": 3,
+    "chart_rejections": _LOGGED_MARKED_REJECTIONS,
+    "tool_call_count": 0,
+    "tool_call_counts": [],
+    "follow_ups_emitted": 1,
+    "follow_ups_canceled": False,
+    "truncated_lists": [],
 }
 _DEFAULT_SPECIFICATION_RECORD: JsonObject = {
     "tables": [_LOGGED_MARKED_T1, _LOGGED_MARKED_T2],
@@ -5047,6 +5144,15 @@ _DEFAULT_SPECIFICATION_RECORD: JsonObject = {
     ],
     "rejected_submissions": [],
     "charts": [{**_LOGGED_FRANCE_CHART, "kind": "bar"}],
+    "charts_rejected": 3,
+    "chart_rejections": _LOGGED_MARKED_REJECTIONS,
+    "tool_call_count": 2,
+    "tool_call_counts": [
+        {"tool": "get_variable_metadata", "actor": "server", "count": 2}
+    ],
+    "follow_ups_emitted": 1,
+    "follow_ups_canceled": False,
+    "truncated_lists": [],
 }
 _FAILED_DEFAULT_SPECIFICATION_RECORD: JsonObject = {
     "tables": [
@@ -5060,6 +5166,15 @@ _FAILED_DEFAULT_SPECIFICATION_RECORD: JsonObject = {
     ],
     "rejected_submissions": [],
     "charts": [],
+    "charts_rejected": 4,
+    "chart_rejections": _LOGGED_MARKED_REJECTIONS_WITHOUT_DATA,
+    "tool_call_count": 2,
+    "tool_call_counts": [
+        {"tool": "get_variable_metadata", "actor": "server", "count": 2}
+    ],
+    "follow_ups_emitted": 1,
+    "follow_ups_canceled": False,
+    "truncated_lists": [],
 }
 _RECORD_WITHOUT_ANALYSIS: JsonObject = {
     "tables": [],
@@ -5068,6 +5183,19 @@ _RECORD_WITHOUT_ANALYSIS: JsonObject = {
     "script_steps": [],
     "rejected_submissions": [],
     "charts": [],
+    "charts_rejected": 0,
+    "chart_rejections": [],
+    "tool_call_count": 0,
+    "tool_call_counts": [],
+    "follow_ups_emitted": 0,
+    "follow_ups_canceled": False,
+    "truncated_lists": [],
+}
+_UNAVAILABLE_RECORD: JsonObject = {
+    **_RECORD_WITHOUT_ANALYSIS,
+    "charts_rejected": 4,
+    "chart_rejections": _LOGGED_MARKED_REJECTIONS_WITHOUT_DATA,
+    "follow_ups_emitted": 1,
 }
 
 
@@ -5091,7 +5219,7 @@ _RECORD_WITHOUT_ANALYSIS: JsonObject = {
         ),
         pytest.param(
             _plant_unavailable_report_markers,
-            _RECORD_WITHOUT_ANALYSIS,
+            _UNAVAILABLE_RECORD,
             id="unavailable",
         ),
         pytest.param(
@@ -5123,7 +5251,11 @@ async def test_the_chat_turn_record_does_not_contain_conversation_text(
     #   transcript marks the query, the idempotency keys, the summary, and
     #   the query, the answer, and the data scope names of an earlier turn.
     #   Synthesis marks a thought, the title, the text, the title and the
-    #   unit of a chart block, and a follow-up question. Each case then
+    #   unit of a chart block, and a follow-up question. It also writes
+    #   three chart blocks that the server drops: one whose title, invented
+    #   table ID, and unit are markers, one that is not valid JSON and holds
+    #   a marker, and one with a marked title that names a table the turn
+    #   did not fetch. Each case then
     #   marks the text of one kind of turn. The first is a specification
     #   from the model, with named-place, cohort, unused, empty 0-row, and
     #   derived tables, marked caveats and missing notes, a derived step
@@ -5143,7 +5275,13 @@ async def test_the_chat_turn_record_does_not_contain_conversation_text(
     #   `highlighted_places`, `specification_origin`, `script_steps`,
     #   `rejected_submissions`, and `charts` hold the expected codes and
     #   verified DCIDs. Each chart keeps only the variable and the place of
-    #   `t1`.
+    #   `t1`. `chart_rejections` lists each dropped chart block by its
+    #   position, its kind, and its reason code, and `charts_rejected` is
+    #   their number. On a turn without data the server also drops the chart
+    #   block of `t1`. `tool_call_counts` holds the metadata requests that
+    #   the server sent before a default specification ran.
+    #   `follow_ups_emitted` is 1 on a turn that sent the marked follow-up
+    #   question and 0 on a turn that ended before the follow-up phase.
     monkeypatch.setenv(DEBUG_REPORT_ENV, "on")
     _plant_synthesis_markers(monkeypatch)
     planted = plant_markers(monkeypatch)
@@ -5168,6 +5306,7 @@ async def test_the_chat_turn_record_does_not_contain_conversation_text(
     assert isinstance(parsed, dict)
     assert parsed["event"] == "chat_turn"
     assert parsed["tables_truncated"] is False
+    assert parsed["tokens"]["interrupted_stream_calls"] == 0
     assert {key: parsed[key] for key in expected} == expected
 
 
@@ -5355,7 +5494,7 @@ async def test_complete_turn_emits_debug_report_as_very_last_frame(
     ) -> list[str]:
         usage.add(
             TokenCounts(prompt=10, candidates=5, thoughts=0, total=15),
-            phase="follow_ups",
+            role=GeminiRole.FOLLOW_UP,
             model="gemini-follow",
         )
         return list(_FOLLOW_UPS) if topics else []
@@ -5434,7 +5573,7 @@ async def test_complete_turn_emits_debug_report_as_very_last_frame(
     follow_up_calls = [
         c
         for c in calls
-        if isinstance(c, dict) and c.get("phase") == "follow_ups"
+        if isinstance(c, dict) and c.get("phase") == "follow_up"
     ]
     assert len(follow_up_calls) == 1
     assert follow_up_calls[0]["total_token_count"] == 15
@@ -5885,14 +6024,15 @@ def test_a_chart_block_naming_an_unfetched_table_gives_that_reason() -> None:
 async def test_a_default_chart_candidate_that_fails_is_not_recorded(
     monkeypatch: pytest.MonkeyPatch, turn: _Turn
 ) -> None:
-    # Test: The rejections recorded when the default chart floor tries a
+    # Test: The rejections recorded when the default chart floor builds a
     #   chart that cannot be drawn.
     # Situation: The digest ranks a cohort of four states that holds one
     #   date, and the answer does not include a chart block. The floor
-    #   first tries a line of the ranked states, which fails for lack of a
-    #   second date, and then a ranking chart.
-    # Expectation: The ranking chart is emitted, so the line was tried and
-    #   rejected, and the splitter does not record a rejection.
+    #   first builds a line of the ranked states, which fails for lack of a
+    #   second date, and then builds a ranking chart.
+    # Expectation: The ranking chart is emitted, so the line candidate was
+    #   rejected. The splitter does not record a rejection, and the turn's
+    #   record does not record one either.
     table = _make_state_cohort("t1", "Median_Income", "01 02 03 04")
     specification = AnalysisSpecification.model_validate(
         {"steps": [{"step_id": "s1", "script": "rank_cohort", "table": "t1"}]}
@@ -5923,4 +6063,480 @@ async def test_a_default_chart_candidate_that_fails_is_not_recorded(
     assert [chart.viz_type for chart in result.charts] == ["ranking"]
     (splitter,) = splitters
     assert splitter.chart_rejections == ()
+    assert ctx.record.chart_rejections == ()
     assert ctx.telemetry.charts_rejected == 0
+
+
+def _get_tokens(record: JsonObject) -> JsonObject:
+    """Returns the `tokens` object of a parsed `chat_turn` record."""
+    tokens = record["tokens"]
+    assert isinstance(tokens, dict)
+    return tokens
+
+
+@pytest.mark.asyncio
+async def test_dropped_chart_blocks_are_recorded_in_the_order_they_were_dropped(
+    turn: _Turn, structured_lines: list[str]
+) -> None:
+    # Test: The `chart_rejections` of a turn with accepted and dropped chart
+    #   blocks.
+    # Situation: The answer holds a map block that names `t9`, which the
+    #   turn did not fetch, then a line block over `t1` for France, and then
+    #   a bar block over `t1` that names a place the table does not hold.
+    # Expectation: The server emits the line chart and drops the two other
+    #   blocks. The record lists the two dropped blocks in the order of the
+    #   answer, with the indexes 0 and 1, the kinds `map` and `bar`, and the
+    #   reason codes `unknown_table` and `unknown_place`. `charts_rejected`
+    #   is 2, and the one chart has the origin `model`.
+    turn.answer = (
+        "France is growing.\n\n"
+        '```chart\n{"kind": "map", "tables": ["t9"], "title": "Ghost"}\n```\n\n'
+        '```chart\n{"kind": "line", "tables": ["t1"], '
+        '"places": ["country/FRA"], "title": "Population of France"}\n```\n\n'
+        '```chart\n{"kind": "bar", "tables": ["t1"], '
+        '"places": ["country/DEU"], "title": "Germany"}\n```\n'
+    )
+
+    await chat_pipeline.run_turn(_TRANSCRIPT, turn.emit)
+
+    record = _get_chat_turn_record(structured_lines)
+    assert record["chart_rejections"] == [
+        {"index": 0, "kind": "map", "reason": "unknown_table"},
+        {"index": 1, "kind": "bar", "reason": "unknown_place"},
+    ]
+    assert record["charts_rejected"] == 2
+    assert record["charts"] == [{**_LOGGED_FRANCE_CHART, "origin": "model"}]
+
+
+@pytest.mark.asyncio
+async def test_a_chart_block_that_was_not_parsed_is_recorded_without_a_kind(
+    turn: _Turn, structured_lines: list[str]
+) -> None:
+    # Test: The `kind` of a chart block that the server drops before it
+    #   parses the block.
+    # Situation: The answer holds a chart block whose body is not valid
+    #   JSON, and it ends inside a second chart block that the model did not
+    #   close.
+    # Expectation: The record lists both blocks with `kind` `null`. The
+    #   first has the reason `invalid_specification`, and the second has the
+    #   reason `unclosed_block`.
+    turn.answer = (
+        "France is growing.\n\n"
+        '```chart\n{"kind": "line", "tables": ["t1"\n```\n\n'
+        '```chart\n{"kind": "line", "tables": ["t1"], "title": "Population"}'
+    )
+
+    await chat_pipeline.run_turn(_TRANSCRIPT, turn.emit)
+
+    record = _get_chat_turn_record(structured_lines)
+    assert record["chart_rejections"] == [
+        {"index": 0, "kind": None, "reason": "invalid_specification"},
+        {"index": 1, "kind": None, "reason": "unclosed_block"},
+    ]
+    assert record["charts_rejected"] == 2
+
+
+@pytest.mark.asyncio
+async def test_a_turn_that_fails_in_synthesis_records_the_blocks_dropped_before(
+    monkeypatch: pytest.MonkeyPatch, turn: _Turn, structured_lines: list[str]
+) -> None:
+    # Test: The `chart_rejections` of a turn whose synthesis stream breaks.
+    # Situation: The synthesis stream yields a paragraph and a line block
+    #   that names `t9`, which the turn did not fetch, and then raises
+    #   `GeminiStreamError`.
+    # Expectation: The turn ends as an error with the reason
+    #   `synthesis_stream_error`. Its record still lists the block that the
+    #   server dropped before the failure, and `charts_rejected` is 1.
+    async def stream_broken() -> AsyncGenerator[StreamChunk]:
+        yield StreamChunk(
+            "text",
+            "France is growing.\n\n"
+            '```chart\n{"kind": "line", "tables": ["t9"], "title": "Ghost"}'
+            "\n```\n\n",
+        )
+        raise GeminiStreamError("HTTP 503", is_retryable=True)
+
+    async def start_synthesis(**_: object) -> AsyncGenerator[StreamChunk]:
+        return stream_broken()
+
+    monkeypatch.setattr(chat_pipeline, "async_gemini_stream", start_synthesis)
+
+    await chat_pipeline.run_turn(_TRANSCRIPT, turn.emit)
+
+    record = _get_chat_turn_record(structured_lines)
+    assert record["terminal_state"] == "error"
+    assert record["outcome_reason"] == "synthesis_stream_error"
+    assert record["chart_rejections"] == [
+        {"index": 0, "kind": "line", "reason": "unknown_table"}
+    ]
+    assert record["charts_rejected"] == 1
+
+
+@pytest.mark.asyncio
+async def test_more_than_ten_dropped_chart_blocks_are_capped_in_the_record(
+    turn: _Turn, structured_lines: list[str]
+) -> None:
+    # Test: The cap on `chart_rejections` of a turn.
+    # Situation: The answer holds twelve map blocks that name `t9`, which
+    #   the turn did not fetch.
+    # Expectation: The record lists the first ten dropped blocks, with the
+    #   indexes 0 to 9, and `charts_rejected` is 12.
+    block = '```chart\n{"kind": "map", "tables": ["t9"], "title": "Ghost"}\n```'
+    turn.answer = "France is growing.\n\n" + "\n\n".join([block] * 12)
+
+    await chat_pipeline.run_turn(_TRANSCRIPT, turn.emit)
+
+    record = _get_chat_turn_record(structured_lines)
+    assert record["chart_rejections"] == [
+        {"index": index, "kind": "map", "reason": "unknown_table"}
+        for index in range(10)
+    ]
+    assert record["charts_rejected"] == 12
+
+
+@pytest.mark.asyncio
+async def test_run_synthesis_phase_records_the_dropped_blocks_on_abort(
+    monkeypatch: pytest.MonkeyPatch, turn: _Turn
+) -> None:
+    # Test: The dropped chart blocks on the turn's record when the synthesis
+    #   phase aborts.
+    # Situation: The synthesis stream yields a paragraph and a line block
+    #   that names `t9`, which the turn did not fetch, and then raises
+    #   `GeminiStreamError`.
+    # Expectation: The phase aborts with `SYNTHESIS_STREAM_ERROR`, and the
+    #   turn's record holds the rejection of the block, with the reason
+    #   `UNKNOWN_TABLE` and the kind `line`.
+    async def stream_broken() -> AsyncGenerator[StreamChunk]:
+        yield StreamChunk(
+            "text",
+            "France is growing.\n\n"
+            '```chart\n{"kind": "line", "tables": ["t9"], "title": "Ghost"}'
+            "\n```\n\n",
+        )
+        raise GeminiStreamError("HTTP 503", is_retryable=True)
+
+    async def start_synthesis(**_: object) -> AsyncGenerator[StreamChunk]:
+        return stream_broken()
+
+    ctx, _ = _make_synthesis_context(monkeypatch, turn, "")
+    monkeypatch.setattr(chat_pipeline, "async_gemini_stream", start_synthesis)
+    discovery = _make_series_discovery(ctx)
+
+    with pytest.raises(chat_pipeline.TurnAbortedError) as exc_info:
+        await chat_pipeline.run_synthesis_phase(ctx, discovery)
+
+    assert exc_info.value.error_type == ErrorType.SYNTHESIS_STREAM_ERROR
+    assert ctx.record.chart_rejections == (
+        ChartRejection(ChartRejectionReason.UNKNOWN_TABLE, "line"),
+    )
+    assert ctx.telemetry.charts_rejected == 1
+
+
+@pytest.mark.asyncio
+async def test_a_turn_that_sends_three_follow_ups_records_their_number(
+    monkeypatch: pytest.MonkeyPatch, turn: _Turn, structured_lines: list[str]
+) -> None:
+    # Test: `follow_ups_emitted` of a turn that sends follow-up questions.
+    # Situation: Follow-up generation returns three questions, and the
+    #   server sends them to the browser.
+    # Expectation: The record has `follow_ups_emitted` 3 and
+    #   `follow_ups_canceled` false, and the line does not hold the text of
+    #   a question.
+    questions = [
+        "And what about Spain?",
+        "How did Germany change?",
+        "Which country grew fastest?",
+    ]
+
+    async def generate_three(*args: object) -> list[str]:
+        return list(questions)
+
+    monkeypatch.setattr(
+        chat_pipeline, "generate_follow_up_questions", generate_three
+    )
+
+    await chat_pipeline.run_turn(_TRANSCRIPT, turn.emit)
+
+    assert turn.events[-1] == ("follow_ups", {"follow_up_questions": questions})
+    record = _get_chat_turn_record(structured_lines)
+    assert record["follow_ups_emitted"] == 3
+    assert record["follow_ups_canceled"] is False
+    for question in questions:
+        assert question not in structured_lines[0]
+
+
+async def _hang_follow_up_request(**_: object) -> GeminiResponse:
+    """Plays a follow-up model call that does not return."""
+    await asyncio.Event().wait()
+    raise AssertionError("unreachable")
+
+
+async def _fail_follow_up_request(**_: object) -> GeminiResponse:
+    """Plays a follow-up model call that Gemini fails."""
+    raise GeminiError("HTTP 503", is_retryable=True)
+
+
+async def _answer_follow_up_request_without_text(
+    **_: object,
+) -> GeminiResponse:
+    """Plays a follow-up model call that returns an empty reply."""
+    return GeminiResponse(text="")
+
+
+@pytest.mark.parametrize(
+    "request_follow_ups",
+    [
+        pytest.param(_hang_follow_up_request, id="times_out"),
+        pytest.param(_fail_follow_up_request, id="fails"),
+        pytest.param(
+            _answer_follow_up_request_without_text, id="returns_nothing"
+        ),
+    ],
+)
+@pytest.mark.asyncio
+async def test_a_follow_up_call_without_questions_is_not_a_cancellation(
+    monkeypatch: pytest.MonkeyPatch,
+    turn: _Turn,
+    structured_lines: list[str],
+    request_follow_ups: Callable[..., Any],
+) -> None:
+    # Test: The follow-up keys of a turn whose follow-up call does not
+    #   produce questions.
+    # Situation: The turn runs the real follow-up generation with a
+    #   `follow_up` prompt. Its model call does not return within the
+    #   follow-up timeout, which is shortened to 10 ms, or Gemini fails it,
+    #   or it returns an empty reply.
+    # Expectation: The turn completes without a `follow_ups` event. The
+    #   record has `follow_ups_emitted` 0 and `follow_ups_canceled` false,
+    #   because the client did not disconnect.
+    _use_config(
+        monkeypatch,
+        AgentConfig(
+            prompts=Prompts(
+                discovery="Gather data.",
+                synthesis="Write prose.",
+                follow_up="Suggest questions.",
+            )
+        ),
+    )
+    monkeypatch.setattr(follow_up_module, "FOLLOW_UP_TIMEOUT_SECONDS", 0.01)
+    monkeypatch.setattr(
+        follow_up_module, "async_gemini_request", request_follow_ups
+    )
+    monkeypatch.setattr(
+        chat_pipeline,
+        "generate_follow_up_questions",
+        follow_up_module.generate_follow_up_questions,
+    )
+
+    await chat_pipeline.run_turn(_TRANSCRIPT, turn.emit)
+
+    assert "follow_ups" not in turn.list_event_names()
+    record = _get_chat_turn_record(structured_lines)
+    assert record["terminal_state"] == "complete"
+    assert record["follow_ups_emitted"] == 0
+    assert record["follow_ups_canceled"] is False
+
+
+@pytest.mark.asyncio
+async def test_questions_that_the_server_fails_to_send_are_not_counted(
+    monkeypatch: pytest.MonkeyPatch, turn: _Turn, structured_lines: list[str]
+) -> None:
+    # Test: `follow_ups_emitted` when the server cannot send the questions.
+    # Situation: Follow-up generation returns one question, and the callback
+    #   that emits frames raises when it receives the `follow_ups` frame.
+    # Expectation: The turn stays complete, and the record has
+    #   `follow_ups_emitted` 0, because the browser did not receive the
+    #   question.
+    def emit_until_the_follow_ups(frame: SseFrame) -> None:
+        if frame.event == "follow_ups":
+            raise RuntimeError("The stream is closed")
+        turn.emit(frame)
+
+    await chat_pipeline.run_turn(_TRANSCRIPT, emit_until_the_follow_ups)
+
+    assert "follow_ups" not in turn.list_event_names()
+    record = _get_chat_turn_record(structured_lines)
+    assert record["terminal_state"] == "complete"
+    assert record["follow_ups_emitted"] == 0
+    assert record["follow_ups_canceled"] is False
+
+
+def _make_sdk_text_chunk(text: str) -> types.GenerateContentResponse:
+    """Returns one SDK stream chunk of `text` that does not report tokens."""
+    return types.GenerateContentResponse(
+        candidates=[
+            types.Candidate(
+                content=types.Content(parts=[types.Part(text=text)])
+            )
+        ]
+    )
+
+
+def _use_gemini_client_for_synthesis(
+    monkeypatch: pytest.MonkeyPatch,
+    chunks: AsyncIterator[types.GenerateContentResponse],
+) -> None:
+    """Makes synthesis read `chunks` through the real Gemini client.
+
+    The `turn` fixture replaces `async_gemini_stream`. This helper puts the
+    real function back and replaces the SDK below it, so that the client's
+    own accounting of a stream that is cut off runs in the turn.
+    """
+
+    async def generate_content_stream(
+        **_: object,
+    ) -> AsyncIterator[types.GenerateContentResponse]:
+        return chunks
+
+    sdk = SimpleNamespace(
+        aio=SimpleNamespace(
+            models=SimpleNamespace(
+                generate_content_stream=generate_content_stream
+            )
+        )
+    )
+
+    async def prepare_call(*args: object, **kwargs: object) -> SimpleNamespace:
+        return SimpleNamespace(client=sdk, contents=[], config=None)
+
+    monkeypatch.setattr(gemini_client, "_prepare_call", prepare_call)
+    monkeypatch.setattr(
+        chat_pipeline, "async_gemini_stream", gemini_client.async_gemini_stream
+    )
+
+
+@pytest.mark.asyncio
+async def test_a_turn_canceled_in_synthesis_records_the_stream_as_interrupted(
+    monkeypatch: pytest.MonkeyPatch, turn: _Turn, structured_lines: list[str]
+) -> None:
+    # Test: `tokens.interrupted_stream_calls` of a turn that the client
+    #   cancels in the middle of synthesis.
+    # Situation: Synthesis runs through the real Gemini client. Its stream
+    #   yields one paragraph and then does not yield again. The chunk
+    #   carries a usage object that holds the traffic type and does not hold
+    #   any of the four token counts, as on Vertex AI. The test cancels the
+    #   turn while it waits for the next chunk.
+    # Expectation: The turn ends as `canceled`. The Gemini client counts the
+    #   stream when the turn closes it, which is before the agent loop
+    #   writes the record, so the one record has
+    #   `tokens.interrupted_stream_calls` 1. The record does not list a
+    #   synthesis call, and `follow_ups_canceled` is false.
+    is_waiting = asyncio.Event()
+
+    async def stream_then_wait() -> AsyncIterator[
+        types.GenerateContentResponse
+    ]:
+        chunk = _make_sdk_text_chunk("First paragraph.\n\n")
+        chunk.usage_metadata = types.GenerateContentResponseUsageMetadata(
+            traffic_type=types.TrafficType.ON_DEMAND
+        )
+        yield chunk
+        is_waiting.set()
+        await asyncio.Event().wait()
+
+    _use_gemini_client_for_synthesis(monkeypatch, stream_then_wait())
+    task = asyncio.create_task(chat_pipeline.run_turn(_TRANSCRIPT, turn.emit))
+    async with asyncio.timeout(1):
+        await is_waiting.wait()
+
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+
+    record = _get_chat_turn_record(structured_lines)
+    assert record["terminal_state"] == "canceled"
+    assert _get_tokens(record) == {
+        "prompt_token_count": 0,
+        "candidates_token_count": 0,
+        "thoughts_token_count": 0,
+        "total_token_count": 0,
+        "call_count": 0,
+        "interrupted_stream_calls": 1,
+    }
+    assert record["token_calls"] == []
+    assert record["follow_ups_canceled"] is False
+
+
+@pytest.mark.parametrize(
+    "first_text",
+    [
+        pytest.param(None, id="before_the_first_chunk"),
+        pytest.param("First paragraph.\n\n", id="after_the_first_chunk"),
+    ],
+)
+@pytest.mark.asyncio
+async def test_a_stalled_synthesis_stream_is_recorded_as_interrupted(
+    monkeypatch: pytest.MonkeyPatch,
+    turn: _Turn,
+    structured_lines: list[str],
+    first_text: str | None,
+) -> None:
+    # Test: `tokens.interrupted_stream_calls` of a turn whose synthesis
+    #   stream stalls.
+    # Situation: Synthesis runs through the real Gemini client, and the
+    #   stream timeout is shortened to 10 ms. The stream does not yield its
+    #   first chunk, or it yields one paragraph without token counts and
+    #   then does not yield again.
+    # Expectation: The turn ends as an error with the reason
+    #   `synthesis_stream_error`, and its record has
+    #   `tokens.interrupted_stream_calls` 1 and does not list a synthesis
+    #   call.
+    async def stream_then_stall() -> AsyncIterator[
+        types.GenerateContentResponse
+    ]:
+        if first_text is not None:
+            yield _make_sdk_text_chunk(first_text)
+        await asyncio.Event().wait()
+
+    monkeypatch.setattr(chat_pipeline, "SYNTHESIS_CHUNK_TIMEOUT_SECONDS", 0.01)
+    _use_gemini_client_for_synthesis(monkeypatch, stream_then_stall())
+
+    await chat_pipeline.run_turn(_TRANSCRIPT, turn.emit)
+
+    record = _get_chat_turn_record(structured_lines)
+    assert record["terminal_state"] == "error"
+    assert record["outcome_reason"] == "synthesis_stream_error"
+    assert _get_tokens(record)["interrupted_stream_calls"] == 1
+    assert record["token_calls"] == []
+
+
+@pytest.mark.asyncio
+async def test_a_synthesis_stream_that_ends_is_listed_and_not_interrupted(
+    monkeypatch: pytest.MonkeyPatch, turn: _Turn, structured_lines: list[str]
+) -> None:
+    # Test: The token keys of a turn whose synthesis stream runs to its end.
+    # Situation: Synthesis runs through the real Gemini client. Its stream
+    #   yields the answer in one chunk that reports token counts, and then
+    #   ends.
+    # Expectation: The record lists one token call with the role
+    #   `synthesis`, and `tokens.interrupted_stream_calls` is 0.
+    async def stream_answer() -> AsyncIterator[types.GenerateContentResponse]:
+        chunk = _make_sdk_text_chunk(_ANSWER)
+        chunk.usage_metadata = types.GenerateContentResponseUsageMetadata(
+            prompt_token_count=11,
+            candidates_token_count=7,
+            thoughts_token_count=5,
+            total_token_count=23,
+        )
+        yield chunk
+
+    _use_gemini_client_for_synthesis(monkeypatch, stream_answer())
+
+    await chat_pipeline.run_turn(_TRANSCRIPT, turn.emit)
+
+    record = _get_chat_turn_record(structured_lines)
+    assert record["terminal_state"] == "complete"
+    assert _get_tokens(record) == {
+        "prompt_token_count": 11,
+        "candidates_token_count": 7,
+        "thoughts_token_count": 5,
+        "total_token_count": 23,
+        "call_count": 1,
+        "interrupted_stream_calls": 0,
+    }
+    token_calls = record["token_calls"]
+    assert isinstance(token_calls, list)
+    assert [call["role"] for call in token_calls if isinstance(call, dict)] == [
+        "synthesis"
+    ]

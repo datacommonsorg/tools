@@ -17,9 +17,11 @@ This module records what the Architecture document's telemetry contract
 (section 4.5) allows and nothing else: per-phase spans and durations, token
 counts, MCP tool-loop iteration counts, tool names, and the terminal state of
 each turn. It never records prompts, responses, tool arguments, raw MCP
-payloads, user identifiers, or client IP addresses. The only identifiers it
-records are the turn ID and the conversation ID, and the server creates both
-from random bytes.
+payloads, user identifiers, or client IP addresses. The identifiers that it
+records are the turn ID and the conversation ID, which the server creates
+from random bytes, and the Data Commons identifiers in the `chat_turn`
+record. The server takes each of those from a fetched table that returned
+rows.
 
 This module writes two streams of output, each formatted as one JSON object
 per line on stdout so Cloud Logging parses every line as a structured entry.
@@ -30,7 +32,7 @@ instrumentation that records a URL, a client address, or message text cannot
 leak it regardless of its own configuration. The second stream consists of
 structured JSON records written to stdout: `chat_turn` and
 `transcript_rejected` records (frozen dataclasses extending `StructuredRecord`
-and serialized by `write_structured_record`), and daily token budget threshold
+and serialized by `serialize_record_json`), and daily token budget threshold
 transitions (`record_budget_event`).
 
 Content capture on the google-genai instrumentation is also switched off at
@@ -75,6 +77,7 @@ from opentelemetry.util.genai.environment_variables import (
 from opentelemetry.util.types import AnyValue
 
 from narratives_agent.analytics.metrics import ScriptName
+from narratives_agent.config_model import GeminiRole
 from narratives_agent.gemini.schemas import QueryPattern
 from narratives_agent.json_value import JsonObject, json_safe
 
@@ -93,6 +96,29 @@ TURN_PHASES: tuple[TurnPhase, ...] = get_args(TurnPhase.__value__)
 NESTED_PHASES: Mapping[TurnPhase, TurnPhase] = MappingProxyType(
     {"processing": "discovery"}
 )
+
+# `ToolName` lists the names under which a turn counts a tool call: the three
+# MCP discovery tools, the three fetch functions and the two terminal
+# functions that the server runs itself, and `unknown` for a name that the
+# server did not declare to the model. The discovery loop defines the tools
+# and the functions, and this module cannot import it, so a test in
+# `workflows/mcp_loop_test.py` compares this list with the loop's names.
+type ToolName = Literal[
+    "search_indicators",
+    "search_child_indicators",
+    "get_variable_metadata",
+    "fetch_observations",
+    "fetch_child_observations",
+    "fetch_multi_entity_observations",
+    "submit_specification",
+    "report_unavailable",
+    "unknown",
+]
+TOOL_NAMES: frozenset[ToolName] = frozenset(get_args(ToolName.__value__))
+
+# `ToolActor` says who made a tool call. The value is `model` when the model
+# asked for the call, and `server` when the server made the call on its own.
+type ToolActor = Literal["model", "server"]
 
 # `MAX_RECORD_LINE_BYTES` is the size that one structured line must stay
 # under. Container runtimes split a stdout line at 16 KiB, and Cloud Logging
@@ -330,15 +356,33 @@ class StructuredRecord:
     schema_version: int
 
 
+def serialize_record_json(value: object) -> str:
+    """Returns a structured record, or a part of one, as compact JSON.
+
+    This function is the only place that serializes a structured record, so
+    a caller that measures a record or one of its parts with it gets the
+    size that `write_structured_record` writes. The keys of a dataclass are
+    its fields, in declaration order. The function writes a number that is
+    not finite as `null`, because JSON cannot represent it.
+
+    Args:
+        value: The record, or a value that a field of a record holds.
+
+    Returns:
+        The JSON text, without whitespace between its tokens.
+
+    Raises:
+        TypeError: If `value` holds a value that JSON cannot represent.
+    """
+    return json.dumps(json_safe(value), separators=(",", ":"), allow_nan=False)
+
+
 def write_structured_record(record: StructuredRecord) -> None:
     """Writes `record` to stdout as one line of compact JSON.
 
-    This function is the only place that serializes a structured record.
-    The keys of the line are the fields of `record`, in declaration order.
-    The function writes a number that is not finite as `null`, because JSON
-    cannot represent it. When a serialized line exceeds
-    `MAX_RECORD_LINE_BYTES`, the function logs a warning on the module logger
-    and still writes the line.
+    The line is the text that `serialize_record_json` returns for `record`.
+    When the line exceeds `MAX_RECORD_LINE_BYTES`, the function logs a
+    warning on the module logger and still writes the line.
 
     Args:
         record: The record to write.
@@ -347,7 +391,7 @@ def write_structured_record(record: StructuredRecord) -> None:
         TypeError: If a field of `record` holds a value that JSON cannot
             represent.
     """
-    line = json.dumps(json_safe(record), separators=(",", ":"), allow_nan=False)
+    line = serialize_record_json(record)
     line_bytes = len(line.encode("utf-8"))
     if line_bytes > MAX_RECORD_LINE_BYTES:
         _logger.warning(
@@ -455,14 +499,14 @@ class TokenCallRecord:
     """Holds the token counts and attribution of one Gemini call.
 
     Attributes:
-        phase: Pipeline phase or Gemini role name (for example, "discovery").
+        role: The role that the call ran in.
         model: The model name that answered the call.
         round_number: 1-based discovery round number, or None for non-round
             calls.
         counts: The token counts reported for the call.
     """
 
-    phase: str
+    role: GeminiRole
     model: str
     round_number: int | None
     counts: TokenCounts
@@ -477,6 +521,9 @@ class TokenUsage:
         candidates_token_count: Total candidate output tokens across the turn.
         thoughts_token_count: Total reasoning thought tokens across the turn.
         total_token_count: Total tokens reported across the turn.
+        interrupted_stream_calls: The number of streamed calls that stopped
+            before their end and before any token counts had arrived. Gemini
+            may bill such a call, and the totals do not include it.
         calls: The list of per-call token records for attributed calls.
     """
 
@@ -484,25 +531,27 @@ class TokenUsage:
     candidates_token_count: int = 0
     thoughts_token_count: int = 0
     total_token_count: int = 0
+    interrupted_stream_calls: int = 0
     calls: list[TokenCallRecord] = field(default_factory=list)
 
     def add(
         self,
         counts: TokenCounts | None,
         *,
-        phase: str = "",
+        role: GeminiRole | None = None,
         model: str = "",
         round_number: int | None = None,
     ) -> None:
         """Adds one call's token counts to the totals; `None` adds nothing.
 
-        When `phase` and `model` are non-empty, a `TokenCallRecord` is appended
-        to `calls`.
+        When the call has a role and a model name, a `TokenCallRecord` is
+        appended to `calls`.
 
         Args:
             counts: The token counts from one Gemini call, or `None` when the
                 call reported no usage metadata.
-            phase: Optional phase or role name attributing the call.
+            role: The role that the call ran in, or `None` for a call that
+                only adds to the totals.
             model: Optional model name answering the call.
             round_number: Optional 1-based discovery round number.
         """
@@ -512,15 +561,19 @@ class TokenUsage:
         self.candidates_token_count += counts.candidates
         self.thoughts_token_count += counts.thoughts
         self.total_token_count += counts.total
-        if phase and model:
+        if role is not None and model:
             self.calls.append(
                 TokenCallRecord(
-                    phase=phase,
+                    role=role,
                     model=model,
                     round_number=round_number,
                     counts=counts,
                 )
             )
+
+    def record_interrupted_stream(self) -> None:
+        """Counts one streamed call that stopped before its token counts."""
+        self.interrupted_stream_calls += 1
 
 
 def compute_elapsed_ms(start: float) -> float:
@@ -550,7 +603,8 @@ class TurnTelemetry:
     Attributes:
         turn_id: Server-minted correlation ID for the turn.
         tokens: Accumulated Gemini token counts for the turn.
-        tool_calls: Counter of MCP tool and server function calls by name.
+        tool_calls: The number of MCP tool and server function calls, for
+            each pair of a tool name and the actor that made the call.
         mcp_iterations: Number of discovery loop iterations executed.
         phase_durations_ms: Total duration in milliseconds for each phase name.
         pattern: The analytical pattern assigned during the classify phase, or
@@ -571,7 +625,9 @@ class TurnTelemetry:
 
     turn_id: str = field(default_factory=lambda: uuid.uuid4().hex)
     tokens: TokenUsage = field(default_factory=TokenUsage)
-    tool_calls: Counter[str] = field(default_factory=Counter)
+    tool_calls: Counter[tuple[ToolName, ToolActor]] = field(
+        default_factory=Counter
+    )
     mcp_iterations: int = 0
     phase_durations_ms: dict[TurnPhase, float] = field(default_factory=dict)
     # The analytical pattern assigned during the classify phase, or `None` when
@@ -621,13 +677,16 @@ class TurnTelemetry:
             )
             span.end()
 
-    def record_tool_call(self, name: str) -> None:
-        """Counts one MCP tool or server function call by name.
+    def record_tool_call(self, tool: ToolName, actor: ToolActor) -> None:
+        """Counts one MCP tool or server function call.
 
         Args:
-            name: The declared tool or function name (or `"unknown"`).
+            tool: The name of the tool or function, or `unknown` for a name
+                that the server did not declare to the model.
+            actor: Whether the model asked for the call or the server made
+                it on its own.
         """
-        self.tool_calls[name] += 1
+        self.tool_calls[(tool, actor)] += 1
 
     def elapsed_ms(self) -> float:
         """Returns elapsed turn milliseconds, matching duration_ms after finish.
@@ -674,7 +733,9 @@ class TurnTelemetry:
             "narratives.terminal_state": state,
             "narratives.mcp_iterations": self.mcp_iterations,
             "narratives.tool_call_count": sum(self.tool_calls.values()),
-            "narratives.tool_names": sorted(self.tool_calls),
+            "narratives.tool_names": sorted(
+                {tool for tool, _ in self.tool_calls}
+            ),
             "narratives.scripts": list(self.scripts),
             "narratives.tables_fetched": self.tables_fetched,
             "narratives.total_rows_fetched": self.total_rows_fetched,
@@ -733,6 +794,7 @@ __all__ = [
     "MAX_RECORD_LINE_BYTES",
     "NESTED_PHASES",
     "SERVICE_NAME",
+    "TOOL_NAMES",
     "TURN_PHASES",
     "BudgetEventState",
     "ErrorType",
@@ -743,6 +805,8 @@ __all__ = [
     "TokenCallRecord",
     "TokenCounts",
     "TokenUsage",
+    "ToolActor",
+    "ToolName",
     "TurnPhase",
     "TurnTelemetry",
     "compute_elapsed_ms",
@@ -751,5 +815,6 @@ __all__ = [
     "format_span",
     "instrument_app",
     "record_budget_event",
+    "serialize_record_json",
     "write_structured_record",
 ]

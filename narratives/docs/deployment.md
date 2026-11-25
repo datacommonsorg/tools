@@ -579,12 +579,15 @@ tokens remaining for the day; uneven errors are expected under per-instance
 tracking until global token tracking is introduced.
 
 Turns already in flight finish and record tokens from their completed Gemini
-calls in `finally`. Because the SDK reports `usage_metadata` only on the final
+calls in `finally`. Because the SDK reports token counts only on the final
 chunk of a streamed call or after a non-streaming call returns, tokens from
 streams canceled by client disconnect before the final chunk or from timed-out
 model calls are not added to the instance's counter even though Gemini or
-Vertex AI may bill them. Counters reset automatically when the UTC date
-advances.
+Vertex AI may bill them. The `chat_turn` record of a turn counts its
+discovery and synthesis calls that were cut off in this way in
+`tokens.interrupted_stream_calls` (see
+[The `chat_turn` record](#the-chat_turn-record)). Counters reset
+automatically when the UTC date advances.
 
 - **Cloud Run:**
 
@@ -883,11 +886,13 @@ returned rows.
 
 A container runtime splits a line that is longer than 16 KiB across multiple
 log entries, and Cloud Logging cannot parse a split line as one JSON entry.
-The server therefore drops tables from the end of `tables` until a
-`chat_turn` record is at most 14 KiB. A record whose other lists are long can
-still be larger than 14 KiB after the server has dropped every table. The
-server writes that record anyway, and it logs a warning with the name of the
-record and the size of the line.
+The server therefore keeps every `chat_turn` record at 14 KiB or less. When
+a record would be longer, the server drops items from the ends of its lists
+and names the shortened lists in `truncated_lists` (see the note on
+`truncated_lists` below). The part of a record outside those lists is about
+2 KiB at most, so the limit holds for every turn. If a structured record of
+another kind is longer than 14 KiB, the server writes it anyway and logs a
+warning with the name of the record and the size of the line.
 
 #### The `chat_turn` record
 
@@ -895,7 +900,8 @@ The server writes one `chat_turn` record (`schema_version` 2) when a chat
 turn ends. It writes the record for turns that complete, turns that it
 refuses, turns that fail, turns that the client cancels, and turns that end
 because chat is disabled or the instance's daily token budget is exhausted.
-Every record has every key, and a value that does not apply is `null`.
+Every record has every key. A value that does not apply is `null`, `false`,
+`0`, or an empty list.
 
 | Key | Type | Value |
 | :--- | :--- | :--- |
@@ -903,7 +909,7 @@ Every record has every key, and a value that does not apply is `null`.
 | `message` | string | `chat turn <terminal_state>` |
 | `event` | string | `chat_turn` |
 | `schema_version` | integer | `2` |
-| `build_sha` | string or null | `BUILD_SHA` of the deployment |
+| `build_sha` | string or null | `BUILD_SHA` of the deployment, up to 256 characters |
 | `turn_id` | string | ID that the server creates for the turn |
 | `conversation_id` | string | ID of the turn's conversation |
 | `turn_index` | integer | Index of the turn in its conversation |
@@ -917,14 +923,16 @@ Every record has every key, and a value that does not apply is `null`.
 | `is_clarification` | boolean | Whether the answer is a clarification question |
 | `is_truncated` | boolean | Whether the search for data stopped at a limit |
 | `title_outcome` | string | `emitted`, `omitted`, or `not_requested` |
+| `follow_ups_emitted` | integer | Number of follow-up questions sent, 0 to 3 |
+| `follow_ups_canceled` | boolean | Whether the client disconnected during follow-ups |
 | `pattern` | string or null | Analytical pattern from the `classify` phase |
 | `duration_ms` | number | Duration of the turn |
 | `phase_durations` | list | Duration of each phase that ran |
 | `tokens` | object | Token totals of the turn |
 | `token_calls` | list | Token counts of each model call |
 | `mcp_iterations` | integer | Number of discovery rounds |
-| `tool_call_count` | integer | Number of tool calls |
-| `tool_call_counts` | list | Number of calls of each tool |
+| `tool_call_count` | integer | Number of tool calls by the model and the server |
+| `tool_call_counts` | list | Number of calls of each tool by each actor |
 | `tables_fetched` | integer | Number of observation tables fetched |
 | `total_rows_fetched` | integer | Number of observation rows fetched |
 | `tables_truncated` | boolean | Whether fetched tables were left out of `tables` |
@@ -938,8 +946,13 @@ Every record has every key, and a value that does not apply is `null`.
 | `charts_emitted` | integer | Charts in the answer |
 | `charts_rejected` | integer | Charts that the server dropped |
 | `charts` | list | Charts in the answer |
+| `chart_rejections` | list | Chart blocks that the server dropped |
+| `truncated_lists` | list of strings | Lists that the server shortened |
 
 More detail on some keys:
+
+- **`build_sha`:** The record holds the first 256 characters of a longer
+  `BUILD_SHA`.
 
 - **`conversation_id` and `turn_index`:** The turns of one conversation share
   a `conversation_id` (see
@@ -971,6 +984,16 @@ More detail on some keys:
   have data or did not reach synthesis. Read `emitted` and `omitted` only on
   `complete` turns. When synthesis fails part-way, the server records the
   outcome that it had reached.
+- **`follow_ups_emitted` and `follow_ups_canceled`:** `follow_ups_emitted`
+  is the number of follow-up questions that the server sent to the browser.
+  It is `0` when the turn did not reach the follow-up phase, and when the
+  follow-up call failed, timed out, or did not return a question.
+  `follow_ups_canceled` is `true` only when the client disconnected while
+  the server was generating the follow-up questions. Such a turn has
+  already delivered its answer, so its `terminal_state` is `complete` and
+  its `outcome` does not change. A turn that the client cancels earlier has
+  the `terminal_state` `canceled` and `follow_ups_canceled` `false`. The
+  record does not hold the text of a question.
 - **`pattern`:** The value is `null` on a `refused` turn and on a turn that
   ended before the `classify` phase assigned a pattern (including
   `model_armor_unavailable` and `classifier_unavailable`).
@@ -980,13 +1003,41 @@ More detail on some keys:
   `is_nested` is `true` for `processing`, because its time is also counted
   in `discovery`. Leave the nested items out of a sum of the durations.
 - **`tokens` and `token_calls`:** `tokens` holds `prompt_token_count`,
-  `candidates_token_count`, `thoughts_token_count`, `total_token_count`, and
-  `call_count`, which is the number of items in `token_calls`. Each item of
+  `candidates_token_count`, `thoughts_token_count`, `total_token_count`,
+  `call_count`, and `interrupted_stream_calls`. `call_count` is the number
+  of model calls that reported token counts. A call reported token counts
+  when its response held at least one of the four counts, including a count
+  of `0`. `token_calls` has one item for each of those calls, unless the
+  server shortened the list (see `truncated_lists`). Each item of
   `token_calls` has `role` (`classify`, `discovery`, `synthesis`,
   `follow_up`, or `compaction`), `model`, `round_number` (the discovery
   round, or `null` outside discovery), and the same four token counts.
-- **`tool_call_counts`:** The list has one item for each tool name, with
-  `tool` and `count`, and it is sorted by tool name.
+  `interrupted_stream_calls` is the number of discovery and synthesis calls
+  that stopped before their end and before any token counts had arrived.
+  Gemini reports the token counts of such a streamed call on the last chunk
+  of the stream, so a call that is cut off does not have counts, and Gemini
+  may still bill it. On Vertex AI, each earlier chunk carries usage
+  metadata without any of the four counts, and the server does not read
+  that as reported counts. A call counts when its stream fails after the
+  first chunk, and when the server stops reading it: a chunk does not
+  arrive within the synthesis timeout, the search for data reaches its time
+  limit, or the client disconnects. A request that fails before its first
+  chunk does not count. A call is counted either in `token_calls` or in
+  `interrupted_stream_calls`, and the token totals do not include the calls
+  that were cut off. The `classify`, `follow_up`, and `compaction` calls are
+  not streamed, so the server does not count them here when they time out.
+- **`tool_call_count` and `tool_call_counts`:** `tool_call_counts` has one
+  item for each pair of a tool and an actor that occurred, with `tool`,
+  `actor`, and `count`, sorted by tool name and then by actor. `actor` is
+  `model` when the model asked for the call, and `server` when the server
+  made the call on its own. The server makes two kinds of calls:
+  `get_variable_metadata`, when it requests variable metadata before a
+  specification runs, and `report_unavailable`, when it files the no-data
+  report itself after the search for data did not find any. `tool` is one
+  of the three MCP discovery tools, the three fetch functions,
+  `submit_specification`, `report_unavailable`, or `unknown` for a name
+  that the server did not declare to the model. `tool_call_count` is the
+  sum over all items, for both actors.
 - **`tables` and `tables_truncated`:** `tables` lists up to 20 fetched
   observation tables that returned at least one row, in fetch order. Derived
   tables and empty fetches are left out, while `tables_fetched` still counts
@@ -999,10 +1050,10 @@ More detail on some keys:
   and child type identify the cohort. Otherwise `parent_place_dcid` and
   `child_place_type` are `null`, and `place_dcids` lists up to 25 sorted place
   DCIDs that have rows in the table. When a turn has more than 20 qualifying
-  tables, or when keeping all of them would push the record past 14 KiB, the
-  server drops tables from the end of `tables` and sets `tables_truncated` to
-  `true`. Capping `place_dcids` at 25 inside one table does not set
-  `tables_truncated`.
+  tables, or when the server drops tables to keep the record within 14 KiB
+  (see `truncated_lists`), the server leaves tables out from the end of
+  `tables` and sets `tables_truncated` to `true`. Capping `place_dcids` at
+  25 inside one table does not set `tables_truncated`.
 - **`highlighted_places`:** The list has up to 25 distinct places from the
   steps of the turn's analysis that succeeded, in step order. The server
   includes only places that have rows in a non-empty fetched table of the
@@ -1066,6 +1117,43 @@ More detail on some keys:
   place with its child place type only when such a table covers that group.
   Fetched tables left out of `tables` by truncation count as well. The record
   does not hold the title or the unit of a chart.
+- **`chart_rejections`:** The list has up to ten chart blocks of the answer
+  that the server dropped, in the order in which it dropped them.
+  `charts_rejected` still counts every dropped block. Each item has `index`
+  (the position among the turn's dropped blocks, from 0), `kind`, and
+  `reason`. `kind` is the chart kind of the block, or `null` when the server
+  dropped the block before it parsed it. `reason` is `unknown_table`,
+  `table_unavailable`, `derived_table_not_chartable`,
+  `mixed_per_capita_and_raw`, `unit_mismatch`, `scaling_mismatch`,
+  `cohort_required`, `cohort_mismatch`, `unknown_place`,
+  `place_count_out_of_range`, `insufficient_line_dates`, `no_value_at_date`,
+  `no_value_for_place`, `empty_ranked_slice`, `date_not_shared`,
+  `variable_count_mismatch`, `empty_title`, `window_date_required`,
+  `chart_limit_reached`, `invalid_specification` (the block is not valid
+  JSON or does not match the chart grammar), `unclosed_block` (the answer
+  ended inside the block), `turn_without_data`, or `table_not_in_answer`.
+  A default chart that the server builds and cannot draw is not a chart
+  block of the answer, so it does not add an item. The record does not hold
+  any text of a dropped block.
+- **`truncated_lists`:** The list is empty for a record that fits in 14 KiB.
+  Otherwise the server drops whole items from the ends of eight lists until
+  the record fits, and `truncated_lists` names the lists that lost an item,
+  in the order of the keys above. The server shortens the lists in three
+  groups, and it empties every list of a group before it shortens a list of
+  the next group:
+  1. `tables`, `charts`, and `highlighted_places`, which hold the Data
+     Commons identifiers that make up most of a long record.
+  2. `chart_rejections`, `rejected_submissions`, `script_steps`, and
+     `tool_call_counts`, which say how the turn ran.
+  3. `token_calls`.
+
+  Within a group, the server takes each item from the list whose items are
+  the largest in total at that moment. The server does not shorten a list
+  inside an item, and it does not change a count: `tokens.call_count`,
+  `tool_call_count`, `tables_fetched`, `processing_retries`,
+  `charts_emitted`, and `charts_rejected` keep their values. A count that is
+  larger than its list, together with the name of the list in
+  `truncated_lists`, means that the server left items out for size.
 
 #### The `transcript_rejected` record
 
@@ -1096,8 +1184,13 @@ The turn span (`narratives.turn`) carries some of the same fields as
 attributes: `narratives.terminal_state`, `narratives.pattern`,
 `narratives.scripts`, `narratives.tables_fetched`,
 `narratives.total_rows_fetched`, `narratives.processing_retries`,
-`narratives.charts_emitted`, `narratives.charts_rejected`, and
-`narratives.title_outcome`. The span does not carry the turn ID. It shares a
+`narratives.charts_emitted`, `narratives.charts_rejected`,
+`narratives.title_outcome`, `narratives.tool_call_count`, and
+`narratives.tool_names`. `narratives.tool_call_count` is the number of tool
+calls by the model and by the server, as `tool_call_count` in the record,
+and `narratives.tool_names` lists each tool name once, sorted. The span does
+not say which actor made a call. The span does not carry the turn ID. It
+shares a
 trace ID with the HTTP request span, and a load balancer log can hold that
 trace ID next to the client's address. With the turn ID on the span, someone
 could join a `chat_turn` record to a client address.

@@ -21,7 +21,7 @@ from typing import Any
 import pytest
 from google.genai import types
 
-from narratives_agent.config_model import AgentConfig, Prompts
+from narratives_agent.config_model import AgentConfig, GeminiRole, Prompts
 from narratives_agent.gemini.client import GeminiBlockedError, GeminiError
 from narratives_agent.gemini.response import GeminiResponse
 from narratives_agent.workflows import follow_up
@@ -49,13 +49,14 @@ async def test_follow_ups_request_the_low_thinking_level(
     #   questions are generated for a question with one related topic.
     # Expectation: The request asks for `ThinkingLevel.LOW`. `gemini-3.8-flash`
     #   rejects `MINIMAL` with a 400 error. This call catches that error and
-    #   returns no questions, so the failure would be silent.
+    #   returns no questions, so the failure would be silent. The request
+    #   names the role `GeminiRole.FOLLOW_UP` for its token counts.
     levels: list[types.ThinkingLevel | None] = []
-    phases: list[str | None] = []
+    roles: list[object] = []
 
     async def request(**kwargs: Any) -> GeminiResponse:
         levels.append(kwargs.get("thinking_level"))
-        phases.append(kwargs.get("token_phase"))
+        roles.append(kwargs.get("token_role"))
         raise GeminiError("stubbed", is_retryable=False)
 
     monkeypatch.setattr(follow_up, "async_gemini_request", request)
@@ -67,7 +68,8 @@ async def test_follow_ups_request_the_low_thinking_level(
     )
 
     assert levels == [types.ThinkingLevel.LOW]
-    assert phases == ["follow_up"]
+    assert len(roles) == 1
+    assert roles[0] is GeminiRole.FOLLOW_UP
 
 
 @pytest.mark.asyncio

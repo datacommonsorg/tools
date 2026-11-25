@@ -21,8 +21,9 @@ Verifies these behaviors in `telemetry`:
 3. `format_span` drops every attribute outside its allowlist.
 4. A streamed request produces one request span, not one per ASGI message.
 5. `TurnTelemetry` records phases, tool names, and token counts on the turn
-   span. The span does not have the turn ID, and `finish` does not write a
-   structured line.
+   span. The span counts the tool calls of the model and of the server
+   together and names each tool once. The span does not have the turn ID,
+   and `finish` does not write a structured line.
 6. The stdout span exporter and the line handler write to the current
    `sys.stdout`, and the handler does not raise when writing fails.
 7. `flush_telemetry` writes spans still waiting in the batch processor, and
@@ -31,9 +32,12 @@ Verifies these behaviors in `telemetry`:
    once and is idempotent on subsequent calls.
 9. `write_structured_record` writes a record as one line of compact JSON,
    with its keys in the order of the dataclass fields and a non-finite
-   number as `null`.
+   number as `null`. The line is the text that `serialize_record_json`
+   returns, which also serializes a part of a record.
 10. `record_budget_event` emits content-free `daily_token_budget` JSON records
     at `WARNING` and `ERROR` severities.
+11. `TokenUsage` lists a call only when it has a role, and it counts
+    interrupted streamed calls apart from the token totals.
 """
 
 import io
@@ -73,6 +77,7 @@ from opentelemetry.util.genai.types import ContentCapturingMode
 from opentelemetry.util.genai.utils import get_content_capturing_mode
 
 from narratives_agent import telemetry
+from narratives_agent.config_model import GeminiRole
 
 _USER_QUERY = "What is the population of Secretville in 2021?"
 _SYSTEM_PROMPT = "You are the confidential narratives system prompt."
@@ -286,8 +291,8 @@ def test_finish_ends_the_turn_span_once_without_a_structured_line(
     turn = telemetry.TurnTelemetry()
     with turn.phase("discovery"):
         turn.mcp_iterations = 3
-        turn.record_tool_call("search_indicators")
-        turn.record_tool_call("fetch_observations")
+        turn.record_tool_call("search_indicators", "model")
+        turn.record_tool_call("fetch_observations", "model")
     turn.tokens.add(
         telemetry.TokenCounts(prompt=10, candidates=0, thoughts=0, total=15)
     )
@@ -318,6 +323,42 @@ def test_finish_ends_the_turn_span_once_without_a_structured_line(
     assert "error.type" not in attributes
     assert span.status.status_code is not StatusCode.ERROR
     assert structured_lines == []
+
+
+def test_the_turn_span_counts_the_calls_of_both_actors_and_names_each_tool_once(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Test: The tool attributes of the turn span when two actors call a tool.
+    # Situation: The module tracer records spans in memory. In one turn the
+    #   model calls `get_variable_metadata` once and `search_indicators`
+    #   once, and the server calls `get_variable_metadata` twice.
+    # Expectation: `narratives.tool_call_count` is 4, the sum over both
+    #   actors. `narratives.tool_names` holds each of the two tool names
+    #   once, sorted.
+    exporter = InMemorySpanExporter()
+    provider = TracerProvider()
+    provider.add_span_processor(SimpleSpanProcessor(exporter))
+    monkeypatch.setattr(telemetry, "_tracer", provider.get_tracer(__name__))
+    turn = telemetry.TurnTelemetry()
+    turn.record_tool_call("search_indicators", "model")
+    turn.record_tool_call("get_variable_metadata", "model")
+    turn.record_tool_call("get_variable_metadata", "server")
+    turn.record_tool_call("get_variable_metadata", "server")
+
+    turn.finish(telemetry.TerminalState.COMPLETE)
+
+    (span,) = exporter.get_finished_spans()
+    attributes = dict(span.attributes or {})
+    assert turn.tool_calls == {
+        ("search_indicators", "model"): 1,
+        ("get_variable_metadata", "model"): 1,
+        ("get_variable_metadata", "server"): 2,
+    }
+    assert attributes["narratives.tool_call_count"] == 4
+    assert attributes["narratives.tool_names"] == (
+        "get_variable_metadata",
+        "search_indicators",
+    )
 
 
 def test_the_turn_span_does_not_have_the_turn_id(
@@ -660,11 +701,13 @@ def test_configure_telemetry_installs_once(
 
 def test_token_usage_add_records_call_records_and_accumulates_totals() -> None:
     # Test: Token usage accumulation and per-call attribution.
-    # Situation: Multiple Gemini calls report usage metadata: some with phase,
-    #   model, and round, some without phase or model, and one with None counts.
-    # Expectation: Totals accumulate all non-None counts, only calls with
-    #   non-empty phase and model append TokenCallRecord instances to calls,
-    #   and None counts are ignored without appending to calls.
+    # Situation: Multiple Gemini calls report usage metadata: some with role,
+    #   model, and round, one without a role or a model, and one with None
+    #   counts.
+    # Expectation: Totals accumulate all non-None counts, only calls with a
+    #   role and a model append TokenCallRecord instances to calls, and None
+    #   counts are ignored without appending to calls. The usage object does
+    #   not count any of the calls as an interrupted stream.
     usage = telemetry.TokenUsage()
     counts1 = telemetry.TokenCounts(
         prompt=10, candidates=5, thoughts=2, total=17
@@ -674,15 +717,20 @@ def test_token_usage_add_records_call_records_and_accumulates_totals() -> None:
 
     usage.add(
         counts1,
-        phase="discovery",
+        role=GeminiRole.DISCOVERY,
         model="gemini-3.8-flash",
         round_number=1,
     )
     usage.add(counts2)
-    usage.add(None, phase="discovery", model="gemini-3.8-flash", round_number=2)
+    usage.add(
+        None,
+        role=GeminiRole.DISCOVERY,
+        model="gemini-3.8-flash",
+        round_number=2,
+    )
     usage.add(
         counts3,
-        phase="synthesis",
+        role=GeminiRole.SYNTHESIS,
         model="gemini-3.8-flash",
     )
 
@@ -692,17 +740,64 @@ def test_token_usage_add_records_call_records_and_accumulates_totals() -> None:
     assert usage.total_token_count == 28
     assert usage.calls == [
         telemetry.TokenCallRecord(
-            phase="discovery",
+            role=GeminiRole.DISCOVERY,
             model="gemini-3.8-flash",
             round_number=1,
             counts=counts1,
         ),
         telemetry.TokenCallRecord(
-            phase="synthesis",
+            role=GeminiRole.SYNTHESIS,
             model="gemini-3.8-flash",
             round_number=None,
             counts=counts3,
         ),
+    ]
+    assert usage.interrupted_stream_calls == 0
+
+
+def test_token_usage_does_not_list_a_call_that_has_a_role_without_a_model() -> (
+    None
+):
+    # Test: A call with a role and without a model name.
+    # Situation: One Gemini call reports token counts with the role
+    #   `classify` and an empty model name.
+    # Expectation: The counts are added to the totals, and `calls` stays
+    #   empty.
+    usage = telemetry.TokenUsage()
+
+    usage.add(
+        telemetry.TokenCounts(prompt=3, candidates=4, thoughts=0, total=7),
+        role=GeminiRole.CLASSIFY,
+    )
+
+    assert usage.total_token_count == 7
+    assert usage.calls == []
+
+
+def test_token_usage_counts_interrupted_streams_apart_from_the_totals() -> None:
+    # Test: The count of interrupted streamed calls.
+    # Situation: A turn records one call with token counts and two streamed
+    #   calls that stopped before their token counts arrived.
+    # Expectation: `interrupted_stream_calls` is 2. The token totals and
+    #   `calls` hold only the call that reported counts.
+    usage = telemetry.TokenUsage()
+    counts = telemetry.TokenCounts(
+        prompt=10, candidates=5, thoughts=2, total=17
+    )
+    usage.add(counts, role=GeminiRole.SYNTHESIS, model="gemini-3.8-flash")
+
+    usage.record_interrupted_stream()
+    usage.record_interrupted_stream()
+
+    assert usage.interrupted_stream_calls == 2
+    assert usage.total_token_count == 17
+    assert usage.calls == [
+        telemetry.TokenCallRecord(
+            role=GeminiRole.SYNTHESIS,
+            model="gemini-3.8-flash",
+            round_number=None,
+            counts=counts,
+        )
     ]
 
 
@@ -788,6 +883,30 @@ def test_write_structured_record_writes_one_line_of_compact_json(
     assert "\n" not in line
     assert line == _SAMPLE_LINE
     assert json.loads(line)["items"][0]["name"] == 'two\nlines "quoted"'
+
+
+def test_write_structured_record_writes_the_line_of_the_serializer(
+    structured_lines: list[str],
+) -> None:
+    # Test: The one serializer of structured records.
+    # Situation: A record holds a nested item. The test serializes the
+    #   record and the item alone with `serialize_record_json`, and writes
+    #   the record with `write_structured_record`.
+    # Expectation: The written line is exactly the text that the serializer
+    #   returned for the record. The text of the item alone is the part of
+    #   that line which holds the item, so the size of a part is its size in
+    #   the line.
+    item = _SampleItem(name='two\nlines "quoted"', ratio=0.5)
+    record = _make_sample_record(item)
+
+    telemetry.write_structured_record(record)
+
+    (line,) = structured_lines
+    assert line == telemetry.serialize_record_json(record)
+    assert line == _SAMPLE_LINE
+    item_text = telemetry.serialize_record_json(item)
+    assert item_text == '{"name":"two\\nlines \\"quoted\\"","ratio":0.5}'
+    assert line.endswith(f'"items":[{item_text}]}}')
 
 
 @pytest.mark.parametrize("value", [float("nan"), float("inf"), float("-inf")])

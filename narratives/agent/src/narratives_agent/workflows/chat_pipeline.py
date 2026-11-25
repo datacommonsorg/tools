@@ -374,7 +374,9 @@ async def _run_default_specification(
     with ctx.telemetry.phase("processing"):
         # A retry only drops tables from the initial default, so the initial
         # default references every table a retry can read.
-        await backfill_variable_metadata(specification, ctx.cache, capabilities)
+        await backfill_variable_metadata(
+            specification, ctx.cache, capabilities, ctx.telemetry
+        )
         outcome = await execute_specification(specification, ctx.cache)
         if isinstance(outcome, ProcessingDiagnostic):
             ctx.record.default_diagnostics.append(outcome)
@@ -669,9 +671,9 @@ async def run_synthesis_phase(
     primary result is appended. Opening the stream and reading each chunk
     are bounded by `SYNTHESIS_CHUNK_TIMEOUT_SECONDS`, so a stalled stream
     ends the turn rather than holding it open for the whole HTTP timeout.
-    The rendered user message, the raw output, and the emitted charts with
-    their origins are recorded on the turn's record, including when the
-    phase aborts.
+    The rendered user message, the raw output, the emitted charts with
+    their origins, and the chart blocks that the server dropped are recorded
+    on the turn's record, including when the phase aborts.
 
     Args:
         ctx: The turn context holding the transcript, config, telemetry, and
@@ -724,7 +726,7 @@ async def run_synthesis_phase(
                 thinking_level=role.thinking_level,
                 token_usage=ctx.telemetry.tokens,
                 include_thoughts=True,
-                token_phase=GeminiRole.SYNTHESIS.value,
+                token_role=GeminiRole.SYNTHESIS,
             )
     except TimeoutError as error:
         logger.warning(
@@ -804,6 +806,7 @@ async def run_synthesis_phase(
             )
             for index, chart in enumerate(splitter.charts)
         )
+        ctx.record.chart_rejections = splitter.chart_rejections
     return SynthesisPhaseResult(
         splitter.text,
         tuple(splitter.charts),
@@ -1020,9 +1023,12 @@ async def run_followups(
     This phase runs after the terminal event so the UI can display the
     answer and charts immediately and show the follow-up questions when they
     arrive. If there are no topics or generation fails, nothing is emitted.
+    The questions that the phase sent are recorded on the turn's record, and
+    so is a cancellation of the turn while the phase runs.
 
     Args:
-        ctx: The turn context holding the transcript, config, and telemetry.
+        ctx: The turn context holding the transcript, config, telemetry, and
+            record.
         discovery: The completed discovery phase result.
         charts: The resolved charts emitted during synthesis.
     """
@@ -1035,6 +1041,10 @@ async def run_followups(
         )
         if follow_ups:
             ctx.emit(FollowUpsFrame(follow_up_questions=follow_ups))
+            ctx.record.follow_up_questions = tuple(follow_ups)
+    except asyncio.CancelledError:
+        ctx.record.has_canceled_follow_ups = True
+        raise
     except Exception as error:
         logger.warning("Follow-up generation failed: %s", type(error).__name__)
 
