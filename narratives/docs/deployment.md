@@ -1041,21 +1041,24 @@ More detail on some keys:
   are `null`. `timed_out` is `true` when the run exceeded its time limit.
 - **`charts`:** The list has up to four charts, in the order in which they
   appear in the answer. Each item has `index` (from 0), `kind` (`line`, `bar`,
-  `map`, `ranking`, `scatter`, or `highlight`), `origin`, `variable_dcids`,
-  `facet_pins`, `parent_place_dcid`, `child_place_type`, `place_dcids`, and
-  `per_capita`. `origin` is `model` when the model wrote the chart, and
-  `default` when the server added a chart because the answer did not have one.
-  `variable_dcids` lists up to 10 variables. Each item of `facet_pins` has
-  `variable_dcid` and `facet_id`, and names the facet that the chart draws that
-  variable from. When a chart draws every place of one type inside a parent
+  `map`, `ranking`, `scatter`, or `highlight`), `origin`, `variables`,
+  `parent_place_dcid`, `child_place_type`, `place_dcids`, and `per_capita`.
+  `origin` is `model` when the model wrote the chart, and `default` when the
+  server added a chart because the answer did not have one. `variables` lists
+  up to 10 variables in the chart's order. Each item has `variable_dcid` and
+  `facet_id`. `facet_id` names the facet that the chart draws that variable
+  from, and it is `null` when the chart does not pin the variable to one
+  facet. When a chart draws every place of one type inside a parent
   place (a child-place cohort, such as the counties of a state),
   `parent_place_dcid` and `child_place_type` identify that group and
   `place_dcids` is empty. Otherwise both are `null`, and `place_dcids` lists up
   to 25 places in the chart's order. `per_capita` is `true` when the chart
-  divides its values by population. The server includes only variables, places,
-  and parent places from a non-empty fetched table of the turn, including
-  fetched tables left out of `tables` by truncation. The record does not hold
-  the title or the unit of a chart.
+  divides its values by population. The server includes a variable or a place
+  only when a non-empty fetched table of the turn holds it. It includes a
+  facet only when such a table reports it for the same variable, and a parent
+  place with its child place type only when such a table covers that group.
+  Fetched tables left out of `tables` by truncation count as well. The record
+  does not hold the title or the unit of a chart.
 
 #### The `transcript_rejected` record
 

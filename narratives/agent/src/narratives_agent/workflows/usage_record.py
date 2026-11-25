@@ -109,7 +109,7 @@ __all__ = [
     "MAX_LOGGED_REJECTED_SUBMISSIONS",
     "MAX_LOGGED_TABLES",
     "MAX_TABLE_PLACE_DCIDS",
-    "ChartFacetPin",
+    "ChartVariable",
     "HighlightedPlace",
     "LoggedChart",
     "LoggedRejectedSubmission",
@@ -371,16 +371,18 @@ class LoggedRejectedSubmission:
 
 
 @dataclass(frozen=True, kw_only=True)
-class ChartFacetPin:
-    """Holds the facet that a chart draws one of its variables from.
+class ChartVariable:
+    """Holds one variable of a chart and the facet that the chart pins it to.
 
     Attributes:
         variable_dcid: The Data Commons identifier of the variable.
-        facet_id: The identifier of the facet.
+        facet_id: The identifier of the facet that the chart draws the
+            variable from, or `None` when the chart does not pin the
+            variable to one facet.
     """
 
     variable_dcid: str
-    facet_id: str
+    facet_id: str | None
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -392,11 +394,9 @@ class LoggedChart:
         kind: The chart kind, such as `line` or `map`.
         origin: Whether the model wrote the chart or the server supplied it
             as a default chart.
-        variable_dcids: Up to `MAX_CHART_VARIABLES` of the chart's variable
-            identifiers that a fetched table of the turn holds, in the
-            chart's order.
-        facet_pins: The facet of each of those variables that the chart
-            pins to one facet.
+        variables: Up to `MAX_CHART_VARIABLES` of the chart's variables that
+            a fetched table of the turn holds, in the chart's order, each
+            with the facet that the chart pins it to.
         parent_place_dcid: The parent place identifier when the chart draws
             a child-place cohort, or `None` otherwise.
         child_place_type: The child place type when the chart draws a
@@ -411,8 +411,7 @@ class LoggedChart:
     index: int
     kind: ChartKind
     origin: ChartOrigin
-    variable_dcids: tuple[str, ...]
-    facet_pins: tuple[ChartFacetPin, ...]
+    variables: tuple[ChartVariable, ...]
     parent_place_dcid: str | None
     child_place_type: str | None
     place_dcids: tuple[str, ...]
@@ -944,8 +943,17 @@ def _build_logged_chart(
     title or unit.
     """
     places, cohort = _read_chart_scope(chart)
-    variable_dcids = tuple(
-        variable_dcid
+    # A chart pins each variable to at most one facet.
+    grounded_facets = {
+        variable_dcid: facet_id
+        for variable_dcid, facet_id in chart.facet_ids
+        if (variable_dcid, facet_id) in fetched.variable_facets
+    }
+    variables = tuple(
+        ChartVariable(
+            variable_dcid=variable_dcid,
+            facet_id=grounded_facets.get(variable_dcid),
+        )
         for variable_dcid in chart.variable_dcids
         if variable_dcid in fetched.variable_dcids
     )[:MAX_CHART_VARIABLES]
@@ -959,15 +967,7 @@ def _build_logged_chart(
         index=index,
         kind=chart.viz_type,
         origin=origin,
-        variable_dcids=variable_dcids,
-        # A chart pins each variable to at most one facet, so the list has at
-        # most one item for each logged variable.
-        facet_pins=tuple(
-            ChartFacetPin(variable_dcid=variable_dcid, facet_id=facet_id)
-            for variable_dcid, facet_id in chart.facet_ids
-            if variable_dcid in variable_dcids
-            and (variable_dcid, facet_id) in fetched.variable_facets
-        ),
+        variables=variables,
         parent_place_dcid=(
             grounded_cohort.parent_place
             if grounded_cohort is not None

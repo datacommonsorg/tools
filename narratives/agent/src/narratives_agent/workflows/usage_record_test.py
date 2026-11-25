@@ -47,7 +47,7 @@ Verifies that:
    their reason, scripts, refused step, and timeout, without their error
    text.
 10. `charts` records up to four charts of each of the six kinds with their
-    origin, per-capita flag, and grounded variables, facet pins, places, or
+    origin, per-capita flag, and grounded variables, facets, places, or
     cohort. An identifier that a fetched table does not hold is left out.
 11. `build_usage_record` raises `ValueError` for a turn that has not ended.
     A record with every list at its bound stays under the size limit of one
@@ -143,7 +143,7 @@ from narratives_agent.workflows.usage_record import (
     MAX_LOGGED_REJECTED_SUBMISSIONS,
     MAX_LOGGED_TABLES,
     MAX_TABLE_PLACE_DCIDS,
-    ChartFacetPin,
+    ChartVariable,
     HighlightedPlace,
     LoggedChart,
     LoggedRejectedSubmission,
@@ -447,9 +447,8 @@ def _make_logged_chart(
         index=index,
         kind=kind,
         origin=origin,
-        variable_dcids=(variable_dcid,),
-        facet_pins=(
-            ChartFacetPin(variable_dcid=variable_dcid, facet_id=facet_id),
+        variables=(
+            ChartVariable(variable_dcid=variable_dcid, facet_id=facet_id),
         ),
         parent_place_dcid=cohort.parent_place if cohort is not None else None,
         child_place_type=(
@@ -712,8 +711,7 @@ def test_a_turn_that_ran_every_phase_writes_every_key_with_its_value(
                 "index": 0,
                 "kind": "line",
                 "origin": "model",
-                "variable_dcids": ["Count_Person"],
-                "facet_pins": [
+                "variables": [
                     {"variable_dcid": "Count_Person", "facet_id": "f1"}
                 ],
                 "parent_place_dcid": None,
@@ -748,8 +746,7 @@ def test_a_turn_that_ran_every_phase_writes_every_key_with_its_value(
             "index",
             "kind",
             "origin",
-            "variable_dcids",
-            "facet_pins",
+            "variables",
             "parent_place_dcid",
             "child_place_type",
             "place_dcids",
@@ -2442,16 +2439,12 @@ def test_rejected_submissions_are_capped_at_the_bound_of_the_loop() -> None:
                 index=0,
                 kind="scatter",
                 origin="model",
-                variable_dcids=(
-                    "Percent_Person_WithDiabetes",
-                    "Median_Income_Household",
-                ),
-                facet_pins=(
-                    ChartFacetPin(
+                variables=(
+                    ChartVariable(
                         variable_dcid="Percent_Person_WithDiabetes",
                         facet_id="f3",
                     ),
-                    ChartFacetPin(
+                    ChartVariable(
                         variable_dcid="Median_Income_Household", facet_id="f2"
                     ),
                 ),
@@ -2485,7 +2478,7 @@ def test_a_chart_of_each_kind_is_logged_by_its_identifiers(
     #   ranking, a map, a scatter of two variables, or a highlight of one
     #   place. Two of the charts are per capita.
     # Expectation: The record holds the kind, the origin `model`, the
-    #   variables, one facet pin for each variable, and the per-capita
+    #   variables, the facet of each variable, and the per-capita
     #   flag. A chart of named places lists them in the chart's order and
     #   does not have a parent place. A chart of the cohort has the parent
     #   place and the child place type, and its `place_dcids` is empty.
@@ -2518,14 +2511,14 @@ def test_a_chart_lists_up_to_twenty_five_places_in_its_own_order() -> None:
     )
 
 
-def test_a_chart_lists_up_to_ten_variables_and_their_facet_pins() -> None:
-    # Test: The cap on `variable_dcids` and `facet_pins` of a chart.
+def test_a_chart_lists_up_to_ten_variables_with_their_facets() -> None:
+    # Test: The cap on `variables` of a chart.
     # Situation: The turn fetched 12 tables of 12 variables for France, each
     #   from its own facet. A bar chart draws all 12 variables and pins each
     #   to its facet.
-    # Expectation: The chart's `variable_dcids` holds the first
-    #   `MAX_CHART_VARIABLES` (10) variables in the chart's order, and
-    #   `facet_pins` holds the pins of those 10 variables.
+    # Expectation: The chart's `variables` holds the first
+    #   `MAX_CHART_VARIABLES` (10) variables in the chart's order, each with
+    #   its facet.
     variables = [f"Count_Person_{index:02d}" for index in range(1, 13)]
     record = _make_record()
     for index, variable_dcid in enumerate(variables, start=1):
@@ -2551,16 +2544,14 @@ def test_a_chart_lists_up_to_ten_variables_and_their_facet_pins() -> None:
     (logged,) = _build_record(record).charts
 
     assert MAX_CHART_VARIABLES == 10
-    assert logged.variable_dcids == tuple(variables[:10])
-    assert logged.facet_pins == tuple(
-        ChartFacetPin(variable_dcid=variable_dcid, facet_id=f"f{index}")
+    assert logged.variables == tuple(
+        ChartVariable(variable_dcid=variable_dcid, facet_id=f"f{index}")
         for index, variable_dcid in enumerate(variables[:10], start=1)
     )
 
 
 def test_a_chart_keeps_only_identifiers_that_a_fetched_table_holds() -> None:
-    # Test: The grounding of the variables, facet pins, and places of a
-    #   chart.
+    # Test: The grounding of the variables, facets, and places of a chart.
     # Situation: The turn fetched `t1` with rows for France, fetched an
     #   empty `t2` for another variable and place, and derived `s1`, whose
     #   variable ID the model wrote. A bar chart names the variable of each
@@ -2568,8 +2559,8 @@ def test_a_chart_keeps_only_identifiers_that_a_fetched_table_holds() -> None:
     #   and the other two to valid facet IDs, and lists France, the place of
     #   the empty table, the place of the derived table, and a place that
     #   the turn did not fetch. A highlight chart shows that last place.
-    # Expectation: The bar chart keeps the variable of `t1` and France, and
-    #   does not keep a facet pin. The highlight chart does not keep a
+    # Expectation: The bar chart keeps the variable of `t1` without a facet
+    #   and keeps France. The highlight chart does not keep a variable or a
     #   place. The record holds both charts.
     record = _make_record()
     record.cache.store_fetched(_make_cached_table("t1"))
@@ -2622,8 +2613,9 @@ def test_a_chart_keeps_only_identifiers_that_a_fetched_table_holds() -> None:
             index=0,
             kind="bar",
             origin="model",
-            variable_dcids=("Count_Person",),
-            facet_pins=(),
+            variables=(
+                ChartVariable(variable_dcid="Count_Person", facet_id=None),
+            ),
             parent_place_dcid=None,
             child_place_type=None,
             place_dcids=("country/FRA",),
@@ -2633,8 +2625,7 @@ def test_a_chart_keeps_only_identifiers_that_a_fetched_table_holds() -> None:
             index=1,
             kind="highlight",
             origin="model",
-            variable_dcids=(),
-            facet_pins=(),
+            variables=(),
             parent_place_dcid=None,
             child_place_type=None,
             place_dcids=(),
@@ -2706,40 +2697,47 @@ def test_a_chart_keeps_a_cohort_that_a_fetched_table_covers(
 
 
 @pytest.mark.parametrize(
-    ("facet_id", "is_kept"),
+    ("facet_id", "logged_facet_id"),
     [
-        pytest.param("f1", True, id="facet of a fetched table of the variable"),
+        pytest.param("f1", "f1", id="facet of a fetched table of the variable"),
         pytest.param(
-            "f2", False, id="facet of a fetched table of another variable"
+            "f2", None, id="facet of a fetched table of another variable"
         ),
-        pytest.param("f9", False, id="facet that the turn did not fetch"),
-        pytest.param("free text", False, id="facet that is free text"),
+        pytest.param("f9", None, id="facet that the turn did not fetch"),
+        pytest.param("free text", None, id="facet that is free text"),
+        pytest.param(None, None, id="variable that the chart does not pin"),
     ],
 )
-def test_a_chart_keeps_a_facet_that_a_fetched_table_reports_for_the_variable(
-    facet_id: str, is_kept: bool
+def test_a_chart_variable_keeps_a_facet_that_a_fetched_table_reports_for_it(
+    facet_id: str | None, logged_facet_id: str | None
 ) -> None:
-    # Test: The grounding of the facet pin of a chart.
+    # Test: The grounding of the facet of a chart's variable.
     # Situation: The turn fetched `Count_Person` for France from the facet
     #   `f1`, and another variable from the facet `f2`. A line chart draws
-    #   `Count_Person` for France and pins it to one of four facets: `f1`,
-    #   `f2`, a facet that the turn did not fetch, or free text.
-    # Expectation: The record keeps the pin to `f1`. It does not keep any of
-    #   the other three, because a fetched table does not report that facet
-    #   for `Count_Person`. The chart keeps its variable in every case.
+    #   `Count_Person` for France. It pins the variable to `f1`, to `f2`, to
+    #   a facet that the turn did not fetch, or to free text, or it does not
+    #   pin the variable.
+    # Expectation: The record keeps the variable in every case. Its
+    #   `facet_id` is `f1` for the pin to `f1`. It is `None` for the other
+    #   three pins, because a fetched table does not report that facet for
+    #   `Count_Person`, and for the variable that the chart does not pin.
     record = _make_record()
     _store_chart_tables(record)
     record.charts = _make_turn_charts(
-        _make_line_chart("country/FRA", facet_id=facet_id)
+        ResolvedLineChart(
+            title=_CHART_TITLE,
+            variable_dcids=("Count_Person",),
+            facet_ids=(
+                () if facet_id is None else (("Count_Person", facet_id),)
+            ),
+            scope=PlaceList(("country/FRA",)),
+        )
     )
 
     (logged,) = _build_record(record).charts
 
-    assert logged.variable_dcids == ("Count_Person",)
-    assert logged.facet_pins == (
-        (ChartFacetPin(variable_dcid="Count_Person", facet_id="f1"),)
-        if is_kept
-        else ()
+    assert logged.variables == (
+        ChartVariable(variable_dcid="Count_Person", facet_id=logged_facet_id),
     )
 
 
