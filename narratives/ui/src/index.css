@@ -287,6 +287,29 @@
       translate: 0 100%;
     }
   }
+
+  /* Stacking layers, lowest first. Consumed as `z-<layer>`; never use a raw
+     z-index. An element inside an ancestor's stacking context (such as an
+     animated card) competes only within it; portal it to `document.body` to
+     reach its layer. Third-party layers sit above all of these: DC chart
+     dialogs (`DC_DIALOG_Z_INDEX`, 10000) and Google's reCAPTCHA challenge
+     (~2e9). */
+  /* Lifts an element above its siblings: a card's loading overlay, or the
+     desktop rail over <main>. Below the sticky bars, so a card scrolling
+     under the prompt bar never paints over it. */
+  --z-index-raised: 1;
+  /* Sticky header and sticky prompt bar. */
+  --z-index-sticky: 5;
+  /* Side sheets (menu drawer, debug panel): the scrim, then the sheet. */
+  --z-index-sheet-scrim: 10;
+  --z-index-sheet: 20;
+  /* Modal dialogs and their backdrops. */
+  --z-index-modal: 50;
+  /* Toasts share the modal layer; the one later in document order paints
+     on top. */
+  --z-index-toast: 50;
+  /* Tooltips sit above everything they can anchor to, dialogs included. */
+  --z-index-tooltip: 60;
 }
 
 :root {
@@ -844,7 +867,7 @@ select:not(:disabled) {
      - Motion: M3 standard decel curve 150ms with subtle scale (0.92 -> 1).
 */
 .dc-tooltip {
-  z-index: 60;
+  z-index: var(--z-index-tooltip);
   pointer-events: none;
   max-width: 288px;
   min-height: 24px;
@@ -889,7 +912,7 @@ select:not(:disabled) {
      - Actions: label-large buttons (14sp, 500 weight, theme primary).
 */
 .dc-tooltip-rich {
-  z-index: 60;
+  z-index: var(--z-index-tooltip);
   max-width: 320px;
   min-width: 180px;
   box-sizing: border-box;

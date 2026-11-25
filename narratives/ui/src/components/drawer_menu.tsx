@@ -64,13 +64,13 @@ export function MenuDrawer() {
     <>
       {/* Pointer-only; Escape and the close button serve the keyboard. */}
       <div
-        className="lg:hidden fixed inset-0 z-10 bg-scrim/30"
+        className="lg:hidden fixed inset-0 z-sheet-scrim bg-scrim/30"
         onClick={closeDrawer}
         aria-hidden="true"
       />
 
       <aside
-        className="lg:hidden fixed top-0 right-0 h-full w-[calc(100vw-3rem)] max-w-80 bg-surface border-l border-outline shadow-lg z-20 flex flex-col overflow-hidden"
+        className="lg:hidden fixed top-0 right-0 h-full w-[calc(100vw-3rem)] max-w-80 bg-surface border-l border-outline shadow-lg z-sheet flex flex-col overflow-hidden"
         aria-label="Menu"
       >
         {/* Close (✕) — top-right corner. */}

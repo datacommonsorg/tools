@@ -620,7 +620,6 @@ async function renderToPdf(
   stage.style.top = '0';
   stage.style.width = `${PAGE_WIDTH_PX}px`;
   stage.style.background = '#ffffff';
-  stage.style.zIndex = '-1';
 
   const clone = target.cloneNode(true) as HTMLElement;
   clone.style.width = `${PAGE_WIDTH_PX}px`;

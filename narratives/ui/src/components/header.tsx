@@ -77,7 +77,7 @@ export function Header() {
   );
 
   return (
-    <header className="sticky top-0 z-5 bg-chrome lg:-ml-rail flex items-center justify-between gap-3 px-5 py-4 shrink-0 shadow-header motion-safe:animate-fade-in">
+    <header className="sticky top-0 z-sticky bg-chrome lg:-ml-rail flex items-center justify-between gap-3 px-5 py-4 shrink-0 shadow-header motion-safe:animate-fade-in">
       {isLogoLinked ? (
         // `target="_self"` keeps external targets in this tab; `py-2 -my-2`
         // gives a 44px touch target without changing the header height.

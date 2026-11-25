@@ -221,7 +221,10 @@ export function DataAgent() {
       </div>
 
       {/* Sticky follow-up input; full-width background hides content behind it. */}
-      <div ref={promptRef} className="sticky bottom-0 z-[5] w-full bg-surface">
+      <div
+        ref={promptRef}
+        className="sticky bottom-0 z-sticky w-full bg-surface"
+      >
         {/* Fade above the bar so content softens into it. */}
         <div
           aria-hidden="true"

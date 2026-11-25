@@ -38,13 +38,13 @@ export function Sidebar() {
   const isAgent = route === '' || route === 'agent';
   const shouldShowNewChat = isAgent && isChatEnabled;
 
-  // The rail is fixed so the header can span the viewport over it. `lg:z-1`
+  // The rail is fixed so the header can span the viewport over it. `lg:z-raised`
   // lifts it above <main>, whose `lg:pl-rail` padding would otherwise cover
-  // it and catch its clicks, and keeps it below the header's `z-5`.
+  // it and catch its clicks, and keeps it below the header's `z-sticky`.
   // `pt-rail-top` grows with `--logo-height` so the header never covers the
   // New chat button.
   return (
-    <aside className="hidden lg:flex lg:fixed lg:inset-y-0 lg:left-0 lg:z-1 w-rail bg-chrome flex-col items-center pt-rail-top pb-4 gap-4 motion-safe:animate-enter-from-left">
+    <aside className="hidden lg:flex lg:fixed lg:inset-y-0 lg:left-0 lg:z-raised w-rail bg-chrome flex-col items-center pt-rail-top pb-4 gap-4 motion-safe:animate-enter-from-left">
       {/* Clears the conversation on screen and starts an empty one. Chats
           are not saved, so there is nothing to come back to. */}
       <Tooltip label="New chat" placement="right">

@@ -131,7 +131,7 @@ export function Toast({ message, onDismiss, returnFocusRef }: ToastProps) {
     : 'motion-safe:animate-enter';
 
   // Portalled to body: the caller sits inside the answer panel, whose stacking
-  // context would otherwise trap z-50 beneath the sticky header.
+  // context would otherwise trap z-toast beneath the sticky header.
   return createPortal(
     <div
       ref={toastRef}
@@ -145,7 +145,7 @@ export function Toast({ message, onDismiss, returnFocusRef }: ToastProps) {
           setIsFocused(false);
         }
       }}
-      className={`fixed bottom-2 left-2 right-2 sm:bottom-6 sm:left-auto sm:right-6 sm:min-w-72 sm:max-w-xl z-50 flex items-center gap-2 py-1.5 px-4 rounded bg-inverse-surface text-on-inverse-surface text-body-medium shadow-lg ${animation}`}
+      className={`fixed bottom-2 left-2 right-2 sm:bottom-6 sm:left-auto sm:right-6 sm:min-w-72 sm:max-w-xl z-toast flex items-center gap-2 py-1.5 px-4 rounded bg-inverse-surface text-on-inverse-surface text-body-medium shadow-lg ${animation}`}
     >
       <span className="py-2">{message}</span>
       {/* 44px hit area per FRONTEND.md; the negative margins keep the bar at
