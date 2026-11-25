@@ -53,9 +53,6 @@ from narratives_agent.workflows.messages import (
     SAFETY_REFUSED_MESSAGE,
 )
 from narratives_agent.workflows.prefilter import prefilter_match
-from narratives_agent.workflows.prompt_contracts import (
-    compose_system_instruction,
-)
 from narratives_agent.workflows.transcript import (
     Transcript,
     transcript_contents,
@@ -83,6 +80,11 @@ _MAX_CLASSIFY_ATTEMPTS = 2
 # Maximum character length for the sanitized premise quoted in an off-domain
 # refusal message.
 MAX_PREMISE_CHARS = 80
+
+# `_CURRENT_DATE_HEADER_TEMPLATE` is the server-authored line that opens the
+# classify system instruction. It holds the date without a time, so the
+# instruction changes once a day.
+_CURRENT_DATE_HEADER_TEMPLATE = "**Current Date**: {current_date}\n\n"
 
 _CONTROL_CHARS = re.compile(r"[\x00-\x1f\x7f]+")
 
@@ -173,6 +175,24 @@ def off_domain_message(premise: str) -> str:
     return OFF_DOMAIN_TEMPLATE.format(subject=subject)
 
 
+def _compose_classify_instruction(prompt: str) -> str:
+    """Returns the classify system instruction: the date line, then `prompt`.
+
+    The date is the turn's pinned date (`get_current_date`). The date line
+    opens the system instruction and `prompt` ends it, because a date line
+    in the user message or a contract after `prompt` lowers the rate at
+    which the classifier returns a clarification question for an ambiguous
+    query.
+
+    Args:
+        prompt: The configured classify prompt.
+    """
+    header = _CURRENT_DATE_HEADER_TEMPLATE.format(
+        current_date=get_current_date()
+    )
+    return f"{header}{prompt}"
+
+
 async def _attempt_classification(
     transcript: Transcript,
     prompt: str,
@@ -204,7 +224,6 @@ async def _attempt_classification(
     messages = transcript_contents(
         transcript,
         transcript.current_query,
-        current_date=get_current_date(),
         max_response_chars=MCP_HISTORY_RESPONSE_CHARS,
     )
     role = config.resolve_role_config(GeminiRole.CLASSIFY)
@@ -212,9 +231,7 @@ async def _attempt_classification(
         async with asyncio.timeout(CLASSIFY_TIMEOUT_SECONDS):
             response = await async_gemini_request(
                 messages=messages,
-                system_instruction=compose_system_instruction(
-                    prompt, "classify"
-                ),
+                system_instruction=_compose_classify_instruction(prompt),
                 model=role.model,
                 temperature=role.temperature,
                 thinking_level=role.thinking_level,
@@ -283,8 +300,9 @@ async def _request_classification(
     Args:
         transcript: Verified transcript holding the current query and prior
             conversation context.
-        config: The agent configuration. `prompts.classify` is the system
-            instruction and `gemini.classify_model` is the model.
+        config: The agent configuration. `prompts.classify` is the configured
+            prompt of the system instruction and `gemini.classify_model` is
+            the model.
         telemetry: Turn telemetry accumulator receiving token counts.
 
     Returns:
@@ -363,8 +381,9 @@ async def classify_query(
     Args:
         transcript: Verified transcript holding the current query and prior
             conversation context.
-        config: The agent configuration; `prompts.classify` is the system
-            instruction and `gemini.classify_model` the model.
+        config: The agent configuration. `prompts.classify` is the configured
+            prompt of the system instruction and `gemini.classify_model` is
+            the model.
         telemetry: Turn telemetry accumulator receiving token counts.
 
     Returns:

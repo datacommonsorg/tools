@@ -42,7 +42,6 @@ from narratives_agent.workflows.messages import (
     REFUSED_MESSAGE,
     SAFETY_REFUSED_MESSAGE,
 )
-from narratives_agent.workflows.prompt_contracts import load_prompt_contract
 from narratives_agent.workflows.transcript import (
     CURRENT_DATE_LABEL,
     ConversationStateSlots,
@@ -319,8 +318,8 @@ async def test_a_serviceable_verdict_is_admitted_with_its_classification(
     # Situation: The classifier returns a serviceable verdict without
     #   clarification.
     # Expectation: `Admitted` carries the classification, and the Gemini request
-    #   uses the configured model, the classify prompt followed by the
-    #   classify contract, temperature 0.0,
+    #   uses the configured model, a system instruction that ends with the
+    #   classify prompt, temperature 0.0,
     #   `ThinkingLevel.MINIMAL`, `QueryClassification` schema, and no tools.
     requests = model(
         _verdict(pattern="trend_delta", geographic_shape="comparison")
@@ -333,9 +332,7 @@ async def test_a_serviceable_verdict_is_admitted_with_its_classification(
     assert outcome.classification.geographic_shape == "comparison"
     (request,) = requests
     assert request["model"] == "gemini-3.5-flash-lite-test"
-    assert request["system_instruction"] == (
-        f"{_PROMPT}\n\n{load_prompt_contract('classify')}"
-    )
+    assert request["system_instruction"].endswith(f"\n\n{_PROMPT}")
     assert request["temperature"] == 0.0
     assert request["thinking_level"] is types.ThinkingLevel.MINIMAL
     assert request["response_schema"] is QueryClassification
@@ -391,38 +388,40 @@ async def test_classifier_receives_conversation_with_capped_answers(
 
 
 @pytest.mark.asyncio
-async def test_an_overridden_classify_prompt_keeps_the_date_rule(
+async def test_an_overridden_classify_prompt_keeps_the_date(
     model: Callable[..., list[Any]], telemetry: TurnTelemetry
 ) -> None:
-    # Test: The date rule of the classify request under a prompt override.
-    # Situation: The configured classify prompt is an override that does not
-    #   mention the current date.
-    # Expectation: The system instruction still names the `Current date:`
-    #   line and tells the model to disregard other statements of the date.
+    # Test: The system instruction of the classify request under a prompt
+    #   override.
+    # Situation: A date is pinned, and the configured classify prompt is an
+    #   override that does not mention the current date.
+    # Expectation: The system instruction is the `**Current Date**` line of
+    #   the pinned date, a blank line, and then the override, and the
+    #   instruction ends there.
     requests = model(_verdict())
     override = AgentConfig(
         prompts=Prompts(classify="Classify questions for this instance.")
     )
 
-    await classify.classify_query(_transcript(), override, telemetry)
+    with config.pin_current_date("2031-02-03"):
+        await classify.classify_query(_transcript(), override, telemetry)
 
     (request,) = requests
-    instruction = request["system_instruction"]
-    assert instruction.startswith("Classify questions for this instance.")
-    assert f"`{CURRENT_DATE_LABEL} YYYY-MM-DD` line" in instruction
-    assert "disregard any other statement of the current date" in (instruction)
+    assert request["system_instruction"] == (
+        "**Current Date**: 2031-02-03\n\nClassify questions for this instance."
+    )
 
 
 @pytest.mark.asyncio
-async def test_the_classifier_request_opens_with_the_pinned_date(
+async def test_the_classifier_messages_do_not_carry_a_date(
     model: Callable[..., list[Any]], telemetry: TurnTelemetry
 ) -> None:
-    # Test: The current date in the classifier request.
+    # Test: The messages of the classifier request under a pinned date.
     # Situation: A date is pinned, and the transcript holds one earlier turn
     #   and the current query.
-    # Expectation: The final user message opens with the date line of the
-    #   pinned date in a part of its own, followed by the query. Neither the
-    #   earlier messages nor the system instruction contain the date.
+    # Expectation: The final user message has one text part, which is the
+    #   query, and the messages do not contain the date label or the pinned
+    #   date.
     requests = model(_verdict())
     earlier = Turn(
         turn_index=0,
@@ -444,11 +443,13 @@ async def test_the_classifier_request_opens_with_the_pinned_date(
         await classify.classify_query(transcript, _CONFIG, telemetry)
 
     (request,) = requests
-    *history, final = request["messages"]
-    date_part, request_part = final["parts"]
-    assert date_part == {"text": f"{CURRENT_DATE_LABEL} 2031-02-03\n\n"}
-    assert request_part == {"text": "And for Germany?"}
-    assert "2031-02-03" not in f"{history!r}{request['system_instruction']}"
+    messages = request["messages"]
+    assert messages[-1] == {
+        "role": "user",
+        "parts": [{"text": "And for Germany?"}],
+    }
+    assert CURRENT_DATE_LABEL not in repr(messages)
+    assert "2031-02-03" not in repr(messages)
 
 
 @pytest.mark.parametrize(

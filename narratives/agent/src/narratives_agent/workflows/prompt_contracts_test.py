@@ -73,8 +73,12 @@ _CONTRACTS: tuple[ContractName | ContractAddendumName, ...] = (
 _DEFAULT_PROMPTS_DIR = (
     Path(__file__).resolve().parents[4] / "defaults" / "prompts"
 )
-# The requests of these phases carry the server-authored current date.
-_DATED_PHASES = ("classify", "discovery", "synthesis")
+# The requests of these phases carry the server-authored current date in the
+# user message, and their system instructions do not contain it.
+_USER_MESSAGE_DATED_PHASES: tuple[ContractName, ...] = (
+    "discovery",
+    "synthesis",
+)
 # `render_prompt` does not substitute this placeholder.
 _DATETIME_PLACEHOLDER = "{{CURRENT_DATETIME}}"
 
@@ -234,18 +238,13 @@ def _read_default_prompt(slot: str) -> str:
     )
 
 
-def _compose_default_instruction(phase: str) -> str:
+def _compose_default_instruction(phase: ContractName) -> str:
     """Returns the system instruction of `phase` under the default prompts.
 
-    Each instruction carries its phase contract. The discovery and synthesis
-    instructions also carry a pattern directive, and the synthesis
-    instruction carries its title addendum, as on a classified turn with
-    data.
+    Each instruction carries its phase contract and a pattern directive, and
+    the synthesis instruction also carries its title addendum, as on a
+    classified turn with data.
     """
-    if phase == "classify":
-        return compose_system_instruction(
-            _read_default_prompt("classify"), "classify"
-        )
     classification = QueryClassification.model_validate(
         {
             "serviceable": True,
@@ -316,15 +315,15 @@ def request_bodies(
     gemini_client.reset_client()
 
 
-@pytest.mark.parametrize("phase", _DATED_PHASES)
+@pytest.mark.parametrize("phase", _USER_MESSAGE_DATED_PHASES)
 @pytest.mark.asyncio
 async def test_the_sent_system_instruction_does_not_depend_on_the_date(
-    request_bodies: list[dict[str, Any]], phase: str
+    request_bodies: list[dict[str, Any]], phase: ContractName
 ) -> None:
     # Test: The system instruction a request carries under two dates.
-    # Situation: The default `classify` prompt, the composed discovery
-    #   instruction, or the composed synthesis instruction is sent through
-    #   the Gemini client once under each of two pinned dates.
+    # Situation: The composed discovery instruction or the composed
+    #   synthesis instruction is sent through the Gemini client once under
+    #   each of two pinned dates.
     # Expectation: The two request bodies carry equal `systemInstruction`
     #   values, which contain neither date and no unsubstituted placeholder.
     instruction = _compose_default_instruction(phase)
@@ -370,42 +369,18 @@ def test_no_default_prompt_holds_the_datetime_placeholder(path: Path) -> None:
     assert _DATETIME_PLACEHOLDER not in path.read_text(encoding="utf-8")
 
 
-@pytest.mark.parametrize("phase", _DATED_PHASES)
-def test_each_dated_phase_defines_the_date_line(phase: str) -> None:
+@pytest.mark.parametrize("phase", _USER_MESSAGE_DATED_PHASES)
+def test_each_user_message_dated_phase_defines_the_date_line(
+    phase: ContractName,
+) -> None:
     # Test: Agreement between the date line of the request and the text
     #   that defines it for the model.
-    # Situation: The classify, discovery, or synthesis contract is read.
+    # Situation: The discovery or synthesis contract is read.
     # Expectation: The contract names the date line by the label that
     #   `transcript_contents` writes, with the `YYYY-MM-DD` format.
     text = load_prompt_contract(phase)
 
     assert f"`{CURRENT_DATE_LABEL} YYYY-MM-DD` line" in text
-
-
-def test_the_classify_contract_follows_the_guidance_without_a_directive() -> (
-    None
-):
-    # Test: Composition of the classify system instruction.
-    # Situation: `compose_system_instruction` is called for `classify` with
-    #   custom guidance and a ranking classification.
-    # Expectation: The instruction is the guidance followed by the classify
-    #   contract, with no pattern directive.
-    classification = QueryClassification.model_validate(
-        {
-            "serviceable": True,
-            "pattern": "top_n_ranking",
-            "geographic_shape": "single_place",
-            "requires_computation": True,
-        }
-    )
-
-    composed = compose_system_instruction(
-        "Custom guidance.", "classify", classification
-    )
-
-    assert composed == (
-        f"Custom guidance.\n\n{load_prompt_contract('classify')}"
-    )
 
 
 def test_discovery_contract_tables_match_declared_tools_and_scripts() -> None:
