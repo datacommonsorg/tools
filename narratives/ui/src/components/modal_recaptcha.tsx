@@ -206,16 +206,16 @@ function RecaptchaModalDialog({
       {/* Pointer-only backdrop; Escape serves the keyboard. */}
       <div
         data-non-print="true"
-        className="fixed inset-0 z-50 bg-scrim/30 motion-safe:animate-fade-in"
+        className="fixed inset-0 z-modal bg-scrim/30 motion-safe:animate-fade-in"
         onClick={onCancel}
         aria-hidden="true"
       />
 
-      {/* Keep z-50 far below Google's floating challenge bubble (z-index ~2e9)
+      {/* Keep z-modal far below Google's floating challenge bubble (z-index ~2e9)
           and omit overflow clipping so the image-grid challenge is never cut off. */}
       <div
         data-non-print="true"
-        className="fixed inset-0 z-50 flex items-center justify-center p-4 pointer-events-none"
+        className="fixed inset-0 z-modal flex items-center justify-center p-4 pointer-events-none"
       >
         <div
           ref={dialogRef}

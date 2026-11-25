@@ -149,8 +149,8 @@ interface DebugPanelProps {
  *
  * `TurnView` wraps `AnswerPanel` in `motion-safe:animate-stream-in`
  * (`animation-fill-mode: both` on `opacity`), creating a permanent stacking
- * context that traps fixed descendants beneath the sticky header (`z-5`) and
- * prompt bar (`z-[5]`). Rendering the scrim and dialog through `createPortal`
+ * context that traps fixed descendants beneath the sticky header and
+ * prompt bar (`z-sticky`). Rendering the scrim and dialog through `createPortal`
  * into `document.body` escapes that stacking context.
  */
 export const DebugPanel = ({ turn }: DebugPanelProps) => {
@@ -259,7 +259,7 @@ export const DebugPanel = ({ turn }: DebugPanelProps) => {
                   key="debug-scrim"
                   {...(!shouldReduceMotion && SCRIM_MOTION_PROPS)}
                   data-non-print="true"
-                  className="fixed inset-0 z-30 bg-scrim/30"
+                  className="fixed inset-0 z-sheet-scrim bg-scrim/30"
                   onClick={() => setIsOpen(false)}
                   aria-hidden="true"
                 />
@@ -273,7 +273,7 @@ export const DebugPanel = ({ turn }: DebugPanelProps) => {
                   aria-modal="true"
                   aria-label={DEBUG_PANEL_COPY.title}
                   data-non-print="true"
-                  className="fixed top-0 right-0 h-full w-140 max-w-screen z-40 bg-surface border-l border-outline shadow-lg flex flex-col"
+                  className="fixed top-0 right-0 h-full w-140 max-w-screen z-sheet bg-surface border-l border-outline shadow-lg flex flex-col"
                 >
                   <header className="flex items-start justify-between gap-3 p-4 border-b border-outline shrink-0">
                     <div className="flex flex-col gap-0.5 min-w-0">

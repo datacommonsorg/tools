@@ -20,6 +20,10 @@ styles.
   (`h-[3px]`) unless the dimension is genuinely non-standard.
 - **No inline hex.** Reusable colors, fonts, and assets belong in the Tailwind
   theme in `src/index.css`.
+- **Stacking uses the `--z-index-*` layers** in `src/index.css`, consumed as
+  `z-<layer>` utilities or `var(--z-index-<layer>)` in CSS. Never write a raw
+  z-index (`z-10`, `z-[5]`). A layer that must clear the sticky bars from
+  inside an animated or transformed ancestor is portalled to `document.body`.
 - **Theme values come from CSS custom properties** written as
   `var(--theme-*, <fallback>)`. The fallback after the comma is the Base Data
   Commons default, overridden when `--theme-*` properties are defined in

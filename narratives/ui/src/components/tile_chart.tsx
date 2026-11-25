@@ -308,7 +308,7 @@ function ChartCard({
       )}
       <div
         aria-hidden="true"
-        className={`absolute inset-0 z-10 rounded-chart bg-surface pointer-events-none motion-safe:transition-[opacity,visibility] motion-safe:duration-300 ease-out${
+        className={`absolute inset-0 z-raised rounded-chart bg-surface pointer-events-none motion-safe:transition-[opacity,visibility] motion-safe:duration-300 ease-out${
           showSkeleton ? '' : ' opacity-0 invisible'
         }`}
       >

@@ -50,7 +50,7 @@ export function SkeletonCard() {
       ></div>
       <CardHeader isLoading />
       <div className="p-4 sm:p-6 flex flex-col gap-6">
-        <div className="absolute top-1/2 bottom-0 right-0 left-0 bg-linear-to-b from-transparent to-surface z-10"></div>
+        <div className="absolute top-1/2 bottom-0 right-0 left-0 bg-linear-to-b from-transparent to-surface z-raised"></div>
         {lineWidths.map((paragraph, p) => (
           <div key={p} className="flex flex-row gap-4 items-start">
             <div className="flex flex-col gap-2 flex-1">

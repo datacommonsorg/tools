@@ -70,7 +70,7 @@ export function UnavailableView() {
             note is taller than the viewport; `m-auto` centers the note
             without clipping its top. */}
         {createPortal(
-          <div className="fixed inset-0 z-50 flex overflow-y-auto p-4 bg-scrim/30 motion-safe:animate-fade-in">
+          <div className="fixed inset-0 z-modal flex overflow-y-auto p-4 bg-scrim/30 motion-safe:animate-fade-in">
             <m.div
               variants={INTRO_FADE_UP_VARIANTS}
               role="note"
