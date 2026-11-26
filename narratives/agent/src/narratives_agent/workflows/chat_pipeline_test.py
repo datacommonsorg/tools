@@ -59,9 +59,10 @@ Verifies that:
     in one `chat_disabled` terminal frame carrying the effective unavailable
     message before any model call, even without a configuration, and
     `ENABLE_CHAT=true` overrides a configuration that disables chat.
-11. Every phase of a turn reads one pinned date. The synthesis request opens
-    its final user message with the date line, while the signed turn and
-    the follow-up request carry no date.
+11. Every phase of a turn reads one pinned date. The classify request opens
+    its system instruction with the date line, and the synthesis request
+    opens its final user message with the date line, while the signed turn
+    and the follow-up request carry no date.
 12. When `DAILY_TOKEN_BUDGET_PER_INSTANCE` is exhausted, `run_turn` ends the
     turn in one non-retryable `daily_token_budget_exhausted` terminal frame
     carrying the effective unavailable message without calling Gemini or MCP
@@ -160,6 +161,7 @@ from narratives_agent.telemetry import (
 )
 from narratives_agent.token_budget import get_daily_token_budget
 from narratives_agent.workflows import chat_pipeline
+from narratives_agent.workflows import classify as classify_module
 from narratives_agent.workflows import follow_up as follow_up_module
 from narratives_agent.workflows import transcript as transcript_module
 from narratives_agent.workflows.blocks import BlockSplitter, ChartBlock
@@ -3176,6 +3178,55 @@ async def test_synthesis_opens_the_current_request_with_the_pinned_date(
     (messages,) = turn.synthesis_messages
     (instruction,) = turn.synthesis_instructions
     assert "2031-02-03" not in f"{messages[:-1]!r}{instruction}"
+
+
+@pytest.mark.asyncio
+async def test_classification_opens_its_system_instruction_with_the_pinned_date(
+    monkeypatch: pytest.MonkeyPatch, turn: _Turn
+) -> None:
+    # Test: The current date in the classify request of a turn.
+    # Situation: The turn starts on 2031-02-03, the `classify` prompt is
+    #   configured, and classification runs with only its model call and its
+    #   Model Armor screening replaced.
+    # Expectation: The turn makes one classify request. Its system
+    #   instruction is the `**Current Date**` line of the pinned date
+    #   followed by the configured prompt, and its one message holds the
+    #   query alone.
+    monkeypatch.setattr(config, "_format_current_date", lambda: "2031-02-03")
+    _use_config(
+        monkeypatch,
+        AgentConfig(
+            prompts=Prompts(
+                classify="Classify the request.",
+                discovery="Gather data.",
+                synthesis="Write prose.",
+            )
+        ),
+    )
+    requests: list[dict[str, Any]] = []
+
+    async def record_request(**kwargs: Any) -> GeminiResponse:
+        requests.append(kwargs)
+        return GeminiResponse(text=_CLASSIFICATION.model_dump_json())
+
+    async def pass_screening(query: str) -> str | None:
+        return None
+
+    monkeypatch.setattr(classify_module, "async_gemini_request", record_request)
+    monkeypatch.setattr(classify_module, "screen_user_prompt", pass_screening)
+    monkeypatch.setattr(
+        chat_pipeline, "classify_query", classify_module.classify_query
+    )
+
+    await chat_pipeline.run_turn(_TRANSCRIPT, turn.emit)
+
+    (request,) = requests
+    assert request["system_instruction"] == (
+        "**Current Date**: 2031-02-03\n\nClassify the request."
+    )
+    assert request["messages"] == [
+        {"role": "user", "parts": [{"text": _QUESTION}]}
+    ]
 
 
 @pytest.mark.parametrize("is_clarification", [False, True])

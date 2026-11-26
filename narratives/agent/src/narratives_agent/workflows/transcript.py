@@ -177,9 +177,9 @@ _CONTEXT_HEADER = (
 _CONTEXT_TAG = "conversation_context"
 _REQUEST_TAG = "current_request"
 # `CURRENT_DATE_LABEL` starts the server-authored date line that opens the
-# user message carrying the current request. The `classify` prompt and the
-# discovery and synthesis contracts name this line as the authoritative
-# current date.
+# user message carrying the current request of a discovery or synthesis
+# call. The discovery and synthesis contracts name this line as the
+# authoritative current date.
 CURRENT_DATE_LABEL = "Current date:"
 # The blank line after the date separates the date line from the request
 # text, which follows in the next part of the same message.
@@ -846,24 +846,26 @@ def transcript_contents(
     transcript: Transcript,
     current_text: str,
     *,
-    current_date: str,
+    current_date: str | None = None,
     max_response_chars: int | None = None,
 ) -> list[dict[str, Any]]:
     """Builds Gemini contents from the window and the current request.
 
     The window's turns become strictly alternating user and model messages,
-    oldest first, followed by one user message for the current request. That
-    message has two text parts: the server-authored `Current date:` line,
-    and then the summary and recent data scopes, when there are any,
-    followed by `current_text`. The date is a part of its own so that it is
-    never joined to text the user wrote, and the messages of earlier turns
-    carry no date.
+    oldest first, followed by one user message for the current request. The
+    request text of that message is the summary and recent data scopes, when
+    there are any, followed by `current_text`. When `current_date` is given,
+    the server-authored `Current date:` line precedes the request text as a
+    text part of its own, so that it is never joined to text the user wrote.
+    The messages of earlier turns do not carry a date.
 
     Args:
         transcript: The verified transcript for the turn.
         current_text: The request text of the final user message.
         current_date: The current date as `YYYY-MM-DD`, written into the
-            date line of the final user message.
+            date line of the final user message. `None` leaves the date
+            line out, for a caller whose system instruction carries the
+            date.
         max_response_chars: An optional character limit on each quoted
             earlier answer, used by callers that resend the contents on
             every tool-loop iteration.
@@ -885,10 +887,13 @@ def transcript_contents(
         if preamble
         else current_text
     )
-    date_line = _CURRENT_DATE_LINE_TEMPLATE.format(current_date=current_date)
-    contents.append(
-        {"role": "user", "parts": [{"text": date_line}, {"text": text}]}
-    )
+    parts = [{"text": text}]
+    if current_date is not None:
+        date_line = _CURRENT_DATE_LINE_TEMPLATE.format(
+            current_date=current_date
+        )
+        parts.insert(0, {"text": date_line})
+    contents.append({"role": "user", "parts": parts})
     return contents
 
 

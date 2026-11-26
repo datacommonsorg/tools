@@ -1079,7 +1079,6 @@ def test_build_debug_report_prompt_hashes_and_contracts() -> None:
     assert data_hashes == dict(hashes)
 
     expected_keys = set(PROMPT_SLOTS) | {
-        "classify_contract",
         "discovery_contract",
         "synthesis_contract",
         "synthesis_title_contract",
@@ -1101,11 +1100,6 @@ def test_build_debug_report_prompt_hashes_and_contracts() -> None:
     expected_synthesis = hashlib.sha256(
         load_prompt_contract("synthesis").encode("utf-8")
     ).hexdigest()
-    assert hashes["classify_contract"] == (
-        hashlib.sha256(
-            load_prompt_contract("classify").encode("utf-8")
-        ).hexdigest()
-    )
     assert hashes["discovery_contract"] == expected_discovery
     assert hashes["synthesis_contract"] == expected_synthesis
     for addendum in ("synthesis_title", "synthesis_no_title"):

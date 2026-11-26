@@ -34,9 +34,10 @@ Verifies that:
    request. Delimiters inside quoted text are removed in any letter case,
    spacing, self-closing form, or attribute form, including from the
    earlier summary and evicted turns that the compaction prompt quotes.
-7. The final user message opens with the server-authored date line in a
-   text part of its own, before the unchanged request text. The messages of
-   earlier turns and the compaction request carry no date.
+7. With a current date, the final user message opens with the
+   server-authored date line in a text part of its own, before the unchanged
+   request text. Without one, the request text is its only part. The
+   messages of earlier turns and the compaction request carry no date.
 8. When `load_transcript` rejects a request, it logs one warning and writes
    one `transcript_rejected` record. The record holds the reason code and
    does not hold any value from the request. When `load_transcript` accepts
@@ -1571,6 +1572,54 @@ def test_the_date_line_precedes_the_unchanged_request_with_context() -> None:
             },
         ],
     }
+
+
+def test_contents_without_a_date_are_the_request_alone() -> None:
+    # Test: `transcript_contents` without a current date on the first turn
+    #   of a conversation.
+    # Situation: An empty window without a summary is formatted, and a
+    #   current date is not given.
+    # Expectation: The result is a single user message with one text part,
+    #   which is the current text alone.
+    window = transcript.Transcript(
+        turns=[],
+        compacted_summary=None,
+        conversation_id=_CONVERSATION_ID,
+        current_query="Population of France?",
+        current_idempotency_key="key-0",
+    )
+
+    assert transcript.transcript_contents(window, "Population of France?") == [
+        {"role": "user", "parts": [{"text": "Population of France?"}]}
+    ]
+
+
+def test_contents_without_a_date_omit_only_the_date_part() -> None:
+    # Test: The final user message of a window that has context, without a
+    #   current date.
+    # Situation: A window of one turn with one scope, under a summary, is
+    #   formatted once without a current date and once with one.
+    # Expectation: Without a date, the final user message has one text part,
+    #   which equals the request part of the dated message. The earlier
+    #   messages are equal in both results, and the undated result does not
+    #   contain the date label.
+    window = transcript.Transcript(
+        turns=[_build_signed_turn(4, _SLOTS)],
+        compacted_summary="Earlier, France was discussed.",
+        conversation_id=_CONVERSATION_ID,
+        current_query="And Texas?",
+        current_idempotency_key="key-5",
+    )
+
+    undated = transcript.transcript_contents(window, "And Texas?")
+    dated = transcript.transcript_contents(
+        window, "And Texas?", current_date=_DATE
+    )
+
+    _, request_part = dated[-1]["parts"]
+    assert undated[-1] == {"role": "user", "parts": [request_part]}
+    assert undated[:-1] == dated[:-1]
+    assert CURRENT_DATE_LABEL not in repr(undated)
 
 
 @pytest.mark.parametrize(
