@@ -22,8 +22,14 @@
 import { type ReactNode, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 
+/**
+ * Card max-width utilities a modal can use, written out in full so Tailwind's
+ * scanner emits them.
+ */
+type ModalWidth = 'max-w-198' | 'max-w-2xl';
+
 /** Default card width: the widest of the app's modals. */
-export const DEFAULT_MODAL_WIDTH = 'max-w-198';
+const DEFAULT_MODAL_WIDTH: ModalWidth = 'max-w-198';
 
 /**
  * Card styling shared by every modal, including ones that cannot use
@@ -31,7 +37,10 @@ export const DEFAULT_MODAL_WIDTH = 'max-w-198';
  */
 export const MODAL_CARD_CLASSES = 'rounded-dialog shadow-elevated text-left';
 
-/** The filled primary action of a modal. */
+/**
+ * The filled primary action of a modal. Temporary: a button component
+ * replaces it in a follow-up.
+ */
 export const PRIMARY_BUTTON_CLASSES =
   'h-14 px-6 rounded-full text-body-large-emphasized bg-theme-primary text-on-theme-primary hover:opacity-90 transition-opacity';
 
@@ -44,7 +53,7 @@ interface ModalProps {
   onClose?: () => void;
   'aria-labelledby': string;
   /** Max-width utility that replaces {@link DEFAULT_MODAL_WIDTH}. */
-  width?: string;
+  width?: ModalWidth;
   /** Surface, padding, and layout classes. Set the width with `width`. */
   className?: string;
   children: ReactNode;

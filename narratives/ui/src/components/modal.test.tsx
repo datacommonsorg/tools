@@ -52,7 +52,7 @@ describe('Modal', () => {
 
   it('reports a native close to onClose', () => {
     // Test: Dismissible modal.
-    // Situation: The browser closes the open dialog (Escape or backdrop).
+    // Situation: The open dialog closes (as on Escape or a backdrop click).
     // Expectation: Light dismiss is enabled, and onClose is called once.
     const onClose = vi.fn();
     render(

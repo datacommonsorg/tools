@@ -62,3 +62,16 @@ styles.
 - Config files (`*.config.*`) and `scripts/**` are exempt. Vite loads
   `ui/vite.config.ts` before the alias exists, and scripts run directly in
   Node, where `@/` is not defined.
+
+## 3. Modals
+
+- **Render a modal with `Modal`** from `src/components/modal.tsx`, a native
+  `<dialog>` opened with `showModal()`. The browser supplies the focus trap,
+  Escape, the backdrop, and focus return; do not hand-roll them. Omit
+  `onClose` for a modal that cannot be dismissed. The card defaults to the
+  widest modal width; pass `width` to change it.
+- **Fall back to a custom `role="dialog"`** only when content outside the
+  dialog must stay interactive while it is open. `showModal()` makes the rest
+  of the page inert, which blocks reCAPTCHA's challenge, appended to `<body>`;
+  `modal_recaptcha.tsx` is that case. Such a modal still uses
+  `MODAL_CARD_CLASSES` for its card.
