@@ -19,9 +19,9 @@
  * into a link that opens a modal dialog.
  */
 
-import { useId, useRef } from 'react';
-import { createPortal } from 'react-dom';
+import { useId, useState } from 'react';
 import { Link } from '@/src/components/link';
+import { Modal, PRIMARY_BUTTON_CLASSES } from '@/src/components/modal';
 import { TAGLINE_DIALOG_DISMISS_LABEL } from '@/src/config/copy_landing';
 import type { TaglineLink } from '@/src/config/instance_config';
 
@@ -32,12 +32,10 @@ interface TaglineTextProps {
 
 /**
  * The tagline text. When `link.text` appears in it, that phrase becomes a
- * button that opens a native modal `<dialog>`, which supplies the focus trap,
- * Escape to close, and focus return to the button. The dialog is portaled to
- * `document.body` because a `<dialog>` cannot sit inside the tagline's `<p>`.
+ * button that opens a dismissible {@link Modal}.
  */
 export function TaglineText({ tagline, link }: TaglineTextProps) {
-  const dialogRef = useRef<HTMLDialogElement>(null);
+  const [isOpen, setIsOpen] = useState(false);
   const titleId = useId();
   const start = link.text ? tagline.indexOf(link.text) : -1;
   if (start === -1) {
@@ -54,57 +52,51 @@ export function TaglineText({ tagline, link }: TaglineTextProps) {
         type="button"
         className="hover:text-theme-primary text-subtle bg-tagline-link/50 rounded-sm px-1"
         aria-haspopup="dialog"
-        onClick={() => dialogRef.current?.showModal()}
+        onClick={() => setIsOpen(true)}
       >
         {link.text}
       </button>
       {tagline.slice(end)}
-      {createPortal(
-        <dialog
-          ref={dialogRef}
-          aria-labelledby={titleId}
-          // A click on the backdrop closes the dialog.
-          closedby="any"
-          // On narrow screens, the dialog is 2rem narrower than the viewport,
-          // which leaves 16px of space on each side.
-          className="m-auto w-[calc(100%-2rem)] max-w-198 rounded-dialog dialog-surface dialog-motion text-left shadow-elevated backdrop:bg-scrim/30"
-        >
-          <div className="flex flex-col gap-6 px-11 pt-14">
-            {link.sections.map((section, index) => (
-              <section key={index} className="flex flex-col gap-3">
-                <h2
-                  // The dialog uses the first heading as its accessible name.
-                  id={index === 0 ? titleId : undefined}
-                  className="text-headline-small-emphasized text-headline"
-                >
-                  {section.title}
-                </h2>
-                <p className="text-body-large text-on-surface-variant">
-                  {section.body}
-                </p>
-              </section>
-            ))}
-          </div>
-          <div className="flex flex-wrap items-center justify-end gap-4 p-6 pl-2">
-            {link.sources && (
-              <Link
-                href={link.sources.href}
-                className="flex items-center h-14 px-6 rounded-full text-body-large-emphasized text-theme-primary hover:bg-button-hover transition-colors"
+      <Modal
+        open={isOpen}
+        onClose={() => setIsOpen(false)}
+        aria-labelledby={titleId}
+        className="dialog-surface"
+      >
+        <div className="flex flex-col gap-6 px-11 pt-14">
+          {link.sections.map((section, index) => (
+            <section key={index} className="flex flex-col gap-3">
+              <h2
+                // The dialog uses the first heading as its accessible name.
+                id={index === 0 ? titleId : undefined}
+                className="text-headline-small-emphasized text-headline"
               >
-                {link.sources.label}
-              </Link>
-            )}
-            <button
-              type="button"
-              className="h-14 px-6 rounded-full text-body-large-emphasized bg-theme-primary text-on-theme-primary hover:opacity-90 transition-opacity"
-              onClick={() => dialogRef.current?.close()}
+                {section.title}
+              </h2>
+              <p className="text-body-large text-on-surface-variant">
+                {section.body}
+              </p>
+            </section>
+          ))}
+        </div>
+        <div className="flex flex-wrap items-center justify-end gap-4 p-6 pl-2">
+          {link.sources && (
+            <Link
+              href={link.sources.href}
+              className="flex items-center h-14 px-6 rounded-full text-body-large-emphasized text-theme-primary hover:bg-button-hover transition-colors"
             >
-              {TAGLINE_DIALOG_DISMISS_LABEL}
-            </button>
-          </div>
-        </dialog>,
-        document.body,
-      )}
+              {link.sources.label}
+            </Link>
+          )}
+          <button
+            type="button"
+            className={PRIMARY_BUTTON_CLASSES}
+            onClick={() => setIsOpen(false)}
+          >
+            {TAGLINE_DIALOG_DISMISS_LABEL}
+          </button>
+        </div>
+      </Modal>
     </>
   );
 }

@@ -22,6 +22,10 @@
 import { useCallback, useEffect, useId, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import {
+  MODAL_CARD_CLASSES,
+  PRIMARY_BUTTON_CLASSES,
+} from '@/src/components/modal';
+import {
   RECAPTCHA_MODAL_DESCRIPTION,
   RECAPTCHA_MODAL_EXPIRED_NOTE,
   RECAPTCHA_MODAL_LOAD_ERROR,
@@ -224,7 +228,7 @@ function RecaptchaModalDialog({
           aria-labelledby={titleId}
           aria-describedby={descriptionId}
           tabIndex={-1}
-          className="pointer-events-auto outline-none w-full max-w-2xl rounded-dialog dialog-surface shadow-elevated p-6 sm:py-8 sm:px-10 flex flex-col gap-2 motion-safe:animate-enter"
+          className={`pointer-events-auto outline-none w-full max-w-2xl ${MODAL_CARD_CLASSES} dialog-surface p-6 sm:py-8 sm:px-10 flex flex-col gap-2 motion-safe:animate-enter`}
         >
           <h2
             id={titleId}
@@ -369,7 +373,7 @@ function RecaptchaCheckboxWidget({
         <button
           type="button"
           onClick={onRetry}
-          className="h-14 px-6 rounded-full text-body-large-emphasized bg-theme-primary text-on-theme-primary hover:opacity-90 transition-opacity"
+          className={PRIMARY_BUTTON_CLASSES}
         >
           {RETRY_LABEL}
         </button>
