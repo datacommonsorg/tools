@@ -47,7 +47,8 @@ export const PRIMARY_BUTTON_CLASSES =
 interface ModalProps {
   open: boolean;
   /**
-   * Called when the dialog closes. Omitting it makes the modal impossible to
+   * Called when the user closes the dialog (Escape or a backdrop click), not
+   * when `open` changes to `false`. Omitting it makes the modal impossible to
    * dismiss: neither the backdrop nor Escape closes it.
    */
   onClose?: () => void;
@@ -92,7 +93,11 @@ export function Modal({
       ref={dialogRef}
       aria-labelledby={labelledBy}
       closedby={isDismissible ? 'any' : 'none'}
-      onClose={onClose}
+      // `close()` in the effect above also fires `close`; `open` is already
+      // false then, so only user-initiated closes reach `onClose`.
+      onClose={() => {
+        if (open) onClose?.();
+      }}
       // Browsers without `closedby` still fire `cancel` on Escape.
       onCancel={isDismissible ? undefined : (event) => event.preventDefault()}
       // On narrow screens, the dialog is 2rem narrower than the viewport,

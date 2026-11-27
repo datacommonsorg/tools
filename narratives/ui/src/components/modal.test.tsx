@@ -67,6 +67,23 @@ describe('Modal', () => {
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 
+  it('does not report a close from the open prop to onClose', () => {
+    // Test: Parent-initiated close.
+    // Situation: The open dialog is closed by setting `open` to false.
+    // Expectation: The dialog closes, and onClose is not called.
+    const onClose = vi.fn();
+    const renderModal = (open: boolean) => (
+      <Modal open={open} onClose={onClose} aria-labelledby="title">
+        <h2 id="title">Title</h2>
+      </Modal>
+    );
+    const { rerender } = render(renderModal(true));
+
+    rerender(renderModal(false));
+    expect(getDialog().open).toBe(false);
+    expect(onClose).not.toHaveBeenCalled();
+  });
+
   it('cannot be dismissed without onClose', () => {
     // Test: Modal with no onClose.
     // Situation: Escape fires `cancel` on the open dialog.
