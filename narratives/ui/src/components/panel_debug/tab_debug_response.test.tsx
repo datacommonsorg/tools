@@ -135,7 +135,7 @@ describe('ResponseTab', () => {
     // Test: Citation links and XSS URL sanitization via Link component.
     // Situation: A citation list containing a safe HTTPS URL and an unsafe javascript: URL.
     // Expectation: The safe URL renders an anchor tag, while the unsafe javascript:
-    //              URL renders an inert span rather than a clickable link.
+    //              URL renders an unstyled inert span without a class attribute.
     render(
       <ResponseTab
         outcome={{ kind: 'done', reason: null, truncated: false }}
@@ -166,9 +166,9 @@ describe('ResponseTab', () => {
     expect(screen.getByText('[2]')).toBeDefined();
     expect(screen.getByText('Suspicious Source')).toBeDefined();
     expect(document.querySelector('a[href="javascript:alert(1)"]')).toBeNull();
-    expect(screen.getByText('javascript:alert(1)').tagName.toLowerCase()).toBe(
-      'span',
-    );
+    const unsafeSpan = screen.getByText('javascript:alert(1)');
+    expect(unsafeSpan.tagName).toBe('SPAN');
+    expect(unsafeSpan.getAttribute('class')).toBeNull();
   });
 
   it('renders follow-up suggestions in a list', () => {

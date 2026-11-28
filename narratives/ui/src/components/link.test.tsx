@@ -198,16 +198,18 @@ describe('Link', () => {
 
   it('falls back to an inert span when the URL is unsafe', () => {
     // Test: Unsafe URL fallback rendering.
-    // Situation: Link receives a javascript: URL and an onClick handler.
-    // Expectation: No anchor renders, text and metadata stay on a span, and
-    //   onClick is not attached to the non-interactive span.
+    // Situation: Link receives a javascript: URL, an id, title, link className
+    //   styling, and an onClick handler.
+    // Expectation: No anchor renders, text, id, and title stay on an unstyled
+    //   span without a class attribute, and onClick is not attached.
     const unsafeHref = 'javascript:alert(1)';
     const handleClick = vi.fn();
     render(
       <Link
         href={unsafeHref}
+        id="unsafe-source"
         title={unsafeHref}
-        className="fallback"
+        className="text-theme-primary underline"
         onClick={handleClick}
       >
         {unsafeHref}
@@ -218,8 +220,9 @@ describe('Link', () => {
     const fallback = screen.getByText(unsafeHref);
     expect(fallback.tagName).toBe('SPAN');
     expect(fallback.getAttribute('href')).toBeNull();
+    expect(fallback.getAttribute('id')).toBe('unsafe-source');
     expect(fallback.getAttribute('title')).toBe(unsafeHref);
-    expect(fallback.className).toBe('fallback');
+    expect(fallback.getAttribute('class')).toBeNull();
     fireEvent.click(fallback);
     expect(handleClick).not.toHaveBeenCalled();
   });

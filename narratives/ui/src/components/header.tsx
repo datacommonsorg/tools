@@ -30,11 +30,11 @@ import { useChatSession } from '@/src/hooks/chat_session_context';
 import { useHashRoute } from '@/src/hooks/use_hash_route';
 
 /** Returns the state classes for a header navigation tab. */
-function getNavTabStateClass(isActive: boolean, isSafe: boolean): string {
+function getNavTabStateClass(isActive: boolean): string {
   if (isActive) {
     return 'font-medium text-nav-active';
   }
-  return isSafe ? 'hover:text-on-surface' : '';
+  return 'hover:text-on-surface';
 }
 
 /** Renders the instance logo, wordmark, and primary navigation links. */
@@ -95,27 +95,25 @@ export function Header() {
       )}
 
       {navItems.length > 0 && (
+        // Hide header navigation below the lg breakpoint because the mobile
+        // drawer provides primary navigation on narrow viewports.
         <nav
           aria-label="Primary"
-          className="flex items-center gap-4 md:gap-6 lg:gap-8 text-label-large text-on-surface-variant ml-auto whitespace-nowrap overflow-x-auto no-scrollbar"
+          className="hidden lg:flex items-center gap-8 text-label-large text-on-surface-variant ml-auto whitespace-nowrap overflow-x-auto no-scrollbar"
         >
           {navItems.map((item) => {
             const isActive = item.id === activeId;
-            const isSafe = classifyLinkHref(item.href) !== 'unsafe';
             // Use the href as the React key because multiple external links
             // share the same empty derived route ID.
-            // Hide header navigation links below the lg breakpoint because the
-            // mobile drawer provides primary navigation on narrow viewports.
             return (
               <Link
                 key={item.href}
                 href={item.href}
                 target="_self"
                 aria-current={isActive ? 'page' : undefined}
-                className={`relative py-1 shrink-0 transition-colors hidden lg:block ${getNavTabStateClass(
+                className={`relative py-1 shrink-0 transition-colors ${getNavTabStateClass(
                   isActive,
-                  isSafe,
-                )}`.trimEnd()}
+                )}`}
               >
                 {item.label}
                 {isActive && (

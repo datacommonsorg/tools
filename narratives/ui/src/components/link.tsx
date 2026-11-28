@@ -86,9 +86,11 @@ export interface LinkProps
 
 /**
  * Renders an `<a>` inferred from `href` (same-tab for internal `#...` and `/...`
- * targets; `target="_blank" rel="noopener noreferrer"` by default for external
- * `http(s)` URLs), or an inert `<span>` when `href` is unsafe or malformed so
- * untrusted text stays visible without rendering an executable or broken link.
+ * targets, and `target="_blank" rel="noopener noreferrer"` by default for
+ * external `http(s)` URLs), or an inert `<span>` when `href` is unsafe or
+ * malformed. Applies `className` only when `href` renders an `<a>` (preserving
+ * only `id` and `title` on the fallback `<span>`), so link styling does not
+ * appear on plain fallback text.
  */
 export const Link = ({
   href,
@@ -96,13 +98,12 @@ export const Link = ({
   target,
   id,
   title,
-  className,
   ...anchorProps
 }: LinkProps) => {
   const kind = classifyLinkHref(href);
   if (kind === 'unsafe') {
     return (
-      <span id={id} title={title} className={className}>
+      <span id={id} title={title}>
         {children}
       </span>
     );
@@ -124,7 +125,6 @@ export const Link = ({
       rel={rel}
       id={id}
       title={title}
-      className={className}
     >
       {children}
     </a>

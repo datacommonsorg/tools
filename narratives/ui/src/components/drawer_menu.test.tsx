@@ -95,8 +95,9 @@ describe('MenuDrawer', () => {
     // Test: Custom navigation tabs in the menu drawer.
     // Situation: The theme document declares two navigation tabs and the current
     //            hash route is empty (which maps to the `agent` route).
-    // Expectation: The "Sections" navigation landmark renders both links in order,
-    //              and only the active route link has `aria-current="page"`.
+    // Expectation: The "Sections" navigation landmark renders both interactive
+    //              links in order with pointer and hover styling, and only the
+    //              active route link has `aria-current="page"`.
     writeSlot({
       navigation: [
         { label: 'Explore', href: '#/agent' },
@@ -112,6 +113,10 @@ describe('MenuDrawer', () => {
     ]);
     expect(links[0].getAttribute('aria-current')).toBe('page');
     expect(links[1].getAttribute('aria-current')).toBeNull();
+    for (const link of links) {
+      expect(link.classList.contains('cursor-pointer')).toBe(true);
+      expect(link.classList.contains('hover:bg-surface-soft')).toBe(true);
+    }
   });
 
   it('opens every section link in the current tab and closes the drawer', () => {
@@ -149,13 +154,13 @@ describe('MenuDrawer', () => {
     ['data:', 'data:text/html,x'],
     ['vbscript:', 'vbscript:msgbox(1)'],
     ['relative', 'relative/path'],
-  ])('renders a %s section href as plain text without pointer styling', (_, href) => {
+  ])('renders a %s section href as an unstyled fallback span', (_, href) => {
     // Test: Drawer section entry with an unsafe href.
     // Situation: The instance configuration is stubbed so that a navigation
     //            entry carries a script, data, or relative URL, which
     //            `getInstanceConfig` would otherwise discard.
-    // Expectation: The entry renders its label inside a fallback span that
-    //              keeps layout classes and omits pointer and hover classes.
+    // Expectation: The entry renders its label inside an unstyled fallback span
+    //              with no link role and no class attribute.
     vi.spyOn(instanceConfig, 'getInstanceConfig').mockReturnValue({
       ...DEFAULT_INSTANCE_CONFIG,
       navigation: [{ label: 'Evil', href }],
@@ -166,9 +171,7 @@ describe('MenuDrawer', () => {
     const row = nav.firstElementChild;
     expect(row?.tagName).toBe('SPAN');
     expect(row?.textContent).toContain('Evil');
-    expect(row?.classList.contains('w-full')).toBe(true);
-    expect(row?.classList.contains('cursor-pointer')).toBe(false);
-    expect(row?.classList.contains('hover:bg-surface-soft')).toBe(false);
+    expect(row?.getAttribute('class')).toBeNull();
   });
 
   it('offers a new chat and no way to reopen an old one', () => {

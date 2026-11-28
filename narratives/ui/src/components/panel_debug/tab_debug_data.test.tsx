@@ -217,7 +217,7 @@ describe('DataTab', () => {
     // Test: Link sanitization for source URLs.
     // Situation: One table with https: URL and one table with javascript: URL.
     // Expectation: Safe URL renders an anchor with target="_blank" and rel="noopener noreferrer",
-    // while unsafe URL renders as a span without an anchor tag.
+    // while unsafe URL renders an unstyled span with no class attribute and no anchor tag.
     const safeUrl = 'https://example.org/dataset';
     const unsafeUrl = 'javascript:alert(1)';
     const tableSafe = makeServerTable({
@@ -254,6 +254,7 @@ describe('DataTab', () => {
 
     const unsafeSpan = screen.getByText(unsafeUrl);
     expect(unsafeSpan.tagName).toBe('SPAN');
+    expect(unsafeSpan.getAttribute('class')).toBeNull();
     expect(screen.queryByRole('link', { name: unsafeUrl })).toBeNull();
   });
 });
